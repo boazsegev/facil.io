@@ -1,0 +1,390 @@
+<!DOCTYPE html><html><head><meta charset="utf-8" /><meta content="IE=edge" http-equiv="X-UA-Compatible" /><meta content="width=device-width, initial-scale=1, maximum-scale=2.0, user-scalable=yes, minimal-ui=yes" name="viewport" /><title>facil.io - CLI helpers.</title><meta content="facil.io - CLI helpers." name="description" /><link href="https://fonts.googleapis.com/css?family=Montserrat|Quicksand|Karla" rel="stylesheet" type="text/css" /><script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script><link href="/assets/styles/main.css" rel="stylesheet" type="text/css" /><script type="application/ld+json">{"@context":"http://schema.org","@type":"WebSite","url":"http://facil.io","name":"facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","keywords":"C, web, framework, websockets, websocket, realtime, real-time, easy","image":"http://facil.io/website/logo/facil-io.svg","author":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}],"sourceOrganization":{"@context":"http://schema.org","@type":"Organization","name":"Plezi","url":"http://facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","logo":"http://facil.io/website/logo/facil-io.svg","image":"http://facil.io/website/logo/facil-io.svg","email":"bo(at)facil.io","member":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}]}}</script><link href="/assets/logo/facil-io-logo.svg" rel="icon" sizes="350x350" type="image/svg" /><link href="/assets/logo/facil-io-logo.png" rel="icon" sizes="350x350" type="image/png" /><link href="/assets/logo/facil-io-logo.svg" rel="shortcut icon" sizes="350x350" type="image/svg" /><link href="/assets/logo/facil-io-logo.png" rel="shortcut icon" sizes="350x350" type="image/png" /><link href="/assets/logo/facil-io-logo.svg" rel="apple-touch-icon" sizes="350x350" type="image/svg" /><link href="/assets/logo/facil-io-logo.png" rel="apple-touch-icon" sizes="350x350" type="image/png" /><link href="/assets/logo/facil-io-logo.svg" rel="fluid-icon" sizes="350x350" type="image/svg" /><link href="/assets/logo/facil-io-logo.png" rel="fluid-icon" sizes="350x350" type="image/png" /><link href="/manifest.json" rel="manifest" /><meta content="facil.io" name="apple-mobile-web-app-title" /><meta content="facil.io - the C Web Application Framework" name="application-name" /><meta content="#b91d47" name="msapplication-TileColor" /><meta content="/mstile-144x144.png" name="msapplication-TileImage" /><meta content="#ffffff" name="theme-color" /></head><body><a href="/" id="logo"></a><input id="show_nav" type="checkbox" /><nav id="top_nav"><ul><li><a href="/0.7.x/index">Latest Docs</a></li><li><a href="https://github.com/boazsegev/facil.io" target="_blank">Source Code</a></li><li><a href="javascript: change_themes();" id="theme">Night Theme</a></li></ul></nav><input id="show_sidebar" type="checkbox" /><nav id="side_bar"><h2 id="version-0-8-x"><a href="/0.8.x/index">Version 0.8.x</a></h2>
+
+<h3 id="core-library"><a href="/0.8.x/fio">Core Library</a></h3>
+
+<ul>
+<li><a href="/0.8.x/fio#connection-protocol-management">Protocol Management</a></li>
+<li><a href="/0.8.x/fio#running-facil-io">Running the IO reactor</a></li>
+<li><a href="/0.8.x/fio#socket-connection-functions">Connection Functions</a></li>
+<li><a href="/0.8.x/fio#event-task-scheduling">Event / Task Scheduling</a></li>
+<li><a href="/0.8.x/fio#pub-sub-services">Pub/Sub Services</a></li>
+<li><a href="/0.8.x/fio#the-custom-memory-allocator">Memory Allocation</a></li>
+<li><a href="/0.8.x/fio#general-helpers">General Helpers</a></li>
+<li><a href="/0.8.x/fio#version-and-compilation-related-macros">Compilation Macros</a></li>
+<li><a href="/0.8.x/fio#weak-functions">Weak Functions</a></li>
+</ul>
+
+<h3 id="simple-type-library"><a href="/0.8.x/fio_stl">Simple Type Library</a></h3>
+
+<ul>
+<li><a href="/0.8.x/fio_stl#linked-lists">Linked Lists</a></li>
+<li><a href="/0.8.x/fio_stl#string-helpers">String Helpers</a></li>
+<li><a href="/0.8.x/fio_stl#dynamic-arrays">Dynamic Arrays</a></li>
+<li><a href="/0.8.x/fio_stl#hash-maps-sets">Hash Maps / Sets</a></li>
+</ul>
+
+<h3 id="extensions"><a href="/0.8.x/extensions">Extensions</a></h3>
+
+<ul>
+<li><a href="/0.8.x/fio_tls">TLS (SSL)</a></li>
+<li><a href="/0.8.x/http">HTTP / WebSockets</a></li>
+<li><a href="/0.8.x/redis">Redis (client)</a></li>
+<li><a href="/0.8.x/fio_cli">CLI (command line)</a></li>
+</ul>
+
+<h3 id="the-fiobj-types"><a href="/0.8.x/fiobj">The FIOBJ types</a></h3>
+
+<ul>
+<li><a href="/0.8.x/fiobj_core">Core Functions</a></li>
+<li><a href="/0.8.x/fiobj_primitives">Primitives</a></li>
+<li><a href="/0.8.x/fiobj_numbers">Numbers</a></li>
+<li><a href="/0.8.x/fiobj_str">Strings</a></li>
+<li><a href="/0.8.x/fiobj_ary">Array</a></li>
+<li><a href="/0.8.x/fiobj_hash">HashMap</a></li>
+<li><a href="/0.8.x/fiobj_data">Data Streams</a></li>
+<li><a href="/0.8.x/fiobj_json">JSON</a></li>
+<li><a href="/0.8.x/fiobj_mustache">Mustache</a></li>
+</ul>
+
+<h3 id="miscellaneous">Miscellaneous</h3>
+
+<ul>
+<li><a href="/0.8.x/riskyhash">Risk Hash</a></li>
+</ul>
+</nav><div id="md_container"><div class='toc'><ul>
+<li>
+<a href="#command-line-helper">Command Line Helper</a>
+<ul>
+<li>
+<a href="#overview">Overview</a>
+<ul>
+<li>
+<a href="#example">example</a>
+</li>
+</ul>
+</li>
+<li>
+<a href="#constants">Constants</a>
+<ul>
+<li>
+<ul>
+<li>
+<a href="#fio_cli_string-argument"><code>FIO_CLI_STRING(argument)</code></a>
+</li>
+<li>
+<a href="#fio_cli_bool-argument"><code>FIO_CLI_BOOL(argument)</code></a>
+</li>
+<li>
+<a href="#fio_cli_int-argument"><code>FIO_CLI_INT(argument)</code></a>
+</li>
+<li>
+<a href="#fio_cli_print_header-string"><code>FIO_CLI_PRINT_HEADER(string)</code></a>
+</li>
+<li>
+<a href="#fio_cli_print-string"><code>FIO_CLI_PRINT(string)</code></a>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<a href="#functions">Functions</a>
+<ul>
+<li>
+<a href="#initialization-destruction">Initialization / Destruction</a>
+<ul>
+<li>
+<a href="#fio_cli_start"><code>fio_cli_start</code></a>
+</li>
+<li>
+<a href="#fio_cli_end"><code>fio_cli_end</code></a>
+</li>
+</ul>
+</li>
+<li>
+<a href="#access-cli-arguments">Access CLI arguments</a>
+<ul>
+<li>
+<a href="#fio_cli_get"><code>fio_cli_get</code></a>
+</li>
+<li>
+<a href="#fio_cli_get_i"><code>fio_cli_get_i</code></a>
+</li>
+<li>
+<a href="#fio_cli_get_bool"><code>fio_cli_get_bool</code></a>
+</li>
+<li>
+<a href="#fio_cli_unnamed_count"><code>fio_cli_unnamed_count</code></a>
+</li>
+<li>
+<a href="#fio_cli_unnamed"><code>fio_cli_unnamed</code></a>
+</li>
+</ul>
+</li>
+<li>
+<a href="#set-cli-argument-data">Set CLI argument data</a>
+<ul>
+<li>
+<a href="#fio_cli_set"><code>fio_cli_set</code></a>
+</li>
+<li>
+<a href="#fio_cli_set_default"><code>fio_cli_set_default</code></a>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<a href="#important-notes">Important Notes</a>
+</li>
+</ul>
+</li>
+</ul>
+</div><h1 id="command-line-helper">Command Line Helper</h1>
+
+<p>This is a simple Command Line Interface helper extension that makes it easy to handle command line arguments.</p>
+
+<p>To use the facil.io CLI API, include the file <code>fio_cli.h</code></p>
+
+<h2 id="overview">Overview</h2>
+
+<p>Initializing the CLI helper is easy with a single call to the function/macro <code>fio_cli_start</code>.</p>
+
+<p>Data can be accessed either as a C string or an integer using the <code>fio_cli_get</code> and <code>fio_cli_set</code> functions.</p>
+
+<h3 id="example">example</h3>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"this example accepts the following:"</span><span class="p">,</span>
+
+              <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Concurrency:"</span><span class="p">),</span>
+              <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-t -thread number of threads to run."</span><span class="p">),</span>
+              <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-w -workers number of workers to run."</span><span class="p">),</span>
+
+              <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Address Binding:"</span><span class="p">),</span>
+              <span class="n">FIO_CLI_STRING</span><span class="p">(</span><span class="s">"-b, -address the address to bind to."</span><span class="p">),</span>
+              <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-p,-port the port to bind to."</span><span class="p">),</span>
+              <span class="n">FIO_CLI_PRINT</span><span class="p">(</span><span class="s">"</span><span class="se">\t\t</span><span class="s">set port to zero (0) for Unix s."</span><span class="p">),</span>
+
+              <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Logging:"</span><span class="p">),</span>
+              <span class="n">FIO_CLI_BOOL</span><span class="p">(</span><span class="s">"-v -log enable logging."</span><span class="p">));</span>
+
+<span class="k">if</span> <span class="p">(</span><span class="n">fio_cli_get_bool</span><span class="p">(</span><span class="s">"-v"</span><span class="p">))</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"Logging is enabled</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="n">fio_cli_end</span><span class="p">();</span>
+</code></pre></div>
+<h2 id="constants">Constants</h2>
+
+<p>The following constants are defined by the CLI extension.</p>
+
+<h4 id="fio_cli_string-argument"><code>FIO_CLI_STRING(argument)</code></h4>
+
+<p>Indicates the CLI argument should be a String (default).</p>
+
+<h4 id="fio_cli_bool-argument"><code>FIO_CLI_BOOL(argument)</code></h4>
+
+<p>Indicates the CLI argument is a Boolean value.</p>
+
+<h4 id="fio_cli_int-argument"><code>FIO_CLI_INT(argument)</code></h4>
+
+<p>Indicates the CLI argument should be an Integer (numerical). </p>
+
+<h4 id="fio_cli_print_header-string"><code>FIO_CLI_PRINT_HEADER(string)</code></h4>
+
+<p>Indicates the CLI argument should only be used when printing the help output. </p>
+
+<p>Text will be printed underlined, in a new line, with an extra line break preceding it.</p>
+
+<h4 id="fio_cli_print-string"><code>FIO_CLI_PRINT(string)</code></h4>
+
+<p>Indicates the CLI argument should only be used when printing the help output. </p>
+
+<p>Text will be printed as normal text in a new line.</p>
+
+<h2 id="functions">Functions</h2>
+
+<h3 id="initialization-destruction">Initialization / Destruction</h3>
+
+<h4 id="fio_cli_start"><code>fio_cli_start</code></h4>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_cli_start</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">argv</span><span class="p">[],</span> <span class="kt">int</span> <span class="n">unnamed_min</span><span class="p">,</span>
+                   <span class="kt">int</span> <span class="n">unnamed_max</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">description</span><span class="p">,</span>
+                   <span class="kt">char</span> <span class="k">const</span> <span class="o">**</span><span class="n">names</span><span class="p">);</span>
+<span class="cm">/* Automatically appends a NULL marker at the end of the `names` array. */</span>
+<span class="cp">#define fio_cli_start(argc, argv, unnamed_min, unnamed_max, description, ...)  \
+  fio_cli_start((argc), (argv), (unnamed_min), (unnamed_max), (description),   \
+                (char const *[]){__VA_ARGS__, NULL})
+</span></code></pre></div>
+<p>This function parses the Command Line Interface (CLI), creating a temporary &quot;dictionary&quot; that allows easy access to the CLI using their names or aliases.</p>
+
+<p>Command line arguments may be typed. If an optional type requirement is provided and the provided argument fails to match the required type, execution will end and an error message will be printed along with a short &quot;help&quot;.</p>
+
+<p>The following optional type requirements are:</p>
+
+<ul>
+<li>FIO_CLI_STRING        - (default) string argument.</li>
+<li>FIO_CLI_BOOL          - boolean argument (no value).</li>
+<li>FIO_CLI_PRINT_HEADER  - header text.</li>
+<li>FIO_CLI_PRINT         - normal text.</li>
+</ul>
+
+<p>Argument names MUST start with the &#39;-&#39; character. The first word starting
+without the &#39;-&#39; character will begin the description for the CLI argument.</p>
+
+<p>The arguments &quot;-?&quot;, &quot;-h&quot;, &quot;-help&quot; and &quot;--help&quot; are automatically handled
+unless overridden.</p>
+
+<p>Example use:</p>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"this example accepts the following:"</span><span class="p">,</span>
+
+              <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Concurrency:"</span><span class="p">),</span>
+              <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-t -thread number of threads to run."</span><span class="p">),</span>
+              <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-w -workers number of workers to run."</span><span class="p">),</span>
+
+              <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Address Binding:"</span><span class="p">),</span>
+              <span class="n">FIO_CLI_STRING</span><span class="p">(</span><span class="s">"-b, -address the address to bind to."</span><span class="p">),</span>
+              <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-p,-port the port to bind to."</span><span class="p">),</span>
+              <span class="n">FIO_CLI_PRINT</span><span class="p">(</span><span class="s">"</span><span class="se">\t\t</span><span class="s">set port to zero (0) for Unix s."</span><span class="p">),</span>
+
+              <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Logging:"</span><span class="p">),</span>
+              <span class="n">FIO_CLI_BOOL</span><span class="p">(</span><span class="s">"-v -log enable logging."</span><span class="p">));</span>
+</code></pre></div>
+<p>This would allow access to the named arguments:</p>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cli_get</span><span class="p">(</span><span class="s">"-b"</span><span class="p">)</span> <span class="o">==</span> <span class="n">fio_cli_get</span><span class="p">(</span><span class="s">"-address"</span><span class="p">);</span>
+</code></pre></div>
+<p>Once all the data was accessed, free the parsed data dictionary using:</p>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cli_end</span><span class="p">();</span>
+</code></pre></div>
+<p>It should be noted, arguments will be recognized in a number of forms, i.e.:</p>
+<div class="highlight"><pre class="highlight shell"><code>app <span class="nt">-t</span><span class="o">=</span>1 <span class="nt">-p3000</span> <span class="nt">-a</span> localhost
+</code></pre></div>
+<h4 id="fio_cli_end"><code>fio_cli_end</code></h4>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_cli_end</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+</code></pre></div>
+<p>Clears the memory used by the CLI dictionary, removing all parsed data.</p>
+
+<h3 id="access-cli-arguments">Access CLI arguments</h3>
+
+<h4 id="fio_cli_get"><code>fio_cli_get</code></h4>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">fio_cli_get</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">);</span>
+</code></pre></div>
+<p>Returns the argument&#39;s value as a NUL terminated C String.</p>
+
+<h4 id="fio_cli_get_i"><code>fio_cli_get_i</code></h4>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_cli_get_i</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">);</span>
+</code></pre></div>
+<p>Returns the argument&#39;s value as an integer.</p>
+
+<h4 id="fio_cli_get_bool"><code>fio_cli_get_bool</code></h4>
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#define fio_cli_get_bool(name) (fio_cli_get((name)) != NULL)
+</span></code></pre></div>
+<p>This MACRO returns the argument&#39;s value as a boolean.</p>
+
+<h4 id="fio_cli_unnamed_count"><code>fio_cli_unnamed_count</code></h4>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">fio_cli_unnamed_count</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+</code></pre></div>
+<p>Returns the number of unnamed arguments.</p>
+
+<p>Unnamed arguments are only relevant if the <code>unnamed_min</code> argument in <code>fio_cli_start</code> was greater than 0.</p>
+
+<h4 id="fio_cli_unnamed"><code>fio_cli_unnamed</code></h4>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">fio_cli_unnamed</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">index</span><span class="p">);</span>
+</code></pre></div>
+<p>Returns the unnamed arguments using a 0 (zero) based <code>index</code>.</p>
+
+<p>Unnamed arguments are only relevant if the <code>unnamed_min</code> argument in <code>fio_cli_start</code> was greater than 0.</p>
+
+<h3 id="set-cli-argument-data">Set CLI argument data</h3>
+
+<h4 id="fio_cli_set"><code>fio_cli_set</code></h4>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_cli_set</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">value</span><span class="p">);</span>
+</code></pre></div>
+<p>Sets the argument&#39;s value as a NUL terminated C String (no copy!).</p>
+
+<p>CAREFUL: This does not automatically detect aliases or type violations! it will only effect the specific name given, even if invalid. i.e.:</p>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span>
+             <span class="s">"this is example accepts the following options:"</span><span class="p">,</span>
+             <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-p -port the port to bind to"</span><span class="p">));</span>
+
+<span class="n">fio_cli_set</span><span class="p">(</span><span class="s">"-p"</span><span class="p">,</span> <span class="s">"hello"</span><span class="p">);</span> <span class="c1">// fio_cli_get("-p") != fio_cli_get("-port");</span>
+</code></pre></div>
+<p>Note: this does NOT copy the C strings to memory. Memory should be kept alive until <code>fio_cli_end</code> is called.</p>
+
+<h4 id="fio_cli_set_default"><code>fio_cli_set_default</code></h4>
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#define fio_cli_set_default(name, value)                                       \
+  if (!fio_cli_get((name)))                                                    \
+    fio_cli_set(name, value);
+</span></code></pre></div>
+<p>This MACRO sets the argument&#39;s value only if the argument has no existing value.</p>
+
+<p>CAREFUL: This does not automatically detect aliases or type violations! it will only effect the specific name given, even if invalid. See <a href="#fio_cli_set">fio_cli_set</a>.</p>
+
+<h2 id="important-notes">Important Notes</h2>
+
+<p>The CLI extension is <strong>NOT</strong> thread safe. If you wish to write data to the CLI storage while facil.io is running, you should protect both read and write access to the storage.</p>
+</div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
+    if(localStorage.getItem("theme") == 'dark') {
+        localStorage.setItem("theme", "light");
+    } else {
+        localStorage.setItem("theme", "dark");
+    }
+    $('body')[0].className = localStorage.getItem("theme");
+    set_theme_link();
+    $('#show_nav').attr('checked', false);
+    return false;
+};
+function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
+function on_sidebar_link(e) {
+    sessionStorage.setItem("sidebar.expect", sidebar_name());
+    sessionStorage.setItem("sidebar.pos", document.getElementById("side_bar").scrollTop);
+}
+function load_sidebar_pos() {
+    var e = document.getElementById("side_bar");
+    if(!e) {
+        console.warn("No sidebar detected");
+        return;
+    }
+    var expect = sidebar_name();
+    if(sessionStorage.getItem("sidebar.expect") == expect) {
+        e.scrollTo(0, parseInt(sessionStorage.getItem("sidebar.pos")));
+    } else {
+        sessionStorage.setItem("sidebar.expect", false);
+        sessionStorage.setItem("sidebar.pos", 0);
+    }
+    if(e) {
+        // add link callbacks
+        var links = document.links;
+        var count = links.length;
+        for (var i = 0; i < count; i++) {
+            var href = links[i].href;
+            if(href.startsWith(document.location.origin)) {
+                href = href.slice(document.location.origin.length);
+            }
+            if(href.startsWith(expect)) {
+                /* add link event */
+                links[i].addEventListener("click", on_sidebar_link);
+            }
+        }
+    }
+
+};
+load_sidebar_pos();
+function set_theme_link() {
+    $("#theme").html( ( (localStorage.getItem("theme") == 'dark') ? "Day" : "Night") + " Theme" );
+    }
+$('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
+set_theme_link();
+function show_notice() { document.getElementById("notice").classList.remove('hidden'); };
+function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
+$('#toc').on("touchstart", function (e) { return true; } );
+$('#toc').on("hover", function (e) { return true; } );
+// hljs.initHighlighting();
+// Google Analytics
+// if(location.hostname != "localhost") {
+//     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+//         (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+//         m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+//         })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+//     ga('create', 'UA-69931401-1', 'auto');
+//     ga('send', 'pageview');
+// }</script></body></html>

@@ -1,6 +1,7 @@
 ## [Version 0.7.x](/0.7.x/index)
 
 ### [Core Library](/0.7.x/fio)
+
 * [Protocol Management](/0.7.x/fio#connection-protocol-management)
 * [Running the IO reactor](/0.7.x/fio#running-facil-io)
 * [Connection Functions](/0.7.x/fio#socket-connection-functions)
@@ -17,8 +18,7 @@
 
 ### [Extensions](/0.7.x/extensions)
 
-<!-- * [TLS (SSL)](/0.7.x/fio_tls) -->
-
+* [TLS (SSL)](/0.7.x/fio_tls)
 * [HTTP / WebSockets](/0.7.x/http)
 * [Redis (client)](/0.7.x/redis)
 * [CLI (command line)](/0.7.x/fio_cli)

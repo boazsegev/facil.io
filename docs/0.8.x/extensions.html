@@ -1,0 +1,142 @@
+<!DOCTYPE html><html><head><meta charset="utf-8" /><meta content="IE=edge" http-equiv="X-UA-Compatible" /><meta content="width=device-width, initial-scale=1, maximum-scale=2.0, user-scalable=yes, minimal-ui=yes" name="viewport" /><title>facil.io - core API and extensions</title><meta content="facil.io - core API and extensions" name="description" /><link href="https://fonts.googleapis.com/css?family=Montserrat|Quicksand|Karla" rel="stylesheet" type="text/css" /><script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script><link href="/assets/styles/main.css" rel="stylesheet" type="text/css" /><script type="application/ld+json">{"@context":"http://schema.org","@type":"WebSite","url":"http://facil.io","name":"facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","keywords":"C, web, framework, websockets, websocket, realtime, real-time, easy","image":"http://facil.io/website/logo/facil-io.svg","author":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}],"sourceOrganization":{"@context":"http://schema.org","@type":"Organization","name":"Plezi","url":"http://facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","logo":"http://facil.io/website/logo/facil-io.svg","image":"http://facil.io/website/logo/facil-io.svg","email":"bo(at)facil.io","member":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}]}}</script><link href="/assets/logo/facil-io-logo.svg" rel="icon" sizes="350x350" type="image/svg" /><link href="/assets/logo/facil-io-logo.png" rel="icon" sizes="350x350" type="image/png" /><link href="/assets/logo/facil-io-logo.svg" rel="shortcut icon" sizes="350x350" type="image/svg" /><link href="/assets/logo/facil-io-logo.png" rel="shortcut icon" sizes="350x350" type="image/png" /><link href="/assets/logo/facil-io-logo.svg" rel="apple-touch-icon" sizes="350x350" type="image/svg" /><link href="/assets/logo/facil-io-logo.png" rel="apple-touch-icon" sizes="350x350" type="image/png" /><link href="/assets/logo/facil-io-logo.svg" rel="fluid-icon" sizes="350x350" type="image/svg" /><link href="/assets/logo/facil-io-logo.png" rel="fluid-icon" sizes="350x350" type="image/png" /><link href="/manifest.json" rel="manifest" /><meta content="facil.io" name="apple-mobile-web-app-title" /><meta content="facil.io - the C Web Application Framework" name="application-name" /><meta content="#b91d47" name="msapplication-TileColor" /><meta content="/mstile-144x144.png" name="msapplication-TileImage" /><meta content="#ffffff" name="theme-color" /></head><body><a href="/" id="logo"></a><input id="show_nav" type="checkbox" /><nav id="top_nav"><ul><li><a href="/0.7.x/index">Latest Docs</a></li><li><a href="https://github.com/boazsegev/facil.io" target="_blank">Source Code</a></li><li><a href="javascript: change_themes();" id="theme">Night Theme</a></li></ul></nav><input id="show_sidebar" type="checkbox" /><nav id="side_bar"><h2 id="version-0-8-x"><a href="/0.8.x/index">Version 0.8.x</a></h2>
+
+<h3 id="core-library"><a href="/0.8.x/fio">Core Library</a></h3>
+
+<ul>
+<li><a href="/0.8.x/fio#connection-protocol-management">Protocol Management</a></li>
+<li><a href="/0.8.x/fio#running-facil-io">Running the IO reactor</a></li>
+<li><a href="/0.8.x/fio#socket-connection-functions">Connection Functions</a></li>
+<li><a href="/0.8.x/fio#event-task-scheduling">Event / Task Scheduling</a></li>
+<li><a href="/0.8.x/fio#pub-sub-services">Pub/Sub Services</a></li>
+<li><a href="/0.8.x/fio#the-custom-memory-allocator">Memory Allocation</a></li>
+<li><a href="/0.8.x/fio#general-helpers">General Helpers</a></li>
+<li><a href="/0.8.x/fio#version-and-compilation-related-macros">Compilation Macros</a></li>
+<li><a href="/0.8.x/fio#weak-functions">Weak Functions</a></li>
+</ul>
+
+<h3 id="simple-type-library"><a href="/0.8.x/fio_stl">Simple Type Library</a></h3>
+
+<ul>
+<li><a href="/0.8.x/fio_stl#linked-lists">Linked Lists</a></li>
+<li><a href="/0.8.x/fio_stl#string-helpers">String Helpers</a></li>
+<li><a href="/0.8.x/fio_stl#dynamic-arrays">Dynamic Arrays</a></li>
+<li><a href="/0.8.x/fio_stl#hash-maps-sets">Hash Maps / Sets</a></li>
+</ul>
+
+<h3 id="extensions"><a href="/0.8.x/extensions">Extensions</a></h3>
+
+<ul>
+<li><a href="/0.8.x/fio_tls">TLS (SSL)</a></li>
+<li><a href="/0.8.x/http">HTTP / WebSockets</a></li>
+<li><a href="/0.8.x/redis">Redis (client)</a></li>
+<li><a href="/0.8.x/fio_cli">CLI (command line)</a></li>
+</ul>
+
+<h3 id="the-fiobj-types"><a href="/0.8.x/fiobj">The FIOBJ types</a></h3>
+
+<ul>
+<li><a href="/0.8.x/fiobj_core">Core Functions</a></li>
+<li><a href="/0.8.x/fiobj_primitives">Primitives</a></li>
+<li><a href="/0.8.x/fiobj_numbers">Numbers</a></li>
+<li><a href="/0.8.x/fiobj_str">Strings</a></li>
+<li><a href="/0.8.x/fiobj_ary">Array</a></li>
+<li><a href="/0.8.x/fiobj_hash">HashMap</a></li>
+<li><a href="/0.8.x/fiobj_data">Data Streams</a></li>
+<li><a href="/0.8.x/fiobj_json">JSON</a></li>
+<li><a href="/0.8.x/fiobj_mustache">Mustache</a></li>
+</ul>
+
+<h3 id="miscellaneous">Miscellaneous</h3>
+
+<ul>
+<li><a href="/0.8.x/riskyhash">Risk Hash</a></li>
+</ul>
+</nav><div id="md_container"><div class='toc'><ul>
+<li>
+<a href="#facil-io-core-api-and-extensions">facil.io - core API and extensions</a>
+</li>
+</ul>
+</div><h1 id="facil-io-core-api-and-extensions">facil.io - core API and extensions</h1>
+
+<p>facil.io&#39;s <a href="fio">core library</a> (the <code>fio.h</code> and <code>fio.c</code> files) is a stand alone two-file library, which can be easily used in different projects.</p>
+
+<p>However, there are many tasks that are common to applications that need an evented networking library such as facil.io.</p>
+
+<p>These bundled extensions to the core library provide common functionality. They aren&#39;t required and can be safely deleted without effecting the core library.</p>
+
+<p>The following extensions come bundled along with facio.io:</p>
+
+<ul>
+<li><p>The <a href="fio_cli">CLI (<code>fio_cli</code>)</a> extension for handling command line arguments.</p></li>
+<li><p>The <a href="fiobj"><code>FIOBJ</code></a> extension - this extension defines dynamic soft types and JSON helpers, making it easier to handle network bound information which often contains mixed types.</p></li>
+<li><p>The <a href="http"><code>http</code></a> extension - this compound module is everything HTTP and it requires the FIOBJ extension.</p></li>
+<li><p>The <a href="websockets"><code>websockets</code></a> extension - this is part of the HTTP module and extends it to support Websocket connections.</p></li>
+<li><p>The <a href="redis"><code>redis</code></a> extension adds Redis connectivity to the core pub/sub service, making horizontal scaling a breeze.</p></li>
+</ul>
+</div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
+    if(localStorage.getItem("theme") == 'dark') {
+        localStorage.setItem("theme", "light");
+    } else {
+        localStorage.setItem("theme", "dark");
+    }
+    $('body')[0].className = localStorage.getItem("theme");
+    set_theme_link();
+    $('#show_nav').attr('checked', false);
+    return false;
+};
+function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
+function on_sidebar_link(e) {
+    sessionStorage.setItem("sidebar.expect", sidebar_name());
+    sessionStorage.setItem("sidebar.pos", document.getElementById("side_bar").scrollTop);
+}
+function load_sidebar_pos() {
+    var e = document.getElementById("side_bar");
+    if(!e) {
+        console.warn("No sidebar detected");
+        return;
+    }
+    var expect = sidebar_name();
+    if(sessionStorage.getItem("sidebar.expect") == expect) {
+        e.scrollTo(0, parseInt(sessionStorage.getItem("sidebar.pos")));
+    } else {
+        sessionStorage.setItem("sidebar.expect", false);
+        sessionStorage.setItem("sidebar.pos", 0);
+    }
+    if(e) {
+        // add link callbacks
+        var links = document.links;
+        var count = links.length;
+        for (var i = 0; i < count; i++) {
+            var href = links[i].href;
+            if(href.startsWith(document.location.origin)) {
+                href = href.slice(document.location.origin.length);
+            }
+            if(href.startsWith(expect)) {
+                /* add link event */
+                links[i].addEventListener("click", on_sidebar_link);
+            }
+        }
+    }
+
+};
+load_sidebar_pos();
+function set_theme_link() {
+    $("#theme").html( ( (localStorage.getItem("theme") == 'dark') ? "Day" : "Night") + " Theme" );
+    }
+$('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
+set_theme_link();
+function show_notice() { document.getElementById("notice").classList.remove('hidden'); };
+function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
+$('#toc').on("touchstart", function (e) { return true; } );
+$('#toc').on("hover", function (e) { return true; } );
+// hljs.initHighlighting();
+// Google Analytics
+// if(location.hostname != "localhost") {
+//     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+//         (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+//         m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+//         })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+//     ga('create', 'UA-69931401-1', 'auto');
+//     ga('send', 'pageview');
+// }</script></body></html>
