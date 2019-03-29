@@ -1,6 +1,8 @@
 # Change Log
 
-### v. 0.7.0.beta9
+### v. 0.7.0
+
+Stable API release. Future API updates will be wait for the 0.8.x release.
 
 **Fix**: (`fio`, `fiobj`) fixed some `gcc` and `clang` compatibility issues and warnings.
 

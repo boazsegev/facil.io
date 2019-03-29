@@ -383,6 +383,11 @@
 <li>
 <a href="#http_gmtime"><code>http_gmtime</code></a>
 </li>
+</ul>
+</li>
+<li>
+<a href="#http_date2rfc7231"><code>http_date2rfc7231</code></a>
+<ul>
 <li>
 <a href="#http_date2str"><code>http_date2str</code></a>
 </li>
@@ -1626,25 +1631,29 @@ HTTP.</p>
 
 <p>Falls back to <code>gmtime_r</code> for dates before epoch.</p>
 
-<h4 id="http_date2str"><code>http_date2str</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">http_date2str</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">tmbuf</span><span class="p">);</span>
+<h3 id="http_date2rfc7231"><code>http_date2rfc7231</code></h3>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">http_date2rfc7231</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">tmbuf</span><span class="p">);</span>
 </code></pre></div>
-<p>Writes an HTTP date string to the <code>target</code> buffer.</p>
+<p>Writes an RFC 7231 date representation (HTTP date format) to the <code>target</code> buffer.</p>
 
 <p>This requires ~32 bytes of space to be available at the target buffer (unless
 it&#39;s a super funky year, 32 bytes is about 3 more than you need).</p>
 
 <p>Returns the number of bytes actually written.</p>
 
+<h4 id="http_date2str"><code>http_date2str</code></h4>
+
+<p>Alias for <a href="#http_date2rfc7231"><code>http_date2rfc7231</code></a>.</p>
+
 <h4 id="http_date2rfc2109"><code>http_date2rfc2109</code></h4>
 <div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">http_date2rfc2109</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">tmbuf</span><span class="p">);</span>
 </code></pre></div>
-<p>An alternative, RFC 2109 date representation. Requires </p>
+<p>Writes an RFC 2109 date representation to the <code>target</code> buffer. See <a href="#http_date2rfc7231"><code>http_date2rfc7231</code></a>.</p>
 
 <h4 id="http_date2rfc2822"><code>http_date2rfc2822</code></h4>
 <div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">http_date2rfc2822</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">tmbuf</span><span class="p">);</span>
 </code></pre></div>
-<p>An alternative, RFC 2822 date representation. </p>
+<p>Writes an RFC 2822 date representation to the <code>target</code> buffer. See <a href="#http_date2rfc7231"><code>http_date2rfc7231</code></a>.</p>
 
 <h4 id="http_time2str"><code>http_time2str</code></h4>
 <div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">http_time2str</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">const</span> <span class="kt">time_t</span> <span class="n">t</span><span class="p">);</span>

@@ -3,8 +3,8 @@
 <p>Please choose the relevant facil.io version to read it&#39;s documentation:</p>
 
 <ul>
-<li><p><a href="/0.7.x/index">0.7.x</a> (edge)</p></li>
-<li><p><a href="/0.6.x/index">0.6.x</a> (stable)</p></li>
+<li><p><a href="/0.7.x/index">0.7.x</a> (stable)</p></li>
+<li><p><a href="/0.6.x/index">0.6.x</a> (legacy)</p></li>
 </ul>
 
 <h2 id="versions">Versions</h2>
@@ -13,8 +13,8 @@
 
 <ul>
 <li><p><a href="changelog">Change Log</a></p></li>
-<li><p><strong>Latest (beta)</strong>: 0.7.0.beta8</p></li>
-<li><p><strong>Latest stable</strong>: 0.6.4</p></li>
+<li><p><strong>Latest (stable)</strong>: 0.7.0</p></li>
+<li><p><strong>Previous</strong>: 0.6.4</p></li>
 </ul>
 </nav><div id="md_container"><div class='toc'><ul>
 <li>
@@ -22,6 +22,9 @@
 <ul>
 <li>
 <ul>
+<li>
+<a href="#v-0-7-0">v. 0.7.0</a>
+</li>
 <li>
 <a href="#v-0-7-0-beta8">v. 0.7.0.beta8</a>
 </li>
@@ -261,6 +264,14 @@
 </li>
 </ul>
 </div><h1 id="change-log">Change Log</h1>
+
+<h3 id="v-0-7-0">v. 0.7.0</h3>
+
+<p><strong>Fix</strong>: (<code>fio</code>, <code>fiobj</code>) fixed some <code>gcc</code> and <code>clang</code> compatibility issues and warnings.</p>
+
+<p><strong>Fix</strong>: (<code>http</code>) fixed HTTP date format to force the day of the month to use two digits. Credit to @ianks (Ian Ker-Seymer) for exposing this issue (iodine#64).</p>
+
+<p><strong>Compatibility</strong>: (<code>http</code>) updated time-zone compile-time tests with a safer fall-back.</p>
 
 <h3 id="v-0-7-0-beta8">v. 0.7.0.beta8</h3>
 
