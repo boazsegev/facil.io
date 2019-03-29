@@ -498,10 +498,9 @@ found_file:
         if (start_at >= file_data.st_size)
           goto open_file;
         if (start_at >= 0) {
-          pos++;
+          if (*pos)
+            pos++;
           end_at = fio_atol(&pos);
-          if (end_at <= 0)
-            goto open_file;
         }
         /* we ignore multimple ranges, only responding with the first range. */
         if (start_at < 0) {
