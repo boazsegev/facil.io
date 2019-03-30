@@ -1249,7 +1249,6 @@ static int fio_timer_compare(struct timespec a, struct timespec b) {
 /** Places a timer in an ordered linked list. */
 static void fio_timer_add_order(fio_timer_s *timer) {
   timer->due = fio_timer_calc_due(timer->interval);
-  // fio_ls_embd_s *pos = &fio_timers;
   fio_lock(&fio_timer_lock);
   FIO_LIST_EACH(fio_timer_s, node, &fio_timers, node) {
     if (fio_timer_compare(timer->due, node->due) >= 0) {
@@ -5444,6 +5443,11 @@ finish:
 #define FIO_SET_OBJ_DESTROY(obj) fio_unsubscribe(obj)
 #include <fio.h>
 
+#define FIO_ARY_NAME cluster_clients
+#define FIO_ARY_TYPE intptr_t
+#define FIO_ARY_TYPE_DESTROY(a) fio_close((a))
+#include "fio-stl.h"
+
 #define FIO_CLUSTER_NAME_LIMIT 255
 
 typedef struct cluster_pr_s {
@@ -5465,11 +5469,10 @@ typedef struct cluster_pr_s {
 
 static struct cluster_data_s {
   intptr_t uuid;
-  fio_ls_s clients;
+  cluster_clients_s clients;
   fio_lock_i lock;
   char name[FIO_CLUSTER_NAME_LIMIT + 1];
-} cluster_data = {.clients = FIO_LS_INIT(cluster_data.clients),
-                  .lock = FIO_LOCK_INIT};
+} cluster_data = {.clients = FIO_ARY_INIT, .lock = FIO_LOCK_INIT};
 
 static void fio_cluster_data_cleanup(int delete_file) {
   if (delete_file && cluster_data.name[0]) {
@@ -5478,15 +5481,9 @@ static void fio_cluster_data_cleanup(int delete_file) {
 #endif
     unlink(cluster_data.name);
   }
-  while (fio_ls_any(&cluster_data.clients)) {
-    intptr_t uuid = (intptr_t)fio_ls_pop(&cluster_data.clients);
-    if (uuid > 0) {
-      fio_close(uuid);
-    }
-  }
+  cluster_clients_destroy(&cluster_data.clients);
   cluster_data.uuid = 0;
   cluster_data.lock = FIO_LOCK_INIT;
-  cluster_data.clients = (fio_ls_s)FIO_LS_INIT(cluster_data.clients);
 }
 
 static void fio_cluster_cleanup(void *ignore) {
@@ -5648,12 +5645,7 @@ static void fio_cluster_on_close(intptr_t uuid, fio_protocol_s *pr_) {
   if (!fio_data->is_worker) {
     /* a child was lost, respawning is handled elsewhere. */
     fio_lock(&cluster_data.lock);
-    FIO_LS_FOR(&cluster_data.clients, pos) {
-      if (pos->obj == (void *)uuid) {
-        fio_ls_remove(pos);
-        break;
-      }
-    }
+    cluster_clients_remove2(&cluster_data.clients, uuid);
     fio_unlock(&cluster_data.lock);
   } else if (fio_data->active) {
     /* no shutdown message received - parent crashed. */
@@ -5704,10 +5696,10 @@ fio_cluster_protocol_alloc(intptr_t uuid,
 static void fio_cluster_server_sender(void *m_, intptr_t avoid_uuid) {
   fio_msg_internal_s *m = m_;
   fio_lock(&cluster_data.lock);
-  FIO_LS_FOR(&cluster_data.clients, pos) {
-    if ((intptr_t)pos->obj != -1) {
-      if ((intptr_t)pos->obj != avoid_uuid) {
-        fio_msg_internal_send_dup((intptr_t)pos->obj, m);
+  FIO_ARY_EACH(&cluster_data.clients, pos) {
+    if (*pos != -1) {
+      if (*pos != avoid_uuid) {
+        fio_msg_internal_send_dup(*pos, m);
       }
     }
   }
@@ -5809,7 +5801,7 @@ static void fio_cluster_listen_accept(intptr_t uuid, fio_protocol_s *protocol) {
                fio_cluster_protocol_alloc(client, fio_cluster_server_handler,
                                           fio_cluster_server_sender));
     fio_lock(&cluster_data.lock);
-    fio_ls_push(&cluster_data.clients, (void *)client);
+    cluster_clients_push(&cluster_data.clients, client);
     fio_unlock(&cluster_data.lock);
   }
 }
@@ -6023,9 +6015,7 @@ static void fio_cluster_at_exit(void *ignore) {
   while (fio_ch_set_count(&fio_postoffice.patterns.channels)) {
     channel_s *ch = fio_ch_set_last(&fio_postoffice.patterns.channels);
     while (subscriptions_any(&ch->subscriptions)) {
-      subscription_s *sub =
-          FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
-      fio_unsubscribe(sub);
+      fio_unsubscribe(subscriptions_root(ch->subscriptions.next));
     }
     fio_ch_set_pop(&fio_postoffice.patterns.channels);
   }
@@ -6033,9 +6023,7 @@ static void fio_cluster_at_exit(void *ignore) {
   while (fio_ch_set_count(&fio_postoffice.pubsub.channels)) {
     channel_s *ch = fio_ch_set_last(&fio_postoffice.pubsub.channels);
     while (subscriptions_any(&ch->subscriptions)) {
-      subscription_s *sub =
-          FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
-      fio_unsubscribe(sub);
+      fio_unsubscribe(subscriptions_root(ch->subscriptions.next));
     }
     fio_ch_set_pop(&fio_postoffice.pubsub.channels);
   }
@@ -6043,9 +6031,7 @@ static void fio_cluster_at_exit(void *ignore) {
   while (fio_ch_set_count(&fio_postoffice.filters.channels)) {
     channel_s *ch = fio_ch_set_last(&fio_postoffice.filters.channels);
     while (subscriptions_any(&ch->subscriptions)) {
-      subscription_s *sub =
-          FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
-      fio_unsubscribe(sub);
+      fio_unsubscribe(subscriptions_root(ch->subscriptions.next));
     }
     fio_ch_set_pop(&fio_postoffice.filters.channels);
   }
@@ -6609,8 +6595,12 @@ struct block_s {
 typedef struct block_node_s block_node_s;
 struct block_node_s {
   block_s dont_touch; /* prevent block internal data from being corrupted */
-  fio_ls_embd_s node; /* next block */
+  FIO_LIST_NODE node; /* next block */
 };
+
+#define FIO_LIST_NAME available_blocks
+#define FIO_LIST_TYPE block_node_s
+#include "fio-stl.h"
 
 /* a per-CPU core "arena" for memory allocations  */
 typedef struct {
@@ -6620,7 +6610,7 @@ typedef struct {
 
 /* The memory allocators persistent state */
 static struct {
-  fio_ls_embd_s available; /* free list for memory blocks */
+  FIO_LIST_HEAD available; /* free list for memory blocks */
   // intptr_t count;          /* free list counter */
   size_t cores;    /* the number of detected CPU cores*/
   fio_lock_i lock; /* a global lock */
@@ -6628,7 +6618,7 @@ static struct {
 } memory = {
     .cores = 1,
     .lock = FIO_LOCK_INIT,
-    .available = FIO_LS_INIT(memory.available),
+    .available = FIO_LIST_INIT(memory.available),
 };
 
 /* The per-CPU arena array. */
@@ -6742,8 +6732,7 @@ static inline void block_free(block_s *blk) {
 
   memset(blk + 1, 0, (FIO_MEMORY_BLOCK_SIZE - sizeof(*blk)));
   fio_lock(&memory.lock);
-  fio_ls_embd_push(&memory.available, &((block_node_s *)blk)->node);
-
+  available_blocks_push(&memory.available, (block_node_s *)blk);
   blk = blk->parent;
 
   if (fio_atomic_sub(&blk->root_ref, 1)) {
@@ -6757,7 +6746,7 @@ static inline void block_free(block_s *blk) {
   for (size_t i = 0; i < FIO_MEMORY_BLOCKS_PER_ALLOCATION; ++i) {
     block_node_s *pos =
         (block_node_s *)((uintptr_t)blk + (i * FIO_MEMORY_BLOCK_SIZE));
-    fio_ls_embd_remove(&pos->node);
+    available_blocks_remove(pos);
   }
 
   fio_unlock(&memory.lock);
@@ -6771,9 +6760,8 @@ static inline block_s *block_new(void) {
   block_s *blk = NULL;
 
   fio_lock(&memory.lock);
-  blk = (block_s *)fio_ls_embd_pop(&memory.available);
+  blk = (block_s *)available_blocks_pop(&memory.available);
   if (blk) {
-    blk = (block_s *)FIO_LS_EMBD_OBJ(block_node_s, node, blk);
     FIO_ASSERT(((uintptr_t)blk & FIO_MEMORY_BLOCK_MASK) == 0,
                "Memory allocator error! double `fio_free`?\n");
     block_init(blk); /* must be performed within lock */
@@ -6794,7 +6782,7 @@ static inline block_s *block_new(void) {
   for (int i = 1; i < FIO_MEMORY_BLOCKS_PER_ALLOCATION; ++i) {
     tmp = (block_node_s *)((uintptr_t)tmp + FIO_MEMORY_BLOCK_SIZE);
     block_init_root((block_s *)tmp, blk);
-    fio_ls_embd_push(&memory.available, &tmp->node);
+    available_blocks_push(&memory.available, tmp);
   }
   fio_unlock(&memory.lock);
   /* return the root block (which isn't in the memory pool). */
@@ -6880,14 +6868,12 @@ Allocator Initialization (initialize arenas and allocate a block for each CPU)
 #if DEBUG
 void fio_memory_dump_missing(void) {
   fprintf(stderr, "\n ==== Attempting Memory Dump (will crash) ====\n");
-  if (fio_ls_embd_is_empty(&memory.available)) {
+  if (available_blocks_is_empty(&memory.available)) {
     fprintf(stderr, "- Memory dump attempt canceled\n");
     return;
   }
-  block_node_s *smallest =
-      FIO_LS_EMBD_OBJ(block_node_s, node, memory.available.next);
-  FIO_LS_EMBD_FOR(&memory.available, node) {
-    block_node_s *tmp = FIO_LS_EMBD_OBJ(block_node_s, node, node);
+  block_node_s *smallest = available_blocks_root(memory.available.next);
+  FIO_LIST_EACH(block_node_s, node, &memory.available, tmp) {
     if (smallest > tmp)
       smallest = tmp;
   }
@@ -6937,12 +6923,12 @@ static void fio_mem_destroy(void) {
       block_free(arenas[i].block);
     arenas[i].block = NULL;
   }
-  if (!memory.forked && fio_ls_embd_any(&memory.available)) {
+  if (!memory.forked && available_blocks_any(&memory.available)) {
     FIO_LOG_WARNING("facil.io detected memory traces remaining after cleanup"
                     " - memory leak?");
     FIO_MEMORY_PRINT_BLOCK_STAT_END();
     size_t count = 0;
-    FIO_LS_EMBD_FOR(&memory.available, node) { ++count; }
+    FIO_LIST_EACH(block_node_s, node, &memory.available, pos) { ++count; }
     FIO_LOG_DEBUG("Memory blocks in pool: %zu (%zu blocks per allocation).",
                   count, (size_t)FIO_MEMORY_BLOCKS_PER_ALLOCATION);
 #if FIO_MEM_DUMP
@@ -8407,9 +8393,9 @@ FIO_FUNC void fio_malloc_test(void) {
         "block.\n",
         count,
         (size_t)((FIO_MEMORY_BLOCK_SLICES - 2) - (sizeof(block_s) >> 4) - 1));
-    fio_ls_embd_s old_memory_list = memory.available;
+    FIO_LIST_HEAD old_memory_list = memory.available;
     fio_free(mem);
-    FIO_ASSERT(fio_ls_embd_any(&memory.available),
+    FIO_ASSERT(available_blocks_any(&memory.available),
                "memory pool empty (memory block wasn't freed)!\n");
     FIO_ASSERT(old_memory_list.next != memory.available.next ||
                    memory.available.prev != old_memory_list.prev,
@@ -8471,12 +8457,14 @@ FIO_FUNC void fio_malloc_test(void) {
   }
   {
     size_t pool_size = 0;
-    FIO_LS_EMBD_FOR(&memory.available, node) { ++pool_size; }
+    FIO_LIST_EACH(block_node_s, node, &memory.available, node) { ++pool_size; }
     mem = fio_mmap(512);
     FIO_ASSERT(mem, "fio_mmap allocation failed!\n");
     fio_free(mem);
     size_t new_pool_size = 0;
-    FIO_LS_EMBD_FOR(&memory.available, node) { ++new_pool_size; }
+    FIO_LIST_EACH(block_node_s, node, &memory.available, node) {
+      ++new_pool_size;
+    }
     FIO_ASSERT(new_pool_size == pool_size,
                "fio_free of fio_mmap went to memory pool!\n");
   }
@@ -8557,11 +8545,11 @@ FIO_FUNC void fio_timer_test(void) {
              "next timer calculation error %zu",
              fio_timer_calc_first_interval());
 
-  fio_timer_s *first = fio_timers.next;
+  fio_timer_s *first = fio_timer_root(fio_timers.next);
   FIO_ASSERT(fio_run_every(10000, total, fio_timer_test_task, &result,
                            fio_timer_test_task) == 0,
              "Timer creation failure (second timer).");
-  FIO_ASSERT(fio_timers.next == first, "Timer Ordering error!");
+  FIO_ASSERT(fio_timer_root(fio_timers.next) == first, "Timer Ordering error!");
 
   FIO_ASSERT(fio_timer_calc_first_interval() >= 898 &&
                  fio_timer_calc_first_interval() <= 902,
@@ -8582,7 +8570,7 @@ FIO_FUNC void fio_timer_test(void) {
                 (i == total - 1 && result == total + 1)),
                "Timer running and rescheduling error (%zu != %zu)\n", result,
                i + 1);
-    FIO_ASSERT(fio_timers.next == first || i == total - 1,
+    FIO_ASSERT(fio_timer_root(fio_timers.next) == first || i == total - 1,
                "Timer Ordering error on cycle %zu!", i);
   }
 
