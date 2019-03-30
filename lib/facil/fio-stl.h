@@ -20,7 +20,6 @@ This file contains macros that create generic / common core types, such as:
 * Binary Safe Dynamic Strings - defined by `FIO_STR_NAME`
 
 
-
 This file also contains common helper macros / primitives, such as:
 
 * Logging (without heap allocation) - defined by `FIO_LOG_LENGTH_LIMIT`
@@ -390,6 +389,7 @@ Consistent macros and included files
 #define deprecated(reason) deprecated
 #endif
 
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -424,6 +424,10 @@ Consistent macros and included files
   FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
   "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(FIO_VERSION_PATCH)
 #endif
+
+/** Find the root object (of a struct) from it's field. */
+#define FIO_ROOT_FROM_FIELD(T_type, field, ptr)                                \
+  ((T_type *)((uintptr_t)(ptr) - (uintptr_t)(&((T_type *)0)->field)))
 
 #endif /* H_FIO_CSTL_INCLUDE_ONCE____H */
 
@@ -482,9 +486,6 @@ Common macros
 #define FIO_NAME_FROM_MACRO_STEP1(prefix, postfix)                             \
   FIO_NAME_FROM_MACRO_STEP2(prefix, postfix)
 #define FIO_NAME(prefix, postfix) FIO_NAME_FROM_MACRO_STEP1(prefix, postfix)
-
-#define FIO_ROOT_FROM_FIELD(T_type, field, ptr)                                \
-  ((T_type *)((uintptr_t)(ptr) - (uintptr_t)(&((T_type *)0)->field)))
 
 #if !FIO_EXTERN && !FIO_EXTERN_API_ONLY
 #define SFUNC static __attribute__((unused))
@@ -1049,6 +1050,392 @@ Risky Hash - Cleanup
 
 
 
+                            String <=> Number helpers
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/* *****************************************************************************
+Strings to Numbers
+***************************************************************************** */
+
+#ifdef FIO_ATOL
+/**
+ * A helper function that converts between String data to a signed int64_t.
+ *
+ * Numbers are assumed to be in base 10. Octal (`0###`), Hex (`0x##`/`x##`) and
+ * binary (`0b##`/ `b##`) are recognized as well. For binary Most Significant
+ * Bit must come first.
+ *
+ * The most significant difference between this function and `strtol` (aside of
+ * API design), is the added support for binary representations.
+ */
+SFUNC int64_t fio_atol(char **pstr);
+#if !FIO_EXTERN_API_ONLY
+
+HFUNC size_t fio_atol_skip_zero(char **pstr) {
+  char *const start = *pstr;
+  while (**pstr == '0') {
+    ++(*pstr);
+  }
+  return (size_t)(*pstr - *start);
+}
+
+/* consumes any digits in the string (base 2-10), returning their value */
+HFUNC uint64_t fio_atol_consume(char **pstr, uint8_t base) {
+  uint64_t result = 0;
+  const uint64_t limit = UINT64_MAX - (base * base);
+  while (**pstr >= '0' && **pstr < ('0' + base) && result <= (limit)) {
+    result = (result * base) + (**pstr - '0');
+    ++(*pstr);
+  }
+  return result;
+}
+
+/* returns true if there's data to be skipped */
+HFUNC uint8_t fio_atol_skip_test(char **pstr, uint8_t base) {
+  return (**pstr >= '0' && **pstr < ('0' + base));
+}
+
+/* consumes any hex data in the string, returning their value */
+HFUNC uint64_t fio_atol_consume_hex(char **pstr) {
+  uint64_t result = 0;
+  const uint64_t limit = UINT64_MAX - (16 * 16);
+  for (; result <= limit;) {
+    uint8_t tmp;
+    if (**pstr >= '0' && **pstr <= '9')
+      tmp = **pstr - '0';
+    else if (**pstr >= 'A' && **pstr <= 'F')
+      tmp = **pstr - ('A' - 10);
+    else if (**pstr >= 'a' && **pstr <= 'f')
+      tmp = **pstr - ('a' - 10);
+    else
+      return result;
+    result = (result << 4) | tmp;
+    ++(*pstr);
+  }
+  return result;
+}
+
+/* returns true if there's data to be skipped */
+#define FIO_ATOL_SKIP_HEX_TEST(pstr)                                           \
+  ((**pstr >= '0' && **pstr <= '9') || (**pstr >= 'A' && **pstr <= 'F') ||     \
+   (**pstr >= 'a' && **pstr <= 'f'))
+
+SFUNC int64_t fio_atol(char **pstr) {
+  /* No binary representation in strtol */
+  char *str = *pstr;
+  uint64_t result = 0;
+  uint8_t invert = 0;
+  while (isspace(*str))
+    ++(str);
+  if (str[0] == '-') {
+    invert ^= 1;
+    ++str;
+  } else if (*str == '+') {
+    ++(str);
+  }
+
+  if (str[0] == 'B' || str[0] == 'b' ||
+      (str[0] == '0' && (str[1] == 'b' || str[1] == 'B'))) {
+    /* base 2 */
+    if (str[0] == '0')
+      str++;
+    str++;
+    fio_atol_skip_zero(&str);
+    while (str[0] == '0' || str[0] == '1') {
+      result = (result << 1) | (str[0] - '0');
+      str++;
+    }
+    goto sign; /* no overlow protection, since sign might be embedded */
+
+  } else if (str[0] == 'x' || str[0] == 'X' ||
+             (str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))) {
+    /* base 16 */
+    if (str[0] == '0')
+      str++;
+    str++;
+    fio_atol_skip_zero(&str);
+    result = fio_atol_consume_hex(&str);
+    if (FIO_ATOL_SKIP_HEX_TEST(&str)) /* too large for a number */
+      return 0;
+    goto sign; /* no overlow protection, since sign might be embedded */
+  } else if (str[0] == '0') {
+    fio_atol_skip_zero(&str);
+    /* base 8 */
+    result = fio_atol_consume(&str, 8);
+    if (fio_atol_skip_test(&str, 8)) /* too large for a number */
+      return 0;
+  } else {
+    /* base 10 */
+    result = fio_atol_consume(&str, 10);
+    if (fio_atol_skip_test(&str, 10)) /* too large for a number */
+      return 0;
+  }
+  if (result & ((uint64_t)1 << 63))
+    result = INT64_MAX; /* signed overflow protection */
+sign:
+  if (invert)
+    result = 0 - result;
+  *pstr = str;
+  return (int64_t)result;
+}
+#undef FIO_ATOL_SKIP_HEX_TEST
+#endif /* FIO_EXTERN_API_ONLY */
+#undef FIO_ATOL
+#endif /* FIO_ATOL */
+
+#if FIO_ATOF
+/** A helper function that converts between String data to a signed double. */
+SFUNC double fio_atof(char **pstr);
+#if !FIO_EXTERN_API_ONLY
+SFUNC double fio_atof(char **pstr) { return strtold(*pstr, pstr); }
+#endif
+#undef FIO_ATOF
+#endif /* FIO_ATOF */
+
+/* *****************************************************************************
+Numbers to Strings
+***************************************************************************** */
+
+#if FIO_LTOA
+/**
+ * A helper function that writes a signed int64_t to a string.
+ *
+ * No overflow guard is provided, make sure there's at least 68 bytes
+ * available (for base 2).
+ *
+ * Offers special support for base 2 (binary), base 8 (octal), base 10 and base
+ * 16 (hex). An unsupported base will silently default to base 10. Prefixes
+ * are automatically added (i.e., "0x" for hex and "0b" for base 2).
+ *
+ * Returns the number of bytes actually written (excluding the NUL
+ * terminator).
+ */
+SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
+#if !FIO_EXTERN_API_ONLY
+SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
+  const char notation[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                           '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+
+  size_t len = 0;
+  char buf[48]; /* we only need up to 20 for base 10, but base 3 needs 41... */
+
+  if (!num)
+    goto zero;
+
+  switch (base) {
+  case 1: /* fallthrough */
+  case 2:
+    /* Base 2 */
+    {
+      uint64_t n = num; /* avoid bit shifting inconsistencies with signed bit */
+      uint8_t i = 0;    /* counting bits */
+      dest[len++] = '0';
+      dest[len++] = 'b';
+
+      while ((i < 64) && (n & 0x8000000000000000) == 0) {
+        n = n << 1;
+        i++;
+      }
+      /* make sure the Binary representation doesn't appear signed. */
+      if (i) {
+        dest[len++] = '0';
+      }
+      /* write to dest. */
+      while (i < 64) {
+        dest[len++] = ((n & 0x8000000000000000) ? '1' : '0');
+        n = n << 1;
+        i++;
+      }
+      dest[len] = 0;
+      return len;
+    }
+  case 8:
+    /* Base 8 */
+    {
+      uint64_t l = 0;
+      if (num < 0) {
+        dest[len++] = '-';
+        num = 0 - num;
+      }
+      dest[len++] = '0';
+
+      while (num) {
+        buf[l++] = '0' + (num & 7);
+        num = num >> 3;
+      }
+      while (l) {
+        --l;
+        dest[len++] = buf[l];
+      }
+      dest[len] = 0;
+      return len;
+    }
+
+  case 16:
+    /* Base 16 */
+    {
+      uint64_t n = num; /* avoid bit shifting inconsistencies with signed bit */
+      uint8_t i = 0;    /* counting bits */
+      dest[len++] = '0';
+      dest[len++] = 'x';
+      while (i < 8 && (n & 0xFF00000000000000) == 0) {
+        n = n << 8;
+        i++;
+      }
+      /* make sure the Hex representation doesn't appear misleadingly signed. */
+      if (i && (n & 0x8000000000000000)) {
+        dest[len++] = '0';
+        dest[len++] = '0';
+      }
+      /* write the damn thing, high to low */
+      while (i < 8) {
+        uint8_t tmp = (n & 0xF000000000000000) >> 60;
+        dest[len++] = notation[tmp];
+        tmp = (n & 0x0F00000000000000) >> 56;
+        dest[len++] = notation[tmp];
+        i++;
+        n = n << 8;
+      }
+      dest[len] = 0;
+      return len;
+    }
+  case 3: /* fallthrough */
+  case 4: /* fallthrough */
+  case 5: /* fallthrough */
+  case 6: /* fallthrough */
+  case 7: /* fallthrough */
+  case 9: /* fallthrough */
+    /* rare bases */
+    if (num < 0) {
+      dest[len++] = '-';
+      num = 0 - num;
+    }
+    uint64_t l = 0;
+    while (num) {
+      uint64_t t = num / base;
+      buf[l++] = '0' + (num - (t * base));
+      num = t;
+    }
+    while (l) {
+      --l;
+      dest[len++] = buf[l];
+    }
+    dest[len] = 0;
+    return len;
+
+  default:
+    break;
+  }
+  /* Base 10, the default base */
+  if (num < 0) {
+    dest[len++] = '-';
+    num = 0 - num;
+  }
+  uint64_t l = 0;
+  while (num) {
+    uint64_t t = num / 10;
+    buf[l++] = '0' + (num - (t * 10));
+    num = t;
+  }
+  while (l) {
+    --l;
+    dest[len++] = buf[l];
+  }
+  dest[len] = 0;
+  return len;
+
+zero:
+  switch (base) {
+  case 1:
+  case 2:
+    dest[len++] = '0';
+    dest[len++] = 'b';
+    break;
+  case 8:
+    dest[len++] = '0';
+    break;
+  case 16:
+    dest[len++] = '0';
+    dest[len++] = 'x';
+    dest[len++] = '0';
+    break;
+  }
+  dest[len++] = '0';
+  dest[len] = 0;
+  return len;
+}
+#endif /* EXTERN */
+#undef FIO_LTOA
+#endif /* FIO_LTOA */
+
+#if FIO_FTOA
+/**
+ * A helper function that converts between a double to a string.
+ *
+ * No overflow guard is provided, make sure there's at least 130 bytes
+ * available (for base 2).
+ *
+ * Supports base 2, base 10 and base 16. An unsupported base will silently
+ * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
+ * beginning of the string).
+ *
+ * Returns the number of bytes actually written (excluding the NUL
+ * terminator).
+ */
+size_t fio_ftoa(char *dest, double num, uint8_t base);
+#if !FIO_EXTERN_API_ONLY
+size_t fio_ftoa(char *dest, double num, uint8_t base) {
+  if (base == 2 || base == 16) {
+    /* handle the binary / Hex representation the same as if it were an
+     * int64_t
+     */
+    int64_t *i = (void *)&num;
+    return fio_ltoa(dest, *i, base);
+  }
+
+  size_t written = sprintf(dest, "%g", num);
+  uint8_t need_zero = 1;
+  char *start = dest;
+  while (*start) {
+    if (*start == ',') // locale issues?
+      *start = '.';
+    if (*start == '.' || *start == 'e') {
+      need_zero = 0;
+      break;
+    }
+    start++;
+  }
+  if (need_zero) {
+    dest[written++] = '.';
+    dest[written++] = '0';
+  }
+  return written;
+}
+#endif /* FIO_EXTERN_API_ONLY */
+#undef FIO_FTOA
+#endif /* FIO_FTOA */
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
                             Linked Lists (embeded)
 
 
@@ -1066,6 +1453,7 @@ Risky Hash - Cleanup
 Linked Lists Persistent Macros and Types
 ***************************************************************************** */
 #if (defined(FIO_LIST) || defined(FIO_LIST_NAME)) && !defined(H___FIO_LIST_H)
+#define H___FIO_LIST_H
 
 typedef struct fio_list_node_s {
   struct fio_list_node_s *next;
@@ -1083,16 +1471,17 @@ Linked Lists (embeded) - Type
 
 #ifdef FIO_LIST_NAME
 
-#ifndef FIO_LIST_NODE_NAME
-#define FIO_LIST_NODE_NAME node
-#endif
-
 #ifndef FIO_LIST_TYPE
 #define FIO_LIST_TYPE FIO_NAME(FIO_LIST_NAME, s)
 #endif
 
-#define FIO_LIST_INIT(ptr, node_name)                                          \
-  ((ptr)->node_name.next = (ptr)->node_name.prev = &(ptr)->node_name)
+#ifndef FIO_LIST_NODE_NAME
+#define FIO_LIST_NODE_NAME node
+#endif
+
+/** Allows initialization of FIO_LIST_HEAD objects. */
+#define FIO_LIST_INIT(obj)                                                     \
+  { .next = &(obj), .prev = &(obj) }
 
 /* *****************************************************************************
 Linked Lists (embeded) - API
@@ -1107,7 +1496,7 @@ IFUNC int FIO_NAME(FIO_LIST_NAME, any)(FIO_LIST_HEAD *head);
 /** Returns a non-zero value if the list is empty. */
 IFUNC int FIO_NAME(FIO_LIST_NAME, is_empty)(FIO_LIST_HEAD *head);
 
-/** Removes a node from the list and returns the same node (or NULL if empty) */
+/** Removes a node from the list, Returns NULL if node isn't linked. */
 IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, remove)(FIO_LIST_TYPE *node);
 
 /** Pushes an existing node to the end of the list. Returns node. */
@@ -1124,13 +1513,15 @@ IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, unshift)(FIO_LIST_HEAD *head,
 /** Removed a node from the start of the list. Returns NULL if list is empty. */
 IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, shift)(FIO_LIST_HEAD *head);
 
-/** Returns the linked list node from a pointer to it's data field. */
-IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, root)(FIO_LIST_NODE *node);
+/** Removed a node from the start of the list. Returns NULL if list is empty. */
+IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, root)(FIO_LIST_HEAD *ptr);
 
 #ifndef FIO_LIST_EACH
 /** Loops through every node in the linked list except the head. */
-#define FIO_LIST_EACH(head, pos)                                               \
-  for (__typeof(head) pos = (head)->next; pos != (head); pos = pos->next)
+#define FIO_LIST_EACH(type, node_name, head, pos)                              \
+  for (type *pos = FIO_ROOT_FROM_FIELD(type, node_name, (head)->next);         \
+       pos != FIO_ROOT_FROM_FIELD(type, node_name, (head));                    \
+       pos = FIO_ROOT_FROM_FIELD(type, node_name, pos->node_name.next))
 #endif
 
 /* *****************************************************************************
@@ -1139,82 +1530,62 @@ Linked Lists (embeded) - Implementation
 #if !FIO_EXTERN_API_ONLY
 
 /** Initializes an uninitialized node (assumes the data in the node is junk). */
-IFUNC void FIO_NAME(FIO_LIST_NAME, init)(FIO_NAME(FIO_LIST_NAME, s) * head) {
+IFUNC void FIO_NAME(FIO_LIST_NAME, init)(FIO_LIST_HEAD *head) {
   head->next = head->prev = head;
 }
 
-/** Allocates a new node in the list */
-IFUNC FIO_NAME(FIO_LIST_NAME, s) * FIO_NAME(FIO_LIST_NAME, new)(void) {
-  FIO_NAME(FIO_LIST_NAME, s) *node = FIO_MEM_CALLOC_(sizeof(*node), 1);
-  if (!node)
-    return NULL;
-  node->next = node->prev = node;
-  return node;
-}
-
-/** Deallocates a node, removing it from the cirrent list (if any). */
-IFUNC void FIO_NAME(FIO_LIST_NAME, free)(FIO_NAME(FIO_LIST_NAME, s) * node) {
-  FIO_NAME(FIO_LIST_NAME, remove)(node);
-  FIO_MEM_FREE_(node, sizeof(*node));
-}
-
 /** Returns a non-zero value if there are any linked nodes in the list. */
-IFUNC int FIO_NAME(FIO_LIST_NAME, any)(FIO_NAME(FIO_LIST_NAME, s) * head) {
+IFUNC int FIO_NAME(FIO_LIST_NAME, any)(FIO_LIST_HEAD *head) {
   return head->next != head;
 }
 
 /** Returns a non-zero value if the list is empty. */
-IFUNC int FIO_NAME(FIO_LIST_NAME, is_empty)(FIO_NAME(FIO_LIST_NAME, s) * head) {
+IFUNC int FIO_NAME(FIO_LIST_NAME, is_empty)(FIO_LIST_HEAD *head) {
   return head->next == head;
 }
 
-/** Removes a node from the list and returns the same node (or NULL if empty) */
-IFUNC FIO_NAME(FIO_LIST_NAME, s) *
-    FIO_NAME(FIO_LIST_NAME, remove)(FIO_NAME(FIO_LIST_NAME, s) * node) {
-  if (FIO_NAME(FIO_LIST_NAME, is_empty)(node)) {
+/** Removes a node from the list, always returning the node. */
+IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, remove)(FIO_LIST_TYPE *node) {
+  if (node->FIO_LIST_NODE_NAME.next == &node->FIO_LIST_NODE_NAME)
     return NULL;
-  }
-  node->prev->next = node->next;
-  node->next->prev = node->prev;
-  node->next = node->prev = node;
+  node->FIO_LIST_NODE_NAME.prev->next = node->FIO_LIST_NODE_NAME.next;
+  node->FIO_LIST_NODE_NAME.next->prev = node->FIO_LIST_NODE_NAME.prev;
+  node->FIO_LIST_NODE_NAME.next = node->FIO_LIST_NODE_NAME.prev =
+      &node->FIO_LIST_NODE_NAME;
   return node;
 }
 
-/** Pushes an existing node to the end of the list */
-IFUNC FIO_NAME(FIO_LIST_NAME, s) *
-    FIO_NAME(FIO_LIST_NAME, push)(FIO_NAME(FIO_LIST_NAME, s) * head,
-                                  FIO_NAME(FIO_LIST_NAME, s) * node) {
-  node->prev = head->prev;
-  node->next = head;
-  head->prev->next = node;
-  head->prev = node;
+/** Pushes an existing node to the end of the list. Returns node. */
+IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, push)(FIO_LIST_HEAD *head,
+                                                   FIO_LIST_TYPE *node) {
+  node->FIO_LIST_NODE_NAME.prev = head->prev;
+  node->FIO_LIST_NODE_NAME.next = head;
+  head->prev->next = &node->FIO_LIST_NODE_NAME;
+  head->prev = &node->FIO_LIST_NODE_NAME;
   return node;
 }
 
 /** Pops a node from the end of the list. Returns NULL if list is empty. */
-IFUNC FIO_NAME(FIO_LIST_NAME, s) *
-    FIO_NAME(FIO_LIST_NAME, pop)(FIO_NAME(FIO_LIST_NAME, s) * head) {
-  return FIO_NAME(FIO_LIST_NAME, remove)(head->prev);
+IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, pop)(FIO_LIST_HEAD *head) {
+  return FIO_NAME(FIO_LIST_NAME, remove)(
+      FIO_ROOT_FROM_FIELD(FIO_LIST_TYPE, FIO_LIST_NODE_NAME, head->prev));
 }
 
-/** Adds an existing node to the beginning of the list. */
-IFUNC FIO_NAME(FIO_LIST_NAME, s) *
-    FIO_NAME(FIO_LIST_NAME, unshift)(FIO_NAME(FIO_LIST_NAME, s) * head,
-                                     FIO_NAME(FIO_LIST_NAME, s) * node) {
-  FIO_NAME(FIO_LIST_NAME, push)(head->next, node);
-  return node;
+/** Adds an existing node to the beginning of the list. Returns node. */
+IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, unshift)(FIO_LIST_HEAD *head,
+                                                      FIO_LIST_TYPE *node) {
+  return FIO_NAME(FIO_LIST_NAME, push)(head->next, node);
 }
 
 /** Removed a node from the start of the list. Returns NULL if list is empty. */
-IFUNC FIO_NAME(FIO_LIST_NAME, s) *
-    FIO_NAME(FIO_LIST_NAME, shift)(FIO_NAME(FIO_LIST_NAME, s) * head) {
-  return FIO_NAME(FIO_LIST_NAME, remove)(head->next);
+IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, shift)(FIO_LIST_HEAD *head) {
+  return FIO_NAME(FIO_LIST_NAME, remove)(
+      FIO_ROOT_FROM_FIELD(FIO_LIST_TYPE, FIO_LIST_NODE_NAME, head->next));
 }
 
-/** Returns the linked list node from a pointer to it's data field. */
-IFUNC FIO_NAME(FIO_LIST_NAME, s) *
-    FIO_NAME(FIO_LIST_NAME, root)(FIO_LIST_TYPE *data) {
-  return FIO_ROOT_FROM_FIELD(FIO_NAME(FIO_LIST_NAME, s), data, data);
+/** Removed a node from the start of the list. Returns NULL if list is empty. */
+IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, root)(FIO_LIST_HEAD *ptr) {
+  return FIO_ROOT_FROM_FIELD(FIO_LIST_TYPE, FIO_LIST_NODE_NAME, ptr);
 }
 
 /* *****************************************************************************
@@ -1224,6 +1595,7 @@ Linked Lists (embeded) - cleanup
 #endif /* FIO_EXTERN_API_ONLY */
 #undef FIO_LIST_NAME
 #undef FIO_LIST_TYPE
+#undef FIO_LIST_NODE_NAME
 #endif
 
 /* *****************************************************************************
@@ -4447,7 +4819,6 @@ Common cleanup
 #undef FIO_NAME_FROM_MACRO_STEP2
 #undef FIO_NAME_FROM_MACRO_STEP1
 #undef FIO_NAME
-#undef FIO_ROOT_FROM_FIELD
 #undef FIO_EXTERN
 #undef FIO_EXTERN_API_ONLY
 #undef SFUNC
@@ -4647,22 +5018,26 @@ TEST_FUNC void fio___dynamic_types_test___atomic(void) {
 Linked List - Test
 ***************************************************************************** */
 
+#define FIO_LIST
+#include __FILE__
+
 #define FIO_LIST_NAME ls____test
-#define FIO_LIST_TYPE int
+typedef struct {
+  FIO_LIST_NODE node;
+  int data;
+} ls____test_s;
 #include __FILE__
 
 TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
   fprintf(stderr, "* Testing linked lists\n");
-  ls____test_s ls;
+  FIO_LIST_HEAD ls;
   ls____test_init(&ls);
   for (int i = 0; i < REPEAT; ++i) {
-    ls____test_s *node = ls____test_push(&ls, ls____test_new());
+    ls____test_s *node = ls____test_push(&ls, FIO_MEM_CALLOC(sizeof(*node), 1));
     node->data = i;
-    TEST_ASSERT(node == ls____test_root(&node->data),
-                "Linked list node pointer offset error.");
   }
   int tester = 0;
-  FIO_LIST_EACH(&ls, pos) {
+  FIO_LIST_EACH(ls____test_s, node, &ls, pos) {
     TEST_ASSERT(pos->data == tester++,
                 "Linked list ordering error for push or each");
   }
@@ -4672,14 +5047,15 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
     ls____test_s *node = ls____test_pop(&ls);
     TEST_ASSERT(node, "Linked list pop or any failed");
     TEST_ASSERT(node->data == --tester, "Linked list ordering error for pop");
-    ls____test_free(node);
+    FIO_MEM_FREE(node, sizeof(*node));
   }
   tester = REPEAT;
   for (int i = 0; i < REPEAT; ++i) {
-    ls____test_s *node = ls____test_unshift(&ls, ls____test_new());
+    ls____test_s *node =
+        ls____test_unshift(&ls, FIO_MEM_CALLOC(sizeof(*node), 1));
     node->data = i;
   }
-  FIO_LIST_EACH(&ls, pos) {
+  FIO_LIST_EACH(ls____test_s, node, &ls, pos) {
     TEST_ASSERT(pos->data == --tester,
                 "Linked list ordering error for unshift or each");
   }
@@ -4691,7 +5067,7 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
     ls____test_s *node = ls____test_shift(&ls);
     TEST_ASSERT(node, "Linked list pop or any failed");
     TEST_ASSERT(node->data == --tester, "Linked list ordering error for shift");
-    ls____test_free(node);
+    FIO_MEM_FREE(node, sizeof(*node));
   }
   TEST_ASSERT(ls____test_is_empty(&ls),
               "Linked list empty should have been true");
