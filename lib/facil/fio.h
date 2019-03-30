@@ -103,6 +103,16 @@ Feel free to copy, use and enjoy according to the license provided.
  **************************************************************************** */
 
 /* *****************************************************************************
+C++ extern start
+***************************************************************************** */
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+/* C++ keyword was deprecated */
+#define register
+#endif
+
+/* *****************************************************************************
 Import STL
 ***************************************************************************** */
 
@@ -120,15 +130,15 @@ Import STL
 
 #include "fio-stl.h"
 
-/* *****************************************************************************
-C++ extern start
-***************************************************************************** */
-/* support C++ */
-#ifdef __cplusplus
-extern "C" {
-/* C++ keyword was deprecated */
-#define register
-#endif
+/*
+ * define the fio_atol, fio_atof, fio_ltoa and fio_ftoa helpers.
+ */
+#define FIO_ATOL 1
+#define FIO_ATOF 1
+#define FIO_LTOA 1
+#define FIO_FTOA 1
+#define FIO_EXTERN_API_ONLY 1
+#include "fio-stl.h"
 
 /* *****************************************************************************
 Compilation Macros

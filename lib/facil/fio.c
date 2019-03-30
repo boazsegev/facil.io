@@ -7,19 +7,22 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include <fio.h>
 
-#define FIO_INCLUDE_STR
-#include <fio.h>
+#define FIO_ATOL 1
+#define FIO_ATOF 1
+#define FIO_LTOA 1
+#define FIO_FTOA 1
+#define FIO_EXTERN 1
+#include "fio-stl.h"
 
-#define FIO_FORCE_MALLOC_TMP 1
-#define FIO_INCLUDE_LINKED_LIST
-#include <fio.h>
+#define FIO_LIST
+#define FIO_STR_NAME fio_str
+#define FIO_REF_NAME fio_str
+#include "fio-stl.h"
 
-#include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <pthread.h>
 #include <sys/mman.h>
-#include <unistd.h>
 
 #include <netdb.h>
 #include <netinet/in.h>
@@ -196,7 +199,7 @@ typedef struct {
   /* connections counted towards shutdown (NOT while running) */
   uint32_t connection_count;
   /* thread list */
-  fio_ls_s thread_ids;
+  FIO_LIST_HEAD thread_ids;
   /* active workers */
   uint16_t workers;
   /* timer handler */
@@ -663,23 +666,24 @@ Suspending and renewing thread execution (signaling events)
 #endif
 
 typedef struct fio_thread_queue_data_s {
+  FIO_LIST_NODE node;
   int fd_wait;   /* used for weaiting (read signal) */
   int fd_signal; /* used for signalling (write) */
-} fio_thread_queue_data_s;
+} fio_thread_queue_s;
 
 #define FIO_LIST_NAME fio_thread_queue
-#define FIO_LIST_TYPE fio_thread_queue_data_s
 #include "fio-stl.h"
 
-static fio_thread_queue_s fio_thread_queue = FIO_LIST_INIT(fio_thread_queue);
+FIO_LIST_HEAD fio_thread_queue = FIO_LIST_INIT(fio_thread_queue);
 static __thread fio_thread_queue_s fio_thread_data = {
-    .data = {.fd_wait = -1, .fd_signal = -1},
+    .fd_wait = -1,
+    .fd_signal = -1,
 };
 
 static fio_lock_i fio_thread_lock = FIO_LOCK_INIT;
 
 FIO_FUNC inline void fio_thread_make_suspendable(void) {
-  if (fio_thread_data.data.fd_signal >= 0)
+  if (fio_thread_data.fd_signal >= 0)
     return;
   int fd[2] = {0, 0};
   int ret = pipe(fd);
@@ -688,17 +692,17 @@ FIO_FUNC inline void fio_thread_make_suspendable(void) {
              "(fio) couldn't set internal pipe to non-blocking mode.");
   FIO_ASSERT(fio_set_non_block(fd[1]) == 0,
              "(fio) couldn't set internal pipe to non-blocking mode.");
-  fio_thread_data.data.fd_wait = fd[0];
-  fio_thread_data.data.fd_signal = fd[1];
+  fio_thread_data.fd_wait = fd[0];
+  fio_thread_data.fd_signal = fd[1];
 }
 
 FIO_FUNC inline void fio_thread_cleanup(void) {
-  if (fio_thread_data.data.fd_signal < 0)
+  if (fio_thread_data.fd_signal < 0)
     return;
-  close(fio_thread_data.data.fd_wait);
-  close(fio_thread_data.data.fd_signal);
-  fio_thread_data.data.fd_wait = -1;
-  fio_thread_data.data.fd_signal = -1;
+  close(fio_thread_data.fd_wait);
+  close(fio_thread_data.fd_signal);
+  fio_thread_data.fd_wait = -1;
+  fio_thread_data.fd_signal = -1;
 }
 
 /* suspend thread execution (might be resumed unexpectedly) */
@@ -708,12 +712,12 @@ FIO_FUNC void fio_thread_suspend(void) {
   fio_unlock(&fio_thread_lock);
   struct pollfd list = {
       .events = (POLLPRI | POLLIN),
-      .fd = fio_thread_data.data.fd_wait,
+      .fd = fio_thread_data.fd_wait,
   };
   if (poll(&list, 1, 5000) > 0) {
     /* thread was removed from the list through signal */
     uint64_t data;
-    int r = read(fio_thread_data.data.fd_wait, &data, sizeof(data));
+    int r = read(fio_thread_data.fd_wait, &data, sizeof(data));
     (void)r;
   } else {
     /* remove self from list */
@@ -730,7 +734,7 @@ FIO_FUNC void fio_thread_signal(void) {
   fio_lock(&fio_thread_lock);
   t = (fio_thread_queue_s *)fio_thread_queue_shift(&fio_thread_queue);
   if (t)
-    fd = t->data.fd_signal;
+    fd = t->fd_signal;
   fio_unlock(&fio_thread_lock);
   if (fd >= 0) {
     uint64_t data = 1;
@@ -1162,6 +1166,7 @@ Section Start Marker
 ***************************************************************************** */
 
 typedef struct {
+  FIO_LIST_NODE node;
   struct timespec due;
   size_t interval; /*in ms */
   size_t repetitions;
@@ -1171,13 +1176,17 @@ typedef struct {
 } fio_timer_s;
 
 #define FIO_FORCE_MALLOC_TMP 1
-#define FIO_LIST_NAME fio_timer_list
-#define FIO_LIST_TYPE fio_timer_s
+#define FIO_LIST_NAME fio_timer
 #include "fio-stl.h"
 
-static fio_timer_list_s fio_timers = FIO_LIST_INIT(fio_timers);
-
+static FIO_LIST_HEAD fio_timers = FIO_LIST_INIT(fio_timers);
 static fio_lock_i fio_timer_lock = FIO_LOCK_INIT;
+static inline fio_timer_s *fio_timer_new() {
+  fio_timer_s *t = malloc(sizeof(*t));
+  FIO_ASSERT_ALLOC(t);
+  return t;
+}
+static inline void fio_timer_free(fio_timer_s *t) { free(t); }
 
 /** Marks the current time as facil.io's cycle time */
 static inline void fio_mark_time(void) {
@@ -1204,11 +1213,11 @@ static struct timespec fio_timer_calc_due(size_t interval) {
 static size_t fio_timer_calc_first_interval(void) {
   if (fio_defer_has_queue())
     return 0;
-  if (fio_timer_list_is_empty(&fio_timers)) {
+  if (fio_timer_is_empty(&fio_timers)) {
     return FIO_POLL_TICK;
   }
   struct timespec now = fio_last_tick();
-  struct timespec due = fio_timers.next->data.due;
+  struct timespec due = fio_timer_root(fio_timers.next)->due;
   if (due.tv_sec < now.tv_sec ||
       (due.tv_sec == now.tv_sec && due.tv_nsec <= now.tv_nsec))
     return 0;
@@ -1238,30 +1247,30 @@ static int fio_timer_compare(struct timespec a, struct timespec b) {
 }
 
 /** Places a timer in an ordered linked list. */
-static void fio_timer_add_order(fio_timer_list_s *timer) {
-  timer->data.due = fio_timer_calc_due(timer->data.interval);
+static void fio_timer_add_order(fio_timer_s *timer) {
+  timer->due = fio_timer_calc_due(timer->interval);
   // fio_ls_embd_s *pos = &fio_timers;
   fio_lock(&fio_timer_lock);
-  FIO_LIST_EACH(&fio_timers, node) {
-    if (fio_timer_compare(timer->data.due, node->data.due) >= 0) {
-      fio_timer_list_push(node, timer);
+  FIO_LIST_EACH(fio_timer_s, node, &fio_timers, node) {
+    if (fio_timer_compare(timer->due, node->due) >= 0) {
+      fio_timer_push(&node->node, timer);
       goto finish;
     }
   }
-  fio_timer_list_push(&fio_timers, timer);
+  fio_timer_push(&fio_timers, timer);
 finish:
   fio_unlock(&fio_timer_lock);
 }
 
 /** Performs a timer task and re-adds it to the queue (or cleans it up) */
 static void fio_timer_perform_single(void *timer_, void *ignr) {
-  fio_timer_list_s *timer = timer_;
-  timer->data.task(timer->data.arg);
-  if (!timer->data.repetitions || fio_atomic_sub(&timer->data.repetitions, 1))
+  fio_timer_s *timer = timer_;
+  timer->task(timer->arg);
+  if (!timer->repetitions || fio_atomic_sub(&timer->repetitions, 1))
     goto reschedule;
-  if (timer->data.on_finish)
-    timer->data.on_finish(timer->data.arg);
-  fio_timer_list_free(timer);
+  if (timer->on_finish)
+    timer->on_finish(timer->arg);
+  fio_timer_free(timer);
   return;
   (void)ignr;
 reschedule:
@@ -1272,9 +1281,9 @@ reschedule:
 static void fio_timer_schedule(void) {
   struct timespec now = fio_last_tick();
   fio_lock(&fio_timer_lock);
-  while (fio_timer_list_any(&fio_timers) &&
-         fio_timer_compare(fio_timers.next->data.due, now) >= 0) {
-    fio_timer_list_s *tmp = fio_timer_list_remove(fio_timers.next);
+  while (fio_timer_any(&fio_timers) &&
+         fio_timer_compare(fio_timer_root(fio_timers.next)->due, now) >= 0) {
+    fio_timer_s *tmp = fio_timer_remove(fio_timer_root(fio_timers.next));
     fio_defer(fio_timer_perform_single, tmp, NULL);
   }
   fio_unlock(&fio_timer_lock);
@@ -1282,11 +1291,11 @@ static void fio_timer_schedule(void) {
 
 static void fio_timer_clear_all(void) {
   fio_lock(&fio_timer_lock);
-  while (fio_timer_list_any(&fio_timers)) {
-    fio_timer_list_s *timer = fio_timer_list_pop(&fio_timers);
-    if (timer->data.on_finish)
-      timer->data.on_finish(timer->data.arg);
-    fio_timer_list_free(timer);
+  while (fio_timer_any(&fio_timers)) {
+    fio_timer_s *timer = fio_timer_pop(&fio_timers);
+    if (timer->on_finish)
+      timer->on_finish(timer->arg);
+    fio_timer_free(timer);
   }
   fio_unlock(&fio_timer_lock);
 }
@@ -1305,19 +1314,16 @@ int fio_run_every(size_t milliseconds, size_t repetitions, void (*task)(void *),
                   void *arg, void (*on_finish)(void *)) {
   if (!task || (milliseconds == 0 && !repetitions))
     return -1;
-  fio_timer_list_s *timer = fio_timer_list_new();
+  fio_timer_s *timer = fio_timer_new();
   FIO_ASSERT_ALLOC(timer);
   fio_mark_time();
-  *timer = (fio_timer_list_s){
-      .data =
-          {
-              .due = fio_timer_calc_due(milliseconds),
-              .interval = milliseconds,
-              .repetitions = repetitions,
-              .task = task,
-              .arg = arg,
-              .on_finish = on_finish,
-          },
+  *timer = (fio_timer_s){
+      .due = fio_timer_calc_due(milliseconds),
+      .interval = milliseconds,
+      .repetitions = repetitions,
+      .task = task,
+      .arg = arg,
+      .on_finish = on_finish,
   };
   fio_timer_add_order(timer);
   return 0;
@@ -3301,15 +3307,19 @@ Core Callbacks for forking / starting up / cleaning up
 ***************************************************************************** */
 
 typedef struct {
-  fio_ls_embd_s node;
+  FIO_LIST_NODE node;
   void (*func)(void *);
   void *arg;
 } callback_data_s;
 
 typedef struct {
   fio_lock_i lock;
-  fio_ls_embd_s callbacks;
+  FIO_LIST_HEAD callbacks;
 } callback_collection_s;
+
+#define FIO_LIST_NAME callback_collection
+#define FIO_LIST_TYPE callback_data_s
+#include "fio-stl.h"
 
 static callback_collection_s callback_collection[FIO_CALL_NEVER + 1];
 
@@ -3320,7 +3330,7 @@ static void fio_state_on_idle_perform(void *task, void *arg) {
 static inline void fio_state_callback_ensure(callback_collection_s *c) {
   if (c->callbacks.next)
     return;
-  c->callbacks = (fio_ls_embd_s)FIO_LS_INIT(c->callbacks);
+  c->callbacks = (FIO_LIST_HEAD)FIO_LIST_INIT(c->callbacks);
 }
 
 /** Adds a callback to the list of callbacks to be called for the event. */
@@ -3337,7 +3347,7 @@ void fio_state_callback_add(callback_type_e c_type, void (*func)(void *),
   callback_data_s *tmp = malloc(sizeof(*tmp));
   FIO_ASSERT_ALLOC(tmp);
   *tmp = (callback_data_s){.func = func, .arg = arg};
-  fio_ls_embd_push(&callback_collection[c_type].callbacks, &tmp->node);
+  callback_collection_push(&callback_collection[c_type].callbacks, tmp);
   fio_unlock(&callback_collection[c_type].lock);
 }
 
@@ -3347,10 +3357,11 @@ int fio_state_callback_remove(callback_type_e c_type, void (*func)(void *),
   if ((int)c_type < 0 || c_type > FIO_CALL_NEVER)
     return -1;
   fio_lock(&callback_collection[c_type].lock);
-  FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
-    callback_data_s *tmp = (FIO_LS_EMBD_OBJ(callback_data_s, node, pos));
+  FIO_LIST_EACH(callback_data_s, node, &callback_collection[c_type].callbacks,
+                pos) {
+    callback_data_s *tmp = pos;
     if (tmp->func == func && tmp->arg == arg) {
-      fio_ls_embd_remove(&tmp->node);
+      callback_collection_remove(tmp);
       free(tmp);
       goto success;
     }
@@ -3367,7 +3378,7 @@ void fio_state_callback_force(callback_type_e c_type) {
   if ((int)c_type < 0 || c_type > FIO_CALL_NEVER)
     return;
   /* copy collection */
-  fio_ls_embd_s copy = FIO_LS_INIT(copy);
+  FIO_LIST_HEAD copy = FIO_LIST_INIT(copy);
   fio_lock(&callback_collection[c_type].lock);
   fio_state_callback_ensure(&callback_collection[c_type]);
   switch (c_type) {            /* the difference between `unshift` and `push` */
@@ -3378,19 +3389,20 @@ void fio_state_callback_force(callback_type_e c_type) {
   case FIO_CALL_IN_CHILD:      /* fallthrough */
   case FIO_CALL_IN_MASTER:     /* fallthrough */
   case FIO_CALL_ON_START:      /* fallthrough */
-    FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
+    FIO_LIST_EACH(callback_data_s, node, &callback_collection[c_type].callbacks,
+                  pos) {
       callback_data_s *tmp = fio_malloc(sizeof(*tmp));
       FIO_ASSERT_ALLOC(tmp);
-      *tmp = *(FIO_LS_EMBD_OBJ(callback_data_s, node, pos));
-      fio_ls_embd_unshift(&copy, &tmp->node);
+      *tmp = *pos;
+      callback_collection_unshift(&copy, tmp);
     }
     break;
 
   case FIO_CALL_ON_IDLE: /* idle callbacks are orderless and evented */
-    FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
-      callback_data_s *tmp = FIO_LS_EMBD_OBJ(callback_data_s, node, pos);
+    FIO_LIST_EACH(callback_data_s, node, &callback_collection[c_type].callbacks,
+                  pos) {
       fio_defer_push_task(fio_state_on_idle_perform,
-                          (void *)(uintptr_t)tmp->func, tmp->arg);
+                          (void *)(uintptr_t)pos->func, pos->arg);
     }
     break;
 
@@ -3401,20 +3413,20 @@ void fio_state_callback_force(callback_type_e c_type) {
   case FIO_CALL_AT_EXIT:         /* fallthrough */
   case FIO_CALL_NEVER:           /* fallthrough */
   default:
-    FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
+    FIO_LIST_EACH(callback_data_s, node, &callback_collection[c_type].callbacks,
+                  pos) {
       callback_data_s *tmp = fio_malloc(sizeof(*tmp));
       FIO_ASSERT_ALLOC(tmp);
-      *tmp = *(FIO_LS_EMBD_OBJ(callback_data_s, node, pos));
-      fio_ls_embd_push(&copy, &tmp->node);
+      *tmp = *pos;
+      callback_collection_push(&copy, tmp);
     }
     break;
   }
 
   fio_unlock(&callback_collection[c_type].lock);
   /* run callbacks + free data */
-  while (fio_ls_embd_any(&copy)) {
-    callback_data_s *tmp =
-        FIO_LS_EMBD_OBJ(callback_data_s, node, fio_ls_embd_pop(&copy));
+  while (callback_collection_any(&copy)) {
+    callback_data_s *tmp = callback_collection_pop(&copy);
     if (tmp->func) {
       tmp->func(tmp->arg);
     }
@@ -3428,10 +3440,9 @@ void fio_state_callback_clear(callback_type_e c_type) {
     return;
   fio_lock(&callback_collection[c_type].lock);
   fio_state_callback_ensure(&callback_collection[c_type]);
-  while (fio_ls_embd_any(&callback_collection[c_type].callbacks)) {
-    callback_data_s *tmp = FIO_LS_EMBD_OBJ(
-        callback_data_s, node,
-        fio_ls_embd_shift(&callback_collection[c_type].callbacks));
+  while (callback_collection_any(&callback_collection[c_type].callbacks)) {
+    callback_data_s *tmp =
+        callback_collection_shift(&callback_collection[c_type].callbacks);
     free(tmp);
   }
   fio_unlock(&callback_collection[c_type].lock);
@@ -3942,403 +3953,6 @@ void fio_start FIO_IGNORE_MACRO(struct fio_start_args args) {
   }
   fio_worker_startup();
   fio_worker_cleanup();
-}
-
-/* *****************************************************************************
-Section Start Marker
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                       Converting Numbers to Strings (and back)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-***************************************************************************** */
-
-/* *****************************************************************************
-Strings to Numbers
-***************************************************************************** */
-
-FIO_FUNC inline size_t fio_atol_skip_zero(char **pstr) {
-  char *const start = *pstr;
-  while (**pstr == '0') {
-    ++(*pstr);
-  }
-  return (size_t)(*pstr - *start);
-}
-
-/* consumes any digits in the string (base 2-10), returning their value */
-FIO_FUNC inline uint64_t fio_atol_consume(char **pstr, uint8_t base) {
-  uint64_t result = 0;
-  const uint64_t limit = UINT64_MAX - (base * base);
-  while (**pstr >= '0' && **pstr < ('0' + base) && result <= (limit)) {
-    result = (result * base) + (**pstr - '0');
-    ++(*pstr);
-  }
-  return result;
-}
-
-/* returns true if there's data to be skipped */
-FIO_FUNC inline uint8_t fio_atol_skip_test(char **pstr, uint8_t base) {
-  return (**pstr >= '0' && **pstr < ('0' + base));
-}
-
-/* consumes any digits in the string (base 2-10), returning the count skipped */
-FIO_FUNC inline uint64_t fio_atol_skip(char **pstr, uint8_t base) {
-  uint64_t result = 0;
-  while (fio_atol_skip_test(pstr, base)) {
-    ++result;
-    ++(*pstr);
-  }
-  return result;
-}
-
-/* consumes any hex data in the string, returning their value */
-FIO_FUNC inline uint64_t fio_atol_consume_hex(char **pstr) {
-  uint64_t result = 0;
-  const uint64_t limit = UINT64_MAX - (16 * 16);
-  for (; result <= limit;) {
-    uint8_t tmp;
-    if (**pstr >= '0' && **pstr <= '9')
-      tmp = **pstr - '0';
-    else if (**pstr >= 'A' && **pstr <= 'F')
-      tmp = **pstr - ('A' - 10);
-    else if (**pstr >= 'a' && **pstr <= 'f')
-      tmp = **pstr - ('a' - 10);
-    else
-      return result;
-    result = (result << 4) | tmp;
-    ++(*pstr);
-  }
-  return result;
-}
-
-/* returns true if there's data to be skipped */
-FIO_FUNC inline uint8_t fio_atol_skip_hex_test(char **pstr) {
-  return (**pstr >= '0' && **pstr <= '9') || (**pstr >= 'A' && **pstr <= 'F') ||
-         (**pstr >= 'a' && **pstr <= 'f');
-}
-
-/* consumes any digits in the string (base 2-10), returning the count skipped */
-FIO_FUNC inline uint64_t fio_atol_skip_hex(char **pstr) {
-  uint64_t result = 0;
-  while (fio_atol_skip_hex_test(pstr)) {
-    ++result;
-    ++(*pstr);
-  }
-  return result;
-}
-
-/* caches a up to 8*8 */
-// static inline fio_atol_pow_10_cache(size_t ex) {}
-
-/**
- * A helper function that converts between String data to a signed int64_t.
- *
- * Numbers are assumed to be in base 10. Octal (`0###`), Hex (`0x##`/`x##`) and
- * binary (`0b##`/ `b##`) are recognized as well. For binary Most Significant
- * Bit must come first.
- *
- * The most significant difference between this function and `strtol` (aside of
- * API design), is the added support for binary representations.
- */
-int64_t fio_atol(char **pstr) {
-  /* No binary representation in strtol */
-  char *str = *pstr;
-  uint64_t result = 0;
-  uint8_t invert = 0;
-  while (isspace(*str))
-    ++(str);
-  if (str[0] == '-') {
-    invert ^= 1;
-    ++str;
-  } else if (*str == '+') {
-    ++(str);
-  }
-
-  if (str[0] == 'B' || str[0] == 'b' ||
-      (str[0] == '0' && (str[1] == 'b' || str[1] == 'B'))) {
-    /* base 2 */
-    if (str[0] == '0')
-      str++;
-    str++;
-    fio_atol_skip_zero(&str);
-    while (str[0] == '0' || str[0] == '1') {
-      result = (result << 1) | (str[0] - '0');
-      str++;
-    }
-    goto sign; /* no overlow protection, since sign might be embedded */
-
-  } else if (str[0] == 'x' || str[0] == 'X' ||
-             (str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))) {
-    /* base 16 */
-    if (str[0] == '0')
-      str++;
-    str++;
-    fio_atol_skip_zero(&str);
-    result = fio_atol_consume_hex(&str);
-    if (fio_atol_skip_hex_test(&str)) /* too large for a number */
-      return 0;
-    goto sign; /* no overlow protection, since sign might be embedded */
-  } else if (str[0] == '0') {
-    fio_atol_skip_zero(&str);
-    /* base 8 */
-    result = fio_atol_consume(&str, 8);
-    if (fio_atol_skip_test(&str, 8)) /* too large for a number */
-      return 0;
-  } else {
-    /* base 10 */
-    result = fio_atol_consume(&str, 10);
-    if (fio_atol_skip_test(&str, 10)) /* too large for a number */
-      return 0;
-  }
-  if (result & ((uint64_t)1 << 63))
-    result = INT64_MAX; /* signed overflow protection */
-sign:
-  if (invert)
-    result = 0 - result;
-  *pstr = str;
-  return (int64_t)result;
-}
-
-/** A helper function that converts between String data to a signed double. */
-double fio_atof(char **pstr) { return strtold(*pstr, pstr); }
-
-/* *****************************************************************************
-Numbers to Strings
-***************************************************************************** */
-
-/**
- * A helper function that writes a signed int64_t to a string.
- *
- * No overflow guard is provided, make sure there's at least 68 bytes
- * available (for base 2).
- *
- * Offers special support for base 2 (binary), base 8 (octal), base 10 and base
- * 16 (hex). An unsupported base will silently default to base 10. Prefixes
- * are automatically added (i.e., "0x" for hex and "0b" for base 2).
- *
- * Returns the number of bytes actually written (excluding the NUL
- * terminator).
- */
-size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
-  const char notation[] = {'0', '1', '2', '3', '4', '5', '6', '7',
-                           '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
-
-  size_t len = 0;
-  char buf[48]; /* we only need up to 20 for base 10, but base 3 needs 41... */
-
-  if (!num)
-    goto zero;
-
-  switch (base) {
-  case 1: /* fallthrough */
-  case 2:
-    /* Base 2 */
-    {
-      uint64_t n = num; /* avoid bit shifting inconsistencies with signed bit */
-      uint8_t i = 0;    /* counting bits */
-      dest[len++] = '0';
-      dest[len++] = 'b';
-
-      while ((i < 64) && (n & 0x8000000000000000) == 0) {
-        n = n << 1;
-        i++;
-      }
-      /* make sure the Binary representation doesn't appear signed. */
-      if (i) {
-        dest[len++] = '0';
-      }
-      /* write to dest. */
-      while (i < 64) {
-        dest[len++] = ((n & 0x8000000000000000) ? '1' : '0');
-        n = n << 1;
-        i++;
-      }
-      dest[len] = 0;
-      return len;
-    }
-  case 8:
-    /* Base 8 */
-    {
-      uint64_t l = 0;
-      if (num < 0) {
-        dest[len++] = '-';
-        num = 0 - num;
-      }
-      dest[len++] = '0';
-
-      while (num) {
-        buf[l++] = '0' + (num & 7);
-        num = num >> 3;
-      }
-      while (l) {
-        --l;
-        dest[len++] = buf[l];
-      }
-      dest[len] = 0;
-      return len;
-    }
-
-  case 16:
-    /* Base 16 */
-    {
-      uint64_t n = num; /* avoid bit shifting inconsistencies with signed bit */
-      uint8_t i = 0;    /* counting bits */
-      dest[len++] = '0';
-      dest[len++] = 'x';
-      while (i < 8 && (n & 0xFF00000000000000) == 0) {
-        n = n << 8;
-        i++;
-      }
-      /* make sure the Hex representation doesn't appear misleadingly signed. */
-      if (i && (n & 0x8000000000000000)) {
-        dest[len++] = '0';
-        dest[len++] = '0';
-      }
-      /* write the damn thing, high to low */
-      while (i < 8) {
-        uint8_t tmp = (n & 0xF000000000000000) >> 60;
-        dest[len++] = notation[tmp];
-        tmp = (n & 0x0F00000000000000) >> 56;
-        dest[len++] = notation[tmp];
-        i++;
-        n = n << 8;
-      }
-      dest[len] = 0;
-      return len;
-    }
-  case 3: /* fallthrough */
-  case 4: /* fallthrough */
-  case 5: /* fallthrough */
-  case 6: /* fallthrough */
-  case 7: /* fallthrough */
-  case 9: /* fallthrough */
-    /* rare bases */
-    if (num < 0) {
-      dest[len++] = '-';
-      num = 0 - num;
-    }
-    uint64_t l = 0;
-    while (num) {
-      uint64_t t = num / base;
-      buf[l++] = '0' + (num - (t * base));
-      num = t;
-    }
-    while (l) {
-      --l;
-      dest[len++] = buf[l];
-    }
-    dest[len] = 0;
-    return len;
-
-  default:
-    break;
-  }
-  /* Base 10, the default base */
-
-  if (num < 0) {
-    dest[len++] = '-';
-    num = 0 - num;
-  }
-  uint64_t l = 0;
-  while (num) {
-    uint64_t t = num / 10;
-    buf[l++] = '0' + (num - (t * 10));
-    num = t;
-  }
-  while (l) {
-    --l;
-    dest[len++] = buf[l];
-  }
-  dest[len] = 0;
-  return len;
-
-zero:
-  switch (base) {
-  case 1:
-  case 2:
-    dest[len++] = '0';
-    dest[len++] = 'b';
-    break;
-  case 8:
-    dest[len++] = '0';
-    break;
-  case 16:
-    dest[len++] = '0';
-    dest[len++] = 'x';
-    dest[len++] = '0';
-    break;
-  }
-  dest[len++] = '0';
-  dest[len] = 0;
-  return len;
-}
-
-/**
- * A helper function that converts between a double to a string.
- *
- * No overflow guard is provided, make sure there's at least 130 bytes
- * available (for base 2).
- *
- * Supports base 2, base 10 and base 16. An unsupported base will silently
- * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
- * beginning of the string).
- *
- * Returns the number of bytes actually written (excluding the NUL
- * terminator).
- */
-size_t fio_ftoa(char *dest, double num, uint8_t base) {
-  if (base == 2 || base == 16) {
-    /* handle the binary / Hex representation the same as if it were an
-     * int64_t
-     */
-    int64_t *i = (void *)&num;
-    return fio_ltoa(dest, *i, base);
-  }
-
-  size_t written = sprintf(dest, "%g", num);
-  uint8_t need_zero = 1;
-  char *start = dest;
-  while (*start) {
-    if (*start == ',') // locale issues?
-      *start = '.';
-    if (*start == '.' || *start == 'e') {
-      need_zero = 0;
-      break;
-    }
-    start++;
-  }
-  if (need_zero) {
-    dest[written++] = '.';
-    dest[written++] = '0';
-  }
-  return written;
 }
 
 /* *****************************************************************************
@@ -5114,7 +4728,7 @@ typedef struct {
   size_t name_len;
   char *name;
   volatile size_t ref;
-  fio_ls_embd_s subscriptions;
+  FIO_LIST_HEAD subscriptions;
   fio_collection_s *parent;
   fio_match_fn match;
   fio_lock_i lock;
@@ -5124,7 +4738,7 @@ typedef struct {
 #endif
 
 struct subscription_s {
-  fio_ls_embd_s node;
+  FIO_LIST_NODE node;
   channel_s *parent;
   void (*on_message)(fio_msg_s *msg);
   void (*on_unsubscribe)(void *udata1, void *udata2);
@@ -5136,6 +4750,10 @@ struct subscription_s {
   fio_lock_i lock;
   fio_lock_i unsubscribed;
 };
+
+#define FIO_LIST_NAME subscriptions
+#define FIO_LIST_TYPE subscription_s
+#include "fio-stl.h"
 
 /* Use `malloc` / `free`, because channles might have a long life. */
 
@@ -5150,7 +4768,7 @@ static channel_s *fio_channel_copy(channel_s *src) {
   if (src->name_len)
     memcpy(dest->name, src->name, src->name_len);
   dest->name[src->name_len] = 0;
-  dest->subscriptions = (fio_ls_embd_s)FIO_LS_INIT(dest->subscriptions);
+  dest->subscriptions = (FIO_LIST_HEAD)FIO_LIST_INIT(dest->subscriptions);
   dest->ref = 1;
   dest->lock = FIO_LOCK_INIT;
   return dest;
@@ -5408,7 +5026,7 @@ static channel_s *fio_channel_dup_lock(fio_str_info_s name) {
       name.data, name.len, &fio_postoffice.pubsub, &fio_postoffice.pubsub);
   channel_s *ch_p =
       fio_filter_dup_lock_internal(&ch, hashed_name, &fio_postoffice.pubsub);
-  if (fio_ls_embd_is_empty(&ch_p->subscriptions)) {
+  if (subscriptions_is_empty(&ch_p->subscriptions)) {
     fio_pubsub_on_channel_create(ch_p);
   }
   return ch_p;
@@ -5428,7 +5046,7 @@ static channel_s *fio_channel_match_dup_lock(fio_str_info_s name,
       name.data, name.len, &fio_postoffice.pubsub, &fio_postoffice.pubsub);
   channel_s *ch_p =
       fio_filter_dup_lock_internal(&ch, hashed_name, &fio_postoffice.patterns);
-  if (fio_ls_embd_is_empty(&ch_p->subscriptions)) {
+  if (subscriptions_is_empty(&ch_p->subscriptions)) {
     fio_pubsub_on_channel_create(ch_p);
   }
   return ch_p;
@@ -5472,7 +5090,7 @@ subscription_s *fio_subscribe FIO_IGNORE_MACRO(subscribe_args_s args) {
     ch = fio_channel_dup_lock(args.channel);
   }
   s->parent = ch;
-  fio_ls_embd_push(&ch->subscriptions, &s->node);
+  subscriptions_push(&ch->subscriptions, s);
   fio_unlock((&ch->lock));
   return s;
 error:
@@ -5491,16 +5109,16 @@ void fio_unsubscribe(subscription_s *s) {
   channel_s *ch = s->parent;
   uint8_t removed = 0;
   fio_lock(&ch->lock);
-  fio_ls_embd_remove(&s->node);
+  subscriptions_remove(s);
   /* check if channel is done for */
-  if (fio_ls_embd_is_empty(&ch->subscriptions)) {
+  if (subscriptions_is_empty(&ch->subscriptions)) {
     fio_collection_s *c = ch->parent;
     uint64_t hashed = FIO_HASH_FN(
         ch->name, ch->name_len, &fio_postoffice.pubsub, &fio_postoffice.pubsub);
     /* lock collection */
     fio_lock(&c->lock);
     /* test again within lock */
-    if (fio_ls_embd_is_empty(&ch->subscriptions)) {
+    if (subscriptions_is_empty(&ch->subscriptions)) {
       fio_ch_set_remove(&c->channels, hashed, ch, NULL);
       removed = (c != &fio_postoffice.filters);
     }
@@ -5744,8 +5362,7 @@ static void fio_perform_subscription_callback(void *s_, void *msg_) {
 
 /** UNSAFE! publishes a message to a channel, managing the reference counts */
 static void fio_publish2channel(channel_s *ch, fio_msg_internal_s *msg) {
-  FIO_LS_EMBD_FOR(&ch->subscriptions, pos) {
-    subscription_s *s = FIO_LS_EMBD_OBJ(subscription_s, node, pos);
+  FIO_LIST_EACH(subscription_s, node, &ch->subscriptions, s) {
     if (!s || s->on_message == fio_mock_on_message) {
       continue;
     }
@@ -6405,7 +6022,7 @@ static void fio_cluster_at_exit(void *ignore) {
   /* clear subscriptions of all types */
   while (fio_ch_set_count(&fio_postoffice.patterns.channels)) {
     channel_s *ch = fio_ch_set_last(&fio_postoffice.patterns.channels);
-    while (fio_ls_embd_any(&ch->subscriptions)) {
+    while (subscriptions_any(&ch->subscriptions)) {
       subscription_s *sub =
           FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
       fio_unsubscribe(sub);
@@ -6415,7 +6032,7 @@ static void fio_cluster_at_exit(void *ignore) {
 
   while (fio_ch_set_count(&fio_postoffice.pubsub.channels)) {
     channel_s *ch = fio_ch_set_last(&fio_postoffice.pubsub.channels);
-    while (fio_ls_embd_any(&ch->subscriptions)) {
+    while (subscriptions_any(&ch->subscriptions)) {
       subscription_s *sub =
           FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
       fio_unsubscribe(sub);
@@ -6425,7 +6042,7 @@ static void fio_cluster_at_exit(void *ignore) {
 
   while (fio_ch_set_count(&fio_postoffice.filters.channels)) {
     channel_s *ch = fio_ch_set_last(&fio_postoffice.filters.channels);
-    while (fio_ls_embd_any(&ch->subscriptions)) {
+    while (subscriptions_any(&ch->subscriptions)) {
       subscription_s *sub =
           FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
       fio_unsubscribe(sub);
@@ -6476,24 +6093,24 @@ static void fio_pubsub_on_fork(void) {
     if (!pos->hash)
       continue;
     pos->obj->lock = FIO_LOCK_INIT;
-    FIO_LS_EMBD_FOR(&pos->obj->subscriptions, n) {
-      FIO_LS_EMBD_OBJ(subscription_s, node, n)->lock = FIO_LOCK_INIT;
+    FIO_LIST_EACH(subscription_s, node, &pos->obj->subscriptions, n) {
+      n->lock = FIO_LOCK_INIT;
     }
   }
   FIO_SET_FOR_LOOP(&fio_postoffice.pubsub.channels, pos) {
     if (!pos->hash)
       continue;
     pos->obj->lock = FIO_LOCK_INIT;
-    FIO_LS_EMBD_FOR(&pos->obj->subscriptions, n) {
-      FIO_LS_EMBD_OBJ(subscription_s, node, n)->lock = FIO_LOCK_INIT;
+    FIO_LIST_EACH(subscription_s, node, &pos->obj->subscriptions, n) {
+      n->lock = FIO_LOCK_INIT;
     }
   }
   FIO_SET_FOR_LOOP(&fio_postoffice.patterns.channels, pos) {
     if (!pos->hash)
       continue;
     pos->obj->lock = FIO_LOCK_INIT;
-    FIO_LS_EMBD_FOR(&pos->obj->subscriptions, n) {
-      FIO_LS_EMBD_OBJ(subscription_s, node, n)->lock = FIO_LOCK_INIT;
+    FIO_LIST_EACH(subscription_s, node, &pos->obj->subscriptions, n) {
+      n->lock = FIO_LOCK_INIT;
     }
   }
 }
@@ -8933,14 +8550,14 @@ FIO_FUNC void fio_timer_test(void) {
   FIO_ASSERT(fio_run_every(900, total, fio_timer_test_task, &result,
                            fio_timer_test_task) == 0,
              "Timer creation failure.");
-  FIO_ASSERT(fio_timer_list_any(&fio_timers),
+  FIO_ASSERT(fio_timer_any(&fio_timers),
              "Timer scheduling failure - no timer in list.");
   FIO_ASSERT(fio_timer_calc_first_interval() >= 898 &&
                  fio_timer_calc_first_interval() <= 902,
              "next timer calculation error %zu",
              fio_timer_calc_first_interval());
 
-  fio_timer_list_s *first = fio_timers.next;
+  fio_timer_s *first = fio_timers.next;
   FIO_ASSERT(fio_run_every(10000, total, fio_timer_test_task, &result,
                            fio_timer_test_task) == 0,
              "Timer creation failure (second timer).");
