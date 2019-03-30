@@ -12,13 +12,13 @@
 * [Compilation Macros](/0.8.x/fio#version-and-compilation-related-macros)
 * [Weak Functions](/0.8.x/fio#weak-functions)
 
-### [Simple Type Library](/0.8.x/fio_stl)
+### [Simple Type Library](/0.8.x/fio-stl)
 
-* [Linked Lists](/0.8.x/fio_stl#linked-lists)
-* [String Helpers](/0.8.x/fio_stl#string-helpers)
-* [Dynamic Arrays](/0.8.x/fio_stl#dynamic-arrays)
-* [Hash Maps / Sets](/0.8.x/fio_stl#hash-maps-sets)
-* [General Helpers](/0.8.x/fio_stl#general-helpers)
+* [Linked Lists](/0.8.x/fio-stl#linked-lists)
+* [String Helpers](/0.8.x/fio-stl#string-helpers)
+* [Dynamic Arrays](/0.8.x/fio-stl#dynamic-arrays)
+* [Hash Maps / Sets](/0.8.x/fio-stl#hash-maps-sets)
+* [General Helpers](/0.8.x/fio-stl#general-helpers)
 
 ### [Extensions](/0.8.x/extensions)
 

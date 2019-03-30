@@ -4,7 +4,7 @@ sidebar: 0.8.x/_sidebar.md
 ---
 # {{{ title }}}
 
-facil.io's [core library](fio) (the `fio_stl.h`, `fio.h` and `fio.c` files) is a stand alone three-file library, which can be easily used in different projects.
+facil.io's [core library](fio) (the `fio-stl.h`, `fio.h` and `fio.c` files) is a stand alone three-file library, which can be easily used in different projects.
 
 However, there are many tasks that are common to applications that need an evented networking library such as facil.io.
 

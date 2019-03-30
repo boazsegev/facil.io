@@ -4,11 +4,11 @@ sidebar: 0.8.x/_sidebar.md
 ---
 # {{{title}}}
 
-The core library types and functions can be found in the header `fio.h`.
+The core library types and functions can be found in the headers `fio-stl.h` and `fio.h`.
 
-The header is well documented and very long, and as a result, so is this documentation.
+The headers should be well documented and very long, and as a result, so is this documentation.
 
-The header can be included more than once to produce multiple types of Hash Maps or data Sets. As well as to include some of it's optional features such as the binary String helpers and the linked list types.
+The `fio-stl.h` header can be included more than once to produce multiple types of Hash Maps, Arrays, etc', as [detailed here](./fio-stl).
 
 ## Connection (Protocol) Management
 

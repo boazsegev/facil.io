@@ -1,14 +1,13 @@
 ---
-title: facil.io - 0.8.x Core Library Documentation
+title: facil.io - 0.8.x C STL - a Simple Template Library for C
 sidebar: 0.8.x/_sidebar.md
 ---
 # {{{title}}}
 
-The core library types and functions can be found in the header `fio.h`.
+The `fio-stl.h` header is a macro based header that includes different type templates and helpers.
 
-The header is well documented and very long, and as a result, so is this documentation.
+The header can be included more than once to produce multiple types of hash maps or, data sets, dynamic arrays, etc'.
 
-The header can be included more than once to produce multiple types of Hash Maps or data Sets. As well as to include some of it's optional features such as the binary String helpers and the linked list types.
 
 ## Connection (Protocol) Management
 
