@@ -1843,7 +1843,7 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, shift)(FIO_NAME(FIO_ARY_NAME, s) * ary,
  */
 IFUNC size_t FIO_NAME(FIO_ARY_NAME,
                       each)(FIO_NAME(FIO_ARY_NAME, s) * ary, size_t start_at,
-                            int (*task)(FIO_ARY_TYPE *pt, void *arg),
+                            int (*task)(FIO_ARY_TYPE obj, void *arg),
                             void *arg);
 
 #ifndef FIO_ARY_EACH
@@ -2003,11 +2003,12 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_NAME(FIO_ARY_NAME, s) * ary,
       if (!tmp)
         return NULL;
       if (valid_data)
-        memcpy(tmp + new_capa - valid_data, ary->ary + ary->start, valid_data);
+        memcpy(tmp + new_capa - valid_data, ary->ary + ary->start,
+               valid_data * sizeof(*tmp));
       FIO_MEM_FREE_(ary->ary, sizeof(*ary->ary) * ary->capa);
+      ary->end = ary->capa = new_capa;
       index += new_capa;
       ary->ary = tmp;
-      ary->end = ary->capa = new_capa;
 #if FIO_ARY_TYPE_INVALID_SIMPLE
       ary->start = index;
 #else
@@ -2022,7 +2023,8 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_NAME(FIO_ARY_NAME, s) * ary,
 #else
       while ((size_t)index < ary->start) {
         --ary->start;
-        FIO_ARY_TYPE_COPY(ary->ary[ary->start], FIO_ARY_TYPE_INVALID);
+        ary->ary[ary->start] = FIO_ARY_TYPE_INVALID;
+        // FIO_ARY_TYPE_COPY(ary->ary[ary->start], FIO_ARY_TYPE_INVALID);
       }
 #endif
     }
@@ -2112,7 +2114,8 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, remove)(FIO_NAME(FIO_ARY_NAME, s) * ary,
 IFUNC size_t FIO_NAME(FIO_ARY_NAME, remove2)(FIO_NAME(FIO_ARY_NAME, s) * ary,
                                              FIO_ARY_TYPE data) {
   size_t c = 0;
-  for (size_t i = ary->start; i < ary->end;) {
+  size_t i = ary->start;
+  while (i < ary->end) {
     if (!(FIO_ARY_TYPE_CMP(ary->ary[i + c], data))) {
       ary->ary[i] = ary->ary[i + c];
       ++i;
@@ -2221,13 +2224,14 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, shift)(FIO_NAME(FIO_ARY_NAME, s) * ary,
  */
 IFUNC size_t FIO_NAME(FIO_ARY_NAME,
                       each)(FIO_NAME(FIO_ARY_NAME, s) * ary, size_t start_at,
-                            int (*task)(FIO_ARY_TYPE *pt, void *arg),
+                            int (*task)(FIO_ARY_TYPE obj, void *arg),
                             void *arg) {
   if (!ary || !task)
     return start_at;
   for (size_t i = ary->start + start_at; i < ary->end; ++i) {
-    if (task(ary->ary + i, arg) == -1)
-      return ary->end - i;
+    if (task(ary->ary[i], arg) == -1) {
+      return (i + 1) - ary->start;
+    }
   }
   return ary->end - ary->start;
 }
@@ -5099,6 +5103,13 @@ static int ary____test_was_destroyed = 0;
 #define FIO_ARY_TYPE_CMP(a, b) (a) == (b)
 #include __FILE__
 
+static int fio_____dynamic_test_array_task(int o, void *c_) {
+  ((size_t *)(c_))[0] += o;
+  if (((size_t *)(c_))[0] >= 256)
+    return -1;
+  return 0;
+}
+
 TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   int tmp = 0;
   ary____test_s a = FIO_ARY_INIT;
@@ -5254,7 +5265,34 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   ary____test_free2(pa);
   TEST_ASSERT(ary____test_was_destroyed,
               "reference counted array not destroyed.");
+  fprintf(stderr, "* Passed\n");
 
+  fprintf(stderr, "* Testing dynamic arrays helpers\n");
+  for (size_t i = 0; i < REPEAT; ++i) {
+    ary____test_push(&a, i);
+  }
+  TEST_ASSERT(ary____test_count(&a) == REPEAT, "push object count error");
+  {
+    size_t c = 0;
+    size_t i = ary____test_each(&a, 3, fio_____dynamic_test_array_task, &c);
+    TEST_ASSERT(i < 64, "too many objects counted in each loop.");
+    TEST_ASSERT(c >= 256 && c < 512, "each loop too long.");
+  }
+  for (size_t i = 0; i < REPEAT; ++i) {
+    TEST_ASSERT((size_t)ary____test_get(&a, i) == i,
+                "push order / insert issue");
+  }
+  ary____test_destroy(&a);
+  for (size_t i = 0; i < REPEAT; ++i) {
+    ary____test_unshift(&a, i);
+  }
+  TEST_ASSERT(ary____test_count(&a) == REPEAT, "unshift object count error");
+  for (size_t i = 0; i < REPEAT; ++i) {
+    int old = 0;
+    ary____test_pop(&a, &old);
+    TEST_ASSERT((size_t)old == i, "shift order / insert issue");
+  }
+  ary____test_destroy(&a);
   fprintf(stderr, "* Passed\n");
 }
 

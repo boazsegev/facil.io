@@ -5,7 +5,7 @@ License: MIT
 #include <fiobj_json.h>
 #define FIO_ARY_NAME fio_json_stack
 #define FIO_ARY_TYPE FIOBJ
-#include <fio.h>
+#include <fio-stl.h>
 
 #include <fio_json_parser.h>
 
@@ -155,7 +155,7 @@ static void fio_json_on_error(json_parser_s *p) {
 #endif
   fiobj_free((FIOBJ)fio_json_stack_get(&pr->stack, 0));
   fiobj_free(pr->key);
-  fio_json_stack_free(&pr->stack);
+  fio_json_stack_destroy(&pr->stack);
   *pr = (fiobj_json_parser_s){.top = FIOBJ_INVALID};
 }
 

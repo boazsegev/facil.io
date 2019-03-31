@@ -12,9 +12,8 @@ types, abstracting some complexity and making dynamic type related tasks easier.
 
 #define FIO_ARY_NAME fiobj_stack
 #define FIO_ARY_TYPE FIOBJ
-#define FIO_ARY_INVALID FIOBJ_INVALID
 /* don't free or compare objects, this stack shouldn't have side-effects */
-#include <fio.h>
+#include <fio-stl.h>
 
 #include <stdarg.h>
 #include <stdint.h>
@@ -312,7 +311,8 @@ static int fiobj_task_wrapper(FIOBJ o, void *p_) {
     p->stop = 1;
     return -1;
   }
-  if (FIOBJ_IS_ALLOCATED(o) && FIOBJECT2VTBL(o)->each) {
+  if (FIOBJ_IS_ALLOCATED(o) && FIOBJECT2VTBL(o)->each &&
+      FIOBJECT2VTBL(o)->count(o)) {
     p->incomplete = 1;
     p->next = o;
     return -1;
@@ -412,7 +412,7 @@ void fiobj_free_complex_object(FIOBJ o) {
   do {
     FIOBJECT2VTBL(o)->dealloc(o, fiobj_dealloc_task, &stack);
   } while (!fiobj_stack_pop(&stack, &o));
-  fiobj_stack_free(&stack);
+  fiobj_stack_destroy(&stack);
 }
 
 /* *****************************************************************************
@@ -579,9 +579,10 @@ void fiobj_test_core(void) {
   /* we have root array + 4 children (w/ array) + 2 children (w/ hash) + 1 */
   uintptr_t count = 0;
   size_t each_ret = 0;
-  TEST_ASSERT(fiobj_each2(o, fiobject_test_task, (void *)&count) == 8,
-              "fiobj_each1 didn't count everything... (%d != %d)", (int)count,
-              (int)each_ret);
+  TEST_ASSERT((each_ret = fiobj_each2(o, fiobject_test_task, (void *)&count)) ==
+                  8,
+              "fiobj_each1 didn't count everything... (%d != %d != 8)",
+              (int)count, (int)each_ret);
   TEST_ASSERT(count == 8, "Something went wrong with the counter task... (%d)",
               (int)count)
   fprintf(stderr, "* passed.\n");

@@ -56,11 +56,12 @@ static inline void fio_tls_cert_destroy(cert_s *obj) {
 
 #define FIO_ARY_NAME cert_ary
 #define FIO_ARY_TYPE cert_s
-#define FIO_ARY_COMPARE(k1, k2) (fio_tls_cert_cmp(&(k1), &(k2)))
-#define FIO_ARY_COPY(dest, obj) fio_tls_cert_copy(&(dest), &(obj))
-#define FIO_ARY_DESTROY(key) fio_tls_cert_destroy(&(key))
+#define FIO_ARY_TYPE_CMP(k1, k2) (fio_tls_cert_cmp(&(k1), &(k2)))
+#define FIO_ARY_TYPE_COPY(dest, obj) fio_tls_cert_copy(&(dest), &(obj))
+#define FIO_ARY_TYPE_DESTROY(key) fio_tls_cert_destroy(&(key))
+#define FIO_ARY_TYPE_INVALID ((cert_s){{0}})
 #define FIO_FORCE_MALLOC_TMP 1
-#include <fio.h>
+#include <fio-stl.h>
 
 typedef struct {
   fio_str_s pem;
@@ -81,11 +82,11 @@ static inline void fio_tls_trust_destroy(trust_s *obj) {
 
 #define FIO_ARY_NAME trust_ary
 #define FIO_ARY_TYPE trust_s
-#define FIO_ARY_COMPARE(k1, k2) (fio_tls_trust_cmp(&(k1), &(k2)))
-#define FIO_ARY_COPY(dest, obj) fio_tls_trust_copy(&(dest), &(obj))
-#define FIO_ARY_DESTROY(key) fio_tls_trust_destroy(&(key))
+#define FIO_ARY_TYPE_CMP(k1, k2) (fio_tls_trust_cmp(&(k1), &(k2)))
+#define FIO_ARY_TYPE_COPY(dest, obj) fio_tls_trust_copy(&(dest), &(obj))
+#define FIO_ARY_TYPE_DESTROY(key) fio_tls_trust_destroy(&(key))
 #define FIO_FORCE_MALLOC_TMP 1
-#include <fio.h>
+#include <fio-stl.h>
 
 typedef struct {
   fio_str_s name; /* fio_str_s provides cache locality for small strings */
@@ -390,7 +391,7 @@ static void fio_tls_build_context(fio_tls_s *tls) {
   SSL_CTX_set_options(tls->ctx, SSL_OP_NO_COMPRESSION);
 
   /* attach certificates */
-  FIO_ARY_FOR(&tls->sni, pos) {
+  FIO_ARY_EACH(&tls->sni, pos) {
     fio_str_info_s keys[4] = {
         fio_str_info(&pos->private_key), fio_str_info(&pos->public_key),
         fio_str_info(&pos->password),
@@ -482,7 +483,7 @@ static void fio_tls_build_context(fio_tls_s *tls) {
     SSL_CTX_set_cert_store(tls->ctx, store);
     SSL_CTX_set_verify(tls->ctx, SSL_VERIFY_PEER, NULL);
     /* TODO: Add each ceriticate in the PEM to the trust "store" */
-    FIO_ARY_FOR(&tls->trust, pos) {
+    FIO_ARY_EACH(&tls->trust, pos) {
       fio_str_info_s pem = fio_str_info(&pos->pem);
       BIO *bio = BIO_new_mem_buf(pem.data, pem.len);
       FIO_ASSERT(bio, "OpenSSL error allocating BIO.");
@@ -1004,7 +1005,8 @@ void FIO_TLS_WEAK fio_tls_destroy(fio_tls_s *tls) {
     return;
   fio_tls_destroy_context(tls);
   alpn_list_free(&tls->alpn);
-  cert_ary_free(&tls->sni);
+  cert_ary_destroy(&tls->sni);
+  trust_ary_destroy(&tls->trust);
   free(tls);
 }
 

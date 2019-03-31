@@ -108,12 +108,12 @@ int64_t fiobj_ary_find(FIOBJ ary, FIOBJ data);
 int fiobj_ary_remove(FIOBJ ary, int64_t pos);
 
 /**
- * Removes the first instance of an object from the Array (if any), changing the
+ * Removes any instance of an object from the Array (if any), changing the
  * index of any following objects.
  *
- * Returns 0 on success or -1 (if the object wasn't found).
+ * Returns the number of elements removed.
  */
-int fiobj_ary_remove2(FIOBJ ary, FIOBJ data);
+size_t fiobj_ary_remove2(FIOBJ ary, FIOBJ data);
 
 /* *****************************************************************************
 Array compacting (untested)

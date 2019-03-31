@@ -4803,7 +4803,7 @@ static int fio_channel_cmp(channel_s *ch1, channel_s *ch2) {
 #define FIO_FORCE_MALLOC_TMP 1
 #define FIO_ARY_NAME fio_meta_ary
 #define FIO_ARY_TYPE fio_msg_metadata_fn
-#include <fio.h>
+#include <fio-stl.h>
 
 #define FIO_FORCE_MALLOC_TMP 1
 #define FIO_SET_NAME fio_engine_set
@@ -4879,7 +4879,7 @@ static fio_meta_ary_s fio_postoffice_meta_copy_new(void) {
 
 /** frees a temporary copy created by postoffice_meta_copy_new */
 static inline void fio_postoffice_meta_copy_free(fio_meta_ary_s *cpy) {
-  fio_meta_ary_free(cpy);
+  fio_meta_ary_destroy(cpy);
 }
 
 static void fio_postoffice_meta_update(fio_msg_internal_s *m) {
@@ -4891,7 +4891,7 @@ static void fio_postoffice_meta_update(fio_msg_internal_s *m) {
   m->meta_len = t.end;
   while (t.end) {
     --t.end;
-    m->meta[t.end] = t.arry[t.end](m->channel, m->data, m->is_json);
+    m->meta[t.end] = t.ary[t.end](m->channel, m->data, m->is_json);
   }
   fio_postoffice_meta_copy_free(&t);
 }
@@ -4928,7 +4928,7 @@ fio_msg_internal_create(int32_t filter, uint32_t type, fio_str_info_s ch,
     memcpy(m->data.data, data.data, data.len);
     while (t.end) {
       --t.end;
-      m->meta[t.end] = t.arry[t.end](m->channel, m->data, is_json);
+      m->meta[t.end] = t.ary[t.end](m->channel, m->data, is_json);
     }
   }
   fio_postoffice_meta_copy_free(&t);
@@ -5264,7 +5264,7 @@ void fio_message_metadata_callback_set(fio_msg_metadata_fn callback,
   if (!callback)
     return;
   fio_lock(&fio_postoffice.meta.lock);
-  fio_meta_ary_remove2(&fio_postoffice.meta.ary, callback, NULL);
+  fio_meta_ary_remove2(&fio_postoffice.meta.ary, callback);
   if (enable)
     fio_meta_ary_push(&fio_postoffice.meta.ary, callback);
   fio_unlock(&fio_postoffice.meta.lock);
@@ -6048,7 +6048,7 @@ static void fio_cluster_at_exit(void *ignore) {
   fio_engine_set_free(&fio_postoffice.engines.set);
 
   /* clear meta hooks */
-  fio_meta_ary_free(&fio_postoffice.meta.ary);
+  fio_meta_ary_destroy(&fio_postoffice.meta.ary);
   /* perform newly created tasks */
   fio_defer_perform();
   (void)ignore;
@@ -8796,40 +8796,6 @@ FIO_FUNC void fio_defer_test(void) {
   FIO_ASSERT(task_queue_normal.writer == &task_queue_normal.static_queue,
              "defer library didn't release dynamic queue (should be static)");
   fprintf(stderr, "\n* passed.\n");
-}
-
-/* *****************************************************************************
-Array data-structure Testing
-***************************************************************************** */
-
-typedef struct {
-  int i;
-  char c;
-} fio_ary_test_type_s;
-
-#define FIO_ARY_NAME fio_i_ary
-#define FIO_ARY_TYPE uintptr_t
-#include "fio.h"
-
-FIO_FUNC intptr_t ary_alloc_counter = 0;
-FIO_FUNC void copy_s(fio_ary_test_type_s *d, fio_ary_test_type_s *s) {
-  ++ary_alloc_counter;
-  *d = *s;
-}
-
-#define FIO_ARY_NAME fio_s_ary
-#define FIO_ARY_TYPE fio_ary_test_type_s
-#define FIO_ARY_COPY(dest, src) copy_s(&(dest), &(src))
-#define FIO_ARY_COMPARE(dest, src) ((dest).i == (src).i && (dest).c == (src).c)
-#define FIO_ARY_DESTROY(obj) (--ary_alloc_counter)
-#include "fio.h"
-
-FIO_FUNC void fio_ary_test(void) {
-  /* code */
-  fio_i_ary__test();
-  fio_s_ary__test();
-  FIO_ASSERT(!ary_alloc_counter, "array object deallocation error, %ld != 0",
-             ary_alloc_counter);
 }
 
 /* *****************************************************************************
