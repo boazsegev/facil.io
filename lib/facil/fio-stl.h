@@ -366,9 +366,8 @@ For the full list of functions see: Dynamic Strings
 #define H_FIO_CSTL_INCLUDE_ONCE____H
 
 /* *****************************************************************************
-Consistent macros and included files
+Basic macros and included files
 ***************************************************************************** */
-
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -402,6 +401,10 @@ Consistent macros and included files
 #define H__FIO_UNIX_TOOLS_H 1
 #endif
 
+/* *****************************************************************************
+Version macros and Macro Stringifier
+***************************************************************************** */
+
 /* Automatically convert version data to a string constant - ignore these two */
 #ifndef FIO_MACRO2STR
 #define FIO_MACRO2STR_STEP2(macro) #macro
@@ -425,10 +428,42 @@ Consistent macros and included files
   "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(FIO_VERSION_PATCH)
 #endif
 
-/** Find the root object (of a struct) from it's field. */
-#define FIO_ROOT_FROM_FIELD(T_type, field, ptr)                                \
-  ((T_type *)((uintptr_t)(ptr) - (uintptr_t)(&((T_type *)0)->field)))
+/* *****************************************************************************
+Pointer Arithmatics
+***************************************************************************** */
 
+/** Add offset bytes to pointer, updating the pointer's type. */
+#define FIO_PTR_MATH_ADD(T_type, ptr, offset)                                  \
+  ((T_type *)((uintptr_t)(ptr) + (uintptr_t)(offset))
+
+/** Subtract X bytes from pointer, updating the pointer's type. */
+#define FIO_PTR_MATH_SUB(T_type, ptr, offset)                                  \
+  ((T_type *)((uintptr_t)(ptr) - (uintptr_t)(offset))
+
+/** Find the root object (of a struct) from it's field. */
+#define FIO_PTR_FROM_FIELD(T_type, field, ptr)                                 \
+  FIO_PTR_MATH_SUB(T_type, ptr, (&((T_type *)0)->field))
+
+/* *****************************************************************************
+Memory allocation macros
+***************************************************************************** */
+#ifndef FIO_MEM_CALLOC
+
+/** Allocates size X units of bytes, where all bytes equal zero. */
+#define FIO_MEM_CALLOC(size, units) calloc((size), (units))
+
+/** Reallocates memory, copying (at least) `copy_len` if neccessary. */
+#define FIO_MEM_REALLOC(ptr, old_size, new_size, copy_len)                     \
+  realloc((ptr), (new_size))
+
+/** Frees allocated memory. */
+#define FIO_MEM_FREE(ptr, size) free((ptr))
+
+#endif /* FIO_MEM_CALLOC */
+
+/* *****************************************************************************
+End persistent segment (end include-once guard)
+***************************************************************************** */
 #endif /* H_FIO_CSTL_INCLUDE_ONCE____H */
 
 /* *****************************************************************************
@@ -442,7 +477,7 @@ Consistent macros and included files
 
 
 
-                                Common Macros
+                          Common internal Macros
 
 
 
@@ -454,28 +489,6 @@ Consistent macros and included files
 
 
 ***************************************************************************** */
-
-/* *****************************************************************************
-Memory management macros
-***************************************************************************** */
-
-#ifndef FIO_MEM_CALLOC
-#define FIO_MEM_CALLOC(size, units) calloc((size), (units))
-#define FIO_MEM_REALLOC(ptr, old_size, new_size, copy_len)                     \
-  realloc((ptr), (new_size))
-#define FIO_MEM_FREE(ptr, size) free((ptr))
-#endif /* FIO_MEM_CALLOC */
-
-#if FIO_FORCE_MALLOC_TMP /* force malloc */
-#define FIO_MEM_CALLOC_(size, units) calloc((size), (units))
-#define FIO_MEM_REALLOC_(ptr, old_size, new_size, copy_len)                    \
-  realloc((ptr), (new_size))
-#define FIO_MEM_FREE_(ptr, size) free((ptr))
-#else
-#define FIO_MEM_CALLOC_ FIO_MEM_CALLOC
-#define FIO_MEM_REALLOC_ FIO_MEM_REALLOC
-#define FIO_MEM_FREE_ FIO_MEM_FREE
-#endif
 
 /* *****************************************************************************
 Common macros
@@ -505,6 +518,45 @@ C++ extern start
 extern "C" {
 /* C++ keyword was deprecated */
 #define register
+#endif
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+                                Common Macros
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/* *****************************************************************************
+Memory management macros
+***************************************************************************** */
+
+#if FIO_FORCE_MALLOC_TMP /* force malloc */
+#define FIO_MEM_CALLOC_(size, units) calloc((size), (units))
+#define FIO_MEM_REALLOC_(ptr, old_size, new_size, copy_len)                    \
+  realloc((ptr), (new_size))
+#define FIO_MEM_FREE_(ptr, size) free((ptr))
+#else
+#define FIO_MEM_CALLOC_ FIO_MEM_CALLOC
+#define FIO_MEM_REALLOC_ FIO_MEM_REALLOC
+#define FIO_MEM_FREE_ FIO_MEM_FREE
 #endif
 
 /* *****************************************************************************
@@ -1519,9 +1571,9 @@ IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, root)(FIO_LIST_HEAD *ptr);
 #ifndef FIO_LIST_EACH
 /** Loops through every node in the linked list except the head. */
 #define FIO_LIST_EACH(type, node_name, head, pos)                              \
-  for (type *pos = FIO_ROOT_FROM_FIELD(type, node_name, (head)->next);         \
-       pos != FIO_ROOT_FROM_FIELD(type, node_name, (head));                    \
-       pos = FIO_ROOT_FROM_FIELD(type, node_name, pos->node_name.next))
+  for (type *pos = FIO_PTR_FROM_FIELD(type, node_name, (head)->next);          \
+       pos != FIO_PTR_FROM_FIELD(type, node_name, (head));                     \
+       pos = FIO_PTR_FROM_FIELD(type, node_name, pos->node_name.next))
 #endif
 
 /* *****************************************************************************
@@ -1568,7 +1620,7 @@ IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, push)(FIO_LIST_HEAD *head,
 /** Pops a node from the end of the list. Returns NULL if list is empty. */
 IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, pop)(FIO_LIST_HEAD *head) {
   return FIO_NAME(FIO_LIST_NAME, remove)(
-      FIO_ROOT_FROM_FIELD(FIO_LIST_TYPE, FIO_LIST_NODE_NAME, head->prev));
+      FIO_PTR_FROM_FIELD(FIO_LIST_TYPE, FIO_LIST_NODE_NAME, head->prev));
 }
 
 /** Adds an existing node to the beginning of the list. Returns node. */
@@ -1580,12 +1632,12 @@ IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, unshift)(FIO_LIST_HEAD *head,
 /** Removed a node from the start of the list. Returns NULL if list is empty. */
 IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, shift)(FIO_LIST_HEAD *head) {
   return FIO_NAME(FIO_LIST_NAME, remove)(
-      FIO_ROOT_FROM_FIELD(FIO_LIST_TYPE, FIO_LIST_NODE_NAME, head->next));
+      FIO_PTR_FROM_FIELD(FIO_LIST_TYPE, FIO_LIST_NODE_NAME, head->next));
 }
 
 /** Removed a node from the start of the list. Returns NULL if list is empty. */
 IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, root)(FIO_LIST_HEAD *ptr) {
-  return FIO_ROOT_FROM_FIELD(FIO_LIST_TYPE, FIO_LIST_NODE_NAME, ptr);
+  return FIO_PTR_FROM_FIELD(FIO_LIST_TYPE, FIO_LIST_NODE_NAME, ptr);
 }
 
 /* *****************************************************************************
@@ -4753,7 +4805,7 @@ IFUNC FIO_REF_TYPE *FIO_NAME(FIO_REF_NAME, new2)(void) {
 /** Increases the reference count. */
 IFUNC FIO_REF_TYPE *FIO_NAME(FIO_REF_NAME, up_ref)(FIO_REF_TYPE *wrapped) {
   FIO_NAME(FIO_REF_NAME, _wrapper_s) *o =
-      FIO_ROOT_FROM_FIELD(FIO_NAME(FIO_REF_NAME, _wrapper_s), wrapped, wrapped);
+      FIO_PTR_FROM_FIELD(FIO_NAME(FIO_REF_NAME, _wrapper_s), wrapped, wrapped);
   fio_atomic_add(&o->ref, 1);
   return wrapped;
 }
@@ -4762,7 +4814,7 @@ IFUNC FIO_REF_TYPE *FIO_NAME(FIO_REF_NAME, up_ref)(FIO_REF_TYPE *wrapped) {
 /** Returns a pointer to the object's metadata, if defined. */
 IFUNC FIO_REF_METADATA *FIO_NAME(FIO_REF_NAME, metadata) {
   FIO_NAME(FIO_REF_NAME, s) *o =
-      FIO_ROOT_FROM_FIELD(FIO_NAME(FIO_REF_NAME, _wrapper_s), wrapped, wrapped);
+      FIO_PTR_FROM_FIELD(FIO_NAME(FIO_REF_NAME, _wrapper_s), wrapped, wrapped);
   return &o->metadata;
 }
 #endif
@@ -4770,7 +4822,7 @@ IFUNC FIO_REF_METADATA *FIO_NAME(FIO_REF_NAME, metadata) {
 /** Frees a reference counted object (or decreases the reference count). */
 IFUNC int FIO_NAME(FIO_REF_NAME, free2)(FIO_REF_TYPE *wrapped) {
   FIO_NAME(FIO_REF_NAME, _wrapper_s) *o =
-      FIO_ROOT_FROM_FIELD(FIO_NAME(FIO_REF_NAME, _wrapper_s), wrapped, wrapped);
+      FIO_PTR_FROM_FIELD(FIO_NAME(FIO_REF_NAME, _wrapper_s), wrapped, wrapped);
   if (fio_atomic_sub(&o->ref, 1))
     return 0;
   FIO_REF_DESTROY(o->wrapped);
@@ -5955,6 +6007,7 @@ Testing functiun
 TEST_FUNC void fio_test_dynamic_types(void) {
   fprintf(stderr, "===============\n");
   fprintf(stderr, "Testing Dynamic Types (" __FILE__ ")\n");
+  fprintf(stderr, "Version " FIO_VERSION_STRING "\n");
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___print_sizes();
   fprintf(stderr, "===============\n");
