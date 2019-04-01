@@ -25,9 +25,9 @@ Feel free to copy, use and enjoy according to the license provided.
 /* *****************************************************************************
 The SSL/TLS helper data types (can be left as is)
 ***************************************************************************** */
-#define FIO_INCLUDE_STR 1
+#define FIO_STR_NAME fio_str
 #define FIO_FORCE_MALLOC_TMP 1
-#include <fio.h>
+#include <fio-stl.h>
 
 typedef struct {
   fio_str_s private_key;
@@ -49,9 +49,9 @@ static inline void fio_tls_cert_copy(cert_s *dest, cert_s *src) {
   fio_str_concat(&dest->password, &src->password);
 }
 static inline void fio_tls_cert_destroy(cert_s *obj) {
-  fio_str_free(&obj->private_key);
-  fio_str_free(&obj->public_key);
-  fio_str_free(&obj->password);
+  fio_str_destroy(&obj->private_key);
+  fio_str_destroy(&obj->public_key);
+  fio_str_destroy(&obj->password);
 }
 
 #define FIO_ARY_NAME cert_ary
@@ -77,7 +77,7 @@ static inline void fio_tls_trust_copy(trust_s *dest, trust_s *src) {
   fio_str_concat(&dest->pem, &src->pem);
 }
 static inline void fio_tls_trust_destroy(trust_s *obj) {
-  fio_str_free(&obj->pem);
+  fio_str_destroy(&obj->pem);
 }
 
 #define FIO_ARY_NAME trust_ary
@@ -110,7 +110,7 @@ static inline void fio_alpn_copy(alpn_s *dest, alpn_s *src) {
 static inline void fio_alpn_destroy(alpn_s *obj) {
   if (obj->on_cleanup)
     obj->on_cleanup(obj->udata_tls);
-  fio_str_free(&obj->name);
+  fio_str_destroy(&obj->name);
 }
 
 #define FIO_SET_NAME alpn_list

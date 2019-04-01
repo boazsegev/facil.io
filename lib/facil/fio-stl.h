@@ -4073,8 +4073,7 @@ String Helpers
 #define FIO_STR_CAPA2WORDS(num) (((num) + 1) | (sizeof(long double) - 1))
 
 /* Note: FIO_MEM_FREE_ might be different for each FIO_STR_NAME */
-HSFUNC void FIO_NAME(FIO_STR_NAME, ____default_dealloc)(void *ptr,
-                                                        size_t size) {
+HSFUNC void FIO_NAME(FIO_STR_NAME, _default_dealloc)(void *ptr, size_t size) {
   FIO_MEM_FREE_(ptr, size);
   (void)ptr;  /* in case macro ignores value */
   (void)size; /* in case macro ignores value */
@@ -4137,7 +4136,7 @@ SFUNC char *FIO_NAME(FIO_STR_NAME, detach)(FIO_NAME(FIO_STR_NAME, s) * s) {
       memcpy(data, FIO_STR_SMALL_DATA(s), (FIO_STR_SMALL_LEN(s) + 1));
     }
   } else {
-    if (s->dealloc == FIO_NAME(FIO_STR_NAME, ____default_dealloc)) {
+    if (s->dealloc == FIO_NAME(FIO_STR_NAME, _default_dealloc)) {
       data = s->data;
       s->data = NULL;
     } else if (s->len) {
@@ -4331,7 +4330,7 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
     return (fio_str_info_s){.capa = s->capa, .len = s->len, .data = s->data};
   }
   amount = FIO_STR_CAPA2WORDS(amount);
-  if (s->dealloc == FIO_NAME(FIO_STR_NAME, ____default_dealloc)) {
+  if (s->dealloc == FIO_NAME(FIO_STR_NAME, _default_dealloc)) {
     tmp =
         (char *)FIO_MEM_REALLOC_(s->data, s->capa + 1, amount + 1, s->len + 1);
     if (!tmp)
@@ -4343,7 +4342,7 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
     memcpy(tmp, s->data, s->len + 1);
     if (s->dealloc)
       s->dealloc(s->data, s->capa + 1);
-    s->dealloc = FIO_NAME(FIO_STR_NAME, ____default_dealloc);
+    s->dealloc = FIO_NAME(FIO_STR_NAME, _default_dealloc);
   }
   s->capa = amount;
   s->data = tmp;
@@ -4365,7 +4364,7 @@ is_small:
   *s = (FIO_NAME(FIO_STR_NAME, s)){
       .capa = amount,
       .len = existing_len,
-      .dealloc = FIO_NAME(FIO_STR_NAME, ____default_dealloc),
+      .dealloc = FIO_NAME(FIO_STR_NAME, _default_dealloc),
       .data = tmp,
   };
   return (fio_str_info_s){.capa = amount, .len = existing_len, .data = s->data};
@@ -5372,7 +5371,7 @@ Common cleanup
 
 ***************************************************************************** */
 
-#if !defined(FIO_FIO_TEST_CSTL_ONLY_ONCE) && (defined(FIO_TEST_CSTL) || DEBUG)
+#if !defined(FIO_FIO_TEST_CSTL_ONLY_ONCE) && (defined(FIO_TEST_CSTL))
 #undef FIO_TEST_CSTL
 #define FIO_FIO_TEST_CSTL_ONLY_ONCE 1
 #define TEST_FUNC static __attribute__((unused))
@@ -5401,6 +5400,19 @@ String <=> Number - test
 
 #define FIO_ATOL
 #include __FILE__
+
+TEST_FUNC void fio___dynamic_types_test___atol(void) {
+  char buffer[1024];
+  for (int i = 0 - REPEAT; i < REPEAT; ++i) {
+    size_t tmp = fio_ltoa(buffer, i, 0);
+    TEST_ASSERT(tmp > 0, "fio_ltoa return slength error");
+    buffer[tmp] = 0;
+    char *tmp2 = buffer;
+    int i2 = fio_atol(&tmp2);
+    TEST_ASSERT(tmp2 > buffer, "fio_atol pointer motion error");
+    TEST_ASSERT(i == i2, "fio_ltoa-fio_atol roundtrip error");
+  }
+}
 
 /* *****************************************************************************
 Bit-Byte operations - test
@@ -6446,8 +6458,8 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
 Memory Allocation - test
 ***************************************************************************** */
 
-#define FIO_MALLOC
-#include __FILE__
+// #define FIO_MALLOC
+// #include __FILE__
 
 /* *****************************************************************************
 Environment printout

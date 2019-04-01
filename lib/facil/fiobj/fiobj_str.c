@@ -29,9 +29,8 @@ License: MIT
 #include <string.h>
 #include <sys/stat.h>
 
-#define FIO_INCLUDE_STR
-#define FIO_STR_NO_REF
-#include <fio.h>
+#define FIO_STR_NAME fio_str
+#include <fio-stl.h>
 
 #ifndef PATH_MAX
 #define PATH_MAX PAGE_SIZE
@@ -62,7 +61,7 @@ static fio_str_info_s fio_str2str(const FIOBJ o) {
 }
 
 static void fiobj_str_dealloc(FIOBJ o, void (*task)(FIOBJ, void *), void *arg) {
-  fio_str_free(&obj2str(o)->str);
+  fio_str_destroy(&obj2str(o)->str);
   fio_free(FIOBJ2PTR(o));
   (void)task;
   (void)arg;
@@ -123,7 +122,7 @@ FIOBJ fiobj_str_buf(size_t capa) {
       .str = FIO_STR_INIT,
   };
   if (capa) {
-    fio_str_capa_assert(&s->str, capa);
+    fio_str_reserve(&s->str, capa);
   }
   return ((uintptr_t)s | FIOBJECT_STRING_FLAG);
 }
@@ -149,6 +148,12 @@ FIOBJ fiobj_str_new(const char *str, size_t len) {
   return ((uintptr_t)s | FIOBJECT_STRING_FLAG);
 }
 
+/* Note: FIO_MEM_FREE_ might be different for each FIO_STR_NAME */
+static void fio_str_dealloc_with_fio_free(void *ptr, size_t size) {
+  fio_free(ptr);
+  (void)size; /* in case macro ignores value */
+}
+
 /**
  * Creates a String object. Remember to use `fiobj_free`.
  *
@@ -171,7 +176,8 @@ FIOBJ fiobj_str_move(char *str, size_t len, size_t capacity) {
               .ref = 1,
               .type = FIOBJ_T_STRING,
           },
-      .str = (fio_str_s)FIO_STR_INIT_EXISTING(str, len, capacity, fio_free),
+      .str = (fio_str_s)FIO_STR_INIT_EXISTING(str, len, capacity,
+                                              fio_str_dealloc_with_fio_free),
   };
   return ((uintptr_t)s | FIOBJECT_STRING_FLAG);
 }
@@ -187,10 +193,9 @@ FIOBJ fiobj_str_tmp(void) {
               .ref = ((~(uint32_t)0) >> 4),
               .type = FIOBJ_T_STRING,
           },
-      .str = {.small = 1},
+      .str = FIO_STR_INIT,
   };
-  tmp.str.frozen = 0;
-  fio_str_resize(&tmp.str, 0);
+  fio_str_destroy(&tmp.str);
   return ((uintptr_t)&tmp | FIOBJECT_STRING_FLAG);
 }
 
@@ -204,9 +209,9 @@ void fiobj_str_freeze(FIOBJ str) {
 size_t fiobj_str_capa_assert(FIOBJ str, size_t size) {
 
   assert(FIOBJ_TYPE_IS(str, FIOBJ_T_STRING));
-  if (obj2str(str)->str.frozen)
+  if (fio_str_is_frozen(&obj2str(str)->str))
     return 0;
-  fio_str_info_s state = fio_str_capa_assert(&obj2str(str)->str, size);
+  fio_str_info_s state = fio_str_reserve(&obj2str(str)->str, size);
   return state.capa;
 }
 
@@ -244,7 +249,7 @@ void fiobj_str_clear(FIOBJ str) {
  */
 size_t fiobj_str_write(FIOBJ dest, const char *data, size_t len) {
   assert(FIOBJ_TYPE_IS(dest, FIOBJ_T_STRING));
-  if (obj2str(dest)->str.frozen)
+  if (fio_str_is_frozen(&obj2str(dest)->str))
     return 0;
   obj2str(dest)->hash = 0;
   return fio_str_write(&obj2str(dest)->str, data, len).len;
@@ -257,7 +262,7 @@ size_t fiobj_str_write(FIOBJ dest, const char *data, size_t len) {
  */
 size_t fiobj_str_write_i(FIOBJ dest, int64_t num) {
   assert(FIOBJ_TYPE_IS(dest, FIOBJ_T_STRING));
-  if (obj2str(dest)->str.frozen)
+  if (fio_str_is_frozen(&obj2str(dest)->str))
     return 0;
   obj2str(dest)->hash = 0;
   return fio_str_write_i(&obj2str(dest)->str, num).len;
@@ -269,7 +274,7 @@ size_t fiobj_str_write_i(FIOBJ dest, int64_t num) {
  */
 size_t fiobj_str_printf(FIOBJ dest, const char *format, ...) {
   assert(FIOBJ_TYPE_IS(dest, FIOBJ_T_STRING));
-  if (obj2str(dest)->str.frozen)
+  if (fio_str_is_frozen(&obj2str(dest)->str))
     return 0;
   obj2str(dest)->hash = 0;
   va_list argv;
@@ -281,7 +286,7 @@ size_t fiobj_str_printf(FIOBJ dest, const char *format, ...) {
 
 size_t fiobj_str_vprintf(FIOBJ dest, const char *format, va_list argv) {
   assert(FIOBJ_TYPE_IS(dest, FIOBJ_T_STRING));
-  if (obj2str(dest)->str.frozen)
+  if (fio_str_is_frozen(&obj2str(dest)->str))
     return 0;
   obj2str(dest)->hash = 0;
   fio_str_info_s state = fio_str_vprintf(&obj2str(dest)->str, format, argv);
@@ -309,7 +314,7 @@ size_t fiobj_str_readfile(FIOBJ dest, const char *filename, intptr_t start_at,
  */
 size_t fiobj_str_concat(FIOBJ dest, FIOBJ obj) {
   assert(FIOBJ_TYPE_IS(dest, FIOBJ_T_STRING));
-  if (obj2str(dest)->str.frozen)
+  if (fio_str_is_frozen(&obj2str(dest)->str))
     return 0;
   obj2str(dest)->hash = 0;
   fio_str_info_s o = fiobj_obj2cstr(obj);
@@ -340,9 +345,7 @@ Tests
 
 #if DEBUG
 void fiobj_test_string(void) {
-  fprintf(stderr, "=== Testing Strings\n");
-  fprintf(stderr, "* Internal String Capacity %u \n",
-          (unsigned int)FIO_STR_SMALL_CAPA);
+  fprintf(stderr, "=== Testing Strings (FIOBJ)\n");
 #define TEST_ASSERT(cond, ...)                                                 \
   if (!(cond)) {                                                               \
     fprintf(stderr, "* " __VA_ARGS__);                                         \
@@ -355,31 +358,25 @@ void fiobj_test_string(void) {
               "String not equal to " str)
   FIOBJ o = fiobj_str_new("Hello", 5);
   TEST_ASSERT(FIOBJ_TYPE_IS(o, FIOBJ_T_STRING), "Small String isn't string!\n");
-  TEST_ASSERT(obj2str(o)->str.small, "Hello isn't small\n");
   fiobj_str_write(o, " World", 6);
   TEST_ASSERT(FIOBJ_TYPE_IS(o, FIOBJ_T_STRING),
               "Hello World String isn't string!\n");
-  TEST_ASSERT(obj2str(o)->str.small, "Hello World isn't small\n");
   TEST_ASSERT(fiobj_obj2cstr(o).len == 11,
               "Invalid small string length (%u != 11)!\n",
               (unsigned int)fiobj_obj2cstr(o).len)
-  fiobj_str_write(o, " World, you crazy longer sleep loving person :-)", 48);
-  TEST_ASSERT(!obj2str(o)->str.small, "Crazier shouldn't be small\n");
   fiobj_free(o);
 
   o = fiobj_str_new(
       "hello my dear friend, I hope that your are well and happy.", 58);
   TEST_ASSERT(FIOBJ_TYPE_IS(o, FIOBJ_T_STRING), "Long String isn't string!\n");
-  TEST_ASSERT(!obj2str(o)->str.small,
-              "Long String is small! (capa: %lu, len: %lu)\n",
-              fio_str_capa(&obj2str(o)->str), fio_str_len(&obj2str(o)->str));
   TEST_ASSERT(fiobj_obj2cstr(o).len == 58,
               "Invalid long string length (%lu != 58)!\n",
               fiobj_obj2cstr(o).len)
   uint64_t hash = fiobj_str_hash(o);
-  TEST_ASSERT(!obj2str(o)->str.frozen, "String forzen when only hashing!\n");
+  TEST_ASSERT(!fio_str_is_frozen(&obj2str(o)->str),
+              "String forzen when only hashing!\n");
   fiobj_str_freeze(o);
-  TEST_ASSERT(obj2str(o)->str.frozen, "String not forzen!\n");
+  TEST_ASSERT(fio_str_is_frozen(&obj2str(o)->str), "String not forzen!\n");
   fiobj_str_write(o, " World", 6);
   TEST_ASSERT(hash == fiobj_str_hash(o),
               "String hash changed after hashing - not frozen?\n");

@@ -4,8 +4,9 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#define FIO_INCLUDE_STR
 #include <fio.h>
+#define FIO_STR_NAME fio_str
+#include <fio-stl.h>
 
 /* subscription lists have a long lifetime */
 #define FIO_FORCE_MALLOC_TMP 1

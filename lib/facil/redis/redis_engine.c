@@ -6,9 +6,10 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 
 #define FIO_INCLUDE_LINKED_LIST
-#define FIO_INCLUDE_STR
-// #define DEBUG 1
 #include <fio.h>
+#define FIO_STR_NAME fio_str
+#define FIO_REF_NAME fio_str
+#include <fio-stl.h>
 
 #include <fiobj.h>
 
@@ -615,7 +616,7 @@ static void redis_on_unsubscribe_root(const fio_pubsub_engine_s *eng,
   redis_engine_s *r = (redis_engine_s *)eng;
   if (r->sub_data.uuid != -1) {
     fio_str_s *cmd = fio_str_new2();
-    fio_str_capa_assert(cmd, 96 + channel.len);
+    fio_str_reserve(cmd, 96 + channel.len);
     if (match == FIO_MATCH_GLOB)
       fio_str_write(cmd, "*2\r\n$12\r\nPUNSUBSCRIBE\r\n$", 24);
     else
@@ -629,7 +630,11 @@ static void redis_on_unsubscribe_root(const fio_pubsub_engine_s *eng,
     //   fprintf(stderr, "(%d) Cancel Subscription (%p):\n%s\n", getpid(),
     //           (void *)r->sub_data.uuid, s.data);
     // }
-    fio_str_send_free2(r->sub_data.uuid, cmd);
+    fio_write2(r->sub_data.uuid, .data.buffer = (char *)cmd,
+               .offset = ((char *)cmd - fio_str_data(cmd)),
+               .length = fio_str_len(cmd),
+               .after.dealloc = (void (*)(void *))fio_str_free2);
+    // fio_str_send_free2(r->sub_data.uuid, cmd);
   }
 }
 
@@ -689,7 +694,7 @@ static void redis_on_publish_child(const fio_pubsub_engine_s *eng,
   /* forward publication request to Root */
   fio_publish(.filter = -1, .channel = tmp_info, .message = msg,
               .engine = FIO_PUBSUB_ROOT, .is_json = is_json);
-  fio_str_free(&tmp);
+  fio_str_destroy(&tmp);
   (void)eng;
 }
 
@@ -795,7 +800,7 @@ intptr_t redis_engine_send(fio_pubsub_engine_s *engine, FIOBJ command,
   FIOBJ cmd = fiobj2resp_tmp(command);
   fio_publish(.filter = -2, .channel = ti, .message = fiobj_obj2cstr(cmd),
               .engine = FIO_PUBSUB_ROOT, .is_json = 0);
-  fio_str_free(&tmp);
+  fio_str_destroy(&tmp);
   // }
   return 0;
 }
