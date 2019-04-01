@@ -134,9 +134,7 @@ Import STL
  * define the fio_atol, fio_atof, fio_ltoa and fio_ftoa helpers.
  */
 #define FIO_ATOL 1
-#define FIO_ATOF 1
-#define FIO_LTOA 1
-#define FIO_FTOA 1
+#define FIO_RAND 1
 #define FIO_EXTERN_API_ONLY 1
 #include "fio-stl.h"
 
@@ -1996,110 +1994,6 @@ FIO_FUNC inline void fio_reschedule_thread(void);
 
 /** Nanosleep the thread - a blocking throttle. */
 FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
-
-/* *****************************************************************************
-
-
-
-
-
-
-
-
-
-
-                       Converting Numbers to Strings (and back)
-
-
-
-
-
-
-
-
-
-
-
-***************************************************************************** */
-
-/* *****************************************************************************
-Strings to Numbers
-***************************************************************************** */
-
-/**
- * A helper function that converts between String data to a signed int64_t.
- *
- * Numbers are assumed to be in base 10. Octal (`0###`), Hex (`0x##`/`x##`) and
- * binary (`0b##`/ `b##`) are recognized as well. For binary Most Significant
- * Bit must come first.
- *
- * The most significant difference between this function and `strtol` (aside of
- * API design), is the added support for binary representations.
- */
-int64_t fio_atol(char **pstr);
-
-/** A helper function that converts between String data to a signed double. */
-double fio_atof(char **pstr);
-
-/* *****************************************************************************
-Numbers to Strings
-***************************************************************************** */
-
-/**
- * A helper function that writes a signed int64_t to a string.
- *
- * No overflow guard is provided, make sure there's at least 68 bytes
- * available (for base 2).
- *
- * Offers special support for base 2 (binary), base 8 (octal), base 10 and base
- * 16 (hex). An unsupported base will silently default to base 10. Prefixes
- * aren't added (i.e., no "0x" or "0b" at the beginning of the string).
- *
- * Returns the number of bytes actually written (excluding the NUL
- * terminator).
- */
-size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
-
-/**
- * A helper function that converts between a double to a string.
- *
- * No overflow guard is provided, make sure there's at least 130 bytes
- * available (for base 2).
- *
- * Supports base 2, base 10 and base 16. An unsupported base will silently
- * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
- * beginning of the string).
- *
- * Returns the number of bytes actually written (excluding the NUL
- * terminator).
- */
-size_t fio_ftoa(char *dest, double num, uint8_t base);
-
-/* *****************************************************************************
-
-
-
-
-
-
-
-                      Random Generator Functions
-
-                  Probably not cryptographically safe
-
-
-
-
-
-
-
-***************************************************************************** */
-
-/** Returns 64 psedo-random bits. Probably not cryptographically safe. */
-uint64_t fio_rand64(void);
-
-/** Writes `length` bytes of psedo-random bits to the target buffer. */
-void fio_rand_bytes(void *target, size_t length);
 
 /* *****************************************************************************
 

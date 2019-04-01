@@ -8,9 +8,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <fio.h>
 
 #define FIO_ATOL 1
-#define FIO_ATOF 1
-#define FIO_LTOA 1
-#define FIO_FTOA 1
+#define FIO_RAND 1
 #define FIO_EXTERN 1
 #include "fio-stl.h"
 
@@ -7045,110 +7043,6 @@ void *realloc(void *ptr, size_t new_size) { return fio_realloc(ptr, new_size); }
 #endif
 
 #endif
-
-/* *****************************************************************************
-
-
-
-
-
-
-
-                      Random Generator Functions
-
-
-
-
-
-
-
-***************************************************************************** */
-
-/* tested for randomness using code from: http://xoshiro.di.unimi.it/hwd.php */
-uint64_t fio_rand64(void) {
-  /* modeled after xoroshiro128+, by David Blackman and Sebastiano Vigna */
-  static __thread uint64_t s[2]; /* random state */
-  static __thread uint16_t c;    /* seed counter */
-  const uint64_t P[] = {0x37701261ED6C16C7ULL, 0x764DBBB75F3B3E0DULL};
-  if (c++ == 0) {
-    /* re-seed state every 65,536 requests */
-#ifdef RUSAGE_SELF
-    struct rusage rusage;
-    getrusage(RUSAGE_SELF, &rusage);
-    s[0] = fio_risky_hash(&rusage, sizeof(rusage), s[0]);
-    s[1] = fio_risky_hash(&rusage, sizeof(rusage), s[0]);
-#else
-    struct timespec clk;
-    clock_gettime(CLOCK_REALTIME, &clk);
-    s[0] = fio_risky_hash(&clk, sizeof(clk), s[0]);
-    s[1] = fio_risky_hash(&clk, sizeof(clk), s[0]);
-#endif
-  }
-  s[0] += fio_lrot64(s[0], 33) * P[0];
-  s[1] += fio_lrot64(s[1], 33) * P[1];
-  return fio_lrot64(s[0], 31) + fio_lrot64(s[1], 29);
-}
-
-/* copies 64 bits of randomness (8 bytes) repeatedly... */
-void fio_rand_bytes(void *data_, size_t len) {
-  if (!data_ || !len)
-    return;
-  uint8_t *data = data_;
-  /* unroll 32 bytes / 256 bit writes */
-  for (size_t i = (len >> 5); i; --i) {
-    const uint64_t t0 = fio_rand64();
-    const uint64_t t1 = fio_rand64();
-    const uint64_t t2 = fio_rand64();
-    const uint64_t t3 = fio_rand64();
-    fio_u2str64(data, t0);
-    fio_u2str64(data + 8, t1);
-    fio_u2str64(data + 16, t2);
-    fio_u2str64(data + 24, t3);
-    data += 32;
-  }
-  uint64_t tmp;
-  /* 64 bit steps  */
-  switch (len & 24) {
-  case 24:
-    tmp = fio_rand64();
-    fio_u2str64(data + 16, tmp);
-    /* fallthrough */
-  case 16:
-    tmp = fio_rand64();
-    fio_u2str64(data + 8, tmp);
-    /* fallthrough */
-  case 8:
-    tmp = fio_rand64();
-    fio_u2str64(data, tmp);
-    data += len & 24;
-  }
-  if ((len & 7)) {
-    tmp = fio_rand64();
-    /* leftover bytes */
-    switch ((len & 7)) {
-    case 7:
-      data[6] = (tmp >> 8) & 0xFF;
-      /* fallthrough */
-    case 6:
-      data[5] = (tmp >> 16) & 0xFF;
-      /* fallthrough */
-    case 5:
-      data[4] = (tmp >> 24) & 0xFF;
-      /* fallthrough */
-    case 4:
-      data[3] = (tmp >> 32) & 0xFF;
-      /* fallthrough */
-    case 3:
-      data[2] = (tmp >> 40) & 0xFF;
-      /* fallthrough */
-    case 2:
-      data[1] = (tmp >> 48) & 0xFF;
-      /* fallthrough */
-    case 1:
-      data[0] = (tmp >> 56) & 0xFF;
-    }
-  }
-}
 
 /* *****************************************************************************
 Section Start Marker

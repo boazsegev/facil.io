@@ -19,6 +19,8 @@ This file contains macros that create generic / common core types, such as:
 
 * Binary Safe Dynamic Strings - defined by `FIO_STR_NAME`
 
+* Reference counting / Type wrapper - defined by `FIO_REF_NAME` (adds atomic)
+
 
 This file also contains common helper macros / primitives, such as:
 
@@ -28,10 +30,11 @@ This file also contains common helper macros / primitives, such as:
 
 * Bit-Byte Operations - defined by `FIO_BITWISE` (adds atomic)
 
-* Reference counting / Type wrapper - defined by `FIO_REF_NAME` (adds atomic)
-
 * Data Hashing (using Risky Hash) - defined by `FIO_RISKY_HASH`
 
+* Psedo Random Generation - defined by `FIO_RAND`
+
+* String / Number conversion - defined by `FIO_ATOL`
 
 However, this file does very little (if anything) unless specifically requested.
 
@@ -152,54 +155,6 @@ defined:
 
 -------------------------------------------------------------------------------
 
-## Reference Counting / Type Wrapping
-
-If the `FIO_REF_NAME` macro is defined, then referece counting helpers can be
-defined for any named type.
-
-By default, `FIO_REF_TYPE` will equal `FIO_REF_NAME_s`, using the naming
-convention in this library.
-
-In addition, the `FIO_REF_METADATA` macro can be defined with any type, allowing
-metadata to be attached and accessed using the helper function
-`FIO_REF_metadata(object)`.
-
-Note: requires the atomic operations to be defined (`FIO_ATOMIC`).
-
-Reference counting adds the following functions:
-
-#### `FIO_REF_TYPE * FIO_REF_NAME_new2(void)`
-
-Allocates a new reference counted object, initializing it using the
-`FIO_REF_INIT(object)` macro.
-
-If `FIO_REF_METADATA` is defined, than the metadata is initialized using the
-`FIO_REF_METADATA_INIT(metadata)` macro.
-
-#### `FIO_REF_TYPE * FIO_REF_NAME_up_ref(FIO_REF_TYPE * object)`
-
-Increases an object's reference count (an atomic operation, thread-safe).
-
-#### `FIO_REF_NAME_free2(FIO_REF_TYPE * object)`
-
-Frees an object or decreses it's reference count (an atomic operation,
-thread-safe).
-
-Before the object is freed, the `FIO_REF_DESTROY(object)` macro will be called.
-
-If `FIO_REF_METADATA` is defined, than the metadata is also destoryed using the
-`FIO_REF_METADATA_DESTROY(metadata)` macro.
-
-
-#### `FIO_REF_METADATA * FIO_REF_NAME_metadata(FIO_REF_TYPE * object)`
-
-If `FIO_REF_METADATA` is defined, than the metadata is accessible using this
-inlined function.
-
-
--------------------------------------------------------------------------------
-
-
 ## Risky Hash (data hashing:
 
 If the `FIO_RISKY_HASH` macro is defined than the following static function will
@@ -209,6 +164,71 @@ be defined:
 
 This function will produce a 64 bit hash for X bytes of data.
 
+-------------------------------------------------------------------------------
+
+## Psedo Random Generation
+
+If the `FIO_RAND` macro is defined, the following, non-cryptographic
+psedo-random generator functions will be defined.
+
+Note that the random generator functions are automatically re-seeded with either
+data from the systems clock or data from `getrusage` (on unix systems).
+
+#### `uint64_t fio_rand64(void)`
+
+Returns 64 random bits.
+
+#### `void fio_rand_bytes(void *data_, size_t len)`
+
+Writes `len` random Bytes to the buffer pointed to by `data`.
+
+-------------------------------------------------------------------------------
+
+* String / Number conversion
+
+If the `FIO_ATOL` macro is defined, the following functions will be defined:
+
+#### `SFUNC int64_t fio_atol(char **pstr)`
+
+A helper function that converts between String data to a signed int64_t.
+
+Numbers are assumed to be in base 10. Octal (`0###`), Hex (`0x##`/`x##`) and
+binary (`0b##`/ `b##`) are recognized as well. For binary Most Significant Bit
+must come first.
+
+The most significant difference between this function and `strtol` (aside of API
+design), is the added support for binary representations.
+
+#### `SFUNC double fio_atof(char **pstr)`
+
+A helper function that converts between String data to a signed double.
+
+#### `SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base)`
+
+A helper function that writes a signed int64_t to a string.
+
+No overflow guard is provided, make sure there's at least 68 bytes available
+(for base 2).
+
+Offers special support for base 2 (binary), base 8 (octal), base 10 and base 16
+(hex). An unsupported base will silently default to base 10. Prefixes are
+automatically added (i.e., "0x" for hex and "0b" for base 2).
+
+Returns the number of bytes actually written (excluding the NUL terminator).
+
+
+#### `size_t fio_ftoa(char *dest, double num, uint8_t base)`
+
+A helper function that converts between a double to a string.
+
+No overflow guard is provided, make sure there's at least 130 bytes available
+(for base 2).
+
+Supports base 2, base 10 and base 16. An unsupported base will silently default
+to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the beginning of the
+string).
+
+Returns the number of bytes actually written (excluding the NUL terminator).
 
 -------------------------------------------------------------------------------
 
@@ -337,6 +357,53 @@ The type (`FIO_STR_NAME_s`) and the functions will be automatically defined.
 
 For the full list of functions see: Dynamic Strings
 
+-------------------------------------------------------------------------------
+
+## Reference Counting / Type Wrapping
+
+If the `FIO_REF_NAME` macro is defined, then referece counting helpers can be
+defined for any named type.
+
+By default, `FIO_REF_TYPE` will equal `FIO_REF_NAME_s`, using the naming
+convention in this library.
+
+In addition, the `FIO_REF_METADATA` macro can be defined with any type, allowing
+metadata to be attached and accessed using the helper function
+`FIO_REF_metadata(object)`.
+
+Note: requires the atomic operations to be defined (`FIO_ATOMIC`).
+
+Reference counting adds the following functions:
+
+#### `FIO_REF_TYPE * FIO_REF_NAME_new2(void)`
+
+Allocates a new reference counted object, initializing it using the
+`FIO_REF_INIT(object)` macro.
+
+If `FIO_REF_METADATA` is defined, than the metadata is initialized using the
+`FIO_REF_METADATA_INIT(metadata)` macro.
+
+#### `FIO_REF_TYPE * FIO_REF_NAME_up_ref(FIO_REF_TYPE * object)`
+
+Increases an object's reference count (an atomic operation, thread-safe).
+
+#### `FIO_REF_NAME_free2(FIO_REF_TYPE * object)`
+
+Frees an object or decreses it's reference count (an atomic operation,
+thread-safe).
+
+Before the object is freed, the `FIO_REF_DESTROY(object)` macro will be called.
+
+If `FIO_REF_METADATA` is defined, than the metadata is also destoryed using the
+`FIO_REF_METADATA_DESTROY(metadata)` macro.
+
+
+#### `FIO_REF_METADATA * FIO_REF_NAME_metadata(FIO_REF_TYPE * object)`
+
+If `FIO_REF_METADATA` is defined, than the metadata is accessible using this
+inlined function.
+
+
 ***************************************************************************** */
 
 /* *****************************************************************************
@@ -432,13 +499,17 @@ Version macros and Macro Stringifier
 Pointer Arithmatics
 ***************************************************************************** */
 
+/** Masks a pointer's left-most bits. */
+#define FIO_PTR_MATH_MASK(T_type, ptr, bits)                                   \
+  ((T_type *)((uintptr_t)(ptr) & (((uintptr_t)1 << (bits)) - 1)))
+
 /** Add offset bytes to pointer, updating the pointer's type. */
 #define FIO_PTR_MATH_ADD(T_type, ptr, offset)                                  \
-  ((T_type *)((uintptr_t)(ptr) + (uintptr_t)(offset))
+  ((T_type *)((uintptr_t)(ptr) + (uintptr_t)(offset)))
 
 /** Subtract X bytes from pointer, updating the pointer's type. */
 #define FIO_PTR_MATH_SUB(T_type, ptr, offset)                                  \
-  ((T_type *)((uintptr_t)(ptr) - (uintptr_t)(offset))
+  ((T_type *)((uintptr_t)(ptr) - (uintptr_t)(offset)))
 
 /** Find the root object (of a struct) from it's field. */
 #define FIO_PTR_FROM_FIELD(T_type, field, ptr)                                 \
@@ -452,14 +523,31 @@ Memory allocation macros
 /** Allocates size X units of bytes, where all bytes equal zero. */
 #define FIO_MEM_CALLOC(size, units) calloc((size), (units))
 
+#undef FIO_MEM_REALLOC
 /** Reallocates memory, copying (at least) `copy_len` if neccessary. */
 #define FIO_MEM_REALLOC(ptr, old_size, new_size, copy_len)                     \
   realloc((ptr), (new_size))
 
+#undef FIO_MEM_FREE
 /** Frees allocated memory. */
 #define FIO_MEM_FREE(ptr, size) free((ptr))
 
 #endif /* FIO_MEM_CALLOC */
+
+/* *****************************************************************************
+Linked Lists Persistent Macros and Types
+***************************************************************************** */
+
+/** A common linked list node type. */
+typedef struct fio___list_node_s {
+  struct fio___list_node_s *next;
+  struct fio___list_node_s *prev;
+} fio___list_node_s;
+
+/** A linked list node type */
+#define FIO_LIST_NODE fio___list_node_s
+/** A linked list head type */
+#define FIO_LIST_HEAD fio___list_node_s
 
 /* *****************************************************************************
 End persistent segment (end include-once guard)
@@ -531,7 +619,271 @@ extern "C" {
 
 
 
-                                Common Macros
+                                Memory Allocation
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if defined(FIO_MALLOC) && !defined(H__FIO_MALLOC_H)
+
+/* *****************************************************************************
+Memory Allocation - API
+***************************************************************************** */
+
+/* *****************************************************************************
+Memory Allocation - redefine default allocation macros
+***************************************************************************** */
+#undef FIO_MEM_CALLOC
+/** Allocates size X units of bytes, where all bytes equal zero. */
+#define FIO_MEM_CALLOC(size, units) fio_calloc((size), (units))
+
+#undef FIO_MEM_REALLOC
+/** Reallocates memory, copying (at least) `copy_len` if neccessary. */
+#define FIO_MEM_REALLOC(ptr, old_size, new_size, copy_len)                     \
+  fio_realloc2((ptr), (new_size), (copy_len))
+
+#undef FIO_MEM_FREE
+/** Frees allocated memory. */
+#define FIO_MEM_FREE(ptr, size) fio_free((ptr))
+
+/* *****************************************************************************
+Memory Allocation - Implementation
+***************************************************************************** */
+#if !FIO_EXTERN_API_ONLY
+#define H__FIO_MALLOC_H
+
+/* *****************************************************************************
+Aligned memory copying
+***************************************************************************** */
+#define FIO_MEMCOPY_HFUNC_ALIGNED(type, size)                                  \
+  HFUNC void fio____memcpy_##size##b(void *dest_, void *src_, size_t units) {  \
+    type *dest = (type *)dest_;                                                \
+    type *src = (type *)src_;                                                  \
+    while (units >= 16) {                                                      \
+      dest[0] = src[0];                                                        \
+      dest[1] = src[1];                                                        \
+      dest[2] = src[2];                                                        \
+      dest[3] = src[3];                                                        \
+      dest[4] = src[4];                                                        \
+      dest[5] = src[5];                                                        \
+      dest[6] = src[6];                                                        \
+      dest[7] = src[7];                                                        \
+      dest[8] = src[8];                                                        \
+      dest[9] = src[9];                                                        \
+      dest[10] = src[10];                                                      \
+      dest[11] = src[11];                                                      \
+      dest[12] = src[12];                                                      \
+      dest[13] = src[13];                                                      \
+      dest[14] = src[14];                                                      \
+      dest[15] = src[15];                                                      \
+      dest += 16;                                                              \
+      src += 16;                                                               \
+      units -= 16;                                                             \
+    }                                                                          \
+    switch (units) {                                                           \
+    case 15:                                                                   \
+      *(dest++) = *(src++); /* fallthrough */                                  \
+    case 14:                                                                   \
+      *(dest++) = *(src++); /* fallthrough */                                  \
+    case 13:                                                                   \
+      *(dest++) = *(src++); /* fallthrough */                                  \
+    case 12:                                                                   \
+      *(dest++) = *(src++); /* fallthrough */                                  \
+    case 11:                                                                   \
+      *(dest++) = *(src++); /* fallthrough */                                  \
+    case 10:                                                                   \
+      *(dest++) = *(src++); /* fallthrough */                                  \
+    case 9:                                                                    \
+      *(dest++) = *(src++); /* fallthrough */                                  \
+    case 8:                                                                    \
+      *(dest++) = *(src++); /* fallthrough */                                  \
+    case 7:                                                                    \
+      *(dest++) = *(src++); /* fallthrough */                                  \
+    case 6:                                                                    \
+      *(dest++) = *(src++); /* fallthrough */                                  \
+    case 5:                                                                    \
+      *(dest++) = *(src++); /* fallthrough */                                  \
+    case 4:                                                                    \
+      *(dest++) = *(src++); /* fallthrough */                                  \
+    case 3:                                                                    \
+      *(dest++) = *(src++); /* fallthrough */                                  \
+    case 2:                                                                    \
+      *(dest++) = *(src++); /* fallthrough */                                  \
+    case 1:                                                                    \
+      *(dest++) = *(src++);                                                    \
+    }                                                                          \
+  }
+FIO_MEMCOPY_HFUNC_ALIGNED(uint16_t, 2)
+FIO_MEMCOPY_HFUNC_ALIGNED(uint32_t, 4)
+FIO_MEMCOPY_HFUNC_ALIGNED(uint64_t, 8)
+
+/** Copies 16 byte `units` of size_t aligned memory blocks */
+HFUNC void fio____memcpy_16byte(void *dest_, void *src_, size_t units) {
+#if SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
+  fio____memcpy_8b(dest_, src_, units << 1);
+#elif SIZE_MAX == 0xFFFFFFFF /* 32 bit size_t */
+  fio____memcpy_4b(dest_, src_, units << 2);
+#else                        /* unknown... assume 16 bit? */
+  fio____memcpy_2b(dest_, src_, units << 3);
+#endif
+}
+/* *****************************************************************************
+Big memory allocation macros and helpers (page allocation / mmap)
+***************************************************************************** */
+#ifndef FIO_MEM_PAGE_ALLOC
+
+#ifndef FIO_MEM_PAGE_SIZE_LOG
+#define FIO_MEM_PAGE_SIZE_LOG 12 /* 4096 bytes per page */
+#endif
+
+#if H__FIO_UNIX_TOOLS_H || __has_include("sys/mman.h")
+#include <sys/mman.h>
+
+/*
+ * allocates memory using `mmap`, but enforces alignment.
+ */
+HSFUNC void *FIO_MEM_PAGE_ALLOC_def_func(size_t len, uint8_t alignment_log) {
+  void *result;
+  static void *next_alloc = (void *)0x01;
+  const size_t alignment_mask = (1ULL << alignment_log) - 1;
+  const size_t alignment_size = (1ULL << alignment_log) - 1;
+  next_alloc =
+      (void *)(((uintptr_t)next_alloc + alignment_mask) & alignment_mask);
+/* hope for the best? */
+#ifdef MAP_ALIGNED
+  result =
+      mmap(next_alloc, len, PROT_READ | PROT_WRITE,
+           MAP_PRIVATE | MAP_ANONYMOUS | MAP_ALIGNED(alignment_log), -1, 0);
+#else
+  result = mmap(next_alloc, len, PROT_READ | PROT_WRITE,
+                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+#endif
+  if (result == MAP_FAILED)
+    return NULL;
+  if (((uintptr_t)result & alignment_mask)) {
+    munmap(result, len);
+    result = mmap(NULL, len + alignment_size, PROT_READ | PROT_WRITE,
+                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (result == MAP_FAILED) {
+      return NULL;
+    }
+    const uintptr_t offset =
+        (alignment_size - ((uintptr_t)result & alignment_mask));
+    if (offset) {
+      munmap(result, offset);
+      result = (void *)((uintptr_t)result + offset);
+    }
+    munmap((void *)((uintptr_t)result + len), alignment_size - offset);
+  }
+  next_alloc = (void *)((uintptr_t)result + (len << 2));
+  return result;
+}
+
+/*
+ * Re-allocates memory using `mmap`, enforcing alignment.
+ */
+HSFUNC void *FIO_MEM_PAGE_REALLOC_def_func(void *mem, size_t prev_pages,
+                                           size_t new_pages,
+                                           uint8_t alignment_log) {
+  const size_t prev_len = prev_pages << 12;
+  const size_t new_len = new_pages << 12;
+  if (new_len > prev_len) {
+    void *result;
+#if defined(__linux__)
+    result = mremap(mem, prev_len, new_len, 0);
+    if (result != MAP_FAILED)
+      return result;
+#endif
+    result = mmap((void *)((uintptr_t)mem + prev_len), new_len - prev_len,
+                  PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (result == (void *)((uintptr_t)mem + prev_len)) {
+      result = mem;
+    } else {
+      /* copy and free */
+      munmap(result, new_len - prev_len); /* free the failed attempt */
+      result = FIO_MEM_PAGE_ALLOC_def_func(
+          new_len, alignment_log); /* allocate new memory */
+      if (!result) {
+        return NULL;
+      }
+      fio____memcpy_16byte(result, mem, prev_len >> 4); /* copy data */
+      // memcpy(result, mem, prev_len);
+      munmap(mem, prev_len); /* free original memory */
+    }
+    return result;
+  }
+  if (new_len + 4096 < prev_len) /* more than a single dangling page */
+    munmap((void *)((uintptr_t)mem + new_len), prev_len - new_len);
+  return mem;
+}
+
+/* frees memory using `munmap`. */
+HFUNC void FIO_MEM_PAGE_FREE_def_func(void *mem, size_t pages) {
+  munmap(mem, (pages << 12));
+}
+
+#else
+
+HFUNC void *FIO_MEM_PAGE_ALLOC_def_func(size_t pages, uint8_t alignment_log) {
+  // return aligned_alloc((pages << 12), (1UL << alignment_log));
+  exit(-1);
+  (void)pages;
+  (void)alignment_log;
+}
+
+HFUNC void *FIO_MEM_PAGE_REALLOC_def_func(void *mem, size_t prev_pages,
+                                          size_t new_pages,
+                                          uint8_t alignment_log) {
+  (void)prev_pages;
+  (void)alignment_log;
+  return realloc(mem, (new_pages << 12));
+}
+
+HFUNC void FIO_MEM_PAGE_FREE_def_func(void *mem, size_t pages) {
+  free(mem);
+  (void)pages;
+}
+
+#endif
+
+#define FIO_MEM_PAGE_ALLOC(pages, alignment_log)                               \
+  FIO_MEM_PAGE_ALLOC_def_func((pages), (alignment_log))
+#define FIO_MEM_PAGE_REALLOC(ptr, old_pages, new_pages, alignment_log)         \
+  FIO_MEM_PAGE_REALLOC_def_func((ptr), (old_pages), (new_pages),               \
+                                (alignment_log))
+#define FIO_MEM_PAGE_FREE(ptr, pages) FIO_MEM_PAGE_FREE_def_func((ptr), (pages))
+
+#define FIO_MEM_BYTES2PAGES(size)                                              \
+  (((size) + (1UL << FIO_MEM_PAGE_SIZE_LOG)) >> (FIO_MEM_PAGE_SIZE_LOG))
+
+#endif /* FIO_MEM_PAGE_ALLOC */
+
+/* *****************************************************************************
+Memory Allocation - cleanup
+***************************************************************************** */
+#endif
+#undef FIO_MALLOC
+#endif
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+                                Memory Management
 
 
 
@@ -943,7 +1295,6 @@ HFUNC void fio_bitmap_unset(void *map, size_t bit) {
 
 #if (defined(FIO_RISKY_HASH) || defined(FIO_STR_NAME)) &&                      \
     !defined(H__FIO_RISKY_HASH__H)
-#define H__FIO_RISKY_HASH__H 1
 
 /* *****************************************************************************
 Risky Hash - API
@@ -957,6 +1308,7 @@ Risky Hash - Implementation
 ***************************************************************************** */
 
 #if !FIO_EXTERN_API_ONLY
+#define H__FIO_RISKY_HASH__H
 
 /** Converts an unaligned network ordered byte stream to a 64 bit number. */
 #define FIO_RISKY_STR2U64(c)                                                   \
@@ -1102,6 +1454,143 @@ Risky Hash - Cleanup
 
 
 
+                      Psedo-Random Generator Functions
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if defined(FIO_RAND) && !defined(H__FIO_RAND_H)
+/* *****************************************************************************
+Random - API
+***************************************************************************** */
+
+/** Returns 64 psedo-random bits. Probably not cryptographically safe. */
+uint64_t fio_rand64(void);
+
+/** Writes `length` bytes of psedo-random bits to the target buffer. */
+void fio_rand_bytes(void *target, size_t length);
+
+/* *****************************************************************************
+Random - Implementation
+***************************************************************************** */
+
+#if !FIO_EXTERN_API_ONLY
+#define H__FIO_RAND_H
+
+#if H__FIO_UNIX_TOOLS_H ||                                                     \
+    (__has_include("sys/resource.h") && __has_include("sys/time.h"))
+#include <sys/resource.h>
+#include <sys/time.h>
+#endif
+
+/* tested for randomness using code from: http://xoshiro.di.unimi.it/hwd.php */
+SFUNC uint64_t fio_rand64(void) {
+  /* modeled after xoroshiro128+, by David Blackman and Sebastiano Vigna */
+  static __thread uint64_t s[2]; /* random state */
+  static __thread uint16_t c;    /* seed counter */
+  const uint64_t P[] = {0x37701261ED6C16C7ULL, 0x764DBBB75F3B3E0DULL};
+  if (c++ == 0) {
+    /* re-seed state every 65,536 requests */
+#ifdef RUSAGE_SELF
+    struct rusage rusage;
+    getrusage(RUSAGE_SELF, &rusage);
+    s[0] = fio_risky_hash(&rusage, sizeof(rusage), s[0]);
+    s[1] = fio_risky_hash(&rusage, sizeof(rusage), s[0]);
+#else
+    struct timespec clk;
+    clock_gettime(CLOCK_REALTIME, &clk);
+    s[0] = fio_risky_hash(&clk, sizeof(clk), s[0]);
+    s[1] = fio_risky_hash(&clk, sizeof(clk), s[0]);
+#endif
+  }
+  s[0] += fio_lrot64(s[0], 33) * P[0];
+  s[1] += fio_lrot64(s[1], 33) * P[1];
+  return fio_lrot64(s[0], 31) + fio_lrot64(s[1], 29);
+}
+
+/* copies 64 bits of randomness (8 bytes) repeatedly... */
+SFUNC void fio_rand_bytes(void *data_, size_t len) {
+  if (!data_ || !len)
+    return;
+  uint8_t *data = data_;
+  /* unroll 32 bytes / 256 bit writes */
+  for (size_t i = (len >> 5); i; --i) {
+    const uint64_t t0 = fio_rand64();
+    const uint64_t t1 = fio_rand64();
+    const uint64_t t2 = fio_rand64();
+    const uint64_t t3 = fio_rand64();
+    fio_u2str64(data, t0);
+    fio_u2str64(data + 8, t1);
+    fio_u2str64(data + 16, t2);
+    fio_u2str64(data + 24, t3);
+    data += 32;
+  }
+  uint64_t tmp;
+  /* 64 bit steps  */
+  switch (len & 24) {
+  case 24:
+    tmp = fio_rand64();
+    fio_u2str64(data + 16, tmp);
+    /* fallthrough */
+  case 16:
+    tmp = fio_rand64();
+    fio_u2str64(data + 8, tmp);
+    /* fallthrough */
+  case 8:
+    tmp = fio_rand64();
+    fio_u2str64(data, tmp);
+    data += len & 24;
+  }
+  if ((len & 7)) {
+    tmp = fio_rand64();
+    /* leftover bytes */
+    switch ((len & 7)) {
+    case 7:
+      data[6] = (tmp >> 8) & 0xFF;
+      /* fallthrough */
+    case 6:
+      data[5] = (tmp >> 16) & 0xFF;
+      /* fallthrough */
+    case 5:
+      data[4] = (tmp >> 24) & 0xFF;
+      /* fallthrough */
+    case 4:
+      data[3] = (tmp >> 32) & 0xFF;
+      /* fallthrough */
+    case 3:
+      data[2] = (tmp >> 40) & 0xFF;
+      /* fallthrough */
+    case 2:
+      data[1] = (tmp >> 48) & 0xFF;
+      /* fallthrough */
+    case 1:
+      data[0] = (tmp >> 56) & 0xFF;
+    }
+  }
+}
+
+#endif /* FIO_EXTERN_API_ONLY */
+#undef FIO_RAND
+#endif
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
                             String <=> Number helpers
 
 
@@ -1114,12 +1603,10 @@ Risky Hash - Cleanup
 
 
 ***************************************************************************** */
-
+#if defined(FIO_ATOL) && !defined(H__FIO_ATOL_H)
 /* *****************************************************************************
-Strings to Numbers
+Strings to Numbers - API
 ***************************************************************************** */
-
-#ifdef FIO_ATOL
 /**
  * A helper function that converts between String data to a signed int64_t.
  *
@@ -1131,9 +1618,50 @@ Strings to Numbers
  * API design), is the added support for binary representations.
  */
 SFUNC int64_t fio_atol(char **pstr);
-#if !FIO_EXTERN_API_ONLY
 
-HFUNC size_t fio_atol_skip_zero(char **pstr) {
+/** A helper function that converts between String data to a signed double. */
+SFUNC double fio_atof(char **pstr);
+
+/* *****************************************************************************
+Numbers to Strings - API
+***************************************************************************** */
+
+/**
+ * A helper function that writes a signed int64_t to a string.
+ *
+ * No overflow guard is provided, make sure there's at least 68 bytes
+ * available (for base 2).
+ *
+ * Offers special support for base 2 (binary), base 8 (octal), base 10 and base
+ * 16 (hex). An unsupported base will silently default to base 10. Prefixes
+ * are automatically added (i.e., "0x" for hex and "0b" for base 2).
+ *
+ * Returns the number of bytes actually written (excluding the NUL
+ * terminator).
+ */
+SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
+
+/**
+ * A helper function that converts between a double to a string.
+ *
+ * No overflow guard is provided, make sure there's at least 130 bytes
+ * available (for base 2).
+ *
+ * Supports base 2, base 10 and base 16. An unsupported base will silently
+ * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
+ * beginning of the string).
+ *
+ * Returns the number of bytes actually written (excluding the NUL
+ * terminator).
+ */
+size_t fio_ftoa(char *dest, double num, uint8_t base);
+/* *****************************************************************************
+Strings to Numbers - Implementation
+***************************************************************************** */
+#if !FIO_EXTERN_API_ONLY
+#define H__FIO_ATOL_H
+
+HFUNC size_t fio_atol___skip_zero(char **pstr) {
   char *const start = *pstr;
   while (**pstr == '0') {
     ++(*pstr);
@@ -1142,7 +1670,7 @@ HFUNC size_t fio_atol_skip_zero(char **pstr) {
 }
 
 /* consumes any digits in the string (base 2-10), returning their value */
-HFUNC uint64_t fio_atol_consume(char **pstr, uint8_t base) {
+HFUNC uint64_t fio_atol___consume(char **pstr, uint8_t base) {
   uint64_t result = 0;
   const uint64_t limit = UINT64_MAX - (base * base);
   while (**pstr >= '0' && **pstr < ('0' + base) && result <= (limit)) {
@@ -1153,12 +1681,12 @@ HFUNC uint64_t fio_atol_consume(char **pstr, uint8_t base) {
 }
 
 /* returns true if there's data to be skipped */
-HFUNC uint8_t fio_atol_skip_test(char **pstr, uint8_t base) {
+HFUNC uint8_t fio_atol___skip_test(char **pstr, uint8_t base) {
   return (**pstr >= '0' && **pstr < ('0' + base));
 }
 
 /* consumes any hex data in the string, returning their value */
-HFUNC uint64_t fio_atol_consume_hex(char **pstr) {
+HFUNC uint64_t fio_atol___consume_hex(char **pstr) {
   uint64_t result = 0;
   const uint64_t limit = UINT64_MAX - (16 * 16);
   for (; result <= limit;) {
@@ -1202,7 +1730,7 @@ SFUNC int64_t fio_atol(char **pstr) {
     if (str[0] == '0')
       str++;
     str++;
-    fio_atol_skip_zero(&str);
+    fio_atol___skip_zero(&str);
     while (str[0] == '0' || str[0] == '1') {
       result = (result << 1) | (str[0] - '0');
       str++;
@@ -1215,21 +1743,21 @@ SFUNC int64_t fio_atol(char **pstr) {
     if (str[0] == '0')
       str++;
     str++;
-    fio_atol_skip_zero(&str);
-    result = fio_atol_consume_hex(&str);
+    fio_atol___skip_zero(&str);
+    result = fio_atol___consume_hex(&str);
     if (FIO_ATOL_SKIP_HEX_TEST(&str)) /* too large for a number */
       return 0;
     goto sign; /* no overlow protection, since sign might be embedded */
   } else if (str[0] == '0') {
-    fio_atol_skip_zero(&str);
+    fio_atol___skip_zero(&str);
     /* base 8 */
-    result = fio_atol_consume(&str, 8);
-    if (fio_atol_skip_test(&str, 8)) /* too large for a number */
+    result = fio_atol___consume(&str, 8);
+    if (fio_atol___skip_test(&str, 8)) /* too large for a number */
       return 0;
   } else {
     /* base 10 */
-    result = fio_atol_consume(&str, 10);
-    if (fio_atol_skip_test(&str, 10)) /* too large for a number */
+    result = fio_atol___consume(&str, 10);
+    if (fio_atol___skip_test(&str, 10)) /* too large for a number */
       return 0;
   }
   if (result & ((uint64_t)1 << 63))
@@ -1241,39 +1769,13 @@ sign:
   return (int64_t)result;
 }
 #undef FIO_ATOL_SKIP_HEX_TEST
-#endif /* FIO_EXTERN_API_ONLY */
-#undef FIO_ATOL
-#endif /* FIO_ATOL */
 
-#if FIO_ATOF
-/** A helper function that converts between String data to a signed double. */
-SFUNC double fio_atof(char **pstr);
-#if !FIO_EXTERN_API_ONLY
 SFUNC double fio_atof(char **pstr) { return strtold(*pstr, pstr); }
-#endif
-#undef FIO_ATOF
-#endif /* FIO_ATOF */
 
 /* *****************************************************************************
-Numbers to Strings
+Numbers to Strings - Implementation
 ***************************************************************************** */
 
-#if FIO_LTOA
-/**
- * A helper function that writes a signed int64_t to a string.
- *
- * No overflow guard is provided, make sure there's at least 68 bytes
- * available (for base 2).
- *
- * Offers special support for base 2 (binary), base 8 (octal), base 10 and base
- * 16 (hex). An unsupported base will silently default to base 10. Prefixes
- * are automatically added (i.e., "0x" for hex and "0b" for base 2).
- *
- * Returns the number of bytes actually written (excluding the NUL
- * terminator).
- */
-SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
-#if !FIO_EXTERN_API_ONLY
 SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
   const char notation[] = {'0', '1', '2', '3', '4', '5', '6', '7',
                            '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
@@ -1426,31 +1928,10 @@ zero:
   dest[len] = 0;
   return len;
 }
-#endif /* EXTERN */
-#undef FIO_LTOA
-#endif /* FIO_LTOA */
 
-#if FIO_FTOA
-/**
- * A helper function that converts between a double to a string.
- *
- * No overflow guard is provided, make sure there's at least 130 bytes
- * available (for base 2).
- *
- * Supports base 2, base 10 and base 16. An unsupported base will silently
- * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
- * beginning of the string).
- *
- * Returns the number of bytes actually written (excluding the NUL
- * terminator).
- */
-size_t fio_ftoa(char *dest, double num, uint8_t base);
-#if !FIO_EXTERN_API_ONLY
 size_t fio_ftoa(char *dest, double num, uint8_t base) {
   if (base == 2 || base == 16) {
-    /* handle the binary / Hex representation the same as if it were an
-     * int64_t
-     */
+    /* handle binary / Hex representation the same as an int64_t */
     int64_t *i = (void *)&num;
     return fio_ltoa(dest, *i, base);
   }
@@ -1473,10 +1954,10 @@ size_t fio_ftoa(char *dest, double num, uint8_t base) {
   }
   return written;
 }
-#endif /* FIO_EXTERN_API_ONLY */
-#undef FIO_FTOA
-#endif /* FIO_FTOA */
 
+#endif /* FIO_EXTERN_API_ONLY */
+#undef FIO_ATOL
+#endif /* FIO_ATOL */
 /* *****************************************************************************
 
 
@@ -1500,22 +1981,6 @@ size_t fio_ftoa(char *dest, double num, uint8_t base) {
 
 
 ***************************************************************************** */
-
-/* *****************************************************************************
-Linked Lists Persistent Macros and Types
-***************************************************************************** */
-#if (defined(FIO_LIST) || defined(FIO_LIST_NAME)) && !defined(H___FIO_LIST_H)
-#define H___FIO_LIST_H
-
-typedef struct fio_list_node_s {
-  struct fio_list_node_s *next;
-  struct fio_list_node_s *prev;
-} fio_list_node_s;
-
-#define FIO_LIST_NODE fio_list_node_s
-#define FIO_LIST_HEAD fio_list_node_s
-
-#endif /* H___FIO_LIST_H */
 
 /* *****************************************************************************
 Linked Lists (embeded) - Type
@@ -4924,6 +5389,20 @@ Common cleanup
 #include __FILE__
 
 /* *****************************************************************************
+Memory copy - test
+***************************************************************************** */
+
+#define FIO_MEMCOPY
+#include __FILE__
+
+/* *****************************************************************************
+String <=> Number - test
+***************************************************************************** */
+
+#define FIO_ATOL
+#include __FILE__
+
+/* *****************************************************************************
 Bit-Byte operations - test
 ***************************************************************************** */
 
@@ -5962,6 +6441,13 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   fprintf(stderr, "* Passed.\n");
 }
 #undef FIO__STR_SMALL_CAPA
+
+/* *****************************************************************************
+Memory Allocation - test
+***************************************************************************** */
+
+#define FIO_MALLOC
+#include __FILE__
 
 /* *****************************************************************************
 Environment printout
