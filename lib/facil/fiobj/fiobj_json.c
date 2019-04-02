@@ -144,7 +144,7 @@ static void fio_json_on_end_array(json_parser_s *p) {
 static void fio_json_on_json(json_parser_s *p) {
   // fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
   // FIO_ARY_FOR(&pr->stack, pos) { fiobj_free((FIOBJ)pos.obj); }
-  // fio_json_stack_free(&pr->stack);
+  // fio_json_stack_destroy(&pr->stack);
   (void)p; /* nothing special... right? */
 }
 /** the JSON parsing is complete */
@@ -381,7 +381,7 @@ size_t fiobj_json2obj(FIOBJ *pobj, const void *data, size_t len) {
     fiobj_free(fio_json_stack_get(&p.stack, 0));
     p.top = FIOBJ_INVALID;
   }
-  fio_json_stack_free(&p.stack);
+  fio_json_stack_destroy(&p.stack);
   fiobj_free(p.key);
   *pobj = p.top;
   return consumed;
@@ -404,7 +404,7 @@ size_t fiobj_hash_update_json(FIOBJ hash, const void *data, size_t len) {
     return 0;
   fiobj_json_parser_s p = {.top = FIOBJ_INVALID, .target = hash};
   size_t consumed = fio_json_parse(&p.p, data, len);
-  fio_json_stack_free(&p.stack);
+  fio_json_stack_destroy(&p.stack);
   fiobj_free(p.key);
   if (p.top != hash)
     fiobj_free(p.top);
@@ -433,7 +433,7 @@ FIOBJ fiobj_obj2json2(FIOBJ dest, FIOBJ o, uint8_t pretty) {
     return dest;
   }
   fiobj_each2(o, fiobj_obj2json_task, &data);
-  fio_json_stack_free(&stack);
+  fio_json_stack_destroy(&stack);
   return dest;
 }
 

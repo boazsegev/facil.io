@@ -48,8 +48,8 @@ To make these functions safe for kernel authoring, the `FIO_MEM_CALLOC` /
 `FIO_MEM_FREE` / `FIO_MEM_REALLOC` macros should be (re)-defined.
 
 **Note 2**: The functions defined using this file default to `static` or `static
-inline`. To create an externally visible API, define the `FIO_EXTERN` or
-`FIO_EXTERN_API_ONLY` macros as true (1).
+inline`. To create an externally visible API, define the `FIO_EXTERN`. Define
+the `FIO_EXTERN_COMPLETE` macro to include the API's implementation as well.
 
 -------------------------------------------------------------------------------
 
@@ -588,9 +588,12 @@ Common macros
   FIO_NAME_FROM_MACRO_STEP2(prefix, postfix)
 #define FIO_NAME(prefix, postfix) FIO_NAME_FROM_MACRO_STEP1(prefix, postfix)
 
-#if !FIO_EXTERN && !FIO_EXTERN_API_ONLY
+#if !FIO_EXTERN
 #define SFUNC static __attribute__((unused))
 #define IFUNC static inline __attribute__((unused))
+#ifndef FIO_EXTERN_COMPLETE
+#define FIO_EXTERN_COMPLETE 2
+#endif
 #else
 #define SFUNC
 #define IFUNC
@@ -632,6 +635,7 @@ extern "C" {
 
 ***************************************************************************** */
 #if defined(FIO_MALLOC) && !defined(H__FIO_MALLOC_H)
+#define H__FIO_MALLOC_H
 
 /* *****************************************************************************
 Memory Allocation - API
@@ -656,8 +660,7 @@ Memory Allocation - redefine default allocation macros
 /* *****************************************************************************
 Memory Allocation - Implementation
 ***************************************************************************** */
-#if !FIO_EXTERN_API_ONLY
-#define H__FIO_MALLOC_H
+#ifdef FIO_EXTERN_COMPLETE
 
 /* *****************************************************************************
 Aligned memory copying
@@ -868,9 +871,9 @@ HFUNC void FIO_MEM_PAGE_FREE_def_func(void *mem, size_t pages) {
 /* *****************************************************************************
 Memory Allocation - cleanup
 ***************************************************************************** */
+#endif /* FIO_EXTERN_COMPLETE */
 #endif
 #undef FIO_MALLOC
-#endif
 
 /* *****************************************************************************
 
@@ -1295,6 +1298,7 @@ HFUNC void fio_bitmap_unset(void *map, size_t bit) {
 
 #if (defined(FIO_RISKY_HASH) || defined(FIO_STR_NAME)) &&                      \
     !defined(H__FIO_RISKY_HASH__H)
+#define H__FIO_RISKY_HASH__H
 
 /* *****************************************************************************
 Risky Hash - API
@@ -1307,8 +1311,7 @@ SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed);
 Risky Hash - Implementation
 ***************************************************************************** */
 
-#if !FIO_EXTERN_API_ONLY
-#define H__FIO_RISKY_HASH__H
+#ifdef FIO_EXTERN_COMPLETE
 
 /** Converts an unaligned network ordered byte stream to a 64 bit number. */
 #define FIO_RISKY_STR2U64(c)                                                   \
@@ -1433,7 +1436,7 @@ SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
 /* *****************************************************************************
 Risky Hash - Cleanup
 ***************************************************************************** */
-#endif /* FIO_EXTERN_API_ONLY */
+#endif /* FIO_EXTERN_COMPLETE */
 
 #undef FIO_RISKY_STR2U64
 #undef FIO_RISKY_LROT64
@@ -1467,6 +1470,7 @@ Risky Hash - Cleanup
 
 ***************************************************************************** */
 #if defined(FIO_RAND) && !defined(H__FIO_RAND_H)
+#define H__FIO_RAND_H
 /* *****************************************************************************
 Random - API
 ***************************************************************************** */
@@ -1481,8 +1485,7 @@ void fio_rand_bytes(void *target, size_t length);
 Random - Implementation
 ***************************************************************************** */
 
-#if !FIO_EXTERN_API_ONLY
-#define H__FIO_RAND_H
+#ifdef FIO_EXTERN_COMPLETE
 
 #if H__FIO_UNIX_TOOLS_H ||                                                     \
     (__has_include("sys/resource.h") && __has_include("sys/time.h"))
@@ -1576,9 +1579,9 @@ SFUNC void fio_rand_bytes(void *data_, size_t len) {
   }
 }
 
-#endif /* FIO_EXTERN_API_ONLY */
-#undef FIO_RAND
+#endif /* FIO_EXTERN_COMPLETE */
 #endif
+#undef FIO_RAND
 
 /* *****************************************************************************
 
@@ -1604,6 +1607,7 @@ SFUNC void fio_rand_bytes(void *data_, size_t len) {
 
 ***************************************************************************** */
 #if defined(FIO_ATOL) && !defined(H__FIO_ATOL_H)
+#define H__FIO_ATOL_H
 /* *****************************************************************************
 Strings to Numbers - API
 ***************************************************************************** */
@@ -1658,8 +1662,7 @@ size_t fio_ftoa(char *dest, double num, uint8_t base);
 /* *****************************************************************************
 Strings to Numbers - Implementation
 ***************************************************************************** */
-#if !FIO_EXTERN_API_ONLY
-#define H__FIO_ATOL_H
+#ifdef FIO_EXTERN_COMPLETE
 
 HFUNC size_t fio_atol___skip_zero(char **pstr) {
   char *const start = *pstr;
@@ -1955,9 +1958,9 @@ size_t fio_ftoa(char *dest, double num, uint8_t base) {
   return written;
 }
 
-#endif /* FIO_EXTERN_API_ONLY */
-#undef FIO_ATOL
+#endif /* FIO_EXTERN_COMPLETE */
 #endif /* FIO_ATOL */
+#undef FIO_ATOL
 /* *****************************************************************************
 
 
@@ -2044,7 +2047,7 @@ IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, root)(FIO_LIST_HEAD *ptr);
 /* *****************************************************************************
 Linked Lists (embeded) - Implementation
 ***************************************************************************** */
-#if !FIO_EXTERN_API_ONLY
+#ifdef FIO_EXTERN_COMPLETE
 
 /** Initializes an uninitialized node (assumes the data in the node is junk). */
 IFUNC void FIO_NAME(FIO_LIST_NAME, init)(FIO_LIST_HEAD *head) {
@@ -2109,7 +2112,7 @@ IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, root)(FIO_LIST_HEAD *ptr) {
 Linked Lists (embeded) - cleanup
 ***************************************************************************** */
 
-#endif /* FIO_EXTERN_API_ONLY */
+#endif /* FIO_EXTERN_COMPLETE */
 #undef FIO_LIST_NAME
 #undef FIO_LIST_TYPE
 #undef FIO_LIST_NODE_NAME
@@ -2382,7 +2385,7 @@ IFUNC size_t FIO_NAME(FIO_ARY_NAME,
                                   (start__tmp__ = (array)->ary))
 #endif
 
-#if !FIO_EXTERN_API_ONLY
+#ifdef FIO_EXTERN_COMPLETE
 
 /* *****************************************************************************
 Dynamic Arrays - internal helpers
@@ -2756,7 +2759,7 @@ IFUNC size_t FIO_NAME(FIO_ARY_NAME,
 /* *****************************************************************************
 Dynamic Arrays - cleanup
 ***************************************************************************** */
-#endif /* FIO_EXTERN_API_ONLY */
+#endif /* FIO_EXTERN_COMPLETE */
 
 #undef FIO_ARY_NAME
 #undef FIO_ARY_TYPE
@@ -3171,7 +3174,7 @@ SFUNC void FIO_NAME(FIO_MAP_NAME, compact)(FIO_NAME(FIO_MAP_NAME, s) * m);
 /* *****************************************************************************
 Hash Map / Set - helpers
 ***************************************************************************** */
-#if !FIO_EXTERN_API_ONLY
+#ifdef FIO_EXTERN_COMPLETE
 
 HFUNC void FIO_NAME(FIO_MAP_NAME, _report_attack)(const char *msg) {
 #ifdef FIO_LOG2STDERR
@@ -3633,7 +3636,7 @@ IFUNC void FIO_NAME(FIO_MAP_NAME, pop)(FIO_NAME(FIO_MAP_NAME, s) * m) {
 Hash Map / Set - cleanup
 ***************************************************************************** */
 
-#endif /* FIO_EXTERN_API_ONLY */
+#endif /* FIO_EXTERN_COMPLETE */
 #undef FIO_MAP_NAME
 #undef FIO_MAP_TYPE
 #undef FIO_MAP_TYPE_INVALID
@@ -3760,7 +3763,7 @@ typedef struct {
  * Remember to cleanup:
  *
  *      // on the stack
- *      fio_str_free(&str);
+ *      fio_str_destroy(&str);
  *
  *      // or on the heap
  *      fio_str_free(str);
@@ -4029,7 +4032,7 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
 
 
 ***************************************************************************** */
-#if !FIO_EXTERN_API_ONLY
+#ifdef FIO_EXTERN_COMPLETE
 
 /* *****************************************************************************
 String Helpers
@@ -4206,7 +4209,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
     return FIO_NAME(FIO_STR_NAME, info)(s);
   }
   if (FIO_STR_IS_SMALL(s)) {
-    if (size < FIO_STR_SMALL_CAPA(s)) {
+    if (size <= FIO_STR_SMALL_CAPA(s)) {
       FIO_STR_SMALL_LEN_SET(s, size);
       FIO_STR_SMALL_DATA(s)[size] = 0;
       return (fio_str_info_s){.capa = FIO_STR_SMALL_CAPA(s),
@@ -4860,7 +4863,7 @@ finish:
 /* *****************************************************************************
 String Cleanup
 ***************************************************************************** */
-#endif /* FIO_EXTERN_API_ONLY */
+#endif /* FIO_EXTERN_COMPLETE */
 
 #undef FIO_STR_NAME
 #undef FIO_STR_SMALL_DATA
@@ -5255,7 +5258,7 @@ IFUNC int FIO_NAME(FIO_REF_NAME, free2)(FIO_REF_TYPE *wrapped);
 /* *****************************************************************************
 Reference Counter (Wrapper) Implementation
 ***************************************************************************** */
-#if !FIO_EXTERN_API_ONLY
+#ifdef FIO_EXTERN_COMPLETE
 
 /** Allocates a reference counted object. */
 IFUNC FIO_REF_TYPE *FIO_NAME(FIO_REF_NAME, new2)(void) {
@@ -5299,7 +5302,7 @@ IFUNC int FIO_NAME(FIO_REF_NAME, free2)(FIO_REF_TYPE *wrapped) {
 Reference Counter (Wrapper) Cleanup
 ***************************************************************************** */
 
-#endif /* FIO_EXTERN_API_ONLY */
+#endif /* FIO_EXTERN_COMPLETE */
 #undef FIO_REF_NAME
 #undef FIO_REF_TYPE
 #undef FIO_REF_INIT
@@ -5340,13 +5343,16 @@ Common cleanup
 #undef FIO_NAME_FROM_MACRO_STEP1
 #undef FIO_NAME
 #undef FIO_EXTERN
-#undef FIO_EXTERN_API_ONLY
 #undef SFUNC
 #undef IFUNC
 #undef FIO_MEM_CALLOC_
 #undef FIO_MEM_REALLOC_
 #undef FIO_MEM_FREE_
 
+/* undefine FIO_EXTERN_COMPLETE only if it was defined locally */
+#if FIO_EXTERN_COMPLETE == 2
+#undef FIO_EXTERN_COMPLETE
+#endif
 /* *****************************************************************************
 
 

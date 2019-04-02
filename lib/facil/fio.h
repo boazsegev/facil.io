@@ -115,11 +115,16 @@ extern "C" {
 /* *****************************************************************************
 Import STL
 ***************************************************************************** */
+#define FIO_RISKY_HASH 1
+#include "fio-stl.h"
 
 #define FIO_ATOMIC 1
 #define FIO_BITWISE 1
+#define FIO_ATOL 1
+#define FIO_RAND 1
+#define FIO_STR_INFO 1
+#define FIO_EXTERN 1
 #ifndef FIO_LOG_LENGTH_LIMIT
-
 /**
  * Since logging uses stack memory rather than dynamic allocation, it's memory
  * usage must be limited to avoid exploding the stack. The following sets the
@@ -128,18 +133,6 @@ Import STL
 #define FIO_LOG_LENGTH_LIMIT 2048
 #endif
 
-#include "fio-stl.h"
-
-/*
- * define the fio_atol, fio_atof, fio_ltoa and fio_ftoa helpers.
- */
-#define FIO_ATOL 1
-#define FIO_RAND 1
-#define FIO_STR_INFO 1
-#define FIO_EXTERN_API_ONLY 1
-#include "fio-stl.h"
-
-#define FIO_RISKY_HASH 1
 #include "fio-stl.h"
 
 /* *****************************************************************************

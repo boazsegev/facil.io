@@ -5,12 +5,8 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 ***************************************************************************** */
 
+#define FIO_EXTERN_COMPLETE 1
 #include <fio.h>
-
-#define FIO_ATOL 1
-#define FIO_RAND 1
-#define FIO_EXTERN 1
-#include "fio-stl.h"
 
 #define FIO_LIST
 #define FIO_STR_NAME fio_str
@@ -5437,7 +5433,7 @@ finish:
   (k1) = (fio_str_s)FIO_STR_INIT;                                              \
   fio_str_concat(&(k1), &(k2))
 #define FIO_SET_KEY_COMPARE(k1, k2) fio_str_iseq(&(k1), &(k2))
-#define FIO_SET_KEY_DESTROY(key) fio_str_free(&(key))
+#define FIO_SET_KEY_DESTROY(key) fio_str_destroy(&(key))
 #define FIO_SET_OBJ_DESTROY(obj) fio_unsubscribe(obj)
 #include <fio.h>
 
@@ -8555,7 +8551,7 @@ FIO_FUNC void fio_socket_test(void) {
   fio_force_close(uuid);
   unlink(fio_str_data(&sock_name));
   /* free unix socket name */
-  fio_str_free(&sock_name);
+  fio_str_destroy(&sock_name);
 
   uuid = fio_socket(NULL, "8765", 1);
   FIO_ASSERT(uuid != -1, "Failed to open TCP/IP socket on port 8765");
@@ -8990,7 +8986,7 @@ FIO_FUNC void fio_riskyhash_test(void) {
   FIO_ASSERT(fio_risky_hash(str1.data, str1.len, 1) ==
                  fio_risky_hash(fio_str_data(&copy), fio_str_len(&copy), 1),
              "Same string values should have the same risky hash");
-  fio_str_free(&copy);
+  fio_str_destroy(&copy);
   (void)fio_riskyhash_speed_test;
 #endif
 }

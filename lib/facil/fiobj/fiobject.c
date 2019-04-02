@@ -375,7 +375,7 @@ size_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ obj, void *arg), void *arg) {
     fiobj_stack_pop(&stack, &pos);
   } while (o);
 finish:
-  fiobj_stack_free(&stack);
+  fiobj_stack_destroy(&stack);
   return packet.counter;
 }
 
@@ -471,14 +471,14 @@ int fiobj_iseq____internal_complex__(FIOBJ o, FIOBJ o2) {
     if (!fiobj_iseq_simple(o, o2))
       goto unequal;
   } while (o);
-  fiobj_stack_free(&left);
-  fiobj_stack_free(&right);
-  fiobj_stack_free(&queue);
+  fiobj_stack_destroy(&left);
+  fiobj_stack_destroy(&right);
+  fiobj_stack_destroy(&queue);
   return 1;
 unequal:
-  fiobj_stack_free(&left);
-  fiobj_stack_free(&right);
-  fiobj_stack_free(&queue);
+  fiobj_stack_destroy(&left);
+  fiobj_stack_destroy(&right);
+  fiobj_stack_destroy(&queue);
   return 0;
 }
 
