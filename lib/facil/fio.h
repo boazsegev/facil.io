@@ -66,32 +66,6 @@ Feel free to copy, use and enjoy according to the license provided.
  * Embeded Linked List Implementation
  *
  *
- *
- *                      #ifdef FIO_INCLUDE_STR
- *
- * String Helpers
- * String API - Initialization and Destruction
- * String API - String state (data pointers, length, capacity, etc')
- * String API - Memory management
- * String API - UTF-8 State
- * String Implementation - state (data pointers, length, capacity, etc')
- * String Implementation - Memory management
- * String Implementation - UTF-8 State
- * String Implementation - Content Manipulation and Review
- *
- *
- *
- *            #ifdef FIO_ARY_NAME - can be included more than once
- *
- * Dynamic Array Data-Store
- * Array API
- * Array Type
- * Array Memory Management
- * Array API implementation
- * Array Testing
- *
- *
- *
  *            #ifdef FIO_SET_NAME - can be included more than once
  *
  * Set / Hash Map Data-Store
@@ -1169,14 +1143,6 @@ ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s options);
 #define fio_write2(uuid, ...)                                                  \
   fio_write2_fn(uuid, (fio_write_args_s){__VA_ARGS__})
 
-/** a helper macro for sending reference counted core strings named as fio_str
- */
-// #define fio_str_send_free2(uuid, s)                                            \
-//   fio_write2(r->sub_data.uuid, .data.buffer = (char *)s,                       \
-//              .offset = ((char *)s - fio_str_data(s)),                          \
-//              .length = fio_str_len(s),                                         \
-//              .after.dealloc = (void (*)(void *))fio_str_free2);
-
 /** A noop function for fio_write2 in cases not deallocation is required. */
 void FIO_DEALLOC_NOOP(void *arg);
 #define FIO_CLOSE_NOOP ((void (*)(intptr_t))FIO_DEALLOC_NOOP)
@@ -1225,6 +1191,13 @@ inline FIO_FUNC ssize_t fio_sendfile(intptr_t uuid, intptr_t source_fd,
   return fio_write2(uuid, .data.fd = source_fd, .length = length, .is_fd = 1,
                     .offset = offset);
 }
+
+/** a helper macro for sending reference counted core strings. */
+#define FIO_STR_SEND_FREE2(str_name, uuid, s)                                  \
+  fio_write2(r->sub_data.uuid, .data.buffer = (char *)s,                       \
+             .offset = ((char *)s - str_name##_data(s)),                       \
+             .length = str_name##_len(s),                                      \
+             .after.dealloc = (void (*)(void *))str_name##_free2);
 
 /**
  * Returns the number of `fio_write` calls that are waiting in the socket's

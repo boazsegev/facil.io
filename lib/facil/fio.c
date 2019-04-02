@@ -1395,6 +1395,7 @@ void fio_reap_children(void) {
 /* handles the SIGUSR1, SIGINT and SIGTERM signals. */
 static void sig_int_handler(int sig) {
   struct sigaction *old = NULL;
+  uint8_t running = fio_data->active;
   switch (sig) {
 #if !FIO_DISABLE_HOT_RESTART
   case SIGUSR1:
@@ -1420,7 +1421,7 @@ static void sig_int_handler(int sig) {
     break;
   }
   /* propagate signale handling to previous existing handler (if any) */
-  if (old->sa_handler != SIG_IGN && old->sa_handler != SIG_DFL)
+  if (!running || (old->sa_handler != SIG_IGN && old->sa_handler != SIG_DFL))
     old->sa_handler(sig);
 }
 
@@ -6723,8 +6724,13 @@ static inline void block_init(block_s *blk) {
 
 /* intializes the block header for an available block of memory. */
 static inline void block_free(block_s *blk) {
-  if (fio_atomic_sub(&blk->ref, 1))
+  uint16_t count = fio_atomic_sub(&blk->ref, 1);
+  if (count) {
+    if (count + 1 == 0) {
+      FIO_LOG_FATAL("Double for memory block starting @ %p", (void *)blk);
+    }
     return;
+  }
 
   memset(blk + 1, 0, (FIO_MEMORY_BLOCK_SIZE - sizeof(*blk)));
   fio_lock(&memory.lock);
@@ -8261,6 +8267,7 @@ FIO_FUNC void fio_malloc_test(void) {
   b = arena_last_used->block;
   size_t count = 1;
   /* count allocations within block */
+  mem = fio_malloc(1);
   do {
     FIO_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
     FIO_ASSERT(!((uintptr_t)mem & 15),

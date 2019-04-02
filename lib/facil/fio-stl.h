@@ -1060,7 +1060,7 @@ FIO_LOG2STDERR(const char *format, ...) {
 typedef volatile unsigned char fio_lock_i;
 
 /** Returns 0 on success and 1 on failure. */
-HFUNC fio_lock_i fio_trylock(fio_lock_i *lock) {
+HFUNC uint8_t fio_trylock(fio_lock_i *lock) {
   __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
   return fio_atomic_xchange(lock, 1);
 }
@@ -1074,7 +1074,7 @@ HFUNC void fio_lock(fio_lock_i *lock) {
 }
 
 /** Returns 1 if the lock is locked, 0 otherwise. */
-HFUNC fio_lock_i fio_is_locked(fio_lock_i *lock) { return *lock; }
+HFUNC uint8_t fio_is_locked(fio_lock_i *lock) { return *lock; }
 
 /** Unlocks the lock, no matter which thread owns the lock. */
 HFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_xchange(lock, 0); }
@@ -2201,10 +2201,10 @@ Dynamic Arrays - type
 ***************************************************************************** */
 
 typedef struct {
-  unsigned long capa;
-  unsigned long start;
-  unsigned long end;
   FIO_ARY_TYPE *ary;
+  uint32_t capa;
+  uint32_t start;
+  uint32_t end;
 } FIO_NAME(FIO_ARY_NAME, s);
 
 /* *****************************************************************************
@@ -2230,10 +2230,10 @@ IFUNC FIO_NAME(FIO_ARY_NAME, s) * FIO_NAME(FIO_ARY_NAME, new)(void);
 IFUNC void FIO_NAME(FIO_ARY_NAME, free)(FIO_NAME(FIO_ARY_NAME, s) * ary);
 
 /** Returns the number of elements in the Array. */
-IFUNC size_t FIO_NAME(FIO_ARY_NAME, count)(FIO_NAME(FIO_ARY_NAME, s) * ary);
+IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, count)(FIO_NAME(FIO_ARY_NAME, s) * ary);
 
 /** Returns the current, temporary, array capacity (it's dynamic). */
-IFUNC size_t FIO_NAME(FIO_ARY_NAME, capa)(FIO_NAME(FIO_ARY_NAME, s) * ary);
+IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, capa)(FIO_NAME(FIO_ARY_NAME, s) * ary);
 
 /**
  * Adds all the items in the `src` Array to the end of the `dest` Array.
@@ -2256,7 +2256,8 @@ SFUNC FIO_NAME(FIO_ARY_NAME, s) *
  * Returns a pointer to the new object, or NULL on error.
  */
 IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_NAME(FIO_ARY_NAME, s) * ary,
-                                                long index, FIO_ARY_TYPE data,
+                                                int32_t index,
+                                                FIO_ARY_TYPE data,
                                                 FIO_ARY_TYPE *old);
 
 /**
@@ -2266,7 +2267,7 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_NAME(FIO_ARY_NAME, s) * ary,
  * last element).
  */
 IFUNC FIO_ARY_TYPE FIO_NAME(FIO_ARY_NAME, get)(FIO_NAME(FIO_ARY_NAME, s) * ary,
-                                               long index);
+                                               int32_t index);
 
 /**
  * Returns the index of the object or -1 if the object wasn't found.
@@ -2274,8 +2275,8 @@ IFUNC FIO_ARY_TYPE FIO_NAME(FIO_ARY_NAME, get)(FIO_NAME(FIO_ARY_NAME, s) * ary,
  * If `start_at` is negative (i.e., -1), than seeking will be performed in
  * reverse, where -1 == last index (-2 == second to last, etc').
  */
-IFUNC long FIO_NAME(FIO_ARY_NAME, find)(FIO_NAME(FIO_ARY_NAME, s) * ary,
-                                        FIO_ARY_TYPE data, long start_at);
+IFUNC int32_t FIO_NAME(FIO_ARY_NAME, find)(FIO_NAME(FIO_ARY_NAME, s) * ary,
+                                           FIO_ARY_TYPE data, int32_t start_at);
 
 /**
  * Removes an object from the array, MOVING all the other objects to prevent
@@ -2290,7 +2291,7 @@ IFUNC long FIO_NAME(FIO_ARY_NAME, find)(FIO_NAME(FIO_ARY_NAME, s) * ary,
  * It could get expensive.
  */
 IFUNC int FIO_NAME(FIO_ARY_NAME, remove)(FIO_NAME(FIO_ARY_NAME, s) * ary,
-                                         long index, FIO_ARY_TYPE *old);
+                                         int32_t index, FIO_ARY_TYPE *old);
 
 /**
  * Removes all occurences of an object from the array (if any), MOVING all the
@@ -2301,8 +2302,8 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, remove)(FIO_NAME(FIO_ARY_NAME, s) * ary,
  * This action is O(n) where n in the length of the array.
  * It could get expensive.
  */
-IFUNC size_t FIO_NAME(FIO_ARY_NAME, remove2)(FIO_NAME(FIO_ARY_NAME, s) * ary,
-                                             FIO_ARY_TYPE data);
+IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, remove2)(FIO_NAME(FIO_ARY_NAME, s) * ary,
+                                               FIO_ARY_TYPE data);
 
 /**
  * Returns a pointer to the C array containing the objects.
@@ -2361,10 +2362,10 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, shift)(FIO_NAME(FIO_ARY_NAME, s) * ary,
  * Returns the relative "stop" position, i.e., the number of items processed +
  * the starting point.
  */
-IFUNC size_t FIO_NAME(FIO_ARY_NAME,
-                      each)(FIO_NAME(FIO_ARY_NAME, s) * ary, size_t start_at,
-                            int (*task)(FIO_ARY_TYPE obj, void *arg),
-                            void *arg);
+IFUNC uint32_t FIO_NAME(FIO_ARY_NAME,
+                        each)(FIO_NAME(FIO_ARY_NAME, s) * ary, int32_t start_at,
+                              int (*task)(FIO_ARY_TYPE obj, void *arg),
+                              void *arg);
 
 #ifndef FIO_ARY_EACH
 /**
@@ -2425,12 +2426,12 @@ IFUNC void FIO_NAME(FIO_ARY_NAME, free)(FIO_NAME(FIO_ARY_NAME, s) * ary) {
 }
 
 /** Returns the number of elements in the Array. */
-IFUNC size_t FIO_NAME(FIO_ARY_NAME, count)(FIO_NAME(FIO_ARY_NAME, s) * ary) {
-  return ary->end - ary->start;
+IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, count)(FIO_NAME(FIO_ARY_NAME, s) * ary) {
+  return (ary->end - ary->start);
 }
 
 /** Returns the current, temporary, array capacity (it's dynamic). */
-IFUNC size_t FIO_NAME(FIO_ARY_NAME, capa)(FIO_NAME(FIO_ARY_NAME, s) * ary) {
+IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, capa)(FIO_NAME(FIO_ARY_NAME, s) * ary) {
   return ary->capa;
 }
 
@@ -2448,7 +2449,7 @@ SFUNC FIO_NAME(FIO_ARY_NAME, s) *
     return dest;
   if (dest->capa + src->start > src->end + dest->end) {
     /* insufficiant memory, (re)allocate */
-    size_t new_capa = dest->end + (src->end - src->start);
+    uint32_t new_capa = dest->end + (src->end - src->start);
     FIO_ARY_TYPE *tmp =
         FIO_MEM_REALLOC_(dest->ary, dest->capa * sizeof(*tmp),
                          new_capa * sizeof(*tmp), dest->end * sizeof(*tmp));
@@ -2461,7 +2462,7 @@ SFUNC FIO_NAME(FIO_ARY_NAME, s) *
 #if FIO_ARY_TYPE_COPY_SIMPLE
   memcpy(dest->ary + dest->end, src->ary + src->start, src->end - src->start);
 #else
-  for (size_t i = 0; i + src->start < src->end; ++i) {
+  for (uint32_t i = 0; i + src->start < src->end; ++i) {
     FIO_ARY_TYPE_COPY((dest->ary + dest->end + i)[0],
                       (src->ary + i + src->start)[0]);
   }
@@ -2483,14 +2484,17 @@ SFUNC FIO_NAME(FIO_ARY_NAME, s) *
  * Returns a pointer to the new object, or NULL on error.
  */
 IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_NAME(FIO_ARY_NAME, s) * ary,
-                                                long index, FIO_ARY_TYPE data,
+                                                int32_t index,
+                                                FIO_ARY_TYPE data,
                                                 FIO_ARY_TYPE *old) {
+  uint8_t pre_existing = 1;
   if (index >= 0) {
     /* zero based (look forward) */
     index = index + ary->start;
-    if ((size_t)index >= ary->capa) {
+    if ((uint32_t)index >= ary->capa) {
       /* we need more memory */
-      size_t new_capa = FIO_ARY_SIZE2WORDS(((size_t)index + FIO_ARY_PADDING));
+      uint32_t new_capa =
+          FIO_ARY_SIZE2WORDS(((uint32_t)index + FIO_ARY_PADDING));
       FIO_ARY_TYPE *tmp =
           FIO_MEM_REALLOC_(ary->ary, ary->capa * sizeof(*tmp),
                            new_capa * sizeof(*tmp), ary->end * sizeof(*tmp));
@@ -2499,12 +2503,13 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_NAME(FIO_ARY_NAME, s) * ary,
       ary->ary = tmp;
       ary->capa = new_capa;
     }
-    if ((size_t)index >= ary->end) {
+    if ((uint32_t)index >= ary->end) {
       /* we to initialize memory between ary->end and index + ary->start */
+      pre_existing = 0;
 #if FIO_ARY_TYPE_INVALID_SIMPLE
       memset(ary->ary + ary->end, 0, (index - ary->end) * sizeof(*ary->ary));
 #else
-      for (size_t i = ary->end; i <= (size_t)index; ++i) {
+      for (uint32_t i = ary->end; i <= (uint32_t)index; ++i) {
         FIO_ARY_TYPE_COPY(ary->ary[i], FIO_ARY_TYPE_INVALID);
       }
 #endif
@@ -2515,9 +2520,9 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_NAME(FIO_ARY_NAME, s) * ary,
     index += ary->end;
     if (index < 0) {
       /* TODO: we need more memory at the HEAD (requires copying...) */
-      const size_t new_capa = FIO_ARY_SIZE2WORDS(
-          ((size_t)ary->capa + FIO_ARY_PADDING + ((size_t)0 - index)));
-      const size_t valid_data = ary->end - ary->start;
+      const uint32_t new_capa = FIO_ARY_SIZE2WORDS(
+          ((uint32_t)ary->capa + FIO_ARY_PADDING + ((uint32_t)0 - index)));
+      const uint32_t valid_data = ary->end - ary->start;
       index -= ary->end; /* return to previous state */
       FIO_ARY_TYPE *tmp = FIO_MEM_CALLOC_(new_capa, sizeof(*tmp));
       if (!tmp)
@@ -2535,13 +2540,14 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_NAME(FIO_ARY_NAME, s) * ary,
       ary->start = new_capa - valid_data;
 #endif
     }
-    if ((size_t)index < ary->start) {
+    if ((uint32_t)index < ary->start) {
       /* initialize memory between `index` and `ary->start-1` */
+      pre_existing = 0;
 #if FIO_ARY_TYPE_INVALID_SIMPLE
       memset(ary->ary + index, 0, (ary->start - index) * sizeof(*ary->ary));
       ary->start = index;
 #else
-      while ((size_t)index < ary->start) {
+      while ((uint32_t)index < ary->start) {
         --ary->start;
         ary->ary[ary->start] = FIO_ARY_TYPE_INVALID;
         // FIO_ARY_TYPE_COPY(ary->ary[ary->start], FIO_ARY_TYPE_INVALID);
@@ -2552,7 +2558,9 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_NAME(FIO_ARY_NAME, s) * ary,
   /* copy object */
   if (old)
     FIO_ARY_TYPE_COPY((*old), ary->ary[index]);
-  FIO_ARY_TYPE_DESTROY(ary->ary[index]);
+  if (pre_existing) {
+    FIO_ARY_TYPE_DESTROY(ary->ary[index]);
+  }
   FIO_ARY_TYPE_COPY(ary->ary[index], data);
   return ary->ary + index;
 }
@@ -2564,9 +2572,9 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_NAME(FIO_ARY_NAME, s) * ary,
  * last element).
  */
 IFUNC FIO_ARY_TYPE FIO_NAME(FIO_ARY_NAME, get)(FIO_NAME(FIO_ARY_NAME, s) * ary,
-                                               long index) {
+                                               int32_t index) {
   index += FIO_ARY_AB_CT(index >= 0, ary->start, ary->end);
-  if (index < 0 || (size_t)index >= ary->end)
+  if (index < 0 || (uint32_t)index >= ary->end)
     return FIO_ARY_TYPE_INVALID;
   return ary->ary[index];
 }
@@ -2577,11 +2585,12 @@ IFUNC FIO_ARY_TYPE FIO_NAME(FIO_ARY_NAME, get)(FIO_NAME(FIO_ARY_NAME, s) * ary,
  * If `start_at` is negative (i.e., -1), than seeking will be performed in
  * reverse, where -1 == last index (-2 == second to last, etc').
  */
-IFUNC long FIO_NAME(FIO_ARY_NAME, find)(FIO_NAME(FIO_ARY_NAME, s) * ary,
-                                        FIO_ARY_TYPE data, long start_at) {
+IFUNC int32_t FIO_NAME(FIO_ARY_NAME, find)(FIO_NAME(FIO_ARY_NAME, s) * ary,
+                                           FIO_ARY_TYPE data,
+                                           int32_t start_at) {
   if (start_at >= 0) {
     /* seek forwards */
-    while ((size_t)start_at < ary->end) {
+    while ((uint32_t)start_at < ary->end) {
       if (FIO_ARY_TYPE_CMP(ary->ary[start_at], data))
         return start_at;
       ++start_at;
@@ -2589,9 +2598,9 @@ IFUNC long FIO_NAME(FIO_ARY_NAME, find)(FIO_NAME(FIO_ARY_NAME, s) * ary,
   } else {
     /* seek backwards */
     start_at = start_at + ary->end;
-    if (start_at >= (long)ary->end)
+    if (start_at >= (int32_t)ary->end)
       start_at = ary->end - 1;
-    while (start_at > (long)ary->start) {
+    while (start_at > (int32_t)ary->start) {
       if (FIO_ARY_TYPE_CMP(ary->ary[start_at], data))
         return start_at;
       --start_at;
@@ -2610,9 +2619,9 @@ IFUNC long FIO_NAME(FIO_ARY_NAME, find)(FIO_NAME(FIO_ARY_NAME, s) * ary,
  * Returns 0 on success and -1 on error.
  */
 IFUNC int FIO_NAME(FIO_ARY_NAME, remove)(FIO_NAME(FIO_ARY_NAME, s) * ary,
-                                         long index, FIO_ARY_TYPE *old) {
+                                         int32_t index, FIO_ARY_TYPE *old) {
   index += FIO_ARY_AB_CT(index >= 0, ary->start, ary->end);
-  if (!ary || (size_t)index >= ary->end || index < (long)ary->start) {
+  if (!ary || (uint32_t)index >= ary->end || index < (int32_t)ary->start) {
     FIO_ARY_TYPE_COPY(*old, FIO_ARY_TYPE_INVALID);
     return -1;
   }
@@ -2631,10 +2640,10 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, remove)(FIO_NAME(FIO_ARY_NAME, s) * ary,
  *
  * Returns the number of items removed.
  */
-IFUNC size_t FIO_NAME(FIO_ARY_NAME, remove2)(FIO_NAME(FIO_ARY_NAME, s) * ary,
-                                             FIO_ARY_TYPE data) {
-  size_t c = 0;
-  size_t i = ary->start;
+IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, remove2)(FIO_NAME(FIO_ARY_NAME, s) * ary,
+                                               FIO_ARY_TYPE data) {
+  uint32_t c = 0;
+  uint32_t i = ary->start;
   while (i < ary->end) {
     if (!(FIO_ARY_TYPE_CMP(ary->ary[i + c], data))) {
       ary->ary[i] = ary->ary[i + c];
@@ -2742,13 +2751,17 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, shift)(FIO_NAME(FIO_ARY_NAME, s) * ary,
  * Returns the relative "stop" position, i.e., the number of items processed +
  * the starting point.
  */
-IFUNC size_t FIO_NAME(FIO_ARY_NAME,
-                      each)(FIO_NAME(FIO_ARY_NAME, s) * ary, size_t start_at,
-                            int (*task)(FIO_ARY_TYPE obj, void *arg),
-                            void *arg) {
+IFUNC uint32_t FIO_NAME(FIO_ARY_NAME,
+                        each)(FIO_NAME(FIO_ARY_NAME, s) * ary, int32_t start_at,
+                              int (*task)(FIO_ARY_TYPE obj, void *arg),
+                              void *arg) {
   if (!ary || !task)
     return start_at;
-  for (size_t i = ary->start + start_at; i < ary->end; ++i) {
+  if (start_at < 0)
+    start_at += ary->end - ary->start;
+  if (start_at < 0)
+    start_at = 0;
+  for (uint32_t i = ary->start + start_at; i < ary->end; ++i) {
     if (task(ary->ary[i], arg) == -1) {
       return (i + 1) - ary->start;
     }
@@ -3314,13 +3327,15 @@ HFUNC FIO_NAME(FIO_MAP_NAME, _map_s) *
     FIO_MAP_HASH_COPY(hash, (FIO_MAP_HASH){~0});
   }
 
-  if (FIO_MAP_MAX_ELEMENTS && m->count >= FIO_MAP_MAX_ELEMENTS) {
+#if FIO_MAP_MAX_ELEMENTS
+  if (m->count >= FIO_MAP_MAX_ELEMENTS) {
     /* limits the number of elements to m->count, with 1 dangling element  */
     FIO_NAME(FIO_MAP_NAME, _map_s) *oldest = m->map + m->head;
     FIO_MAP_OBJ_DESTROY((oldest->obj));
     FIO_NAME(FIO_MAP_NAME, ___unlink_node)(m, oldest);
     --m->count;
   }
+#endif
 
   pos = FIO_NAME(FIO_MAP_NAME, _find_map_pos)(m, obj, hash);
 
