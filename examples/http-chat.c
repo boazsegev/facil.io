@@ -245,8 +245,8 @@ Redis initialization
 static void initialize_redis(void) {
   if (!fio_cli_get("-redis") || !strlen(fio_cli_get("-redis")))
     return;
-  FIO_LOG_STATE("* Initializing Redis connection to %s\n",
-                fio_cli_get("-redis"));
+  FIO_LOG_INFO("* Initializing Redis connection to %s\n",
+               fio_cli_get("-redis"));
   fio_url_s info =
       fio_url_parse(fio_cli_get("-redis"), strlen(fio_cli_get("-redis")));
   fio_pubsub_engine_s *e =

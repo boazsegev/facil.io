@@ -1,5 +1,20 @@
 # Change Log
 
+### v.0.8.0.beta1
+
+Major API changes.
+
+**Overview**:
+
+- Core types and common helpers have been re-written and moved to a separate, stand alone, header-library: `fio-stl.h`
+
+   This updates the core type API in an attempt to create a more unified and intuitive API.
+
+   Hash Maps and Arrays are now limited to a theoretical capacity of 1^31 elements, improving memory usage for most common use-cases.
+
+   This also makes facil.io's core IO library a 3 file library (rather then 2 files).
+
+
 ### v. 0.7.0
 
 Stable API release. Future API updates will be wait for the 0.8.x release.
