@@ -107,26 +107,26 @@ Logs `msg` **if** log level is equal or above requested log level.
 #### `FIO_ASSERT(cond, msg, ...)`
 
 Reports an error unless condition is met, printing out `msg` using
-`FIO_LOG_FATAL` and aborting (not existing) the application.
+`FIO_LOG_FATAL` and exiting (not aborting) the application.
 
 In addition, a `SIGINT` will be sent to the process and any of it's children
-before aborting the application.
+before exiting the application, supporting debuggers everywhere :-)
 
 #### `FIO_ASSERT_ALLOC(cond, msg, ...)`
 
 Reports an error unless condition is met, printing out `msg` using
-`FIO_LOG_FATAL` and aborting (not existing) the application.
+`FIO_LOG_FATAL` and exiting (not aborting) the application.
 
 In addition, a `SIGINT` will be sent to the process and any of it's children
-before aborting the application.
+before exiting the application, supporting debuggers everywhere :-)
 
 #### `FIO_ASSERT_DEBUG(cond, msg, ...)`
 
 Reports an error unless condition is met, printing out `msg` using
-`FIO_LOG_FATAL` and aborting (not existing) the application.
+`FIO_LOG_FATAL` and aborting (not exiting) the application.
 
 In addition, a `SIGINT` will be sent to the process and any of it's children
-before aborting the application.
+before aborting the application, because consistency is important.
 
 
 **Note**: `msg` MUST be a string literal.
@@ -606,6 +606,13 @@ typedef struct fio___list_node_s {
 #define FIO_LIST_HEAD fio___list_node_s
 
 /* *****************************************************************************
+Miscellaneous helper macros
+***************************************************************************** */
+
+/** An empty macro, adding white space. Used to avoid function like macros. */
+#define FIO_NOOP
+
+/* *****************************************************************************
 End persistent segment (end include-once guard)
 ***************************************************************************** */
 #endif /* H_FIO_CSTL_INCLUDE_ONCE____H */
@@ -647,7 +654,7 @@ Common macros
 #if !FIO_EXTERN
 #define SFUNC static __attribute__((unused))
 #define IFUNC static inline __attribute__((unused))
-#ifndef FIO_EXTERN_COMPLETE
+#ifndef FIO_EXTERN_COMPLETE /* force implementation, emitting static data */
 #define FIO_EXTERN_COMPLETE 2
 #endif
 #else
@@ -775,7 +782,7 @@ int __attribute__((weak)) FIO_LOG_LEVEL;
     FIO_LOG_FATAL("(" __FILE__ ":" FIO_MACRO2STR(__LINE__) ") "__VA_ARGS__);   \
     perror("     errno");                                                      \
     kill(0, SIGINT);                                                           \
-    abort();                                                                   \
+    exit(-1);                                                                  \
   }
 
 #ifndef FIO_ASSERT_ALLOC
@@ -785,7 +792,7 @@ int __attribute__((weak)) FIO_LOG_LEVEL;
     FIO_LOG_FATAL("memory allocation error "__FILE__                           \
                   ":" FIO_MACRO2STR(__LINE__));                                \
     kill(0, SIGINT);                                                           \
-    abort();                                                                   \
+    exit(-1);                                                                  \
   }
 #endif
 
@@ -1783,7 +1790,7 @@ SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
  * Returns the number of bytes actually written (excluding the NUL
  * terminator).
  */
-size_t fio_ftoa(char *dest, double num, uint8_t base);
+SFUNC size_t fio_ftoa(char *dest, double num, uint8_t base);
 /* *****************************************************************************
 Strings to Numbers - Implementation
 ***************************************************************************** */
@@ -2057,7 +2064,7 @@ zero:
   return len;
 }
 
-size_t fio_ftoa(char *dest, double num, uint8_t base) {
+SFUNC size_t fio_ftoa(char *dest, double num, uint8_t base) {
   if (base == 2 || base == 16) {
     /* handle binary / Hex representation the same as an int64_t */
     int64_t *i = (void *)&num;
@@ -6646,9 +6653,6 @@ TEST_FUNC void fio___dynamic_types_test___print_sizes(void) {
 /* *****************************************************************************
 Testing functiun
 ***************************************************************************** */
-
-#define FIO_HMAP my_map
-#include __FILE__
 
 TEST_FUNC void fio_test_dynamic_types(void) {
   fprintf(stderr, "===============\n");
