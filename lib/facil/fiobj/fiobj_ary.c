@@ -132,7 +132,7 @@ FIOBJ *fiobj_ary2ptr(FIOBJ ary) {
  * Negative values are retrieved from the end of the array. i.e., `-1`
  * is the last item.
  */
-FIOBJ fiobj_ary_index(FIOBJ ary, int64_t pos) {
+FIOBJ fiobj_ary_index(FIOBJ ary, int32_t pos) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
   return fio_ary___get(&obj2ary(ary)->ary, pos);
 }
@@ -140,7 +140,7 @@ FIOBJ fiobj_ary_index(FIOBJ ary, int64_t pos) {
 /**
  * Sets an object at the requested position.
  */
-void fiobj_ary_set(FIOBJ ary, FIOBJ obj, int64_t pos) {
+void fiobj_ary_set(FIOBJ ary, FIOBJ obj, int32_t pos) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
   FIOBJ old = FIOBJ_INVALID;
   fio_ary___set(&obj2ary(ary)->ary, pos, obj, &old);
@@ -195,7 +195,7 @@ Array Find / Remove / Replace
  * Replaces the object at a specific position, returning the old object -
  * remember to `fiobj_free` the old object.
  */
-FIOBJ fiobj_ary_replace(FIOBJ ary, FIOBJ obj, int64_t pos) {
+FIOBJ fiobj_ary_replace(FIOBJ ary, FIOBJ obj, int32_t pos) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
   FIOBJ old = fiobj_ary_index(ary, pos);
   fiobj_dup(old);
@@ -207,9 +207,9 @@ FIOBJ fiobj_ary_replace(FIOBJ ary, FIOBJ obj, int64_t pos) {
  * Finds the index of a specifide object (if any). Returns -1 if the object
  * isn't found.
  */
-int64_t fiobj_ary_find(FIOBJ ary, FIOBJ data) {
+int32_t fiobj_ary_find(FIOBJ ary, FIOBJ data) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
-  return (int64_t)fio_ary___find(&obj2ary(ary)->ary, data, 0);
+  return (int32_t)fio_ary___find(&obj2ary(ary)->ary, data, 0);
 }
 
 /**
@@ -218,7 +218,7 @@ int64_t fiobj_ary_find(FIOBJ ary, FIOBJ data) {
  *
  * Returns 0 on success or -1 (if no object or out of bounds).
  */
-int fiobj_ary_remove(FIOBJ ary, int64_t pos) {
+int fiobj_ary_remove(FIOBJ ary, int32_t pos) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
   if (fio_ary___remove(&obj2ary(ary)->ary, (intptr_t)pos, NULL)) {
     return -1;
