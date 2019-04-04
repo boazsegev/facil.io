@@ -59,10 +59,21 @@ If the `FIO_LOG_LENGTH_LIMIT` macro is defined (it's recommended that it be
 greater than 128), than the `FIO_LOG2STDERR` (weak) function and the
 `FIO_LOG2STDERR2` macro will be defined.
 
+#### `FIO_LOG_LEVEL`
+
+An application wide integer with a value of either:
+
+- `FIO_LOG_LEVEL_NONE` (0)
+- `FIO_LOG_LEVEL_FATAL` (1)
+- `FIO_LOG_LEVEL_ERROR` (2)
+- `FIO_LOG_LEVEL_WARNING` (3)
+- `FIO_LOG_LEVEL_INFO` (4)
+- `FIO_LOG_LEVEL_DEBUG` (5)
+
 #### `FIO_LOG2STDERR(msg, ...)`
 
-This `printf` style function will log a message to `stderr`, without allocating
-any memory on the heap for the string (`fprintf` might).
+This `printf` style **function** will log a message to `stderr`, without
+allocating any memory on the heap for the string (`fprintf` might).
 
 The function is defined as `weak`, allowing it to be overridden during the
 linking stage, so logging could be diverted... although, it's recommended to
@@ -70,10 +81,55 @@ divert `stderr` rather then the logging function.
 
 #### `FIO_LOG2STDERR2(msg, ...)`
 
-This macro rounts to the `FIO_LOG2STDERR` function after prefixing the message
+This macro routs to the `FIO_LOG2STDERR` function after prefixing the message
 with the file name and line number in which the error occured.
 
-Note: `msg` MUST be a string literal.
+#### `FIO_LOG_DEBUG(msg, ...)`
+
+Logs `msg` **if** log level is equal or above requested log level.
+
+#### `FIO_LOG_INFO(msg, ...)`
+
+Logs `msg` **if** log level is equal or above requested log level.
+
+#### `FIO_LOG_WARNING(msg, ...)`
+
+Logs `msg` **if** log level is equal or above requested log level.
+
+#### `FIO_LOG_ERROR(msg, ...)`
+
+Logs `msg` **if** log level is equal or above requested log level.
+
+#### `FIO_LOG_FATAL(msg, ...)`
+
+Logs `msg` **if** log level is equal or above requested log level.
+
+#### `FIO_ASSERT(cond, msg, ...)`
+
+Reports an error unless condition is met, printing out `msg` using
+`FIO_LOG_FATAL` and aborting (not existing) the application.
+
+In addition, a `SIGINT` will be sent to the process and any of it's children
+before aborting the application.
+
+#### `FIO_ASSERT_ALLOC(cond, msg, ...)`
+
+Reports an error unless condition is met, printing out `msg` using
+`FIO_LOG_FATAL` and aborting (not existing) the application.
+
+In addition, a `SIGINT` will be sent to the process and any of it's children
+before aborting the application.
+
+#### `FIO_ASSERT_DEBUG(cond, msg, ...)`
+
+Reports an error unless condition is met, printing out `msg` using
+`FIO_LOG_FATAL` and aborting (not existing) the application.
+
+In addition, a `SIGINT` will be sent to the process and any of it's children
+before aborting the application.
+
+
+**Note**: `msg` MUST be a string literal.
 
 -------------------------------------------------------------------------------
 
@@ -622,6 +678,142 @@ extern "C" {
 
 
 
+                                  Logging
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/**
+ * Enables logging macros that avoid heap memory allocations
+ */
+#if !defined(FIO_LOG2STDERR2) && defined(FIO_LOG_LENGTH_LIMIT)
+
+#if FIO_LOG_LENGTH_LIMIT > 128
+#define FIO_LOG____LENGTH_ON_STACK FIO_LOG_LENGTH_LIMIT
+#define FIO_LOG____LENGTH_BORDER (FIO_LOG_LENGTH_LIMIT - 32)
+#else
+#define FIO_LOG____LENGTH_ON_STACK (FIO_LOG_LENGTH_LIMIT + 32)
+#define FIO_LOG____LENGTH_BORDER FIO_LOG_LENGTH_LIMIT
+#endif
+
+#pragma weak FIO_LOG2STDERR
+void __attribute__((format(printf, 1, 0), weak))
+FIO_LOG2STDERR(const char *format, ...) {
+  char tmp___log[FIO_LOG____LENGTH_ON_STACK];
+  va_list argv;
+  va_start(argv, format);
+  int len___log = vsnprintf(tmp___log, FIO_LOG_LENGTH_LIMIT - 2, format, argv);
+  va_end(argv);
+  if (len___log <= 0 || len___log >= FIO_LOG_LENGTH_LIMIT - 2) {
+    if (len___log >= FIO_LOG_LENGTH_LIMIT - 2) {
+      memcpy(tmp___log + FIO_LOG____LENGTH_BORDER, "... (warning: truncated).",
+             25);
+      len___log = FIO_LOG____LENGTH_BORDER + 25;
+    } else {
+      fwrite("ERROR: log output error (can't write).\n", 39, 1, stderr);
+      return;
+    }
+  }
+  tmp___log[len___log++] = '\n';
+  tmp___log[len___log] = '0';
+  fwrite(tmp___log, len___log, 1, stderr);
+}
+#undef FIO_LOG____LENGTH_ON_STACK
+#undef FIO_LOG____LENGTH_BORDER
+
+#define FIO_LOG2STDERR2(...)                                                   \
+  FIO_LOG2STDERR("("__FILE__                                                   \
+                 ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
+
+/** Logging level of zero (no logging). */
+#define FIO_LOG_LEVEL_NONE 0
+/** Log fatal errors. */
+#define FIO_LOG_LEVEL_FATAL 1
+/** Log errors and fatal errors. */
+#define FIO_LOG_LEVEL_ERROR 2
+/** Log warnings, errors and fatal errors. */
+#define FIO_LOG_LEVEL_WARNING 3
+/** Log every message (info, warnings, errors and fatal errors). */
+#define FIO_LOG_LEVEL_INFO 4
+/** Log everything, including debug messages. */
+#define FIO_LOG_LEVEL_DEBUG 5
+
+/** The logging level */
+int __attribute__((weak)) FIO_LOG_LEVEL;
+
+#ifndef FIO_LOG_PRINT__
+#define FIO_LOG_PRINT__(level, ...)                                            \
+  do {                                                                         \
+    if (level <= FIO_LOG_LEVEL)                                                \
+      FIO_LOG2STDERR(__VA_ARGS__);                                             \
+  } while (0)
+
+#define FIO_LOG_DEBUG(...)                                                     \
+  FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG,                                         \
+                  "DEBUG ("__FILE__                                            \
+                  ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
+#define FIO_LOG_INFO(...)                                                      \
+  FIO_LOG_PRINT__(FIO_LOG_LEVEL_INFO, "INFO: " __VA_ARGS__)
+#define FIO_LOG_WARNING(...)                                                   \
+  FIO_LOG_PRINT__(FIO_LOG_LEVEL_WARNING, "WARNING: " __VA_ARGS__)
+#define FIO_LOG_ERROR(...)                                                     \
+  FIO_LOG_PRINT__(FIO_LOG_LEVEL_ERROR, "ERROR: " __VA_ARGS__)
+#define FIO_LOG_FATAL(...)                                                     \
+  FIO_LOG_PRINT__(FIO_LOG_LEVEL_FATAL, "FATAL: " __VA_ARGS__)
+#endif
+
+#define FIO_ASSERT(cond, ...)                                                  \
+  if (!(cond)) {                                                               \
+    FIO_LOG_FATAL("(" __FILE__ ":" FIO_MACRO2STR(__LINE__) ") "__VA_ARGS__);   \
+    perror("     errno");                                                      \
+    kill(0, SIGINT);                                                           \
+    abort();                                                                   \
+  }
+
+#ifndef FIO_ASSERT_ALLOC
+/** Tests for an allocation failure. The behavior can be overridden. */
+#define FIO_ASSERT_ALLOC(ptr)                                                  \
+  if (!(ptr)) {                                                                \
+    FIO_LOG_FATAL("memory allocation error "__FILE__                           \
+                  ":" FIO_MACRO2STR(__LINE__));                                \
+    kill(0, SIGINT);                                                           \
+    abort();                                                                   \
+  }
+#endif
+
+#ifdef DEBUG
+/** If `DEBUG` is defined, acts as `FIO_ASSERT`, otherwaise a NOOP. */
+#define FIO_ASSERT_DEBUG(cond, ...)                                            \
+  if (!(cond)) {                                                               \
+    FIO_LOG_DEBUG(__VA_ARGS__);                                                \
+    perror("     errno");                                                      \
+    kill(0, SIGINT);                                                           \
+    abort();                                                                   \
+  }
+#else
+#define FIO_ASSERT_DEBUG(...)
+#endif
+
+#endif
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
                                 Memory Allocation
 
 
@@ -737,6 +929,7 @@ HFUNC void fio____memcpy_16byte(void *dest_, void *src_, size_t units) {
   fio____memcpy_2b(dest_, src_, units << 3);
 #endif
 }
+
 /* *****************************************************************************
 Big memory allocation macros and helpers (page allocation / mmap)
 ***************************************************************************** */
@@ -912,74 +1105,6 @@ Memory management macros
 #define FIO_MEM_CALLOC_ FIO_MEM_CALLOC
 #define FIO_MEM_REALLOC_ FIO_MEM_REALLOC
 #define FIO_MEM_FREE_ FIO_MEM_FREE
-#endif
-
-/* *****************************************************************************
-
-
-
-
-
-
-
-
-
-
-                                  Logging
-
-
-
-
-
-
-
-
-
-
-***************************************************************************** */
-
-/**
- * Enables logging macros that avoid heap memory allocations
- */
-#if !defined(FIO_LOG2STDERR2) && defined(FIO_LOG_LENGTH_LIMIT)
-
-#if FIO_LOG_LENGTH_LIMIT > 128
-#define FIO_LOG____LENGTH_ON_STACK FIO_LOG_LENGTH_LIMIT
-#define FIO_LOG____LENGTH_BORDER (FIO_LOG_LENGTH_LIMIT - 32)
-#else
-#define FIO_LOG____LENGTH_ON_STACK (FIO_LOG_LENGTH_LIMIT + 32)
-#define FIO_LOG____LENGTH_BORDER FIO_LOG_LENGTH_LIMIT
-#endif
-
-#pragma weak FIO_LOG2STDERR
-void __attribute__((format(printf, 1, 0), weak))
-FIO_LOG2STDERR(const char *format, ...) {
-  char tmp___log[FIO_LOG____LENGTH_ON_STACK];
-  va_list argv;
-  va_start(argv, format);
-  int len___log = vsnprintf(tmp___log, FIO_LOG_LENGTH_LIMIT - 2, format, argv);
-  va_end(argv);
-  if (len___log <= 0 || len___log >= FIO_LOG_LENGTH_LIMIT - 2) {
-    if (len___log >= FIO_LOG_LENGTH_LIMIT - 2) {
-      memcpy(tmp___log + FIO_LOG____LENGTH_BORDER, "... (warning: truncated).",
-             25);
-      len___log = FIO_LOG____LENGTH_BORDER + 25;
-    } else {
-      fwrite("ERROR: log output error (can't write).\n", 39, 1, stderr);
-      return;
-    }
-  }
-  tmp___log[len___log++] = '\n';
-  tmp___log[len___log] = '0';
-  fwrite(tmp___log, len___log, 1, stderr);
-}
-
-#define FIO_LOG2STDERR2(...)                                                   \
-  FIO_LOG2STDERR("("__FILE__                                                   \
-                 ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
-
-#undef FIO_LOG____LENGTH_ON_STACK
-#undef FIO_LOG____LENGTH_BORDER
 #endif
 
 /* *****************************************************************************
@@ -1992,10 +2117,12 @@ Linked Lists (embeded) - Type
 #ifdef FIO_LIST_NAME
 
 #ifndef FIO_LIST_TYPE
+/** Name of the list type and function prefix, defaults to FIO_LIST_NAME_s */
 #define FIO_LIST_TYPE FIO_NAME(FIO_LIST_NAME, s)
 #endif
 
 #ifndef FIO_LIST_NODE_NAME
+/** List types must contain at least one node element, defaults to `node`. */
 #define FIO_LIST_NODE_NAME node
 #endif
 
