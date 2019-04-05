@@ -1503,7 +1503,7 @@ Hemming Distance and bit counting
 #if __has_builtin(__builtin_popcountll)
 #define fio_popcount(n) __builtin_popcountll(n)
 #else
-HIFUNC int fio_popcount(uint64_t n) {
+HFUNC int fio_popcount(uint64_t n) {
   int c = 0;
   while (n) {
     ++c;
