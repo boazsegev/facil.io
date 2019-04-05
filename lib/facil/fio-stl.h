@@ -7424,18 +7424,43 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
 #undef FIO__STR_SMALL_CAPA
 
 /* *****************************************************************************
-Memory Allocation - test
-***************************************************************************** */
-
-// #define FIO_MALLOC
-// #include __FILE__
-
-/* *****************************************************************************
 CLI - test
 ***************************************************************************** */
 
 #define FIO_CLI
 #include __FILE__
+
+TEST_FUNC void fio___dynamic_types_test___cli(void) {
+  const char *argv[] = {
+      "appname", "-i11", "-i2=2", "-i3", "3", "-t", "-s", "test", "unnamed",
+  };
+  const int argc = sizeof(argv) / sizeof(argv[0]);
+  fio_cli_start(argc, argv, 0, -1, NULL,
+                FIO_CLI_INT("-integer1 -i1 first integer"),
+                FIO_CLI_INT("-integer2 -i2 second integer"),
+                FIO_CLI_INT("-integer3 -i3 third integer"),
+                FIO_CLI_BOOL("-boolean -t boolean"),
+                FIO_CLI_BOOL("-boolean_false -f boolean"),
+                FIO_CLI_STRING("-str -s a string"));
+  TEST_ASSERT(fio_cli_get_i("-i2") == 2, "CLI second integer error.");
+  TEST_ASSERT(fio_cli_get_i("-i3") == 3, "CLI third integer error.");
+  TEST_ASSERT(fio_cli_get_i("-i1") == 1, "CLI first integer error.");
+  TEST_ASSERT(fio_cli_get_i("-t") == 1, "CLI boolean true error.");
+  TEST_ASSERT(fio_cli_get_i("-f") == 0, "CLI boolean false error.");
+  TEST_ASSERT(!strcmp(fio_cli_get("-s"), "test"), "CLI string error.");
+  TEST_ASSERT(fio_cli_unnamed_count() == 1, "CLI unnamed count error.");
+  TEST_ASSERT(!strcmp(fio_cli_unnamed(0), "unnamed"), "CLI unnamed error.");
+  fio_cli_set("-manual", "okay");
+  TEST_ASSERT(!strcmp(fio_cli_get("-manual"), "okay"), "CLI set/get error.");
+  fio_cli_end();
+  TEST_ASSERT(fio_cli_get_i("-i1") == 0, "CLI cleanup error.");
+}
+/* *****************************************************************************
+Memory Allocation - test
+***************************************************************************** */
+
+// #define FIO_MALLOC
+// #include __FILE__
 
 /* *****************************************************************************
 Environment printout
@@ -7497,6 +7522,8 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fio___dynamic_types_test___hmap_test();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___str();
+  fprintf(stderr, "===============\n");
+  fio___dynamic_types_test___cli();
   fprintf(stderr, "===============\n");
 }
 
