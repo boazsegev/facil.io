@@ -1,7 +1,7 @@
-#include "fio.h"
+#define FIO_RAND
+#include "fio-stl.h"
 
 #define HWD_BITS 64
-
 static uint64_t next(void) { return fio_rand64(); }
 
 /*
@@ -579,7 +579,7 @@ static double compute_pvalue(const bool trans) {
      category. */
 
   double sigma[NUMCATS];
-  uint32_t sig[NUMCATS], cat_count[NUMCATS] = {};
+  uint32_t sig[NUMCATS], cat_count[NUMCATS] = {0};
   for (int i = 0; i < NUMCATS; i++)
     sigma[i] = DBL_MIN;
 
