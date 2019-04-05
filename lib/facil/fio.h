@@ -36,12 +36,6 @@ Feel free to copy, use and enjoy according to the license provided.
  * Cluster / Pub/Sub Middleware and Extensions ("Engines")
  *
  * Atomic Operations and Spin Locking Helper Functions
- * Simple Constant Time Operations
- * Byte Swapping and Network Order
- *
- * Converting Numbers to Strings (and back)
- * Strings to Numbers
- * Numbers to Strings* Random Generator Functions
  *
  * SipHash
  * SHA-1
