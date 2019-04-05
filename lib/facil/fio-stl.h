@@ -24,7 +24,7 @@ This file contains macros that create generic / common core types, such as:
 
 This file also contains common helper macros / primitives, such as:
 
-* Logging (without heap allocation) - defined by `FIO_LOG_LENGTH_LIMIT`
+* Logging and Assertion (no heap allocation) - defined by `FIO_LOG_LENGTH_LIMIT`
 
 * Atomic add/subtract/replace - defined by `FIO_ATOMIC`
 
@@ -53,7 +53,7 @@ the `FIO_EXTERN_COMPLETE` macro to include the API's implementation as well.
 
 -------------------------------------------------------------------------------
 
-## Logging:
+## Logging and Assertions:
 
 If the `FIO_LOG_LENGTH_LIMIT` macro is defined (it's recommended that it be
 greater than 128), than the `FIO_LOG2STDERR` (weak) function and the
@@ -288,6 +288,98 @@ Returns the number of bytes actually written (excluding the NUL terminator).
 
 -------------------------------------------------------------------------------
 
+## CLI (command line interface)
+
+The simple template library imclides a CLI parser, since parsing command line
+arguments is a common task.
+
+By defining `FIO_CLI`, the following functions will be defined.
+
+In addition, `FIO_CLI` automatically includes tha `FIO_ATOL` flag, since CLI
+parsing depends on the `fio_atol` function.
+
+#### `fio_cli_start(argc, argv, unnamed_min, unnamed_max, description, ...)`
+
+The **macro** shadows the `fio_cli_start` function and defines the CLI interface
+to be parsed. i.e.,
+
+      int main(int argc, char const *argv[]) {
+        fio_cli_start(argc, argv, 0, -1,
+                      "this is a CLI example.",
+                      FIO_CLI_PRINT_HEADER("CLI type validation"),
+                      FIO_CLI_STRING("-str -s any data goes here"),
+                      FIO_CLI_INT("-int -i numeral data goes here"),
+                      FIO_CLI_BOOL("-bool -b flag (boolean) only - no data"),
+                      FIO_CLI_PRINT("This test allows for unlimited arguments "
+                                    "that will simply pass-through"));
+        if (fio_cli_get("-s"))
+          fprintf(stderr, "String: %s\n", fio_cli_get("-s"));
+
+        if (fio_cli_get("-i"))
+          fprintf(stderr, "Integer: %d\n", fio_cli_get_i("-i"));
+
+        fprintf(stderr, "Boolean: %d\n", fio_cli_get_i("-b"));
+
+        if (fio_cli_unnamed_count()) {
+          fprintf(stderr, "Printing unlisted / unrecognized arguments:\n");
+          for (size_t i = 0; i < fio_cli_unnamed_count(); ++i) {
+            fprintf(stderr, "%s\n", fio_cli_unnamed(i));
+          }
+        }
+
+        fio_cli_end();
+        return 0;
+      }
+
+The `fio_cli_start` macro accepts the `argc` and `argv`, as recieved by the
+`main` functions, a maximum and minimum number of unspecified CLI arguments
+(beneath which or after which the parser will fail), an application description
+string and a variable list of (specified) command line argumens.
+
+Command line arguments can be either String, Integer or Boolean, as indicated by
+the `FIO_CLI_STRING("-arg [-alias] desc.")`, `FIO_CLI_INT("-arg [-alias]
+desc.")` and `FIO_CLI_BOOL("-arg [-alias] desc.")` macros. Extra descriptions or
+text can be added using the `FIO_CLI_PRINT_HEADER(str)` and `FIO_CLI_PRINT(str)`
+macros.
+
+#### `fio_cli_end()`
+
+Clears the CLI data storage.
+
+#### `char const *fio_cli_get(char const *name);`
+
+Returns the argument's value as a string, or NULL if the argument wasn't
+provided.
+
+#### `int fio_cli_get_i(char const *name);`
+
+Returns the argument's value as an integer, or 0 if the argument wasn't
+provided.
+
+#### `fio_cli_get_bool(name)`
+
+True the argument was boolean and provided.
+
+#### `unsigned int fio_cli_unnamed_count(void)`
+
+Returns the number of unrecognized arguments (arguments unspecified, in
+`fio_cli_start`).
+
+#### `char const *fio_cli_unnamed(unsigned int index)`
+
+Returns a Strinf containing the unrecognized argument at the stated `index`
+(indexes are zero based).
+
+#### `void fio_cli_set(char const *name, char const *value)`
+
+Sets a value for the named argument (but **not** it's aliases).
+
+#### `fio_cli_set_default(name, value)`
+
+Sets a value for the named argument (but **not** it's aliases) **only if** the
+argument wasn't set by the user.
+
+-------------------------------------------------------------------------------
 
 ## Linked Lists:
 
@@ -644,6 +736,7 @@ End persistent segment (end include-once guard)
 /* *****************************************************************************
 Common macros
 ***************************************************************************** */
+#ifndef FIO_NAME_FROM_MACRO_STEP2 /* don't redefine in recursive include */
 
 /* Used for naming functions and types, prefixing FIO_NAME to the name */
 #define FIO_NAME_FROM_MACRO_STEP2(prefix, postfix) prefix##_##postfix
@@ -664,6 +757,7 @@ Common macros
 #define HFUNC static inline __attribute__((unused)) /* internal helper */
 #define HSFUNC static __attribute__((unused))       /* internal helper */
 
+#endif
 /* *****************************************************************************
 C++ extern start
 ***************************************************************************** */
@@ -1738,7 +1832,7 @@ SFUNC void fio_rand_bytes(void *data_, size_t len) {
 
 
 ***************************************************************************** */
-#if defined(FIO_ATOL) && !defined(H__FIO_ATOL_H)
+#if (defined(FIO_ATOL) || defined(FIO_CLI)) && !defined(H__FIO_ATOL_H)
 #define H__FIO_ATOL_H
 /* *****************************************************************************
 Strings to Numbers - API
@@ -1847,9 +1941,13 @@ HFUNC uint64_t fio_atol___consume_hex(char **pstr) {
 
 SFUNC int64_t fio_atol(char **pstr) {
   /* No binary representation in strtol */
+  if (!pstr || !*pstr)
+    return 0;
   char *str = *pstr;
   uint64_t result = 0;
   uint8_t invert = 0;
+  if (!pstr)
+    return 0;
   while (isspace(*str))
     ++(str);
   if (str[0] == '-') {
@@ -5036,6 +5134,605 @@ String Cleanup
 
 
 
+                  CLI helpers - command line interface parsing
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if defined(FIO_CLI) && !defined(H__FIO_CLI_H)
+#define H__FIO_CLI_H 1
+
+/* *****************************************************************************
+Internal Macro Implementation
+***************************************************************************** */
+
+/** Used internally. */
+#define FIO_CLI_STRING__TYPE_I 0x1
+#define FIO_CLI_BOOL__TYPE_I 0x2
+#define FIO_CLI_INT__TYPE_I 0x3
+#define FIO_CLI_PRINT__TYPE_I 0x4
+#define FIO_CLI_PRINT_HEADER__TYPE_I 0x5
+
+/** Indicates the CLI argument should be a String (default). */
+#define FIO_CLI_STRING(line) (line), ((char *)FIO_CLI_STRING__TYPE_I)
+/** Indicates the CLI argument is a Boolean value. */
+#define FIO_CLI_BOOL(line) (line), ((char *)FIO_CLI_BOOL__TYPE_I)
+/** Indicates the CLI argument should be an Integer (numerical). */
+#define FIO_CLI_INT(line) (line), ((char *)FIO_CLI_INT__TYPE_I)
+/** Indicates the CLI string should be printed as is. */
+#define FIO_CLI_PRINT(line) (line), ((char *)FIO_CLI_PRINT__TYPE_I)
+/** Indicates the CLI string should be printed as a header. */
+#define FIO_CLI_PRINT_HEADER(line)                                             \
+  (line), ((char *)FIO_CLI_PRINT_HEADER__TYPE_I)
+
+/* *****************************************************************************
+CLI API
+***************************************************************************** */
+
+/**
+ * This function parses the Command Line Interface (CLI), creating a temporary
+ * "dictionary" that allows easy access to the CLI using their names or aliases.
+ *
+ * Command line arguments may be typed. If an optional type requirement is
+ * provided and the provided arument fails to match the required type, execution
+ * will end and an error message will be printed along with a short "help".
+ *
+ * The function / macro accepts the following arguments:
+ * - `argc`: command line argument count.
+ * - `argv`: command line argument list (array).
+ * - `unnamed_min`: the required minimum of un-named arguments.
+ * - `unnamed_max`: the maximum limit of un-named arguments.
+ * - `description`: a C string containing the program's description.
+ * - named arguments list: a list of C strings describing named arguments.
+ *
+ * The following optional type requirements are:
+ *
+ * * FIO_CLI_STRING(desc_line)       - (default) string argument.
+ * * FIO_CLI_BOOL(desc_line)         - boolean argument (no value).
+ * * FIO_CLI_INT(desc_line)          - integer argument.
+ * * FIO_CLI_PRINT_HEADER(desc_line) - extra header for output.
+ * * FIO_CLI_PRINT(desc_line)        - extra information for output.
+ *
+ * Argument names MUST start with the '-' character. The first word starting
+ * without the '-' character will begin the description for the CLI argument.
+ *
+ * The arguments "-?", "-h", "-help" and "--help" are automatically handled
+ * unless overridden.
+ *
+ * Un-named arguments shouldn't be listed in the named arguments list.
+ *
+ * Example use:
+ *
+ *    fio_cli_start(argc, argv, 0, 0, "this example accepts the following:",
+ *                  FIO_CLI_PRINT_HREADER("Concurrency:"),
+ *                  FIO_CLI_INT("-t -thread number of threads to run."),
+ *                  FIO_CLI_INT("-w -workers number of workers to run."),
+ *                  FIO_CLI_PRINT_HREADER("Address Binding:"),
+ *                  "-b, -address the address to bind to.",
+ *                  FIO_CLI_INT("-p,-port the port to bind to."),
+ *                  FIO_CLI_PRINT("\t\tset port to zero (0) for Unix s."),
+ *                  FIO_CLI_PRINT_HREADER("Logging:"),
+ *                  FIO_CLI_BOOL("-v -log enable logging."));
+ *
+ *
+ * This would allow access to the named arguments:
+ *
+ *      fio_cli_get("-b") == fio_cli_get("-address");
+ *
+ *
+ * Once all the data was accessed, free the parsed data dictionary using:
+ *
+ *      fio_cli_end();
+ *
+ * It should be noted, arguments will be recognized in a number of forms, i.e.:
+ *
+ *      app -t=1 -p3000 -a localhost
+ *
+ * This function is NOT thread safe.
+ */
+#define fio_cli_start(argc, argv, unnamed_min, unnamed_max, description, ...)  \
+  fio_cli_start((argc), (argv), (unnamed_min), (unnamed_max), (description),   \
+                (char const *[]){__VA_ARGS__, NULL})
+/**
+ * Never use the function directly, always use the MACRO, because the macro
+ * attaches a NULL marker at the end of the `names` argument collection.
+ */
+SFUNC void fio_cli_start FIO_NOOP(int argc, char const *argv[], int unnamed_min,
+                                  int unnamed_max, char const *description,
+                                  char const **names);
+/**
+ * Clears the memory used by the CLI dictionary, removing all parsed data.
+ *
+ * This function is NOT thread safe.
+ */
+SFUNC void fio_cli_end(void);
+
+/** Returns the argument's value as a NUL terminated C String. */
+SFUNC char const *fio_cli_get(char const *name);
+
+/** Returns the argument's value as an integer. */
+SFUNC int fio_cli_get_i(char const *name);
+
+/** This MACRO returns the argument's value as a boolean. */
+#define fio_cli_get_bool(name) (fio_cli_get((name)) != NULL)
+
+/** Returns the number of unnamed argument. */
+SFUNC unsigned int fio_cli_unnamed_count(void);
+
+/** Returns the unnamed argument using a 0 based `index`. */
+SFUNC char const *fio_cli_unnamed(unsigned int index);
+
+/**
+ * Sets the argument's value as a NUL terminated C String (no copy!).
+ *
+ * CAREFUL: This does not automatically detect aliases or type violations! it
+ * will only effect the specific name given, even if invalid. i.e.:
+ *
+ *     fio_cli_start(argc, argv,
+ *                  "this is example accepts the following options:",
+ *                  "-p -port the port to bind to", FIO_CLI_INT;
+ *
+ *     fio_cli_set("-p", "hello"); // fio_cli_get("-p") != fio_cli_get("-port");
+ *
+ * Note: this does NOT copy the C strings to memory. Memory should be kept alive
+ *       until `fio_cli_end` is called.
+ *
+ * This function is NOT thread safe.
+ */
+SFUNC void fio_cli_set(char const *name, char const *value);
+
+/**
+ * This MACRO is the same as:
+ *
+ *     if(!fio_cli_get(name)) {
+ *       fio_cli_set(name, value)
+ *     }
+ *
+ * See fio_cli_set for notes and restrictions.
+ */
+#define fio_cli_set_default(name, value)                                       \
+  if (!fio_cli_get((name)))                                                    \
+    fio_cli_set(name, value);
+
+/* *****************************************************************************
+CLI Implementation
+***************************************************************************** */
+#ifdef FIO_EXTERN_COMPLETE
+
+/* *****************************************************************************
+CLI Data Stores
+***************************************************************************** */
+
+typedef struct {
+  size_t len;
+  const char *data;
+} fio_cli___cstr_s;
+
+#define FIO_RISKY_HASH
+#define FIO_MAP_TYPE const char *
+#define FIO_MAP_KEY fio_cli___cstr_s
+#define FIO_MAP_KEY_CMP(o1, o2)                                                \
+  (o1.len == o2.len &&                                                         \
+   (o1.data == o2.data || !memcmp(o1.data, o2.data, o1.len)))
+#define FIO_MAP_NAME fio_cli_hash
+#define FIO_STL_KEEP__
+#include __FILE__
+
+static fio_cli_hash_s fio_cli__aliases = FIO_MAP_INIT;
+static fio_cli_hash_s fio_cli__values = FIO_MAP_INIT;
+static size_t fio_cli__unnamed_count = 0;
+
+typedef struct {
+  int unnamed_min;
+  int unnamed_max;
+  int pos;
+  int unnamed_count;
+  int argc;
+  char const **argv;
+  char const *description;
+  char const **names;
+} fio_cli_parser_data_s;
+
+#define FIO_CLI_HASH_VAL(s)                                                    \
+  fio_risky_hash((s).data, (s).len, (uint64_t)fio_cli_start)
+
+/* *****************************************************************************
+CLI Parsing
+***************************************************************************** */
+
+HSFUNC void fio_cli___map_line2alias(char const *line) {
+  fio_cli___cstr_s n = {.data = line};
+  while (n.data[0] == '-') {
+    while (n.data[n.len] && n.data[n.len] != ' ' && n.data[n.len] != ',') {
+      ++n.len;
+    }
+    const char *old = NULL;
+    fio_cli_hash_insert(&fio_cli__aliases, FIO_CLI_HASH_VAL(n), n, (void *)line,
+                        &old);
+#ifdef FIO_LOG_ERROR
+    if (old) {
+      FIO_LOG_ERROR("CLI argument name conflict detected\n"
+                    "         The following two directives conflict:\n"
+                    "\t%s\n\t%s\n",
+                    old, line);
+    }
+#endif
+    while (n.data[n.len] && (n.data[n.len] == ' ' || n.data[n.len] == ',')) {
+      ++n.len;
+    }
+    n.data += n.len;
+    n.len = 0;
+  }
+}
+
+HSFUNC char const *fio_cli___get_line_type(fio_cli_parser_data_s *parser,
+                                           const char *line) {
+  if (!line) {
+    return NULL;
+  }
+  char const **pos = parser->names;
+  while (*pos) {
+    switch ((intptr_t)*pos) {
+    case FIO_CLI_STRING__TYPE_I:       /* fallthrough */
+    case FIO_CLI_BOOL__TYPE_I:         /* fallthrough */
+    case FIO_CLI_INT__TYPE_I:          /* fallthrough */
+    case FIO_CLI_PRINT__TYPE_I:        /* fallthrough */
+    case FIO_CLI_PRINT_HEADER__TYPE_I: /* fallthrough */
+      ++pos;
+      continue;
+    }
+    if (line == *pos) {
+      goto found;
+    }
+    ++pos;
+  }
+  return NULL;
+found:
+  switch ((size_t)pos[1]) {
+  case FIO_CLI_STRING__TYPE_I:       /* fallthrough */
+  case FIO_CLI_BOOL__TYPE_I:         /* fallthrough */
+  case FIO_CLI_INT__TYPE_I:          /* fallthrough */
+  case FIO_CLI_PRINT__TYPE_I:        /* fallthrough */
+  case FIO_CLI_PRINT_HEADER__TYPE_I: /* fallthrough */
+    return pos[1];
+  }
+  return NULL;
+}
+
+HSFUNC void fio_cli___set_arg(fio_cli___cstr_s arg, char const *value,
+                              char const *line, fio_cli_parser_data_s *parser) {
+  /* handle unnamed argument */
+  if (!line || !arg.len) {
+    if (!value) {
+      goto print_help;
+    }
+    if (!strcmp(value, "-?") || !strcasecmp(value, "-h") ||
+        !strcasecmp(value, "-help") || !strcasecmp(value, "--help")) {
+      goto print_help;
+    }
+    fio_cli___cstr_s n = {.len = ++parser->unnamed_count};
+    fio_cli_hash_insert(&fio_cli__values, n.len, n, value, NULL);
+    if (parser->unnamed_max >= 0 &&
+        parser->unnamed_count > parser->unnamed_max) {
+      arg.len = 0;
+      goto error;
+    }
+    return;
+  }
+
+  /* validate data types */
+  char const *type = fio_cli___get_line_type(parser, line);
+  switch ((size_t)type) {
+  case FIO_CLI_BOOL__TYPE_I:
+    if (value && value != parser->argv[parser->pos + 1]) {
+      goto error;
+    }
+    value = "1";
+    break;
+  case FIO_CLI_INT__TYPE_I:
+    if (value) {
+      char const *tmp = value;
+      fio_atol((char **)&tmp);
+      if (*tmp) {
+        goto error;
+      }
+    }
+    /* fallthrough */
+  case FIO_CLI_STRING__TYPE_I:
+    if (!value)
+      goto error;
+    if (!value[0])
+      goto finish;
+    break;
+  }
+
+  /* add values using all aliases possible */
+  {
+    fio_cli___cstr_s n = {.data = line};
+    while (n.data[0] == '-') {
+      while (n.data[n.len] && n.data[n.len] != ' ' && n.data[n.len] != ',') {
+        ++n.len;
+      }
+      fio_cli_hash_insert(&fio_cli__values, FIO_CLI_HASH_VAL(n), n, value,
+                          NULL);
+      while (n.data[n.len] && (n.data[n.len] == ' ' || n.data[n.len] == ',')) {
+        ++n.len;
+      }
+      n.data += n.len;
+      n.len = 0;
+    }
+  }
+
+finish:
+
+  /* handle additional argv progress (if value is on separate argv) */
+  if (value && parser->pos < parser->argc &&
+      value == parser->argv[parser->pos + 1])
+    ++parser->pos;
+  return;
+
+error: /* handle errors*/
+  /* TODO! */
+  fprintf(stderr, "\n\r\x1B[31mError:\x1B[0m invalid argument %.*s %s %s\n\n",
+          (int)arg.len, arg.data, arg.len ? "with value" : "",
+          value ? (value[0] ? value : "(empty)") : "(null)");
+print_help:
+  fprintf(stderr, "\n%s\n",
+          parser->description ? parser->description
+                              : "This application accepts any of the following "
+                                "possible arguments:");
+  /* print out each line's arguments */
+  char const **pos = parser->names;
+  while (*pos) {
+    switch ((intptr_t)*pos) {
+    case FIO_CLI_STRING__TYPE_I: /* fallthrough */
+    case FIO_CLI_BOOL__TYPE_I:   /* fallthrough */
+    case FIO_CLI_INT__TYPE_I:    /* fallthrough */
+    case FIO_CLI_PRINT__TYPE_I:  /* fallthrough */
+    case FIO_CLI_PRINT_HEADER__TYPE_I:
+      ++pos;
+      continue;
+    }
+    type = (char *)FIO_CLI_STRING__TYPE_I;
+    switch ((intptr_t)pos[1]) {
+    case FIO_CLI_PRINT__TYPE_I:
+      fprintf(stderr, "%s\n", pos[0]);
+      pos += 2;
+      continue;
+    case FIO_CLI_PRINT_HEADER__TYPE_I:
+      fprintf(stderr, "\n\x1B[4m%s\x1B[0m\n", pos[0]);
+      pos += 2;
+      continue;
+
+    case FIO_CLI_STRING__TYPE_I: /* fallthrough */
+    case FIO_CLI_BOOL__TYPE_I:   /* fallthrough */
+    case FIO_CLI_INT__TYPE_I:    /* fallthrough */
+      type = pos[1];
+    }
+    /* print line @ pos, starting with main argument name */
+    int alias_count = 0;
+    int first_len = 0;
+    size_t tmp = 0;
+    char const *const p = *pos;
+    while (p[tmp] == '-') {
+      while (p[tmp] && p[tmp] != ' ' && p[tmp] != ',') {
+        if (!alias_count)
+          ++first_len;
+        ++tmp;
+      }
+      ++alias_count;
+      while (p[tmp] && (p[tmp] == ' ' || p[tmp] == ',')) {
+        ++tmp;
+      }
+    }
+    switch ((size_t)type) {
+    case FIO_CLI_STRING__TYPE_I:
+      fprintf(stderr, " \x1B[1m%.*s\x1B[0m\x1B[2m <>\x1B[0m\t%s\n", first_len,
+              p, p + tmp);
+      break;
+    case FIO_CLI_BOOL__TYPE_I:
+      fprintf(stderr, " \x1B[1m%.*s\x1B[0m   \t%s\n", first_len, p, p + tmp);
+      break;
+    case FIO_CLI_INT__TYPE_I:
+      fprintf(stderr, " \x1B[1m%.*s\x1B[0m\x1B[2m ##\x1B[0m\t%s\n", first_len,
+              p, p + tmp);
+      break;
+    }
+    /* print aliase information */
+    tmp = first_len;
+    while (p[tmp] && (p[tmp] == ' ' || p[tmp] == ',')) {
+      ++tmp;
+    }
+    while (p[tmp] == '-') {
+      const size_t start = tmp;
+      while (p[tmp] && p[tmp] != ' ' && p[tmp] != ',') {
+        ++tmp;
+      }
+      int padding = first_len - (tmp - start);
+      if (padding < 0)
+        padding = 0;
+      switch ((size_t)type) {
+      case FIO_CLI_STRING__TYPE_I:
+        fprintf(stderr,
+                " \x1B[1m%.*s\x1B[0m\x1B[2m <>\x1B[0m%*s\t(same as "
+                "\x1B[1m%.*s\x1B[0m)\n",
+                (int)(tmp - start), p + start, padding, "", first_len, p);
+        break;
+      case FIO_CLI_BOOL__TYPE_I:
+        fprintf(stderr,
+                " \x1B[1m%.*s\x1B[0m   %*s\t(same as \x1B[1m%.*s\x1B[0m)\n",
+                (int)(tmp - start), p + start, padding, "", first_len, p);
+        break;
+      case FIO_CLI_INT__TYPE_I:
+        fprintf(stderr,
+                " \x1B[1m%.*s\x1B[0m\x1B[2m ##\x1B[0m%*s\t(same as "
+                "\x1B[1m%.*s\x1B[0m)\n",
+                (int)(tmp - start), p + start, padding, "", first_len, p);
+        break;
+      }
+    }
+
+    ++pos;
+  }
+  fprintf(stderr, "\nUse any of the following input formats:\n"
+                  "\t-arg <value>\t-arg=<value>\t-arg<value>\n"
+                  "\n"
+                  "Use the -h, -help or -? to get this information again.\n"
+                  "\n");
+  fio_cli_end();
+  exit(0);
+}
+
+/* *****************************************************************************
+CLI Initialization
+***************************************************************************** */
+
+SFUNC void fio_cli_start FIO_NOOP(int argc, char const *argv[], int unnamed_min,
+                                  int unnamed_max, char const *description,
+                                  char const **names) {
+  if (unnamed_max >= 0 && unnamed_max < unnamed_min)
+    unnamed_max = unnamed_min;
+  fio_cli_parser_data_s parser = {
+      .unnamed_min = unnamed_min,
+      .unnamed_max = unnamed_max,
+      .description = description,
+      .argc = argc,
+      .argv = argv,
+      .names = names,
+      .pos = 0,
+  };
+
+  if (fio_cli_hash_count(&fio_cli__values)) {
+    fio_cli_end();
+  }
+
+  /* prepare aliases hash map */
+
+  char const **line = names;
+  while (*line) {
+    switch ((intptr_t)*line) {
+    case FIO_CLI_STRING__TYPE_I:       /* fallthrough */
+    case FIO_CLI_BOOL__TYPE_I:         /* fallthrough */
+    case FIO_CLI_INT__TYPE_I:          /* fallthrough */
+    case FIO_CLI_PRINT__TYPE_I:        /* fallthrough */
+    case FIO_CLI_PRINT_HEADER__TYPE_I: /* fallthrough */
+      ++line;
+      continue;
+    }
+    if (line[1] != (char *)FIO_CLI_PRINT__TYPE_I &&
+        line[1] != (char *)FIO_CLI_PRINT_HEADER__TYPE_I)
+      fio_cli___map_line2alias(*line);
+    ++line;
+  }
+
+  /* parse existing arguments */
+
+  while ((++parser.pos) < argc) {
+    char const *value = NULL;
+    fio_cli___cstr_s n = {.data = argv[parser.pos],
+                          .len = strlen(argv[parser.pos])};
+    if (parser.pos + 1 < argc) {
+      value = argv[parser.pos + 1];
+    }
+    const char *l = NULL;
+    while (n.len && !(l = fio_cli_hash_find(&fio_cli__aliases,
+                                            FIO_CLI_HASH_VAL(n), n))) {
+      --n.len;
+      value = n.data + n.len;
+    }
+    if (n.len && value && value[0] == '=') {
+      ++value;
+    }
+    // fprintf(stderr, "Setting %.*s to %s\n", (int)n.len, n.data, value);
+    fio_cli___set_arg(n, value, l, &parser);
+  }
+
+  /* Cleanup and save state for API */
+  fio_cli_hash_destroy(&fio_cli__aliases);
+  fio_cli__unnamed_count = parser.unnamed_count;
+  /* test for required unnamed arguments */
+  if (parser.unnamed_count < parser.unnamed_min)
+    fio_cli___set_arg((fio_cli___cstr_s){.len = 0}, NULL, NULL, &parser);
+}
+
+/* *****************************************************************************
+CLI Destruction
+***************************************************************************** */
+
+SFUNC void __attribute__((destructor)) fio_cli_end(void) {
+  fio_cli_hash_destroy(&fio_cli__values);
+  fio_cli_hash_destroy(&fio_cli__aliases);
+  fio_cli__unnamed_count = 0;
+}
+/* *****************************************************************************
+CLI Data Access API
+***************************************************************************** */
+
+/** Returns the argument's value as a NUL terminated C String. */
+SFUNC char const *fio_cli_get(char const *name) {
+  fio_cli___cstr_s n = {.data = name, .len = strlen(name)};
+  if (!fio_cli_hash_count(&fio_cli__values)) {
+    return NULL;
+  }
+  char const *val = fio_cli_hash_find(&fio_cli__values, FIO_CLI_HASH_VAL(n), n);
+  return val;
+}
+
+/** Returns the argument's value as an integer. */
+SFUNC int fio_cli_get_i(char const *name) {
+  char const *val = fio_cli_get(name);
+  return fio_atol((char **)&val);
+}
+
+/** Returns the number of unrecognized argument. */
+SFUNC unsigned int fio_cli_unnamed_count(void) {
+  return (unsigned int)fio_cli__unnamed_count;
+}
+
+/** Returns the unrecognized argument using a 0 based `index`. */
+SFUNC char const *fio_cli_unnamed(unsigned int index) {
+  if (!fio_cli_hash_count(&fio_cli__values) || !fio_cli__unnamed_count) {
+    return NULL;
+  }
+  fio_cli___cstr_s n = {.data = NULL, .len = index + 1};
+  return fio_cli_hash_find(&fio_cli__values, index + 1, n);
+}
+
+/**
+ * Sets the argument's value as a NUL terminated C String (no copy!).
+ *
+ * Note: this does NOT copy the C strings to memory. Memory should be kept
+ * alive until `fio_cli_end` is called.
+ */
+SFUNC void fio_cli_set(char const *name, char const *value) {
+  fio_cli___cstr_s n = (fio_cli___cstr_s){.data = name, .len = strlen(name)};
+  fio_cli_hash_insert(&fio_cli__values, FIO_CLI_HASH_VAL(n), n, value, NULL);
+}
+
+/* *****************************************************************************
+CLI - cleanup
+***************************************************************************** */
+#endif /* FIO_EXTERN_COMPLETE*/
+#endif /* FIO_CLI */
+#undef FIO_CLI
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
                   Hash Map for bigger items - less reallocations
 
 
@@ -5487,6 +6184,7 @@ Reference Counter (Wrapper) Cleanup
 /* *****************************************************************************
 Common cleanup
 ***************************************************************************** */
+#ifndef FIO_STL_KEEP__
 
 #undef FIO_NAME_FROM_MACRO_STEP2
 #undef FIO_NAME_FROM_MACRO_STEP1
@@ -5501,6 +6199,13 @@ Common cleanup
 /* undefine FIO_EXTERN_COMPLETE only if it was defined locally */
 #if FIO_EXTERN_COMPLETE == 2
 #undef FIO_EXTERN_COMPLETE
+#endif
+
+/* *****************************************************************************
+Recursive, limited to a single level (don't clean)
+***************************************************************************** */
+#else
+#undef FIO_STL_KEEP__
 #endif
 /* *****************************************************************************
 
@@ -6615,6 +7320,13 @@ Memory Allocation - test
 
 // #define FIO_MALLOC
 // #include __FILE__
+
+/* *****************************************************************************
+CLI - test
+***************************************************************************** */
+
+#define FIO_CLI
+#include __FILE__
 
 /* *****************************************************************************
 Environment printout

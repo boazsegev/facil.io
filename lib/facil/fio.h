@@ -96,6 +96,7 @@ Import STL
 #define FIO_BITWISE 1
 #define FIO_ATOL 1
 #define FIO_RAND 1
+#define FIO_CLI 1
 #define FIO_STR_INFO 1
 #define FIO_EXTERN 1
 #ifndef FIO_LOG_LENGTH_LIMIT
