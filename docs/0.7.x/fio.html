@@ -1343,74 +1343,100 @@ yet or that it&#39;s resources were already released.</p>
 
 <p>The following is an example for a TCP/IP echo server using facil.io:</p>
 <div class="highlight"><pre class="highlight c"><code><span class="cp">#include &lt;fio.h&gt;
+#include &lt;fio_cli.h&gt; </span><span class="cm">/* for the command line interface helpers */</span><span class="cp">
 </span>
+<span class="cm">/* *****************************************************************************
+Echo connection callbacks
+***************************************************************************** */</span>
+
 <span class="c1">// A callback to be called whenever data is available on the socket</span>
 <span class="k">static</span> <span class="kt">void</span> <span class="nf">echo_on_data</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">prt</span><span class="p">)</span> <span class="p">{</span>
- <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">prt</span><span class="p">;</span> <span class="c1">// we can ignore the unused argument</span>
- <span class="c1">// echo buffer</span>
- <span class="kt">char</span> <span class="n">buffer</span><span class="p">[</span><span class="mi">1024</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="sc">'E'</span><span class="p">,</span> <span class="sc">'c'</span><span class="p">,</span> <span class="sc">'h'</span><span class="p">,</span> <span class="sc">'o'</span><span class="p">,</span> <span class="sc">':'</span><span class="p">,</span> <span class="sc">' '</span><span class="p">};</span>
- <span class="kt">ssize_t</span> <span class="n">len</span><span class="p">;</span>
- <span class="c1">// Read to the buffer, starting after the "Echo: "</span>
- <span class="k">while</span> <span class="p">((</span><span class="n">len</span> <span class="o">=</span> <span class="n">fio_read</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="n">buffer</span> <span class="o">+</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">1018</span><span class="p">))</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
-   <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">"Read: %.*s"</span><span class="p">,</span> <span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="n">len</span><span class="p">,</span> <span class="n">buffer</span> <span class="o">+</span> <span class="mi">6</span><span class="p">);</span>
-   <span class="c1">// Write back the message</span>
-   <span class="n">fio_write</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="n">buffer</span><span class="p">,</span> <span class="n">len</span> <span class="o">+</span> <span class="mi">6</span><span class="p">);</span>
-   <span class="c1">// Handle goodbye</span>
-   <span class="k">if</span> <span class="p">((</span><span class="n">buffer</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span> <span class="o">|</span> <span class="mi">32</span><span class="p">)</span> <span class="o">==</span> <span class="sc">'b'</span> <span class="o">&amp;&amp;</span> <span class="p">(</span><span class="n">buffer</span><span class="p">[</span><span class="mi">7</span><span class="p">]</span> <span class="o">|</span> <span class="mi">32</span><span class="p">)</span> <span class="o">==</span> <span class="sc">'y'</span> <span class="o">&amp;&amp;</span>
-       <span class="p">(</span><span class="n">buffer</span><span class="p">[</span><span class="mi">8</span><span class="p">]</span> <span class="o">|</span> <span class="mi">32</span><span class="p">)</span> <span class="o">==</span> <span class="sc">'e'</span><span class="p">)</span> <span class="p">{</span>
-     <span class="n">fio_write</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="s">"Goodbye.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="mi">9</span><span class="p">);</span>
-     <span class="n">fio_close</span><span class="p">(</span><span class="n">uuid</span><span class="p">);</span>
-     <span class="k">return</span><span class="p">;</span>
-   <span class="p">}</span>
- <span class="p">}</span>
+  <span class="c1">// echo buffer</span>
+  <span class="kt">char</span> <span class="n">buffer</span><span class="p">[</span><span class="mi">1024</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="sc">'E'</span><span class="p">,</span> <span class="sc">'c'</span><span class="p">,</span> <span class="sc">'h'</span><span class="p">,</span> <span class="sc">'o'</span><span class="p">,</span> <span class="sc">':'</span><span class="p">,</span> <span class="sc">' '</span><span class="p">};</span>
+  <span class="kt">ssize_t</span> <span class="n">len</span><span class="p">;</span>
+  <span class="c1">// Read to the buffer, starting after the "Echo: "</span>
+  <span class="k">while</span> <span class="p">((</span><span class="n">len</span> <span class="o">=</span> <span class="n">fio_read</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="n">buffer</span> <span class="o">+</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">1018</span><span class="p">))</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">"Read: %.*s"</span><span class="p">,</span> <span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="n">len</span><span class="p">,</span> <span class="n">buffer</span> <span class="o">+</span> <span class="mi">6</span><span class="p">);</span>
+    <span class="c1">// Write back the message</span>
+    <span class="n">fio_write</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="n">buffer</span><span class="p">,</span> <span class="n">len</span> <span class="o">+</span> <span class="mi">6</span><span class="p">);</span>
+    <span class="c1">// Handle goodbye</span>
+    <span class="k">if</span> <span class="p">((</span><span class="n">buffer</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span> <span class="o">|</span> <span class="mi">32</span><span class="p">)</span> <span class="o">==</span> <span class="sc">'b'</span> <span class="o">&amp;&amp;</span> <span class="p">(</span><span class="n">buffer</span><span class="p">[</span><span class="mi">7</span><span class="p">]</span> <span class="o">|</span> <span class="mi">32</span><span class="p">)</span> <span class="o">==</span> <span class="sc">'y'</span> <span class="o">&amp;&amp;</span>
+        <span class="p">(</span><span class="n">buffer</span><span class="p">[</span><span class="mi">8</span><span class="p">]</span> <span class="o">|</span> <span class="mi">32</span><span class="p">)</span> <span class="o">==</span> <span class="sc">'e'</span><span class="p">)</span> <span class="p">{</span>
+      <span class="n">fio_write</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="s">"Goodbye.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="mi">9</span><span class="p">);</span>
+      <span class="n">fio_close</span><span class="p">(</span><span class="n">uuid</span><span class="p">);</span>
+      <span class="k">return</span><span class="p">;</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+  <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">prt</span><span class="p">;</span> <span class="c1">// we can ignore the unused argument</span>
 <span class="p">}</span>
 
 <span class="c1">// A callback called whenever a timeout is reach</span>
 <span class="k">static</span> <span class="kt">void</span> <span class="nf">echo_ping</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">prt</span><span class="p">)</span> <span class="p">{</span>
- <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">prt</span><span class="p">;</span> <span class="c1">// we can ignore the unused argument</span>
- <span class="n">fio_write</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="s">"Server: Are you there?</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="mi">23</span><span class="p">);</span>
+  <span class="n">fio_write</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="s">"Server: Are you there?</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="mi">23</span><span class="p">);</span>
+  <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">prt</span><span class="p">;</span> <span class="c1">// we can ignore the unused argument</span>
 <span class="p">}</span>
 
 <span class="c1">// A callback called if the server is shutting down...</span>
 <span class="c1">// ... while the connection is still open</span>
 <span class="k">static</span> <span class="kt">uint8_t</span> <span class="nf">echo_on_shutdown</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">prt</span><span class="p">)</span> <span class="p">{</span>
- <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">prt</span><span class="p">;</span> <span class="c1">// we can ignore the unused argument</span>
- <span class="n">fio_write</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="s">"Echo server shutting down</span><span class="se">\n</span><span class="s">Goodbye.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="mi">35</span><span class="p">);</span>
- <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">fio_write</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="s">"Echo server shutting down</span><span class="se">\n</span><span class="s">Goodbye.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="mi">35</span><span class="p">);</span>
+  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">prt</span><span class="p">;</span> <span class="c1">// we can ignore the unused argument</span>
 <span class="p">}</span>
 
 <span class="k">static</span> <span class="kt">void</span> <span class="nf">echo_on_close</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">proto</span><span class="p">)</span> <span class="p">{</span>
- <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">"Connection %p closed.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">)</span><span class="n">proto</span><span class="p">);</span>
- <span class="n">free</span><span class="p">(</span><span class="n">proto</span><span class="p">);</span>
- <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">uuid</span><span class="p">;</span>
+  <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">"Connection %p closed.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">)</span><span class="n">proto</span><span class="p">);</span>
+  <span class="n">free</span><span class="p">(</span><span class="n">proto</span><span class="p">);</span>
+  <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">uuid</span><span class="p">;</span>
 <span class="p">}</span>
+
+<span class="cm">/* *****************************************************************************
+The main echo protocol creation callback
+***************************************************************************** */</span>
 
 <span class="c1">// A callback called for new connections</span>
 <span class="k">static</span> <span class="kt">void</span> <span class="nf">echo_on_open</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">)</span> <span class="p">{</span>
- <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">udata</span><span class="p">;</span> <span class="c1">// ignore this</span>
- <span class="c1">// Protocol objects MUST be dynamically allocated when multi-threading.</span>
- <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">echo_proto</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="o">*</span><span class="n">echo_proto</span><span class="p">));</span>
-<span class="n">echo_proto</span> <span class="o">=</span> <span class="p">(</span><span class="n">fio_protocol_s</span><span class="p">){.</span><span class="n">service</span> <span class="o">=</span> <span class="s">"echo"</span><span class="p">,</span>
-                                <span class="p">.</span><span class="n">on_data</span> <span class="o">=</span> <span class="n">echo_on_data</span><span class="p">,</span>
-                                <span class="p">.</span><span class="n">on_shutdown</span> <span class="o">=</span> <span class="n">echo_on_shutdown</span><span class="p">,</span>
-                                <span class="p">.</span><span class="n">on_close</span> <span class="o">=</span> <span class="n">echo_on_close</span><span class="p">,</span>
-                                <span class="p">.</span><span class="n">ping</span> <span class="o">=</span> <span class="n">echo_ping</span><span class="p">};</span>
- <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">"New Connection %p received from %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">)</span><span class="n">echo_proto</span><span class="p">,</span>
-         <span class="n">fio_peer_addr</span><span class="p">(</span><span class="n">uuid</span><span class="p">).</span><span class="n">data</span><span class="p">);</span>
- <span class="n">fio_attach</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="n">echo_proto</span><span class="p">);</span>
- <span class="n">fio_write2</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="p">.</span><span class="n">data</span><span class="p">.</span><span class="n">buffer</span> <span class="o">=</span> <span class="s">"Echo Service: Welcome</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">.</span><span class="n">length</span> <span class="o">=</span> <span class="mi">22</span><span class="p">,</span>
-            <span class="p">.</span><span class="n">after</span><span class="p">.</span><span class="n">dealloc</span> <span class="o">=</span> <span class="n">FIO_DEALLOC_NOOP</span><span class="p">);</span>
- <span class="n">fio_timeout_set</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="mi">5</span><span class="p">);</span>
+  <span class="c1">// Protocol objects MUST be dynamically allocated when multi-threading.</span>
+  <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">echo_proto</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="o">*</span><span class="n">echo_proto</span><span class="p">));</span>
+  <span class="o">*</span><span class="n">echo_proto</span> <span class="o">=</span> <span class="p">(</span><span class="n">fio_protocol_s</span><span class="p">){.</span><span class="n">on_data</span> <span class="o">=</span> <span class="n">echo_on_data</span><span class="p">,</span>
+                                 <span class="p">.</span><span class="n">on_shutdown</span> <span class="o">=</span> <span class="n">echo_on_shutdown</span><span class="p">,</span>
+                                 <span class="p">.</span><span class="n">on_close</span> <span class="o">=</span> <span class="n">echo_on_close</span><span class="p">,</span>
+                                 <span class="p">.</span><span class="n">ping</span> <span class="o">=</span> <span class="n">echo_ping</span><span class="p">};</span>
+  <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">"New Connection %p received from %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">)</span><span class="n">echo_proto</span><span class="p">,</span>
+          <span class="n">fio_peer_addr</span><span class="p">(</span><span class="n">uuid</span><span class="p">).</span><span class="n">data</span><span class="p">);</span>
+  <span class="n">fio_attach</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="n">echo_proto</span><span class="p">);</span>
+  <span class="n">fio_write2</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="p">.</span><span class="n">data</span><span class="p">.</span><span class="n">buffer</span> <span class="o">=</span> <span class="s">"Echo Service: Welcome</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">.</span><span class="n">length</span> <span class="o">=</span> <span class="mi">22</span><span class="p">,</span>
+             <span class="p">.</span><span class="n">after</span><span class="p">.</span><span class="n">dealloc</span> <span class="o">=</span> <span class="n">FIO_DEALLOC_NOOP</span><span class="p">);</span>
+  <span class="n">fio_timeout_set</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="mi">5</span><span class="p">);</span>
+  <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">udata</span><span class="p">;</span> <span class="c1">// ignore this</span>
 <span class="p">}</span>
 
-<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
- <span class="c1">// Setup a listening socket</span>
- <span class="k">if</span> <span class="p">(</span><span class="n">fio_listen</span><span class="p">(.</span><span class="n">port</span> <span class="o">=</span> <span class="s">"3000"</span><span class="p">,</span> <span class="p">.</span><span class="n">on_open</span> <span class="o">=</span> <span class="n">echo_on_open</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
-   <span class="n">perror</span><span class="p">(</span><span class="s">"No listening socket available on port 3000"</span><span class="p">);</span>
-   <span class="n">exit</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">);</span>
- <span class="p">}</span>
- <span class="c1">// Run the server and hang until a stop signal is received.</span>
- <span class="n">fio_start</span><span class="p">(.</span><span class="n">threads</span> <span class="o">=</span> <span class="mi">4</span><span class="p">,</span> <span class="p">.</span><span class="n">workers</span> <span class="o">=</span> <span class="mi">1</span><span class="p">);</span>
+<span class="cm">/* *****************************************************************************
+The main function (listens to the `echo` connections and handles CLI)
+***************************************************************************** */</span>
+
+<span class="c1">// The main function starts listening to echo connections</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+  <span class="cm">/* Setup CLI arguments */</span>
+  <span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"this example accepts the following options:"</span><span class="p">,</span>
+                <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-t -thread number of threads to run."</span><span class="p">),</span>
+                <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-w -workers number of workers to run."</span><span class="p">),</span>
+                <span class="s">"-b, -address the address to bind to."</span><span class="p">,</span>
+                <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-p,-port the port to bind to."</span><span class="p">),</span>
+                <span class="n">FIO_CLI_BOOL</span><span class="p">(</span><span class="s">"-v -log enable logging."</span><span class="p">));</span>
+
+  <span class="cm">/* Setup default values */</span>
+  <span class="n">fio_cli_set_default</span><span class="p">(</span><span class="s">"-p"</span><span class="p">,</span> <span class="s">"3000"</span><span class="p">);</span>
+  <span class="n">fio_cli_set_default</span><span class="p">(</span><span class="s">"-t"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">);</span>
+  <span class="n">fio_cli_set_default</span><span class="p">(</span><span class="s">"-w"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">);</span>
+
+  <span class="cm">/* Listen for connections */</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">fio_listen</span><span class="p">(.</span><span class="n">port</span> <span class="o">=</span> <span class="n">fio_cli_get</span><span class="p">(</span><span class="s">"-p"</span><span class="p">),</span> <span class="p">.</span><span class="n">on_open</span> <span class="o">=</span> <span class="n">echo_on_open</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">perror</span><span class="p">(</span><span class="s">"No listening socket available on port 3000"</span><span class="p">);</span>
+    <span class="n">exit</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="cm">/* Run the server and hang until a stop signal is received */</span>
+  <span class="n">fio_start</span><span class="p">(.</span><span class="n">threads</span> <span class="o">=</span> <span class="n">fio_cli_get_i</span><span class="p">(</span><span class="s">"-t"</span><span class="p">),</span> <span class="p">.</span><span class="n">workers</span> <span class="o">=</span> <span class="n">fio_cli_get_i</span><span class="p">(</span><span class="s">"-w"</span><span class="p">));</span>
 <span class="p">}</span>
 </code></pre></div>
 <h4 id="fio_listen"><code>fio_listen</code></h4>
