@@ -28,7 +28,7 @@ This file also contains common helper macros / primitives, such as:
 
 * Atomic add/subtract/replace - defined by `FIO_ATOMIC`
 
-* Bit-Byte Operations - defined by `FIO_BITWISE` (adds atomic)
+* Bit-Byte Operations - defined by `FIO_BITWISE` and `FIO_BITMAP` (adds atomic)
 
 * Data Hashing (using Risky Hash) - defined by `FIO_RISKY_HASH`
 
@@ -204,6 +204,16 @@ defined:
 - `fio_ct_if(bool, a_if_true, b_if_false)`
 - `fio_ct_if2(condition, a_if_true, b_if_false)`
 
+-------------------------------------------------------------------------------
+
+## Bitmap helpers
+
+If the `FIO_BITMAP` macro is defined than the following macros will be
+defined.
+
+In addition, the `FIO_ATOMIC` will be assumed to be defined, as setting bits in
+the bitmap is implemented using atomic operations.
+
 #### Bitmap helpers
 - `fio_bitmap_get(void *map, size_t bit)`
 - `fio_bitmap_set(void *map, size_t bit)`   (an atomic operation, thread-safe)
@@ -227,16 +237,21 @@ This function will produce a 64 bit hash for X bytes of data.
 If the `FIO_RAND` macro is defined, the following, non-cryptographic
 psedo-random generator functions will be defined.
 
-Note that the random generator functions are automatically re-seeded with either
-data from the systems clock or data from `getrusage` (on unix systems).
+The random generator functions are automatically re-seeded with either data from
+the system's clock or data from `getrusage` (when available).
+
+**Note**: bitwise operations (`FIO_BITWISE`) and Risky Hash (`FIO_RISKY_HASH`)
+are automatically defined along with `FIO_RAND`, since they are required by the
+algorithm.
 
 #### `uint64_t fio_rand64(void)`
 
-Returns 64 random bits.
+Returns 64 random bits. Probably not cryptographically safe.
 
 #### `void fio_rand_bytes(void *data_, size_t len)`
 
-Writes `len` random Bytes to the buffer pointed to by `data`.
+Writes `len` random Bytes to the buffer pointed to by `data`. Probably not
+cryptographically safe.
 
 -------------------------------------------------------------------------------
 
@@ -1233,7 +1248,7 @@ Memory management macros
 
 ***************************************************************************** */
 
-#if (defined(FIO_ATOMIC) || defined(FIO_BITWISE) || defined(FIO_REF_NAME)) &&  \
+#if (defined(FIO_ATOMIC) || defined(FIO_BITMAP) || defined(FIO_REF_NAME)) &&   \
     !defined(fio_atomic_xchange)
 
 /* C11 Atomics are defined? */
@@ -1333,7 +1348,7 @@ HFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_xchange(lock, 0); }
 
 ***************************************************************************** */
 
-#if defined(FIO_BITWISE) && !defined(fio_lrot)
+#if (defined(FIO_BITWISE) || defined(FIO_RAND)) && !defined(fio_lrot)
 
 /* *****************************************************************************
 Swapping byte's order (`bswap` variations)
@@ -1480,23 +1495,6 @@ HFUNC uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
 }
 
 /* *****************************************************************************
-Bitmap access / manipulation
-***************************************************************************** */
-
-HFUNC uint8_t fio_bitmap_get(void *map, size_t bit) {
-  return ((((uint8_t *)(map))[(bit) >> 3] >> ((bit)&7)) & 1);
-}
-
-HFUNC void fio_bitmap_set(void *map, size_t bit) {
-  fio_atomic_or((uint8_t *)(map) + ((bit) >> 3), (1UL << ((bit)&7)));
-}
-
-HFUNC void fio_bitmap_unset(void *map, size_t bit) {
-  fio_atomic_and((uint8_t *)(map) + ((bit) >> 3),
-                 (uint8_t)(~(1UL << ((bit)&7))));
-}
-
-/* *****************************************************************************
 Hemming Distance and bit counting
 ***************************************************************************** */
 
@@ -1521,6 +1519,50 @@ Bitewise helpers cleanup
 #endif /* FIO_BITWISE */
 #undef FIO_BITWISE
 
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+                        Risky Hash - a fast and simple hash
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if defined(FIO_BITMAP) && !defined(H___FIO_BITMAP_H)
+#define H___FIO_BITMAP_H
+/* *****************************************************************************
+Bitmap access / manipulation
+***************************************************************************** */
+
+HFUNC uint8_t fio_bitmap_get(void *map, size_t bit) {
+  return ((((uint8_t *)(map))[(bit) >> 3] >> ((bit)&7)) & 1);
+}
+
+HFUNC void fio_bitmap_set(void *map, size_t bit) {
+  fio_atomic_or((uint8_t *)(map) + ((bit) >> 3), (1UL << ((bit)&7)));
+}
+
+HFUNC void fio_bitmap_unset(void *map, size_t bit) {
+  fio_atomic_and((uint8_t *)(map) + ((bit) >> 3),
+                 (uint8_t)(~(1UL << ((bit)&7))));
+}
+
+#endif
+#undef FIO_BITMAP
 /* *****************************************************************************
 
 
@@ -6302,6 +6344,7 @@ Bit-Byte operations - test
 ***************************************************************************** */
 
 #define FIO_BITWISE 1
+#define FIO_BITMAP 1
 #include __FILE__
 
 TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
