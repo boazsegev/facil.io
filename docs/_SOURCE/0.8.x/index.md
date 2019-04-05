@@ -64,7 +64,6 @@ I used this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (
 Here's a simple WebSocket chat-room example:
 
 ```c
-#include "fio_cli.h"
 #include "http.h"
 
 /* Chat-room channel name */
