@@ -604,6 +604,7 @@ Basic macros and included files
 #endif
 
 #include <ctype.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -1495,6 +1496,28 @@ HFUNC void fio_bitmap_unset(void *map, size_t bit) {
                  (uint8_t)(~(1UL << ((bit)&7))));
 }
 
+/* *****************************************************************************
+Hemming Distance and bit counting
+***************************************************************************** */
+
+#if __has_builtin(__builtin_popcountll)
+#define fio_popcount(n) __builtin_popcountll(n)
+#else
+HIFUNC int fio_popcount(uint64_t n) {
+  int c = 0;
+  while (n) {
+    ++c;
+    n &= n - 1;
+  }
+  return c;
+}
+#endif
+
+#define fio_hemming_dist(n1, n2) fio_popcount(((uint64_t)(n1) ^ (uint64_t)(n2)))
+
+/* *****************************************************************************
+Bitewise helpers cleanup
+***************************************************************************** */
 #endif /* FIO_BITWISE */
 #undef FIO_BITWISE
 
@@ -1522,7 +1545,7 @@ HFUNC void fio_bitmap_unset(void *map, size_t bit) {
 
 ***************************************************************************** */
 
-#if (defined(FIO_RISKY_HASH) || defined(FIO_STR_NAME)) &&                      \
+#if (defined(FIO_RISKY_HASH) || defined(FIO_STR_NAME) || defined(FIO_RAND)) && \
     !defined(H__FIO_RISKY_HASH__H)
 #define H__FIO_RISKY_HASH__H
 
@@ -1702,10 +1725,10 @@ Random - API
 ***************************************************************************** */
 
 /** Returns 64 psedo-random bits. Probably not cryptographically safe. */
-uint64_t fio_rand64(void);
+SFUNC uint64_t fio_rand64(void);
 
 /** Writes `length` bytes of psedo-random bits to the target buffer. */
-void fio_rand_bytes(void *target, size_t length);
+SFUNC void fio_rand_bytes(void *target, size_t length);
 
 /* *****************************************************************************
 Random - Implementation
@@ -6281,7 +6304,7 @@ Bit-Byte operations - test
 #define FIO_BITWISE 1
 #include __FILE__
 
-TEST_FUNC void fio___dynamic_types_test___str2u(void) {
+TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
   fprintf(stderr, "* Testing fio_bswapX macros.\n");
   TEST_ASSERT(fio_bswap16(0x0102) == 0x0201, "fio_bswap16 failed");
   TEST_ASSERT(fio_bswap32(0x01020304) == 0x04030201, "fio_bswap32 failed");
@@ -6372,6 +6395,92 @@ TEST_FUNC void fio___dynamic_types_test___str2u(void) {
                 "other bits shouldn't be effected by unset");
     fprintf(stderr, "* passed.\n");
   }
+  {
+    fprintf(stderr, "* Testing popcount and hemming distance calculation.\n");
+    for (int i = 0; i < 64; ++i) {
+      TEST_ASSERT(fio_popcount((uint64_t)1 << i) == 1,
+                  "fio_popcount error for 1 bit");
+    }
+    for (int i = 0; i < 63; ++i) {
+      TEST_ASSERT(fio_popcount((uint64_t)3 << i) == 2,
+                  "fio_popcount error for 2 bits");
+    }
+    for (int i = 0; i < 62; ++i) {
+      TEST_ASSERT(fio_popcount((uint64_t)7 << i) == 3,
+                  "fio_popcount error for 3 bits");
+    }
+    for (int i = 0; i < 59; ++i) {
+      TEST_ASSERT(fio_popcount((uint64_t)21 << i) == 3,
+                  "fio_popcount error for 3 alternating bits");
+    }
+    for (int i = 0; i < 64; ++i) {
+      TEST_ASSERT(fio_hemming_dist(((uint64_t)1 << i) - 1, 0) == i,
+                  "fio_hemming_dist error at %d", i);
+    }
+    fprintf(stderr, "* passed.\n");
+  }
+}
+
+/* *****************************************************************************
+Psedo Random Generator - test
+***************************************************************************** */
+
+#define FIO_RAND
+#include __FILE__
+
+TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
+                                                        size_t length,
+                                                        const char *name,
+                                                        size_t clk) {
+  size_t totals[2] = {0};
+  const size_t total_bits = (length * sizeof(*stream) * 8);
+  uint64_t hemming = 0;
+  for (size_t i = 1; i < length; i += 2) {
+    hemming += fio_hemming_dist(stream[i], stream[i - 1]);
+    for (size_t j = 0; j < (sizeof(*stream) * 16); ++j) {
+      ++totals[fio_bitmap_get(&stream[i], j)];
+    }
+  }
+  hemming /= length;
+  fprintf(stderr, "\t- %s (%zu CPU cycles):\n", name, clk);
+  fprintf(stderr, "\t  zeros / ones == %zu / %zu = %.05f\n", totals[0],
+          totals[1], ((float)1.0 * totals[0]) / totals[1]);
+  TEST_ASSERT(totals[0] < totals[1] + (total_bits / 20) &&
+                  totals[1] < totals[0] + (total_bits / 20),
+              "randomness isn't random?");
+  fprintf(stderr, "\t  avarage hemming distance == %zu\n", (size_t)hemming);
+  /* expect avarage hemming distance of 25% == 16 bits */
+  TEST_ASSERT(hemming >= 14 && hemming <= 18,
+              "randomness isn't random (hemming)?");
+}
+
+TEST_FUNC void fio___dynamic_types_test___random(void) {
+  fprintf(stderr, "* Testing randomness "
+                  "(bit frequency only - non-cryptographic - not safe)\n");
+  uint64_t *rs = FIO_MEM_CALLOC(sizeof(*rs), (REPEAT << 1));
+  clock_t start, end;
+  FIO_ASSERT_ALLOC(rs);
+  start = clock();
+  for (size_t i = 0; i < (REPEAT << 1); ++i) {
+    rs[i] = ((uint64_t)rand() << 32) | rand();
+  }
+  end = clock();
+  fio___dynamic_types_test___random_buffer(rs, (REPEAT << 1), "system's `rand`",
+                                           end - start);
+  start = clock();
+  for (size_t i = 0; i < (REPEAT << 1); ++i) {
+    rs[i] = fio_rand64();
+  }
+  end = clock();
+  fio___dynamic_types_test___random_buffer(rs, (REPEAT << 1), "fio_rand64",
+                                           end - start);
+  start = clock();
+  fio_rand_bytes(rs, (REPEAT << 1) * sizeof(*rs));
+  end = clock();
+  fio___dynamic_types_test___random_buffer(rs, (REPEAT << 1), "fio_rand_bytes",
+                                           end - start);
+  FIO_MEM_FREE(rs, sizeof(*rs) * (REPEAT << 1));
+  fprintf(stderr, "* passed.\n");
 }
 
 /* *****************************************************************************
@@ -7373,9 +7482,11 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___print_sizes();
   fprintf(stderr, "===============\n");
+  fio___dynamic_types_test___random();
+  fprintf(stderr, "===============\n");
   fio___dynamic_types_test___atomic();
   fprintf(stderr, "===============\n");
-  fio___dynamic_types_test___str2u();
+  fio___dynamic_types_test___bitwise();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___linked_list_test();
   fprintf(stderr, "===============\n");
