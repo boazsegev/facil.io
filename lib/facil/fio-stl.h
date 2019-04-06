@@ -1870,10 +1870,7 @@ HSFUNC void fio_mem___arena_aquire(void) {
   }
 }
 
-HFUNC void fio_mem___arena_release() {
-  fio_unlock(&fio_mem___arena->lock);
-  FIO_ASSERT(!fio_mem___arena->lock, "what the F?");
-}
+HFUNC void fio_mem___arena_release() { fio_unlock(&fio_mem___arena->lock); }
 
 /* *****************************************************************************
 Slices and Blocks - types
