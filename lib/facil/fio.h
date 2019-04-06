@@ -86,14 +86,6 @@ Import STL
 #define FIO_RISKY_HASH 1
 #include "fio-stl.h"
 
-#define FIO_ATOMIC 1
-#define FIO_BITWISE 1
-#define FIO_ATOL 1
-#define FIO_NTOL 1
-#define FIO_RAND 1
-#define FIO_CLI 1
-#define FIO_STR_INFO 1
-#define FIO_EXTERN 1
 #ifndef FIO_LOG_LENGTH_LIMIT
 /**
  * Since logging uses stack memory rather than dynamic allocation, it's memory
@@ -102,7 +94,20 @@ Import STL
  */
 #define FIO_LOG_LENGTH_LIMIT 2048
 #endif
+#if !defined(FIO_FORCE_MALLOC)
+#define FIO_MALLOC 1
+#define FIO_EXTERN 1
+#include "fio-stl.h"
+#endif
 
+#define FIO_EXTERN 1
+#define FIO_ATOMIC 1
+#define FIO_BITWISE 1
+#define FIO_ATOL 1
+#define FIO_NTOL 1
+#define FIO_RAND 1
+#define FIO_CLI 1
+#define FIO_STR_INFO 1
 #include "fio-stl.h"
 
 /* *****************************************************************************
@@ -201,87 +206,6 @@ FIO_FUNC inline int patch_clock_gettime(int clk_id, struct timespec *t) {
   (void)clk_id;
 }
 #endif
-
-/* *****************************************************************************
-Memory allocator for short lived objects
-***************************************************************************** */
-
-/* inform the compiler that the returned value is aligned on 16 byte marker */
-#if FIO_FORCE_MALLOC
-#define FIO_ALIGN
-#define FIO_ALIGN_NEW
-#elif __clang__ || __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ > 8)
-#define FIO_ALIGN __attribute__((assume_aligned(16)))
-#define FIO_ALIGN_NEW __attribute__((malloc, assume_aligned(16)))
-#else
-#define FIO_ALIGN
-#define FIO_ALIGN_NEW
-#endif
-
-/**
- * Allocates memory using a per-CPU core block memory pool.
- * Memory is zeroed out.
- *
- * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
- * will be redirected to `mmap`, as if `fio_mmap` was called.
- */
-void *FIO_ALIGN_NEW fio_malloc(size_t size);
-
-/**
- * same as calling `fio_malloc(size_per_unit * unit_count)`;
- *
- * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
- * will be redirected to `mmap`, as if `fio_mmap` was called.
- */
-void *FIO_ALIGN_NEW fio_calloc(size_t size_per_unit, size_t unit_count);
-
-/** Frees memory that was allocated using this library. */
-void fio_free(void *ptr);
-
-/**
- * Re-allocates memory. An attempt to avoid copying the data is made only for
- * big memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
- */
-void *FIO_ALIGN fio_realloc(void *ptr, size_t new_size);
-
-/**
- * Re-allocates memory. An attempt to avoid copying the data is made only for
- * big memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
- *
- * This variation is slightly faster as it might copy less data.
- */
-void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
-
-/**
- * Allocates memory directly using `mmap`, this is prefered for objects that
- * both require almost a page of memory (or more) and expect a long lifetime.
- *
- * However, since this allocation will invoke the system call (`mmap`), it will
- * be inherently slower.
- *
- * `fio_free` can be used for deallocating the memory.
- */
-void *FIO_ALIGN_NEW fio_mmap(size_t size);
-
-/**
- * When forking is called manually, call this function to reset the facil.io
- * memory allocator's locks.
- */
-void fio_malloc_after_fork(void);
-
-#undef FIO_ALIGN
-#undef FIO_ALIGN_NEW
-
-/* Update STL default memory allocator */
-#if !FIO_FORCE_MALLOC
-#undef FIO_MEM_CALLOC
-#undef FIO_MEM_REALLOC
-#undef FIO_MEM_FREE
-#define FIO_MEM_CALLOC(size, units) fio_calloc((size), (units))
-#define FIO_MEM_REALLOC(ptr, old_size, new_size, copy_len)                     \
-  fio_realloc2((ptr), (new_size), (copy_len))
-#define FIO_MEM_FREE(ptr, size) fio_free((ptr))
-#endif /* FIO_FORCE_MALLOC */
 
 /* *****************************************************************************
 
