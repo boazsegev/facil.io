@@ -38,6 +38,10 @@ This file also contains common helper macros / primitives, such as:
 
 * String / Number conversion - defined by `FIO_ATOL`
 
+* Command Line Interface helpers - defined by `FIO_CLI`
+
+* Custom Memory Allocation - defined by `FIO_MALLOC`
+
 However, this file does very little (if anything) unless specifically requested.
 
 To make sure this file defines a specific macro or type, it's macro should be
@@ -76,6 +80,10 @@ An application wide integer with a value of either:
 - `FIO_LOG_LEVEL_WARNING` (3)
 - `FIO_LOG_LEVEL_INFO` (4)
 - `FIO_LOG_LEVEL_DEBUG` (5)
+
+The initial value can be set using the `FIO_LOG_LEVEL_DEFAULT` macro. By
+default, the level is 4 (`FIO_LOG_LEVEL_INFO`) for normal compilation and 5
+(`FIO_LOG_LEVEL_DEBUG`) for DEBUG compilation.
 
 #### `FIO_LOG2STDERR(msg, ...)`
 
@@ -346,7 +354,7 @@ Returns the number of bytes actually written (excluding the NUL terminator).
 
 ## CLI (command line interface)
 
-The simple template library imclides a CLI parser, since parsing command line
+The simple template library includes a CLI parser, since parsing command line
 arguments is a common task.
 
 By defining `FIO_CLI`, the following functions will be defined.
@@ -434,6 +442,69 @@ Sets a value for the named argument (but **not** it's aliases).
 
 Sets a value for the named argument (but **not** it's aliases) **only if** the
 argument wasn't set by the user.
+
+-------------------------------------------------------------------------------
+
+## Memory Allocation
+
+The simple template library includes a fast, concurrent, memory allocator
+designed for shot-medium object life-spans.
+
+It's ideal if all long-tem allocations are performed during the start-up phase
+or using a different memory allocator.
+
+By defining `FIO_MALLOC`, the following functions will be defined.
+
+
+#### `void * fio_malloc(size_t size)`
+
+Allocates memory using a per-CPU core block memory pool. Memory is zeroed out.
+
+Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
+will be redirected to `mmap`, as if `fio_mmap` was called.
+
+#### `void * fio_calloc(size_t size_per_unit, size_t unit_count)`
+
+Same as calling `fio_malloc(size_per_unit * unit_count)`;
+
+Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
+will be redirected to `mmap`, as if `fio_mmap` was called.
+
+#### `void fio_free(void *ptr)`
+
+Frees memory that was allocated using this library.
+
+#### `void * fio_realloc(void *ptr, size_t new_size)`
+
+Re-allocates memory. An attempt to avoid copying the data is made only for big
+memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
+
+#### `void * fio_realloc2(void *ptr, size_t new_size, size_t copy_length)`
+
+Re-allocates memory. An attempt to avoid copying the data is made only for big
+memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
+
+This variation is slightly faster as it might copy less data.
+
+#### `void * fio_mmap(size_t size)`
+
+
+Allocates memory directly using `mmap`, this is prefered for objects that both
+require almost a page of memory (or more) and expect a long lifetime.
+
+However, since this allocation will invoke the system call (`mmap`), it will be
+inherently slower.
+
+`fio_free` can be used for deallocating the memory.
+
+#### `void fio_malloc_after_fork(void)`
+
+Never fork a multi-threaded process. Doing so might corrupt the memory
+allocation system. The risk is more relevant for child processes.
+
+However, if a multi-threaded process, calling this function from the child
+process would perform a best attempt at mitigating any arising issues (at the
+expense of possible leaks).
 
 -------------------------------------------------------------------------------
 
@@ -866,6 +937,10 @@ extern "C" {
  */
 #if !defined(FIO_LOG2STDERR2) &&                                               \
     (defined(FIO_LOG_LENGTH_LIMIT) || defined(FIO_MALLOC))
+
+#ifndef FIO_LOG_LENGTH_LIMIT
+#define FIO_LOG_LENGTH_LIMIT 1024
+#endif
 
 #if FIO_LOG_LENGTH_LIMIT > 128
 #define FIO_LOG____LENGTH_ON_STACK FIO_LOG_LENGTH_LIMIT
@@ -2054,13 +2129,14 @@ HSFUNC void fio_mem___block_rotate(void) {
     FIO_ASSERT(!fio_mem___arena->block->reserved,
                "memory header corruption, overflowed right?");
   }
+  /* update the root reference count before releasing the lock */
+  fio_atomic_add(&fio_mem___block_root(fio_mem___arena->block)->root_ref, 1);
+  fio_unlock(&fio_mem___state->lock);
   /* zero out memory used for available block linked list, keep root data */
   fio_mem___arena->block->ref = 1;
   fio_mem___arena->block->pos = 0;
   ((fio_mem___block_node_s *)fio_mem___arena->block)->node =
       (FIO_LIST_NODE){.next = NULL};
-  fio_atomic_add(&fio_mem___block_root(fio_mem___arena->block)->root_ref, 1);
-  fio_unlock(&fio_mem___state->lock);
   fio_mem___block_free(to_free);
 }
 

@@ -30,6 +30,12 @@ The core IO library follows an evented design and uses callbacks for IO events. 
 
    This makes it easy to handle multi-threading. Connection data that is mutated only by the connection itself and within the same type of protected tasks, is safe from corruption.
 
+- User data is assumed to be stored in the protocol object using C style inheritance.
+
+   This approach improves performance by avoiding a `udata` pointer where possible. This saves a layer of redirection that often results in increased CPU cache misses.
+
+   The most convenient approach would [place the `fio_protocol_s` object as the first element in a larger `struct`](https://github.com/boazsegev/facil.io/blob/d4ee13109736e6df7548744ab05efeb9aa645614/examples/raw-http.c#L55-L56) and simply [type-cast  the larger `struct`'s pointer](https://github.com/boazsegev/facil.io/blob/d4ee13109736e6df7548744ab05efeb9aa645614/examples/raw-http.c#L264-L266).
+
 [Reading and writing operations](#reading-writing) uses an internal user-land buffer and they never fail... unless, the client is so slow that they appear to be attacking the network layer (slowloris) or the connection was lost due to other reasons.
 
 Because the framework is evented, there's API that offers easy [event and task scheduling](#event-task-scheduling), including timers etc'. Also, connection events can be rescheduled, allowing connections to behave like state-machines.
