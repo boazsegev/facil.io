@@ -2017,21 +2017,17 @@ HSFUNC void fio_mem___block_free(fio_mem___block_s *b) {
   fio_lock(&fio_mem___state->lock);
   fio_mem___available_blocks_push(&fio_mem___state->available,
                                   (fio_mem___block_node_s *)b);
-  fio_unlock(&fio_mem___state->lock);
   b = fio_mem___block_root(b);
   if (fio_atomic_sub(&b->root_ref, 1)) {
     /* block still has at least one used slice */
+    fio_unlock(&fio_mem___state->lock);
     return;
   }
   /* remove all block slices from memory pool */
-  fio_lock(&fio_mem___state->lock);
-  /* while the pool wasn't locked, the refrence count might have gone up. */
-  if (!b->root_ref) {
-    for (uint16_t i = 0; i < (FIO_MEMORY_BLOCKS_PER_ALLOCATION); ++i) {
-      fio_mem___block_node_s *tmp = FIO_PTR_MATH_ADD(
-          fio_mem___block_node_s, b, (FIO_MEMORY_BLOCK_SIZE * i));
-      fio_mem___available_blocks_remove(tmp);
-    }
+  for (uint16_t i = 0; i < (FIO_MEMORY_BLOCKS_PER_ALLOCATION); ++i) {
+    fio_mem___block_node_s *tmp = FIO_PTR_MATH_ADD(fio_mem___block_node_s, b,
+                                                   (FIO_MEMORY_BLOCK_SIZE * i));
+    fio_mem___available_blocks_remove(tmp);
   }
   fio_unlock(&fio_mem___state->lock);
   /* return memory to system */
@@ -2058,13 +2054,13 @@ HSFUNC void fio_mem___block_rotate(void) {
     FIO_ASSERT(!fio_mem___arena->block->reserved,
                "memory header corruption, overflowed right?");
   }
-  fio_unlock(&fio_mem___state->lock);
   /* zero out memory used for available block linked list, keep root data */
   fio_mem___arena->block->ref = 1;
   fio_mem___arena->block->pos = 0;
   ((fio_mem___block_node_s *)fio_mem___arena->block)->node =
       (FIO_LIST_NODE){.next = NULL};
   fio_atomic_add(&fio_mem___block_root(fio_mem___arena->block)->root_ref, 1);
+  fio_unlock(&fio_mem___state->lock);
   fio_mem___block_free(to_free);
 }
 
@@ -2180,17 +2176,22 @@ SFUNC void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size,
                                    size_t copy_length) {
   if (!ptr || ptr == &fio_mem___on_malloc_zero)
     return fio_malloc(new_size);
+  const size_t max_len = ((0 - (uintptr_t)FIO_PTR_MATH_LMASK(
+                                   void, ptr, FIO_MEMORY_BLOCK_SIZE_LOG)) +
+                          FIO_MEMORY_BLOCK_SIZE);
+
   fio_mem___block_s *b =
       FIO_PTR_MATH_RMASK(fio_mem___block_s, ptr, FIO_MEMORY_BLOCK_SIZE_LOG);
-  const size_t max_len =
-      FIO_MEMORY_BLOCK_SIZE_LOG - ((uintptr_t)ptr - (uintptr_t)b);
+  void *mem = NULL;
+
   if (copy_length > new_size)
     copy_length = new_size;
   if (b->reserved)
     goto big_realloc;
   if (copy_length > max_len)
     copy_length = max_len;
-  void *mem = fio_malloc(new_size);
+
+  mem = fio_malloc(new_size);
   if (!mem) {
     return NULL;
   }
@@ -2203,6 +2204,16 @@ big_realloc:
              "memory allocator corruption, block header overwritten?");
   const size_t new_page_len =
       FIO_MEM_BYTES2PAGES(new_size + FIO_MEMORY_BLOCK_HEADER_SIZE);
+  if (new_page_len <= 2) {
+    /* shrink from big allocation to small one */
+    mem = fio_malloc(new_size);
+    if (!mem) {
+      return NULL;
+    }
+    fio____memcpy_16byte(mem, ptr, (copy_length >> 4));
+    FIO_MEM_PAGE_FREE(b, b->reserved);
+    return mem;
+  }
   fio_mem___block_s *tmp =
       FIO_MEM_PAGE_REALLOC(b, b->reserved >> FIO_MEM_PAGE_SIZE_LOG,
                            new_page_len, FIO_MEMORY_BLOCK_SIZE_LOG);
@@ -8258,6 +8269,17 @@ TEST_FUNC void fio___dynamic_types_test___mem(void) {
       TEST_ASSERT(ary[i], "allocation failed!")
       TEST_ASSERT(!ary[i][0], "allocated memory not zero");
       memset(ary[i], 0xff, (1UL << cycles));
+    }
+    for (size_t i = 0; i < limit; ++i) {
+      char *tmp = fio_realloc2(ary[i], (2UL << cycles), (1UL << cycles));
+      TEST_ASSERT(tmp, "re-allocation failed!")
+      ary[i] = tmp;
+      TEST_ASSERT(!ary[i][(2UL << cycles) - 1], "fio_realloc2 copy overflow!");
+      tmp = fio_realloc2(ary[i], (1UL << cycles), (2UL << cycles));
+      TEST_ASSERT(tmp, "re-allocation (shrinking) failed!")
+      ary[i] = tmp;
+      TEST_ASSERT(ary[i][(1UL << cycles) - 1] == (char)0xFF,
+                  "fio_realloc2 copy underflow!");
     }
     for (size_t i = 0; i < limit; ++i) {
       fio_free(ary[i]);
