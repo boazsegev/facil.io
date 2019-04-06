@@ -4,10 +4,19 @@ sidebar: 0.8.x/_sidebar.md
 ---
 # {{{title}}}
 
-The `fio-stl.h` header is a macro based header that includes different type templates and helpers.
+## Lower Level API Notice
+
+>> **The core IO library is probably not the API most developers need to focus on** (although it's always good to know).
+>>
+>> This API is used to power the higher level API offered by the [HTTP / WebSockts extension](./http) and the [dynamic FIOBJ types](./fiobj).
+
+## Required files
+
+The `fio-stl.h` header is a macro based header that includes different type templates and helpers that I found useful also outside of network related applications.
 
 The header can be included more than once to produce multiple types of hash maps or, data sets, dynamic arrays, etc'.
 
+The headers should be well documented and the code is usually easy to read. I also do my best to keep this documentation up to date.
 
 ## Connection (Protocol) Management
 

@@ -1,14 +1,40 @@
 ---
-title: facil.io - 0.8.x Core Library Documentation
+title: facil.io - 0.8.x Core IO Library Documentation
 sidebar: 0.8.x/_sidebar.md
 ---
 # {{{title}}}
 
-The core library types and functions can be found in the headers `fio-stl.h` and `fio.h`.
+## Lower Level API Notice
 
-The headers should be well documented and very long, and as a result, so is this documentation.
+>> **The core IO library is probably not the API most developers need to focus on** (although it's always good to know).
+>>
+>> This API is used to power the higher level API offered by the [HTTP / WebSockts extension](./http) and the [dynamic FIOBJ types](./fiobj).
 
-The `fio-stl.h` header can be included more than once to produce multiple types of Hash Maps, Arrays, etc', as [detailed here](./fio-stl).
+## Required files
+
+The core IO library functions are declared at `fio.h` header and defined in the `fio.c` implementation file. The core IO library requires the `fio-stl.h` header.
+
+The headers should be well documented and the code is usually easy to read. I also do my best to keep this documentation up to date.
+
+## Overview
+
+The core IO library follows an evented design and uses callbacks for IO events. Using the API described in the [Connection Management section](#connection-protocol-management):
+
+- Each connection / socket, is identified by a process unique number (`uuid`).
+
+- Connections are assigned protocol objects (`fio_protocol_s`) using the `fio_attach` function.
+
+- The callbacks in the protocol object are called whenever an IO event occurs.
+
+- Callbacks are protected using one of two connection bound locks - `FIO_PR_LOCK_TASK` for most tasks and `FIO_PR_LOCK_WRITE` for `on_ready` and `ping` tasks.
+
+   This makes it easy to handle multi-threading. Connection data that is mutated only by the connection itself and within the same type of protected tasks, is safe from corruption.
+
+[Reading and writing operations](#reading-writing) uses an internal user-land buffer and they never fail... unless, the client is so slow that they appear to be attacking the network layer (slowloris) or the connection was lost due to other reasons.
+
+Because the framework is evented, there's API that offers easy [event and task scheduling](#event-task-scheduling), including timers etc'. Also, connection events can be rescheduled, allowing connections to behave like state-machines.
+
+The core library includes [Pub/Sub (publish / subscribe) services](pub-sub-services) which offer easy IPC (inter process communication) in a network friendly API. Pub/Sub services can be extended to synchronize with external databases such as Redis.
 
 ## Connection (Protocol) Management
 
