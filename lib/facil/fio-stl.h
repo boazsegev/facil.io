@@ -30,6 +30,8 @@ This file also contains common helper macros / primitives, such as:
 
 * Bit-Byte Operations - defined by `FIO_BITWISE` and `FIO_BITMAP` (adds atomic)
 
+* Network byte ordering macros - defined by `FIO_NTOL` (adds `FIO_BITWISE`)
+
 * Data Hashing (using Risky Hash) - defined by `FIO_RISKY_HASH`
 
 * Psedo Random Generation - defined by `FIO_RAND`
@@ -40,6 +42,11 @@ However, this file does very little (if anything) unless specifically requested.
 
 To make sure this file defines a specific macro or type, it's macro should be
 set.
+
+In addition, if the `FIO_TEST_CSTL` macro is defined, the self-testing function
+`fio_test_dynamic_types()` will be defined. the `fio_test_dynamic_types`
+function will test the functionality of this file and, as consequence, will
+define all available macros.
 
 **Note**: These core types are NOT safe for kernel use, since they default to
 using the `malloc` and `free` functions calls.
@@ -221,7 +228,41 @@ the bitmap is implemented using atomic operations.
 
 -------------------------------------------------------------------------------
 
-## Risky Hash (data hashing:
+## Network Byte Ordering Helpers
+
+This are commonly used for file and data storage / transmittions, since they
+allow for system-independant formatting.
+
+On big-endian systems, these macros a NOOPs, whereas on little-endian systems
+these bacros flip the byte order.
+
+#### `fio_lton16(i)`
+
+Local byte order to Network byte order, 16 bit integer.
+
+#### `fio_ntol16(i)`
+
+Network byte order to Local byte order, 16 bit integer
+
+#### `fio_lton32(i)`
+
+Local byte order to Network byte order, 32 bit integer.
+
+#### `fio_ntol32(i)`
+
+Network byte order to Local byte order, 32 bit integer
+
+#### `fio_lton64(i)`
+
+Local byte order to Network byte order, 62 bit integer.
+
+#### `fio_ntol64(i)`
+
+Network byte order to Local byte order, 62 bit integer
+
+-------------------------------------------------------------------------------
+
+## Risky Hash (data hashing):
 
 If the `FIO_RISKY_HASH` macro is defined than the following static function will
 be defined:
@@ -618,6 +659,10 @@ Basic macros and included files
 #define deprecated(reason) deprecated
 #endif
 
+#if !defined(__clang__) && !defined(__GNUC__)
+#define __thread _Thread_value
+#endif
+
 #include <ctype.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -712,6 +757,10 @@ typedef struct fio___list_node_s {
 #define FIO_LIST_NODE fio___list_node_s
 /** A linked list head type */
 #define FIO_LIST_HEAD fio___list_node_s
+
+/** Allows initialization of FIO_LIST_HEAD objects. */
+#define FIO_LIST_INIT(obj)                                                     \
+  { .next = &(obj), .prev = &(obj) }
 
 /* *****************************************************************************
 Miscellaneous helper macros
@@ -920,6 +969,423 @@ int __attribute__((weak)) FIO_LOG_LEVEL;
 #endif
 
 #endif
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+                            Atomic Operations
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+#if (defined(FIO_ATOMIC) || defined(FIO_BITMAP) || defined(FIO_REF_NAME) ||    \
+     defined(FIO_MALLOC)) &&                                                   \
+    !defined(fio_atomic_xchange)
+
+/* C11 Atomics are defined? */
+#if defined(__ATOMIC_RELAXED)
+/** An atomic exchange operation, returns previous value */
+#define fio_atomic_xchange(p_obj, value)                                       \
+  __atomic_exchange_n((p_obj), (value), __ATOMIC_SEQ_CST)
+/** An atomic addition operation, returns new value */
+#define fio_atomic_add(p_obj, value)                                           \
+  __atomic_add_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+/** An atomic subtraction operation, returns new value */
+#define fio_atomic_sub(p_obj, value)                                           \
+  __atomic_sub_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+/** An atomic AND (&) operation, returns new value */
+#define fio_atomic_and(p_obj, value)                                           \
+  __atomic_and_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+/** An atomic XOR (^) operation, returns new value */
+#define fio_atomic_xor(p_obj, value)                                           \
+  __atomic_xor_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+/** An atomic OR (|) operation, returns new value */
+#define fio_atomic_or(p_obj, value)                                            \
+  __atomic_or_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+/** An atomic NOT AND ((~)&) operation, returns new value */
+#define fio_atomic_nand(p_obj, value)                                          \
+  __atomic_nand_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+/* note: __ATOMIC_SEQ_CST may be safer and __ATOMIC_ACQ_REL may be faster */
+
+/* Select the correct compiler builtin method. */
+#elif __has_builtin(__sync_add_and_fetch) || (__GNUC__ > 3)
+/** An atomic exchange operation, ruturns previous value */
+#define fio_atomic_xchange(p_obj, value)                                       \
+  __sync_val_compare_and_swap((p_obj), *(p_obj), (value))
+/** An atomic addition operation, returns new value */
+#define fio_atomic_add(p_obj, value) __sync_add_and_fetch((p_obj), (value))
+/** An atomic subtraction operation, returns new value */
+#define fio_atomic_sub(p_obj, value) __sync_sub_and_fetch((p_obj), (value))
+/** An atomic AND (&) operation, returns new value */
+#define fio_atomic_and(p_obj, value) __sync_and_and_fetch((p_obj), (value))
+/** An atomic XOR (^) operation, returns new value */
+#define fio_atomic_xor(p_obj, value) __sync_xor_and_fetch((p_obj), (value))
+/** An atomic OR (|) operation, returns new value */
+#define fio_atomic_or(p_obj, value) __sync_or_and_fetch((p_obj), (value))
+/** An atomic NOT AND ((~)&) operation, returns new value */
+#define fio_atomic_nand(p_obj, value) __sync_nand_and_fetch((p_obj), (value))
+
+#else
+#error Required builtin "__sync_add_and_fetch" not found.
+#endif
+
+#define FIO_LOCK_INIT 0
+typedef volatile unsigned char fio_lock_i;
+
+/** Returns 0 on success and 1 on failure. */
+HFUNC uint8_t fio_trylock(fio_lock_i *lock) {
+  __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
+  return fio_atomic_xchange(lock, 1);
+}
+
+/** Busy waits for a lock to become available - not recommended. */
+HFUNC void fio_lock(fio_lock_i *lock) {
+  while (fio_trylock(lock)) {
+    struct timespec tm = {.tv_nsec = 1};
+    nanosleep(&tm, NULL);
+  }
+}
+
+/** Returns 1 if the lock is locked, 0 otherwise. */
+HFUNC uint8_t fio_is_locked(fio_lock_i *lock) { return *lock; }
+
+/** Unlocks the lock, no matter which thread owns the lock. */
+HFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_xchange(lock, 0); }
+
+#endif /* FIO_ATOMIC */
+#undef FIO_ATOMIC
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+                            Bit-Byte Operations
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+#if (defined(FIO_BITWISE) || defined(FIO_RAND) || defined(FIO_NTOL)) &&        \
+    !defined(fio_lrot)
+
+/* *****************************************************************************
+Swapping byte's order (`bswap` variations)
+***************************************************************************** */
+
+/** Byte swap a 16 bit integer, inlined. */
+#if __has_builtin(__builtin_bswap16)
+#define fio_bswap16(i) __builtin_bswap16((uint16_t)(i))
+#else
+#define fio_bswap16(i) ((((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8))
+#endif
+
+/** Byte swap a 32 bit integer, inlined. */
+#if __has_builtin(__builtin_bswap32)
+#define fio_bswap32(i) __builtin_bswap32((uint32_t)(i))
+#else
+#define fio_bswap32(i)                                                         \
+  ((((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) | (((i)&0xFF0000UL) >> 8) |    \
+   (((i)&0xFF000000UL) >> 24))
+#endif
+
+/** Byte swap a 64 bit integer, inlined. */
+#if __has_builtin(__builtin_bswap64)
+#define fio_bswap64(i) __builtin_bswap64((uint64_t)(i))
+#else
+#define fio_bswap64(i)                                                         \
+  ((((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                           \
+   (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |                    \
+   (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |            \
+   (((i)&0xFF000000000000ULL) >> 40) | (((i)&0xFF00000000000000ULL) >> 56))
+#endif
+
+/* *****************************************************************************
+Bit rotation
+***************************************************************************** */
+
+/** 32Bit left rotation, inlined. */
+#define fio_lrot32(i, bits)                                                    \
+  (((uint32_t)(i) << ((bits)&31UL)) | ((uint32_t)(i) >> ((-(bits)) & 31UL)))
+
+/** 32Bit right rotation, inlined. */
+#define fio_rrot32(i, bits)                                                    \
+  (((uint32_t)(i) >> ((bits)&31UL)) | ((uint32_t)(i) << ((-(bits)) & 31UL)))
+
+/** 64Bit left rotation, inlined. */
+#define fio_lrot64(i, bits)                                                    \
+  (((uint64_t)(i) << ((bits)&63UL)) | ((uint64_t)(i) >> ((-(bits)) & 63UL)))
+
+/** 64Bit right rotation, inlined. */
+#define fio_rrot64(i, bits)                                                    \
+  (((uint64_t)(i) >> ((bits)&63UL)) | ((uint64_t)(i) << ((-(bits)) & 63UL)))
+
+/** Left rotation for an unknown size element, inlined. */
+#define fio_lrot(i, bits)                                                      \
+  (((i) << ((bits) & ((sizeof((i)) << 3) - 1))) |                              \
+   ((i) >> ((-(bits)) & ((sizeof((i)) << 3) - 1))))
+
+/** Right rotation for an unknown size element, inlined. */
+#define fio_rrot(i, bits)                                                      \
+  (((i) >> ((bits) & ((sizeof((i)) << 3) - 1))) |                              \
+   ((i) << ((-(bits)) & ((sizeof((i)) << 3) - 1))))
+
+/* *****************************************************************************
+Unaligned memory read / write operations
+***************************************************************************** */
+
+/** Converts an unaligned network ordered byte stream to a 16 bit number. */
+#define fio_str2u16(c)                                                         \
+  ((uint16_t)(((uint16_t)(((uint8_t *)(c))[0]) << 8) |                         \
+              (uint16_t)(((uint8_t *)(c))[1])))
+
+/** Converts an unaligned network ordered byte stream to a 32 bit number. */
+#define fio_str2u32(c)                                                         \
+  ((uint32_t)(((uint32_t)(((uint8_t *)(c))[0]) << 24) |                        \
+              ((uint32_t)(((uint8_t *)(c))[1]) << 16) |                        \
+              ((uint32_t)(((uint8_t *)(c))[2]) << 8) |                         \
+              (uint32_t)(((uint8_t *)(c))[3])))
+
+/** Converts an unaligned network ordered byte stream to a 64 bit number. */
+#define fio_str2u64(c)                                                         \
+  ((uint64_t)((((uint64_t)((uint8_t *)(c))[0]) << 56) |                        \
+              (((uint64_t)((uint8_t *)(c))[1]) << 48) |                        \
+              (((uint64_t)((uint8_t *)(c))[2]) << 40) |                        \
+              (((uint64_t)((uint8_t *)(c))[3]) << 32) |                        \
+              (((uint64_t)((uint8_t *)(c))[4]) << 24) |                        \
+              (((uint64_t)((uint8_t *)(c))[5]) << 16) |                        \
+              (((uint64_t)((uint8_t *)(c))[6]) << 8) | (((uint8_t *)(c))[7])))
+
+/** Writes a local 16 bit number to an unaligned buffer in network order. */
+#define fio_u2str16(buffer, i)                                                 \
+  do {                                                                         \
+    ((uint8_t *)(buffer))[0] = ((uint16_t)(i) >> 8) & 0xFF;                    \
+    ((uint8_t *)(buffer))[1] = ((uint16_t)(i)) & 0xFF;                         \
+  } while (0);
+
+/** Writes a local 32 bit number to an unaligned buffer in network order. */
+#define fio_u2str32(buffer, i)                                                 \
+  do {                                                                         \
+    ((uint8_t *)(buffer))[0] = ((uint32_t)(i) >> 24) & 0xFF;                   \
+    ((uint8_t *)(buffer))[1] = ((uint32_t)(i) >> 16) & 0xFF;                   \
+    ((uint8_t *)(buffer))[2] = ((uint32_t)(i) >> 8) & 0xFF;                    \
+    ((uint8_t *)(buffer))[3] = ((uint32_t)(i)) & 0xFF;                         \
+  } while (0);
+
+/** Writes a local 64 bit number to an unaligned buffer in network order. */
+#define fio_u2str64(buffer, i)                                                 \
+  do {                                                                         \
+    ((uint8_t *)(buffer))[0] = (((uint64_t)(i) >> 56) & 0xFF);                 \
+    ((uint8_t *)(buffer))[1] = (((uint64_t)(i) >> 48) & 0xFF);                 \
+    ((uint8_t *)(buffer))[2] = (((uint64_t)(i) >> 40) & 0xFF);                 \
+    ((uint8_t *)(buffer))[3] = (((uint64_t)(i) >> 32) & 0xFF);                 \
+    ((uint8_t *)(buffer))[4] = (((uint64_t)(i) >> 24) & 0xFF);                 \
+    ((uint8_t *)(buffer))[5] = (((uint64_t)(i) >> 16) & 0xFF);                 \
+    ((uint8_t *)(buffer))[6] = (((uint64_t)(i) >> 8) & 0xFF);                  \
+    ((uint8_t *)(buffer))[7] = (((uint64_t)(i)) & 0xFF);                       \
+  } while (0);
+
+/* *****************************************************************************
+Constant-time selectors
+***************************************************************************** */
+
+/** Returns 1 if the expression is true (input isn't zero). */
+HFUNC uintptr_t fio_ct_true(uintptr_t cond) {
+  // promise that the highest bit is set if any bits are set, than shift.
+  return ((cond | (0 - cond)) >> ((sizeof(cond) << 3) - 1));
+}
+
+/** Returns 1 if the expression is false (input is zero). */
+HFUNC uintptr_t fio_ct_false(uintptr_t cond) {
+  // fio_ct_true returns only one bit, XOR will inverse that bit.
+  return fio_ct_true(cond) ^ 1;
+}
+
+/** Returns `a` if `cond` is boolean and true, returns b otherwise. */
+HFUNC uintptr_t fio_ct_if(uint8_t cond, uintptr_t a, uintptr_t b) {
+  // b^(a^b) cancels b out. 0-1 => sets all bits.
+  return (b ^ ((0 - (cond & 1)) & (a ^ b)));
+}
+
+/** Returns `a` if `cond` isn't zero (uses fio_ct_true), returns b otherwise. */
+HFUNC uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
+  // b^(a^b) cancels b out. 0-1 => sets all bits.
+  return fio_ct_if(fio_ct_true(cond), a, b);
+}
+
+/* *****************************************************************************
+Hemming Distance and bit counting
+***************************************************************************** */
+
+#if __has_builtin(__builtin_popcountll)
+#define fio_popcount(n) __builtin_popcountll(n)
+#else
+HFUNC int fio_popcount(uint64_t n) {
+  int c = 0;
+  while (n) {
+    ++c;
+    n &= n - 1;
+  }
+  return c;
+}
+#endif
+
+#define fio_hemming_dist(n1, n2) fio_popcount(((uint64_t)(n1) ^ (uint64_t)(n2)))
+
+/* *****************************************************************************
+Bitewise helpers cleanup
+***************************************************************************** */
+#endif /* FIO_BITWISE */
+#undef FIO_BITWISE
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+                                Bitmap Helpers
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if defined(FIO_BITMAP) && !defined(H___FIO_BITMAP_H)
+#define H___FIO_BITMAP_H
+/* *****************************************************************************
+Bitmap access / manipulation
+***************************************************************************** */
+
+HFUNC uint8_t fio_bitmap_get(void *map, size_t bit) {
+  return ((((uint8_t *)(map))[(bit) >> 3] >> ((bit)&7)) & 1);
+}
+
+HFUNC void fio_bitmap_set(void *map, size_t bit) {
+  fio_atomic_or((uint8_t *)(map) + ((bit) >> 3), (1UL << ((bit)&7)));
+}
+
+HFUNC void fio_bitmap_unset(void *map, size_t bit) {
+  fio_atomic_and((uint8_t *)(map) + ((bit) >> 3),
+                 (uint8_t)(~(1UL << ((bit)&7))));
+}
+
+#endif
+#undef FIO_BITMAP
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+
+
+Network Byte Ordering
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+#if defined(FIO_NTOL) && !defined(fio_lton16)
+
+#if !defined(__BIG_ENDIAN__)
+/* nothing to do */
+#elif (defined(__LITTLE_ENDIAN__) && !__LITTLE_ENDIAN__) ||                    \
+    (defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__))
+#define __BIG_ENDIAN__ 1
+#elif !defined(__BIG_ENDIAN__) && !defined(__BYTE_ORDER__) &&                  \
+    !defined(__LITTLE_ENDIAN__)
+#error Could not detect byte order on this system.
+#endif
+
+#if __BIG_ENDIAN__
+
+/** Local byte order to Network byte order, 16 bit integer */
+#define fio_lton16(i) (i)
+/** Local byte order to Network byte order, 32 bit integer */
+#define fio_lton32(i) (i)
+/** Local byte order to Network byte order, 62 bit integer */
+#define fio_lton64(i) (i)
+
+/** Network byte order to Local byte order, 16 bit integer */
+#define fio_ntol16(i) (i)
+/** Network byte order to Local byte order, 32 bit integer */
+#define fio_ntol32(i) (i)
+/** Network byte order to Local byte order, 62 bit integer */
+#define fio_ntol64(i) (i)
+
+#else /* Little Endian */
+
+/** Local byte order to Network byte order, 16 bit integer */
+#define fio_lton16(i) fio_bswap16((i))
+/** Local byte order to Network byte order, 32 bit integer */
+#define fio_lton32(i) fio_bswap32((i))
+/** Local byte order to Network byte order, 62 bit integer */
+#define fio_lton64(i) fio_bswap64((i))
+
+/** Network byte order to Local byte order, 16 bit integer */
+#define fio_ntol16(i) fio_bswap16((i))
+/** Network byte order to Local byte order, 32 bit integer */
+#define fio_ntol32(i) fio_bswap32((i))
+/** Network byte order to Local byte order, 62 bit integer */
+#define fio_ntol64(i) fio_bswap64((i))
+
+#endif /* __BIG_ENDIAN__ */
+#endif /* H___FIO_NTOL_H */
+
 /* *****************************************************************************
 
 
@@ -951,6 +1417,72 @@ Memory Allocation - API
 ***************************************************************************** */
 
 /* *****************************************************************************
+Memory allocator for short lived objects
+***************************************************************************** */
+
+/* inform the compiler that the returned value is aligned on 16 byte marker */
+#if __clang__ || __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ > 8)
+#define FIO_ALIGN __attribute__((assume_aligned(16)))
+#define FIO_ALIGN_NEW __attribute__((malloc, assume_aligned(16)))
+#else
+#define FIO_ALIGN
+#define FIO_ALIGN_NEW
+#endif
+
+/**
+ * Allocates memory using a per-CPU core block memory pool.
+ * Memory is zeroed out.
+ *
+ * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
+ * will be redirected to `mmap`, as if `fio_mmap` was called.
+ */
+void *FIO_ALIGN_NEW fio_malloc(size_t size);
+
+/**
+ * same as calling `fio_malloc(size_per_unit * unit_count)`;
+ *
+ * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
+ * will be redirected to `mmap`, as if `fio_mmap` was called.
+ */
+void *FIO_ALIGN_NEW fio_calloc(size_t size_per_unit, size_t unit_count);
+
+/** Frees memory that was allocated using this library. */
+void fio_free(void *ptr);
+
+/**
+ * Re-allocates memory. An attempt to avoid copying the data is made only for
+ * big memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
+ */
+void *FIO_ALIGN fio_realloc(void *ptr, size_t new_size);
+
+/**
+ * Re-allocates memory. An attempt to avoid copying the data is made only for
+ * big memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
+ *
+ * This variation is slightly faster as it might copy less data.
+ */
+void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
+
+/**
+ * Allocates memory directly using `mmap`, this is prefered for objects that
+ * both require almost a page of memory (or more) and expect a long lifetime.
+ *
+ * However, since this allocation will invoke the system call (`mmap`), it will
+ * be inherently slower.
+ *
+ * `fio_free` can be used for deallocating the memory.
+ */
+void *FIO_ALIGN_NEW fio_mmap(size_t size);
+
+/**
+ * When forking is called manually, call this function to reset the facil.io
+ * memory allocator's locks.
+ */
+void fio_malloc_after_fork(void);
+
+#undef FIO_ALIGN
+#undef FIO_ALIGN_NEW
+/* *****************************************************************************
 Memory Allocation - redefine default allocation macros
 ***************************************************************************** */
 #undef FIO_MEM_CALLOC
@@ -970,6 +1502,10 @@ Memory Allocation - redefine default allocation macros
 Memory Allocation - Implementation
 ***************************************************************************** */
 #ifdef FIO_EXTERN_COMPLETE
+
+#if H__FIO_UNIX_TOOLS_H
+#include <unistd.h>
+#endif /* H__FIO_UNIX_TOOLS4STR_INCLUDED */
 
 /* *****************************************************************************
 Aligned memory copying
@@ -1174,14 +1710,311 @@ HFUNC void FIO_MEM_PAGE_FREE_def_func(void *mem, size_t pages) {
 #define FIO_MEM_PAGE_FREE(ptr, pages) FIO_MEM_PAGE_FREE_def_func((ptr), (pages))
 
 #define FIO_MEM_BYTES2PAGES(size)                                              \
-  (((size) + (1UL << FIO_MEM_PAGE_SIZE_LOG)) >> (FIO_MEM_PAGE_SIZE_LOG))
+  (((size) + ((1UL << FIO_MEM_PAGE_SIZE_LOG) - 1)) >> (FIO_MEM_PAGE_SIZE_LOG))
 
 #endif /* FIO_MEM_PAGE_ALLOC */
+
+/* *****************************************************************************
+Allocator default
+***************************************************************************** */
+
+#ifndef FIO_MEMORY_BLOCK_SIZE_LOG
+/**
+ * The logarithmic value for a memory block, 15 == 32Kb, 16 == 64Kb, etc'
+ *
+ * By default, a block of memory is 32Kb silce from an 8Mb allocation.
+ *
+ * A value of 16 will make this a 64Kb silce from a 16Mb allocation.
+ */
+#define FIO_MEMORY_BLOCK_SIZE_LOG (15)
+#endif
+
+#undef FIO_MEMORY_BLOCK_SIZE
+/** The resulting memoru block size, depends on `FIO_MEMORY_BLOCK_SIZE_LOG` */
+#define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << FIO_MEMORY_BLOCK_SIZE_LOG)
+
+/**
+ * The maximum allocation size, after which `mmap` will be called instead of the
+ * facil.io allocator.
+ *
+ * Defaults to 50% of the block (16Kb), after which `mmap` is used instead
+ */
+#ifndef FIO_MEMORY_BLOCK_ALLOC_LIMIT
+#define FIO_MEMORY_BLOCK_ALLOC_LIMIT (FIO_MEMORY_BLOCK_SIZE >> 1)
+#endif
+
+/* don't change these */
+#undef FIO_MEMORY_BLOCK_SLICES
+#undef FIO_MEMORY_BLOCK_HEADER_SIZE
+#undef FIO_MEMORY_BLOCK_START_POS
+#undef FIO_MEMORY_MAX_SLICES_PER_BLOCK
+#undef FIO_MEMORY_BLOCK_MASK
+
+/* The number of blocks pre-allocated each system call, 256 == 8Mb */
+#ifndef FIO_MEMORY_BLOCKS_PER_ALLOCATION
+#define FIO_MEMORY_BLOCKS_PER_ALLOCATION 256
+#endif
+
+#define FIO_MEMORY_BLOCK_SLICES (FIO_MEMORY_BLOCK_SIZE >> 4) /* 16B slices */
+
+#define FIO_MEMORY_BLOCK_MASK (FIO_MEMORY_BLOCK_SIZE - 1) /* 0b0...1... */
+
+/* must be divisable by 16 bytes, bigger than min(sizeof(FIO_MEM_BLOCK), 16) */
+#define FIO_MEMORY_BLOCK_HEADER_SIZE                                           \
+  ((sizeof(fio_mem___block_s) + 15UL) & (~15UL))
+
+/* allocation counter position (start) */
+#define FIO_MEMORY_BLOCK_START_POS (FIO_MEMORY_BLOCK_HEADER_SIZE >> 4)
+
+#define FIO_MEMORY_MAX_SLICES_PER_BLOCK                                        \
+  (FIO_MEMORY_BLOCK_SLICES - FIO_MEMORY_BLOCK_START_POS)
+
+/* The basic block header. Starts a 32Kib memory block */
+typedef struct fio_mem___block_s fio_mem___block_s;
+/* A memory caching "arena"  */
+typedef struct fio_mem___arena_s fio_mem___arena_s;
+
+/* *****************************************************************************
+Memory state machine
+***************************************************************************** */
+
+struct fio_mem___arena_s {
+  fio_mem___block_s *block;
+  fio_lock_i lock;
+};
+
+typedef struct {
+  FIO_LIST_HEAD available; /* free list for memory blocks */
+  // intptr_t count;          /* free list counter */
+  size_t cores;    /* the number of detected CPU cores*/
+  fio_lock_i lock; /* a global lock */
+  uint8_t forked;  /* a forked collection indicator. */
+  fio_mem___arena_s arenas[];
+} fio_mem___state_s;
+/* The memory allocators persistent state */
+static fio_mem___state_s *fio_mem___state;
+
+HSFUNC void fio_mem___state_allocate(void) {
+#ifdef _SC_NPROCESSORS_ONLN
+  size_t cores = sysconf(_SC_NPROCESSORS_ONLN);
+#else
+#warning Dynamic CPU core count is unavailable - assuming 8 cores for memory allocation pools.
+  size_t cores = 5;
+#endif
+  if (cores <= 0)
+    cores = 8;
+  const size_t pages = FIO_MEM_BYTES2PAGES(sizeof(*fio_mem___state) +
+                                           (cores * sizeof(fio_mem___arena_s)));
+  fio_mem___state = FIO_MEM_PAGE_ALLOC(pages, 1);
+  FIO_ASSERT_ALLOC(fio_mem___state);
+  *fio_mem___state = (fio_mem___state_s){
+      .cores = cores,
+      .lock = FIO_LOCK_INIT,
+      .available = FIO_LIST_INIT(fio_mem___state->available),
+  };
+}
+
+HSFUNC void fio_mem___state_deallocate(void) {
+  if (!fio_mem___state)
+    return;
+  const size_t pages =
+      FIO_MEM_BYTES2PAGES(sizeof(*fio_mem___state) +
+                          (fio_mem___state->cores * sizeof(fio_mem___arena_s)));
+  FIO_MEM_PAGE_FREE(fio_mem___state, pages);
+}
+
+/* *****************************************************************************
+Memory arena management and selection
+***************************************************************************** */
+
+/* Last available arena for thread. */
+static __thread fio_mem___arena_s *fio_mem___arena = NULL;
+
+HFUNC void fio_mem___arena_aquire(void) {
+  if (!fio_mem___state)
+    fio_mem___state_allocate();
+  if (fio_mem___arena)
+    if (!fio_trylock(&fio_mem___arena->lock))
+      return;
+  for (;;) {
+    struct timespec tm = {.tv_nsec = 1};
+    for (size_t i = 0; i < fio_mem___state->cores; ++i) {
+      if (!fio_trylock(&fio_mem___state->arenas[i].lock)) {
+        fio_mem___arena = fio_mem___state->arenas + i;
+      }
+    }
+    nanosleep(&tm, NULL);
+  }
+}
+
+HFUNC void fio_mem___arena_release() { fio_unlock(&fio_mem___arena->lock); }
+
+/* *****************************************************************************
+Slices and Blocks - types
+***************************************************************************** */
+
+struct fio_mem___block_s {
+  uint16_t root;              /* REQUIRED, root == 0 => is root to self */
+  volatile uint16_t root_ref; /* root reference memory padding */
+  volatile uint16_t ref;      /* reference count (per memory page) */
+  uint16_t pos;               /* position into the block */
+};
+
+typedef struct fio_mem___block_node_s fio_mem___block_node_s;
+struct fio_mem___block_node_s {
+  fio_mem___block_s
+      dont_touch;     /* prevent block internal data from being corrupted */
+  FIO_LIST_NODE node; /* next block */
+};
+
+#define FIO_LIST_NAME fio_mem___available_blocks
+#define FIO_LIST_TYPE fio_mem___block_node_s
+#include "fio-stl.h"
+
+/* Address returned when allocating 0 bytes ( fio_malloc(0) ) */
+static long double fio_mem___on_malloc_zero;
+
+/* retrieve root block */
+HSFUNC fio_mem___block_s *fio_mem___block_root(fio_mem___block_s *b) {
+  return FIO_PTR_MATH_SUB(fio_mem___block_s, b,
+                          b->root * FIO_MEMORY_BLOCK_SIZE);
+}
+
+/* *****************************************************************************
+Allocator debugging helpers
+***************************************************************************** */
+
+#if DEBUG
+/* maximum block allocation count. */
+static size_t fio_mem___block_count_max;
+/* current block allocation count. */
+static size_t fio_mem___block_count;
+#define FIO_MEMORY_ON_BLOCK_ALLOC()                                            \
+  do {                                                                         \
+    fio_atomic_add(&fio_mem_block_count, 1);                                   \
+    if (fio_mem___block_count > fio_mem___block_count_max)                     \
+      fio_mem___block_count_max = fio_mem___block_count;                       \
+  } while (0)
+#define FIO_MEMORY_ON_BLOCK_FREE()                                             \
+  do {                                                                         \
+    fio_atomic_sub(&fio_mem___block_count, 1);                                 \
+  } while (0)
+#define FIO_MEMORY_PRINT_BLOCK_STAT()                                          \
+  FIO_LOG_INFO(                                                                \
+      "(fio) Total memory blocks allocated before cleanup %zu\n"               \
+      "       Maximum memory blocks allocated at a single time %zu\n",         \
+      fio_mem___block_count, fio_mem___block_count_max)
+#define FIO_MEMORY_PRINT_BLOCK_STAT_END()                                      \
+  FIO_LOG_INFO("(fio) Total memory blocks allocated "                          \
+               "after cleanup (possible leak) %zu\n",                          \
+               fio_mem___block_count)
+#else
+#define FIO_MEMORY_ON_BLOCK_ALLOC()
+#define FIO_MEMORY_ON_BLOCK_FREE()
+#define FIO_MEMORY_PRINT_BLOCK_STAT()
+#define FIO_MEMORY_PRINT_BLOCK_STAT_END()
+#endif
+
+/* *****************************************************************************
+Retrieve block from arena
+***************************************************************************** */
+
+HSFUNC fio_mem___block_s *fio_mem___block_alloc(void) {
+  fio_mem___block_s *b =
+      FIO_MEM_PAGE_ALLOC(FIO_MEM_BYTES2PAGES(FIO_MEMORY_BLOCKS_PER_ALLOCATION *
+                                             FIO_MEMORY_BLOCK_SIZE),
+                         FIO_MEMORY_BLOCK_SIZE_LOG);
+  FIO_ASSERT_ALLOC(b);
+  /* initialize and push all block slices into memory pool */
+  for (uint16_t i = 0; i < (FIO_MEMORY_BLOCKS_PER_ALLOCATION); ++i) {
+    fio_mem___block_s *tmp =
+        FIO_PTR_MATH_ADD(fio_mem___block_s, b, (FIO_MEMORY_BLOCK_SIZE * i));
+    *tmp = (fio_mem___block_s){.root = i, .ref = 0};
+    fio_mem___available_blocks_push(&fio_mem___state->available,
+                                    (fio_mem___block_node_s *)tmp);
+  }
+  /* initialize and return last slice (it's in the cache) */
+  b = FIO_PTR_MATH_ADD(
+      fio_mem___block_s, b,
+      (FIO_MEMORY_BLOCK_SIZE * (FIO_MEMORY_BLOCKS_PER_ALLOCATION - 1)));
+  return b;
+}
+
+HSFUNC void fio_mem___block_free(fio_mem___block_s *b) {
+  b = (fio_mem___block_s *)((uintptr_t)b & FIO_MEMORY_BLOCK_MASK);
+  if (fio_atomic_sub(&b->ref, 1)) {
+    /* block slice still in use */
+    return;
+  }
+  fio_lock(&fio_mem___state->lock);
+  fio_mem___available_blocks_push(&fio_mem___state->available,
+                                  (fio_mem___block_node_s *)b);
+  fio_unlock(&fio_mem___state->lock);
+  b = fio_mem___block_root(b);
+  if (fio_atomic_sub(&b->root_ref, 1)) {
+    /* block still has at least one used slice */
+    return;
+  }
+  /* remove all block slices from memory pool */
+  fio_lock(&fio_mem___state->lock);
+  if (!b->root_ref) {
+    for (uint16_t i = 0; i < (FIO_MEMORY_BLOCKS_PER_ALLOCATION); ++i) {
+      fio_mem___block_node_s *tmp = FIO_PTR_MATH_ADD(
+          fio_mem___block_node_s, b, (FIO_MEMORY_BLOCK_SIZE * i));
+      fio_mem___available_blocks_remove(tmp);
+    }
+  }
+  fio_unlock(&fio_mem___state->lock);
+  /* return memory to system */
+  FIO_MEM_PAGE_FREE(b, FIO_MEM_BYTES2PAGES(FIO_MEMORY_BLOCKS_PER_ALLOCATION *
+                                           FIO_MEMORY_BLOCK_SIZE));
+}
+
+/* rotates block in arena */
+HSFUNC void fio_mem___block_rotate(void) {
+  fio_mem___block_s *to_free = fio_mem___arena->block; /* keep memory pool */
+  fio_mem___arena->block = NULL;
+  fio_lock(&fio_mem___state->lock);
+  fio_mem___arena->block = (fio_mem___block_s *)fio_mem___available_blocks_pop(
+      &fio_mem___state->available);
+  if (!fio_mem___arena->block) {
+    /* allocate block */
+    fio_mem___arena->block = fio_mem___block_alloc();
+  }
+  fio_unlock(&fio_mem___state->lock);
+  fio_atomic_add(&fio_mem___arena->block->ref, 1);
+  fio_atomic_add(&fio_mem___block_root(fio_mem___arena->block)->root_ref, 1);
+  fio_mem___block_free(to_free);
+}
+
+HSFUNC void *fio_mem___block_slice(size_t bytes) {
+  const uint16_t max = FIO_MEMORY_BLOCK_SIZE - FIO_MEMORY_BLOCK_HEADER_SIZE;
+  void *r = NULL;
+  bytes = (bytes + 15) >> 4; /* convert to 16 byte units */
+  fio_mem___arena_aquire();
+  if (fio_mem___arena->block->pos + bytes >= max)
+    fio_mem___block_rotate();
+  fio_mem___block_s *b = fio_mem___arena->block;
+  fio_atomic_add(&b->ref, 1);
+  r = FIO_PTR_MATH_ADD(void, b, FIO_MEMORY_BLOCK_HEADER_SIZE + (b->pos << 4));
+  fio_atomic_add(&b->pos, bytes);
+  fio_mem___arena_release();
+  return r;
+}
 
 /* *****************************************************************************
 Memory Allocation - cleanup
 ***************************************************************************** */
 #endif /* FIO_EXTERN_COMPLETE */
+// #undef FIO_MEMORY_BLOCK_ALLOC_LIMIT
+// #undef FIO_MEMORY_BLOCK_HEADER_SIZE
+// #undef FIO_MEMORY_BLOCK_MASK
+// #undef FIO_MEMORY_BLOCK_SIZE
+// #undef FIO_MEMORY_BLOCK_SIZE_LOG
+// #undef FIO_MEMORY_BLOCK_SLICES
+// #undef FIO_MEMORY_BLOCK_START_POS
+// #undef FIO_MEMORY_BLOCKS_PER_ALLOCATION
+// #undef FIO_MEMORY_MAX_SLICES_PER_BLOCK
 #endif
 #undef FIO_MALLOC
 
@@ -1224,345 +2057,6 @@ Memory management macros
 #define FIO_MEM_FREE_ FIO_MEM_FREE
 #endif
 
-/* *****************************************************************************
-
-
-
-
-
-
-
-
-
-
-                            Atomic Operations
-
-
-
-
-
-
-
-
-
-
-***************************************************************************** */
-
-#if (defined(FIO_ATOMIC) || defined(FIO_BITMAP) || defined(FIO_REF_NAME)) &&   \
-    !defined(fio_atomic_xchange)
-
-/* C11 Atomics are defined? */
-#if defined(__ATOMIC_RELAXED)
-/** An atomic exchange operation, returns previous value */
-#define fio_atomic_xchange(p_obj, value)                                       \
-  __atomic_exchange_n((p_obj), (value), __ATOMIC_SEQ_CST)
-/** An atomic addition operation, returns new value */
-#define fio_atomic_add(p_obj, value)                                           \
-  __atomic_add_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
-/** An atomic subtraction operation, returns new value */
-#define fio_atomic_sub(p_obj, value)                                           \
-  __atomic_sub_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
-/** An atomic AND (&) operation, returns new value */
-#define fio_atomic_and(p_obj, value)                                           \
-  __atomic_and_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
-/** An atomic XOR (^) operation, returns new value */
-#define fio_atomic_xor(p_obj, value)                                           \
-  __atomic_xor_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
-/** An atomic OR (|) operation, returns new value */
-#define fio_atomic_or(p_obj, value)                                            \
-  __atomic_or_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
-/** An atomic NOT AND ((~)&) operation, returns new value */
-#define fio_atomic_nand(p_obj, value)                                          \
-  __atomic_nand_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
-/* note: __ATOMIC_SEQ_CST may be safer and __ATOMIC_ACQ_REL may be faster */
-
-/* Select the correct compiler builtin method. */
-#elif __has_builtin(__sync_add_and_fetch) || (__GNUC__ > 3)
-/** An atomic exchange operation, ruturns previous value */
-#define fio_atomic_xchange(p_obj, value)                                       \
-  __sync_val_compare_and_swap((p_obj), *(p_obj), (value))
-/** An atomic addition operation, returns new value */
-#define fio_atomic_add(p_obj, value) __sync_add_and_fetch((p_obj), (value))
-/** An atomic subtraction operation, returns new value */
-#define fio_atomic_sub(p_obj, value) __sync_sub_and_fetch((p_obj), (value))
-/** An atomic AND (&) operation, returns new value */
-#define fio_atomic_and(p_obj, value) __sync_and_and_fetch((p_obj), (value))
-/** An atomic XOR (^) operation, returns new value */
-#define fio_atomic_xor(p_obj, value) __sync_xor_and_fetch((p_obj), (value))
-/** An atomic OR (|) operation, returns new value */
-#define fio_atomic_or(p_obj, value) __sync_or_and_fetch((p_obj), (value))
-/** An atomic NOT AND ((~)&) operation, returns new value */
-#define fio_atomic_nand(p_obj, value) __sync_nand_and_fetch((p_obj), (value))
-
-#else
-#error Required builtin "__sync_add_and_fetch" not found.
-#endif
-
-#define FIO_LOCK_INIT 0
-typedef volatile unsigned char fio_lock_i;
-
-/** Returns 0 on success and 1 on failure. */
-HFUNC uint8_t fio_trylock(fio_lock_i *lock) {
-  __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
-  return fio_atomic_xchange(lock, 1);
-}
-
-/** Busy waits for a lock to become available - not recommended. */
-HFUNC void fio_lock(fio_lock_i *lock) {
-  while (fio_trylock(lock)) {
-    struct timespec tm = {.tv_nsec = 1};
-    nanosleep(&tm, NULL);
-  }
-}
-
-/** Returns 1 if the lock is locked, 0 otherwise. */
-HFUNC uint8_t fio_is_locked(fio_lock_i *lock) { return *lock; }
-
-/** Unlocks the lock, no matter which thread owns the lock. */
-HFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_xchange(lock, 0); }
-
-#endif /* FIO_ATOMIC */
-#undef FIO_ATOMIC
-
-/* *****************************************************************************
-
-
-
-
-
-
-
-
-
-
-                            Bit-Byte Operations
-
-
-
-
-
-
-
-
-
-
-***************************************************************************** */
-
-#if (defined(FIO_BITWISE) || defined(FIO_RAND)) && !defined(fio_lrot)
-
-/* *****************************************************************************
-Swapping byte's order (`bswap` variations)
-***************************************************************************** */
-
-/** Byte swap a 16 bit integer, inlined. */
-#if __has_builtin(__builtin_bswap16)
-#define fio_bswap16(i) __builtin_bswap16((uint16_t)(i))
-#else
-#define fio_bswap16(i) ((((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8))
-#endif
-
-/** Byte swap a 32 bit integer, inlined. */
-#if __has_builtin(__builtin_bswap32)
-#define fio_bswap32(i) __builtin_bswap32((uint32_t)(i))
-#else
-#define fio_bswap32(i)                                                         \
-  ((((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) | (((i)&0xFF0000UL) >> 8) |    \
-   (((i)&0xFF000000UL) >> 24))
-#endif
-
-/** Byte swap a 64 bit integer, inlined. */
-#if __has_builtin(__builtin_bswap64)
-#define fio_bswap64(i) __builtin_bswap64((uint64_t)(i))
-#else
-#define fio_bswap64(i)                                                         \
-  ((((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                           \
-   (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |                    \
-   (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |            \
-   (((i)&0xFF000000000000ULL) >> 40) | (((i)&0xFF00000000000000ULL) >> 56))
-#endif
-
-/* *****************************************************************************
-Bit rotation
-***************************************************************************** */
-
-/** 32Bit left rotation, inlined. */
-#define fio_lrot32(i, bits)                                                    \
-  (((uint32_t)(i) << ((bits)&31UL)) | ((uint32_t)(i) >> ((-(bits)) & 31UL)))
-
-/** 32Bit right rotation, inlined. */
-#define fio_rrot32(i, bits)                                                    \
-  (((uint32_t)(i) >> ((bits)&31UL)) | ((uint32_t)(i) << ((-(bits)) & 31UL)))
-
-/** 64Bit left rotation, inlined. */
-#define fio_lrot64(i, bits)                                                    \
-  (((uint64_t)(i) << ((bits)&63UL)) | ((uint64_t)(i) >> ((-(bits)) & 63UL)))
-
-/** 64Bit right rotation, inlined. */
-#define fio_rrot64(i, bits)                                                    \
-  (((uint64_t)(i) >> ((bits)&63UL)) | ((uint64_t)(i) << ((-(bits)) & 63UL)))
-
-/** Left rotation for an unknown size element, inlined. */
-#define fio_lrot(i, bits)                                                      \
-  (((i) << ((bits) & ((sizeof((i)) << 3) - 1))) |                              \
-   ((i) >> ((-(bits)) & ((sizeof((i)) << 3) - 1))))
-
-/** Right rotation for an unknown size element, inlined. */
-#define fio_rrot(i, bits)                                                      \
-  (((i) >> ((bits) & ((sizeof((i)) << 3) - 1))) |                              \
-   ((i) << ((-(bits)) & ((sizeof((i)) << 3) - 1))))
-
-/* *****************************************************************************
-Unaligned memory read / write operations
-***************************************************************************** */
-
-/** Converts an unaligned network ordered byte stream to a 16 bit number. */
-#define fio_str2u16(c)                                                         \
-  ((uint16_t)(((uint16_t)(((uint8_t *)(c))[0]) << 8) |                         \
-              (uint16_t)(((uint8_t *)(c))[1])))
-
-/** Converts an unaligned network ordered byte stream to a 32 bit number. */
-#define fio_str2u32(c)                                                         \
-  ((uint32_t)(((uint32_t)(((uint8_t *)(c))[0]) << 24) |                        \
-              ((uint32_t)(((uint8_t *)(c))[1]) << 16) |                        \
-              ((uint32_t)(((uint8_t *)(c))[2]) << 8) |                         \
-              (uint32_t)(((uint8_t *)(c))[3])))
-
-/** Converts an unaligned network ordered byte stream to a 64 bit number. */
-#define fio_str2u64(c)                                                         \
-  ((uint64_t)((((uint64_t)((uint8_t *)(c))[0]) << 56) |                        \
-              (((uint64_t)((uint8_t *)(c))[1]) << 48) |                        \
-              (((uint64_t)((uint8_t *)(c))[2]) << 40) |                        \
-              (((uint64_t)((uint8_t *)(c))[3]) << 32) |                        \
-              (((uint64_t)((uint8_t *)(c))[4]) << 24) |                        \
-              (((uint64_t)((uint8_t *)(c))[5]) << 16) |                        \
-              (((uint64_t)((uint8_t *)(c))[6]) << 8) | (((uint8_t *)(c))[7])))
-
-/** Writes a local 16 bit number to an unaligned buffer in network order. */
-#define fio_u2str16(buffer, i)                                                 \
-  do {                                                                         \
-    ((uint8_t *)(buffer))[0] = ((uint16_t)(i) >> 8) & 0xFF;                    \
-    ((uint8_t *)(buffer))[1] = ((uint16_t)(i)) & 0xFF;                         \
-  } while (0);
-
-/** Writes a local 32 bit number to an unaligned buffer in network order. */
-#define fio_u2str32(buffer, i)                                                 \
-  do {                                                                         \
-    ((uint8_t *)(buffer))[0] = ((uint32_t)(i) >> 24) & 0xFF;                   \
-    ((uint8_t *)(buffer))[1] = ((uint32_t)(i) >> 16) & 0xFF;                   \
-    ((uint8_t *)(buffer))[2] = ((uint32_t)(i) >> 8) & 0xFF;                    \
-    ((uint8_t *)(buffer))[3] = ((uint32_t)(i)) & 0xFF;                         \
-  } while (0);
-
-/** Writes a local 64 bit number to an unaligned buffer in network order. */
-#define fio_u2str64(buffer, i)                                                 \
-  do {                                                                         \
-    ((uint8_t *)(buffer))[0] = (((uint64_t)(i) >> 56) & 0xFF);                 \
-    ((uint8_t *)(buffer))[1] = (((uint64_t)(i) >> 48) & 0xFF);                 \
-    ((uint8_t *)(buffer))[2] = (((uint64_t)(i) >> 40) & 0xFF);                 \
-    ((uint8_t *)(buffer))[3] = (((uint64_t)(i) >> 32) & 0xFF);                 \
-    ((uint8_t *)(buffer))[4] = (((uint64_t)(i) >> 24) & 0xFF);                 \
-    ((uint8_t *)(buffer))[5] = (((uint64_t)(i) >> 16) & 0xFF);                 \
-    ((uint8_t *)(buffer))[6] = (((uint64_t)(i) >> 8) & 0xFF);                  \
-    ((uint8_t *)(buffer))[7] = (((uint64_t)(i)) & 0xFF);                       \
-  } while (0);
-
-/* *****************************************************************************
-Constant-time selectors
-***************************************************************************** */
-
-/** Returns 1 if the expression is true (input isn't zero). */
-HFUNC uintptr_t fio_ct_true(uintptr_t cond) {
-  // promise that the highest bit is set if any bits are set, than shift.
-  return ((cond | (0 - cond)) >> ((sizeof(cond) << 3) - 1));
-}
-
-/** Returns 1 if the expression is false (input is zero). */
-HFUNC uintptr_t fio_ct_false(uintptr_t cond) {
-  // fio_ct_true returns only one bit, XOR will inverse that bit.
-  return fio_ct_true(cond) ^ 1;
-}
-
-/** Returns `a` if `cond` is boolean and true, returns b otherwise. */
-HFUNC uintptr_t fio_ct_if(uint8_t cond, uintptr_t a, uintptr_t b) {
-  // b^(a^b) cancels b out. 0-1 => sets all bits.
-  return (b ^ ((0 - (cond & 1)) & (a ^ b)));
-}
-
-/** Returns `a` if `cond` isn't zero (uses fio_ct_true), returns b otherwise. */
-HFUNC uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
-  // b^(a^b) cancels b out. 0-1 => sets all bits.
-  return fio_ct_if(fio_ct_true(cond), a, b);
-}
-
-/* *****************************************************************************
-Hemming Distance and bit counting
-***************************************************************************** */
-
-#if __has_builtin(__builtin_popcountll)
-#define fio_popcount(n) __builtin_popcountll(n)
-#else
-HFUNC int fio_popcount(uint64_t n) {
-  int c = 0;
-  while (n) {
-    ++c;
-    n &= n - 1;
-  }
-  return c;
-}
-#endif
-
-#define fio_hemming_dist(n1, n2) fio_popcount(((uint64_t)(n1) ^ (uint64_t)(n2)))
-
-/* *****************************************************************************
-Bitewise helpers cleanup
-***************************************************************************** */
-#endif /* FIO_BITWISE */
-#undef FIO_BITWISE
-
-/* *****************************************************************************
-
-
-
-
-
-
-
-
-
-
-                        Risky Hash - a fast and simple hash
-
-
-
-
-
-
-
-
-
-
-***************************************************************************** */
-#if defined(FIO_BITMAP) && !defined(H___FIO_BITMAP_H)
-#define H___FIO_BITMAP_H
-/* *****************************************************************************
-Bitmap access / manipulation
-***************************************************************************** */
-
-HFUNC uint8_t fio_bitmap_get(void *map, size_t bit) {
-  return ((((uint8_t *)(map))[(bit) >> 3] >> ((bit)&7)) & 1);
-}
-
-HFUNC void fio_bitmap_set(void *map, size_t bit) {
-  fio_atomic_or((uint8_t *)(map) + ((bit) >> 3), (1UL << ((bit)&7)));
-}
-
-HFUNC void fio_bitmap_unset(void *map, size_t bit) {
-  fio_atomic_and((uint8_t *)(map) + ((bit) >> 3),
-                 (uint8_t)(~(1UL << ((bit)&7))));
-}
-
-#endif
-#undef FIO_BITMAP
 /* *****************************************************************************
 
 
@@ -2284,7 +2778,7 @@ SFUNC size_t fio_ftoa(char *dest, double num, uint8_t base) {
 Linked Lists (embeded) - Type
 ***************************************************************************** */
 
-#ifdef FIO_LIST_NAME
+#if defined(FIO_LIST_NAME)
 
 #ifndef FIO_LIST_TYPE
 /** Name of the list type and function prefix, defaults to FIO_LIST_NAME_s */
@@ -2295,10 +2789,6 @@ Linked Lists (embeded) - Type
 /** List types must contain at least one node element, defaults to `node`. */
 #define FIO_LIST_NODE_NAME node
 #endif
-
-/** Allows initialization of FIO_LIST_HEAD objects. */
-#define FIO_LIST_INIT(obj)                                                     \
-  { .next = &(obj), .prev = &(obj) }
 
 /* *****************************************************************************
 Linked Lists (embeded) - API
