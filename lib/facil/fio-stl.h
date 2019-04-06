@@ -1892,7 +1892,7 @@ static size_t fio_mem___block_count_max;
 static size_t fio_mem___block_count;
 #define FIO_MEMORY_ON_BLOCK_ALLOC()                                            \
   do {                                                                         \
-    fio_atomic_add(&fio_mem_block_count, 1);                                   \
+    fio_atomic_add(&fio_mem___block_count, 1);                                 \
     if (fio_mem___block_count > fio_mem___block_count_max)                     \
       fio_mem___block_count_max = fio_mem___block_count;                       \
   } while (0)
@@ -1978,7 +1978,7 @@ HSFUNC void fio_mem___block_free(fio_mem___block_s *b) {
   FIO_MEM_PAGE_FREE(b, FIO_MEM_BYTES2PAGES(FIO_MEMORY_BLOCKS_PER_ALLOCATION *
                                            FIO_MEMORY_BLOCK_SIZE));
   /* debug counter */
-  FIO_MEMORY_ON_BLOCK_FREE()
+  FIO_MEMORY_ON_BLOCK_FREE();
 }
 
 /* rotates block in arena */
@@ -2053,7 +2053,6 @@ test_reserved:
  * will be redirected to `mmap`, as if `fio_mmap` was called.
  */
 SFUNC void *FIO_ALIGN_NEW fio_malloc(size_t size) {
-  fio_mem___block_s *b = NULL;
   if (!size)
     return &fio_mem___on_malloc_zero;
   if (size <= FIO_MEMORY_BLOCK_ALLOC_LIMIT) {
@@ -7127,7 +7126,7 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
   uint64_t hemming = 0;
   for (size_t i = 1; i < length; i += 2) {
     hemming += fio_hemming_dist(stream[i], stream[i - 1]);
-    for (size_t j = 0; j < (sizeof(*stream) * 16); ++j) {
+    for (size_t j = 0; j < (sizeof(*stream)); ++j) {
       ++totals[fio_bitmap_get(&stream[i], j)];
     }
   }
@@ -7146,7 +7145,7 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
 
 TEST_FUNC void fio___dynamic_types_test___random(void) {
   fprintf(stderr, "* Testing randomness "
-                  "(bit frequency only - non-cryptographic - not safe)\n");
+                  "(bit frequency / hemming - non-cryptographic test)\n");
   uint64_t *rs = FIO_MEM_CALLOC(sizeof(*rs), (REPEAT << 1));
   clock_t start, end;
   FIO_ASSERT_ALLOC(rs);
@@ -7170,6 +7169,9 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
   fio___dynamic_types_test___random_buffer(rs, (REPEAT << 1), "fio_rand_bytes",
                                            end - start);
   FIO_MEM_FREE(rs, sizeof(*rs) * (REPEAT << 1));
+#if DEBUG
+  fprintf(stderr, "* Speed / CPU cycle data invalid - debug mode detected.\n");
+#endif
   fprintf(stderr, "* passed.\n");
 }
 

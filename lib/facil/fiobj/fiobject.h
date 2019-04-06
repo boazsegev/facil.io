@@ -68,14 +68,14 @@ typedef uintptr_t FIOBJ;
 #define FIOBJ_IS_NULL(obj) (!obj || obj == (FIOBJ)FIOBJ_T_NULL)
 #define FIOBJ_INVALID 0
 
-#ifndef H_FIO_STR_INFO_H
+#ifndef H___FIO_STR_INFO_H
 /** A String information type, reports information about a C string. */
 typedef struct fio_str_info_s {
   size_t capa; /* Buffer capacity, if the string is writable. */
   size_t len;  /* String length. */
   char *data;  /* String's first byte. */
 } fio_str_info_s;
-#define H_FIO_STR_INFO_H
+#define H___FIO_STR_INFO_H
 #endif
 
 /* *****************************************************************************

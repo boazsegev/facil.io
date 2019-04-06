@@ -89,6 +89,7 @@ Import STL
 #define FIO_ATOMIC 1
 #define FIO_BITWISE 1
 #define FIO_ATOL 1
+#define FIO_NTOL 1
 #define FIO_RAND 1
 #define FIO_CLI 1
 #define FIO_STR_INFO 1
@@ -2326,24 +2327,24 @@ FIO_FUNC inline int fio_trylock_dbg(fio_lock_i *lock, const char *file,
 
 ***************************************************************************** */
 
-#undef FIO_MALLOC
-#undef FIO_CALLOC
-#undef FIO_REALLOC
-#undef FIO_FREE
+#undef FIO__MALLOC
+#undef FIO__CALLOC
+#undef FIO__REALLOC
+#undef FIO__FREE
 
 #if FIO_FORCE_MALLOC || FIO_FORCE_MALLOC_TMP
-#define FIO_MALLOC(size) calloc((size), 1)
-#define FIO_CALLOC(size, units) calloc((size), (units))
-#define FIO_REALLOC(ptr, new_length, existing_data_length)                     \
+#define FIO__MALLOC(size) calloc((size), 1)
+#define FIO__CALLOC(size, units) calloc((size), (units))
+#define FIO__REALLOC(ptr, new_length, existing_data_length)                    \
   realloc((ptr), (new_length))
-#define FIO_FREE free
+#define FIO__FREE free
 
 #else
-#define FIO_MALLOC(size) fio_malloc((size))
-#define FIO_CALLOC(size, units) fio_calloc((size), (units))
-#define FIO_REALLOC(ptr, new_length, existing_data_length)                     \
+#define FIO__MALLOC(size) fio_malloc((size))
+#define FIO__CALLOC(size, units) fio_calloc((size), (units))
+#define FIO__REALLOC(ptr, new_length, existing_data_length)                    \
   fio_realloc2((ptr), (new_length), (existing_data_length))
-#define FIO_FREE fio_free
+#define FIO__FREE fio_free
 #endif /* FIO_FORCE_MALLOC || FIO_FORCE_MALLOC_TMP */
 
 /* *****************************************************************************
@@ -2545,7 +2546,7 @@ FIO_FUNC inline void *fio_ls_remove(fio_ls_s *node) {
   const void *ret = node->obj;
   node->next->prev = node->prev;
   node->prev->next = node->next;
-  FIO_FREE(node);
+  FIO__FREE(node);
   return (void *)ret;
 }
 
@@ -2554,7 +2555,7 @@ FIO_FUNC inline fio_ls_s *fio_ls_push(fio_ls_s *pos, const void *obj) {
   if (!pos)
     return NULL;
   /* prepare item */
-  fio_ls_s *item = (fio_ls_s *)FIO_MALLOC(sizeof(*item));
+  fio_ls_s *item = (fio_ls_s *)FIO__MALLOC(sizeof(*item));
   FIO_ASSERT_ALLOC(item);
   *item = (fio_ls_s){.prev = pos->prev, .next = pos, .obj = obj};
   /* inject item */
@@ -2759,15 +2760,15 @@ FIO_FUNC inline int fio_ls_any(fio_ls_s *list) { return list->next != list; }
 /* Customizable memory management */
 #ifndef FIO_SET_REALLOC /* NULL ptr indicates new allocation */
 #define FIO_SET_REALLOC(ptr, original_size, new_size, valid_data_length)       \
-  FIO_REALLOC((ptr), (new_size), (valid_data_length))
+  FIO__REALLOC((ptr), (new_size), (valid_data_length))
 #endif
 
 #ifndef FIO_SET_CALLOC
-#define FIO_SET_CALLOC(size, count) FIO_CALLOC((size), (count))
+#define FIO_SET_CALLOC(size, count) FIO__CALLOC((size), (count))
 #endif
 
 #ifndef FIO_SET_FREE
-#define FIO_SET_FREE(ptr, size) FIO_FREE((ptr))
+#define FIO_SET_FREE(ptr, size) FIO__FREE((ptr))
 #endif
 
 /* The maximum number of bins to rotate when (partial/full) collisions occure */
