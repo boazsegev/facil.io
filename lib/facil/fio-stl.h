@@ -633,8 +633,8 @@ inlined function.
 
 
 ***************************************************************************** */
-#ifndef H_FIO_CSTL_INCLUDE_ONCE____H
-#define H_FIO_CSTL_INCLUDE_ONCE____H
+#ifndef H___FIO_CSTL_INCLUDE_ONCE_H
+#define H___FIO_CSTL_INCLUDE_ONCE_H
 
 /* *****************************************************************************
 Basic macros and included files
@@ -674,7 +674,7 @@ Basic macros and included files
 
 #if defined(__unix__) || defined(__linux__) || defined(__APPLE__) ||           \
     defined(__CYGWIN__)
-#define H__FIO_UNIX_TOOLS_H 1
+#define H___FIO_UNIX_TOOLS_H 1
 #endif
 
 /* *****************************************************************************
@@ -772,7 +772,7 @@ Miscellaneous helper macros
 /* *****************************************************************************
 End persistent segment (end include-once guard)
 ***************************************************************************** */
-#endif /* H_FIO_CSTL_INCLUDE_ONCE____H */
+#endif /* H___FIO_CSTL_INCLUDE_ONCE_H */
 
 /* *****************************************************************************
 
@@ -1409,8 +1409,8 @@ Network Byte Ordering
 
 
 ***************************************************************************** */
-#if defined(FIO_MALLOC) && !defined(H__FIO_MALLOC_H)
-#define H__FIO_MALLOC_H
+#if defined(FIO_MALLOC) && !defined(H___FIO_MALLOC_H)
+#define H___FIO_MALLOC_H
 
 /* *****************************************************************************
 Memory Allocation - API
@@ -1436,7 +1436,7 @@ Memory allocator for short lived objects
  * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
  * will be redirected to `mmap`, as if `fio_mmap` was called.
  */
-void *FIO_ALIGN_NEW fio_malloc(size_t size);
+SFUNC void *FIO_ALIGN_NEW fio_malloc(size_t size);
 
 /**
  * same as calling `fio_malloc(size_per_unit * unit_count)`;
@@ -1444,16 +1444,16 @@ void *FIO_ALIGN_NEW fio_malloc(size_t size);
  * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
  * will be redirected to `mmap`, as if `fio_mmap` was called.
  */
-void *FIO_ALIGN_NEW fio_calloc(size_t size_per_unit, size_t unit_count);
+SFUNC void *FIO_ALIGN_NEW fio_calloc(size_t size_per_unit, size_t unit_count);
 
 /** Frees memory that was allocated using this library. */
-void fio_free(void *ptr);
+SFUNC void fio_free(void *ptr);
 
 /**
  * Re-allocates memory. An attempt to avoid copying the data is made only for
  * big memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
  */
-void *FIO_ALIGN fio_realloc(void *ptr, size_t new_size);
+SFUNC void *FIO_ALIGN fio_realloc(void *ptr, size_t new_size);
 
 /**
  * Re-allocates memory. An attempt to avoid copying the data is made only for
@@ -1461,7 +1461,8 @@ void *FIO_ALIGN fio_realloc(void *ptr, size_t new_size);
  *
  * This variation is slightly faster as it might copy less data.
  */
-void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
+SFUNC void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size,
+                                   size_t copy_length);
 
 /**
  * Allocates memory directly using `mmap`, this is prefered for objects that
@@ -1472,16 +1473,14 @@ void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
  *
  * `fio_free` can be used for deallocating the memory.
  */
-void *FIO_ALIGN_NEW fio_mmap(size_t size);
+SFUNC void *FIO_ALIGN_NEW fio_mmap(size_t size);
 
 /**
  * When forking is called manually, call this function to reset the facil.io
  * memory allocator's locks.
  */
-void fio_malloc_after_fork(void);
+SFUNC void fio_malloc_after_fork(void);
 
-#undef FIO_ALIGN
-#undef FIO_ALIGN_NEW
 /* *****************************************************************************
 Memory Allocation - redefine default allocation macros
 ***************************************************************************** */
@@ -1503,9 +1502,9 @@ Memory Allocation - Implementation
 ***************************************************************************** */
 #ifdef FIO_EXTERN_COMPLETE
 
-#if H__FIO_UNIX_TOOLS_H
+#if H___FIO_UNIX_TOOLS_H
 #include <unistd.h>
-#endif /* H__FIO_UNIX_TOOLS4STR_INCLUDED */
+#endif /* H___FIO_UNIX_TOOLS4STR_INCLUDED_H */
 
 /* *****************************************************************************
 Aligned memory copying
@@ -1592,7 +1591,7 @@ Big memory allocation macros and helpers (page allocation / mmap)
 #define FIO_MEM_PAGE_SIZE_LOG 12 /* 4096 bytes per page */
 #endif
 
-#if H__FIO_UNIX_TOOLS_H || __has_include("sys/mman.h")
+#if H___FIO_UNIX_TOOLS_H || __has_include("sys/mman.h")
 #include <sys/mman.h>
 
 /*
@@ -1854,6 +1853,7 @@ Slices and Blocks - types
 ***************************************************************************** */
 
 struct fio_mem___block_s {
+  size_t reserved;            /* should always be zero, or page sized */
   uint16_t root;              /* REQUIRED, root == 0 => is root to self */
   volatile uint16_t root_ref; /* root reference memory padding */
   volatile uint16_t ref;      /* reference count (per memory page) */
@@ -1869,7 +1869,8 @@ struct fio_mem___block_node_s {
 
 #define FIO_LIST_NAME fio_mem___available_blocks
 #define FIO_LIST_TYPE fio_mem___block_node_s
-#include "fio-stl.h"
+#define FIO_STL_KEEP__ 1
+#include __FILE__
 
 /* Address returned when allocating 0 bytes ( fio_malloc(0) ) */
 static long double fio_mem___on_malloc_zero;
@@ -1899,6 +1900,7 @@ static size_t fio_mem___block_count;
   do {                                                                         \
     fio_atomic_sub(&fio_mem___block_count, 1);                                 \
   } while (0)
+#ifdef FIO_LOG_INFO
 #define FIO_MEMORY_PRINT_BLOCK_STAT()                                          \
   FIO_LOG_INFO(                                                                \
       "(fio) Total memory blocks allocated before cleanup %zu\n"               \
@@ -1908,7 +1910,11 @@ static size_t fio_mem___block_count;
   FIO_LOG_INFO("(fio) Total memory blocks allocated "                          \
                "after cleanup (possible leak) %zu\n",                          \
                fio_mem___block_count)
-#else
+#else /* FIO_LOG_INFO */
+#define FIO_MEMORY_PRINT_BLOCK_STAT()
+#define FIO_MEMORY_PRINT_BLOCK_STAT_END()
+#endif /* FIO_LOG_INFO */
+#else  /* DEBUG */
 #define FIO_MEMORY_ON_BLOCK_ALLOC()
 #define FIO_MEMORY_ON_BLOCK_FREE()
 #define FIO_MEMORY_PRINT_BLOCK_STAT()
@@ -1916,7 +1922,7 @@ static size_t fio_mem___block_count;
 #endif
 
 /* *****************************************************************************
-Retrieve block from arena
+Block allocation and rotation
 ***************************************************************************** */
 
 HSFUNC fio_mem___block_s *fio_mem___block_alloc(void) {
@@ -1937,6 +1943,8 @@ HSFUNC fio_mem___block_s *fio_mem___block_alloc(void) {
   b = FIO_PTR_MATH_ADD(
       fio_mem___block_s, b,
       (FIO_MEMORY_BLOCK_SIZE * (FIO_MEMORY_BLOCKS_PER_ALLOCATION - 1)));
+  /* debug counter */
+  FIO_MEMORY_ON_BLOCK_ALLOC();
   return b;
 }
 
@@ -1946,6 +1954,7 @@ HSFUNC void fio_mem___block_free(fio_mem___block_s *b) {
     /* block slice still in use */
     return;
   }
+
   fio_lock(&fio_mem___state->lock);
   fio_mem___available_blocks_push(&fio_mem___state->available,
                                   (fio_mem___block_node_s *)b);
@@ -1968,6 +1977,8 @@ HSFUNC void fio_mem___block_free(fio_mem___block_s *b) {
   /* return memory to system */
   FIO_MEM_PAGE_FREE(b, FIO_MEM_BYTES2PAGES(FIO_MEMORY_BLOCKS_PER_ALLOCATION *
                                            FIO_MEMORY_BLOCK_SIZE));
+  /* debug counter */
+  FIO_MEMORY_ON_BLOCK_FREE()
 }
 
 /* rotates block in arena */
@@ -1982,19 +1993,29 @@ HSFUNC void fio_mem___block_rotate(void) {
     fio_mem___arena->block = fio_mem___block_alloc();
   }
   fio_unlock(&fio_mem___state->lock);
-  fio_atomic_add(&fio_mem___arena->block->ref, 1);
+  /* zero out memory used for available block linked list */
+  *(fio_mem___block_node_s *)fio_mem___arena->block = (fio_mem___block_node_s){
+      .dont_touch =
+          {
+              .ref = 1,
+              .root = fio_mem___arena->block->root,
+          },
+  };
   fio_atomic_add(&fio_mem___block_root(fio_mem___arena->block)->root_ref, 1);
   fio_mem___block_free(to_free);
 }
 
 HSFUNC void *fio_mem___block_slice(size_t bytes) {
-  const uint16_t max = FIO_MEMORY_BLOCK_SIZE - FIO_MEMORY_BLOCK_HEADER_SIZE;
+  const uint16_t max =
+      (FIO_MEMORY_BLOCK_SIZE - FIO_MEMORY_BLOCK_HEADER_SIZE) >> 4;
   void *r = NULL;
   bytes = (bytes + 15) >> 4; /* convert to 16 byte units */
   fio_mem___arena_aquire();
-  if (fio_mem___arena->block->pos + bytes >= max)
-    fio_mem___block_rotate();
   fio_mem___block_s *b = fio_mem___arena->block;
+  if (b->pos + bytes >= max) {
+    fio_mem___block_rotate();
+    b = fio_mem___arena->block;
+  }
   fio_atomic_add(&b->ref, 1);
   r = FIO_PTR_MATH_ADD(void, b, FIO_MEMORY_BLOCK_HEADER_SIZE + (b->pos << 4));
   fio_atomic_add(&b->pos, bytes);
@@ -2003,8 +2024,142 @@ HSFUNC void *fio_mem___block_slice(size_t bytes) {
 }
 
 /* *****************************************************************************
+API implementation
+***************************************************************************** */
+
+/** Frees memory that was allocated using this library. */
+SFUNC void fio_free(void *ptr) {
+  if (ptr == &fio_mem___on_malloc_zero)
+    return;
+  fio_mem___block_s *b =
+      FIO_PTR_MATH_MASK(fio_mem___block_s, ptr, FIO_MEMORY_BLOCK_SIZE_LOG);
+  if (!b)
+    return;
+  if (b->reserved)
+    goto test_reserved;
+  fio_mem___block_free(b);
+  return;
+test_reserved:
+  FIO_ASSERT(!(b->reserved & ((1UL << FIO_MEM_PAGE_SIZE_LOG) - 1)),
+             "memory allocator corruption, block header overwritten?");
+  FIO_MEM_PAGE_FREE(b, (b->reserved >> FIO_MEM_PAGE_SIZE_LOG));
+}
+
+/**
+ * Allocates memory using a per-CPU core block memory pool.
+ * Memory is zeroed out.
+ *
+ * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
+ * will be redirected to `mmap`, as if `fio_mmap` was called.
+ */
+SFUNC void *FIO_ALIGN_NEW fio_malloc(size_t size) {
+  fio_mem___block_s *b = NULL;
+  if (!size)
+    return &fio_mem___on_malloc_zero;
+  if (size <= FIO_MEMORY_BLOCK_ALLOC_LIMIT) {
+    return fio_mem___block_slice(size);
+  }
+  return fio_mmap(size);
+}
+
+/**
+ * same as calling `fio_malloc(size_per_unit * unit_count)`;
+ *
+ * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
+ * will be redirected to `mmap`, as if `fio_mmap` was called.
+ */
+SFUNC void *FIO_ALIGN_NEW fio_calloc(size_t size_per_unit, size_t unit_count) {
+  return fio_malloc(size_per_unit * unit_count);
+}
+
+/**
+ * Re-allocates memory. An attempt to avoid copying the data is made only for
+ * big memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
+ */
+SFUNC void *FIO_ALIGN fio_realloc(void *ptr, size_t new_size) {
+  return fio_realloc2(ptr, new_size, new_size);
+}
+
+/**
+ * Re-allocates memory. An attempt to avoid copying the data is made only for
+ * big memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
+ *
+ * This variation is slightly faster as it might copy less data.
+ */
+SFUNC void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size,
+                                   size_t copy_length) {
+  if (ptr == &fio_mem___on_malloc_zero)
+    return fio_malloc(new_size);
+  fio_mem___block_s *b =
+      FIO_PTR_MATH_MASK(fio_mem___block_s, ptr, FIO_MEMORY_BLOCK_SIZE_LOG);
+  const size_t max_len =
+      FIO_MEMORY_BLOCK_SIZE_LOG - ((uintptr_t)ptr - (uintptr_t)b);
+  if (copy_length > new_size)
+    copy_length = new_size;
+  if (b->reserved)
+    goto big_realloc;
+  if (copy_length > max_len)
+    copy_length = max_len;
+  void *mem = fio_malloc(new_size);
+  if (!mem) {
+    return NULL;
+  }
+  fio____memcpy_16byte(mem, ptr, (copy_length >> 4));
+  fio_mem___block_free(b);
+  return mem;
+
+big_realloc:
+  FIO_ASSERT(!(b->reserved & ((1UL << FIO_MEM_PAGE_SIZE_LOG) - 1)),
+             "memory allocator corruption, block header overwritten?");
+  const size_t new_page_len =
+      FIO_MEM_BYTES2PAGES(new_size + FIO_MEMORY_BLOCK_HEADER_SIZE);
+  fio_mem___block_s *tmp =
+      FIO_MEM_PAGE_REALLOC(b, b->reserved >> FIO_MEM_PAGE_SIZE_LOG,
+                           new_page_len, FIO_MEMORY_BLOCK_SIZE_LOG);
+  if (!tmp)
+    return NULL;
+  tmp->reserved = new_page_len << FIO_MEM_PAGE_SIZE_LOG;
+  return (void *)(tmp + 1);
+}
+
+/**
+ * Allocates memory directly using `mmap`, this is prefered for objects that
+ * both require almost a page of memory (or more) and expect a long lifetime.
+ *
+ * However, since this allocation will invoke the system call (`mmap`), it will
+ * be inherently slower.
+ *
+ * `fio_free` can be used for deallocating the memory.
+ */
+SFUNC void *FIO_ALIGN_NEW fio_mmap(size_t size) {
+  fio_mem___block_s *b = FIO_MEM_PAGE_ALLOC(
+      FIO_MEM_BYTES2PAGES(size + FIO_MEMORY_BLOCK_HEADER_SIZE),
+      FIO_MEMORY_BLOCK_SIZE_LOG);
+  b->reserved = (FIO_MEM_BYTES2PAGES(size + FIO_MEMORY_BLOCK_HEADER_SIZE))
+                << FIO_MEM_PAGE_SIZE_LOG;
+  return (void *)(b + 1);
+}
+
+/**
+ * When forking is called manually, call this function to reset the facil.io
+ * memory allocator's locks.
+ */
+void fio_malloc_after_fork(void) {
+  if (!fio_mem___state)
+    return;
+  for (size_t i = 0; i < fio_mem___state->cores; ++i) {
+    fio_mem___state->arenas[i].lock = FIO_LOCK_INIT;
+  }
+  fio_mem___state->lock = FIO_LOCK_INIT;
+}
+
+/* *****************************************************************************
 Memory Allocation - cleanup
 ***************************************************************************** */
+#undef FIO_MEMORY_ON_BLOCK_ALLOC
+#undef FIO_MEMORY_ON_BLOCK_FREE
+#undef FIO_MEMORY_PRINT_BLOCK_STAT
+#undef FIO_MEMORY_PRINT_BLOCK_STAT_END
 #endif /* FIO_EXTERN_COMPLETE */
 // #undef FIO_MEMORY_BLOCK_ALLOC_LIMIT
 // #undef FIO_MEMORY_BLOCK_HEADER_SIZE
@@ -2015,6 +2170,8 @@ Memory Allocation - cleanup
 // #undef FIO_MEMORY_BLOCK_START_POS
 // #undef FIO_MEMORY_BLOCKS_PER_ALLOCATION
 // #undef FIO_MEMORY_MAX_SLICES_PER_BLOCK
+#undef FIO_ALIGN
+#undef FIO_ALIGN_NEW
 #endif
 #undef FIO_MALLOC
 
@@ -2082,8 +2239,8 @@ Memory management macros
 ***************************************************************************** */
 
 #if (defined(FIO_RISKY_HASH) || defined(FIO_STR_NAME) || defined(FIO_RAND)) && \
-    !defined(H__FIO_RISKY_HASH__H)
-#define H__FIO_RISKY_HASH__H
+    !defined(H___FIO_RISKY_HASH_H)
+#define H___FIO_RISKY_HASH_H
 
 /* *****************************************************************************
 Risky Hash - API
@@ -2254,8 +2411,8 @@ Risky Hash - Cleanup
 
 
 ***************************************************************************** */
-#if defined(FIO_RAND) && !defined(H__FIO_RAND_H)
-#define H__FIO_RAND_H
+#if defined(FIO_RAND) && !defined(H___FIO_RAND_H)
+#define H___FIO_RAND_H
 /* *****************************************************************************
 Random - API
 ***************************************************************************** */
@@ -2272,7 +2429,7 @@ Random - Implementation
 
 #ifdef FIO_EXTERN_COMPLETE
 
-#if H__FIO_UNIX_TOOLS_H ||                                                     \
+#if H___FIO_UNIX_TOOLS_H ||                                                    \
     (__has_include("sys/resource.h") && __has_include("sys/time.h"))
 #include <sys/resource.h>
 #include <sys/time.h>
@@ -2391,8 +2548,8 @@ SFUNC void fio_rand_bytes(void *data_, size_t len) {
 
 
 ***************************************************************************** */
-#if (defined(FIO_ATOL) || defined(FIO_CLI)) && !defined(H__FIO_ATOL_H)
-#define H__FIO_ATOL_H
+#if (defined(FIO_ATOL) || defined(FIO_CLI)) && !defined(H___FIO_ATOL_H)
+#define H___FIO_ATOL_H
 /* *****************************************************************************
 Strings to Numbers - API
 ***************************************************************************** */
@@ -4510,8 +4667,8 @@ Hash Map / Set - cleanup
 Helper type
 ***************************************************************************** */
 #if (defined(FIO_STR_INFO) || defined(FIO_STR_NAME)) &&                        \
-    !defined(H_FIO_STR_INFO_H)
-#define H_FIO_STR_INFO_H
+    !defined(H___FIO_STR_INFO_H)
+#define H___FIO_STR_INFO_H
 
 /** An information type for reporting the string's state. */
 typedef struct fio_str_info_s {
@@ -4680,7 +4837,7 @@ IFUNC uint8_t FIO_NAME(FIO_STR_NAME, is_frozen)(FIO_NAME(FIO_STR_NAME, s) * s);
 IFUNC int FIO_NAME(FIO_STR_NAME, iseq)(const FIO_NAME(FIO_STR_NAME, s) * str1,
                                        const FIO_NAME(FIO_STR_NAME, s) * str2);
 
-#ifdef H__FIO_RISKY_HASH__H
+#ifdef H___FIO_RISKY_HASH_H
 /**
  * Returns the string's Risky Hash value.
  *
@@ -4808,7 +4965,7 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
                               printf)(FIO_NAME(FIO_STR_NAME, s) * s,
                                       const char *format, ...);
 
-#if H__FIO_UNIX_TOOLS_H
+#if H___FIO_UNIX_TOOLS_H
 /**
  * Opens the file `filename` and pastes it's contents (or a slice ot it) at
  * the end of the String. If `limit == 0`, than the data will be read until
@@ -5061,7 +5218,7 @@ IFUNC int FIO_NAME(FIO_STR_NAME, iseq)(const FIO_NAME(FIO_STR_NAME, s) * str1,
   return (s1.len == s2.len && !memcmp(s1.data, s2.data, s1.len));
 }
 
-#ifdef H__FIO_RISKY_HASH__H
+#ifdef H___FIO_RISKY_HASH_H
 /**
  * Returns the string's Risky Hash value.
  *
@@ -5571,14 +5728,14 @@ FIO_NAME(FIO_STR_NAME, printf)(FIO_NAME(FIO_STR_NAME, s) * s,
   return state;
 }
 
-#if H__FIO_UNIX_TOOLS_H
-#ifndef H__FIO_UNIX_TOOLS4STR_INCLUDED
-#define H__FIO_UNIX_TOOLS4STR_INCLUDED
+#if H___FIO_UNIX_TOOLS_H
+#ifndef H___FIO_UNIX_TOOLS4STR_INCLUDED_H
+#define H___FIO_UNIX_TOOLS4STR_INCLUDED_H
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#endif /* H__FIO_UNIX_TOOLS4STR_INCLUDED */
+#endif /* H___FIO_UNIX_TOOLS4STR_INCLUDED_H */
 /**
  * Opens the file `filename` and pastes it's contents (or a slice ot it) at
  * the end of the String. If `limit == 0`, than the data will be read until
@@ -5660,7 +5817,7 @@ finish:
   }
   return state;
 }
-#endif /* H__FIO_UNIX_TOOLS_H */
+#endif /* H___FIO_UNIX_TOOLS_H */
 
 /* *****************************************************************************
 String Cleanup
@@ -5700,8 +5857,8 @@ String Cleanup
 
 
 ***************************************************************************** */
-#if defined(FIO_CLI) && !defined(H__FIO_CLI_H)
-#define H__FIO_CLI_H 1
+#if defined(FIO_CLI) && !defined(H___FIO_CLI_H)
+#define H___FIO_CLI_H 1
 
 /* *****************************************************************************
 Internal Macro Implementation
