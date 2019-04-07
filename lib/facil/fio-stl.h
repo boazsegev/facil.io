@@ -508,81 +508,121 @@ expense of possible leaks).
 
 -------------------------------------------------------------------------------
 
-## Linked Lists:
 
-To create a linked list type, define the type name using the `FIO_LIST_NAME`
-macro.
+## Linked Lists
 
-The type (`FIO_LIST_FIO_NAME_s`) and the functions will be automatically
-defined.
+Doubly Linked Lists are an incredibly common and useful data structure.
 
-Use the `FIO_LIST_TYPE` to create a linked list of a specific type. Otherwise,
-the default type, `void *` will be selected.
+They use pointers in order to provide fast extremely fast add/remove operations
+with O(1) speeds. However, they suffer from slow seek/find and iteration
+operations. Seek/find has a worst case scenario O(n) cost and iteration suffers
+from a high likelihood of CPU cache misses, resulting in degraded performance.
 
-For example:
+### Linked Lists Overview
 
-    typedef struct {
-      int i;
-      float f;
-    } foo_s;
+Before creating linked lists, the library header should be included at least
+once.
 
-    #define FIO_LIST_NAME ls
-    #define FIO_LIST_TYPE foo_s
-    #include "fio_cstl.h"
+To create a linked list type, create a `struct` that includes a `FIO_LIST_NODE`
+typed element somewhere within the structure. For example:
 
-    void example(void) {
-      ls_s ls;
-      ls_init(&ls);
-      ls_s *p = ls_push(&ls, ls_new());
-      p->data = (foo_s){.i = 42};
-      FIO_LIST_EACH(&ls, pos) {
-        fprintf(stderr, "* pos: %p : %d\n", (void *)pos, pos->i);
-      }
-      while(ls_any(&ls)) {
-        ls_free(ls.next);
-      }
+```c
+// initial `include` defines the `FIO_LIST_NODE` macro and type
+#include "fio-stl.h"
+// list element
+typedef struct {
+  long l;
+  FIO_LIST_NODE node;
+  int i;
+  FIO_LIST_NODE node2;
+  double d;
+} my_list_s;
+```
+
+Next define the `FIO_LIST_NAME` macro. The linked list helpers and types will
+all be prefixed by this name. i.e.:
+
+```c
+#define FIO_LIST_NAME my_list
+```
+
+Optionally, define the `FIO_LIST_TYPE` macro to point at the correct linked-list
+structure type. By default, the type for linked lists will be
+`<FIO_LIST_NAME>_s`.
+
+An example were we need to define the `FIO_LIST_TYPE` macro will follow later
+on.
+
+Optionally, define the `FIO_LIST_NODE_NAME` macro to point the linked list's
+node. By default, the node for linked lists will be `node`.
+
+Finally, include the `fio-stl.h` header to create the linked list helpers.
+
+```c
+// initial `include` defines the `FIO_LIST_NODE` macro and type
+#include "fio-stl.h"
+// list element
+typedef struct {
+  long l;
+  FIO_LIST_NODE node;
+  int i;
+  FIO_LIST_NODE node2;
+  double d;
+} my_list_s;
+// create linked list helper functions
+#define FIO_LIST_NAME my_list
+#include "fio-stl.h"
+
+void example(void) {
+  FIO_LIST_HEAD list = FIO_LIST_INIT(list);
+  for (int i = 0; i < 10; ++i) {
+    my_list_s *n = malloc(sizeof(*n));
+    n->i = i;
+    my_list_push(&list, n);
+  }
+  int i = 0;
+  while (my_list_any(&list)) {
+    my_list_s *n = my_list_shift(&list);
+    if (i != n->i) {
+      fprintf(stderr, "list error - value mismatch\n"), exit(-1);
     }
+    free(n);
+    ++i;
+  }
+  if (i != 10) {
+    fprintf(stderr, "list error - count error\n"), exit(-1);
+  }
+}
+```
 
-For the full list of functions see: Linked Lists (embeded) - API
+**Note**:
 
--------------------------------------------------------------------------------
+Each node is limited to a single list (an item can't belong to more then one
+list, unless it's a list of pointers to that item).
 
-## Dynamic Arrays
+Items with more then a single node can belong to more then one list. i.e.:
 
-To create a dynamic array type, define the type name using the `FIO_ARY_NAME`
-macro.
+```c
+// list element
+typedef struct {
+  long l;
+  FIO_LIST_NODE node;
+  int i;
+  FIO_LIST_NODE node2;
+  double d;
+} my_list_s;
+// list 1
+#define FIO_LIST_NAME my_list
+#include "fio-stl.h"
+// list 2
+#define FIO_LIST_NAME my_list2
+#define FIO_LIST_TYPE my_list_s
+#define FIO_LIST_NODE_NAME node2
+#include "fio-stl.h"
+```
 
-The type (`FIO_ARY_NAME_s`) and the functions will be automatically defined.
-
-Use the `FIO_ARY_TYPE` to create a dynamic array where the elements are a
-specific type. Otherwise, the default type, `void *` will be selected for array
-elements.
-
-For example:
-
-    typedef struct {
-      int i;
-      float f;
-    } foo_s;
-
-    #define FIO_ARY_NAME ary
-    #define FIO_ARY_TYPE foo_s
-    #define FIO_ARY_TYPE_CMP(a,b) (a.i == b.i && a.f == b.f)
-    #include "fio_cstl.h"
-
-    void example(void) {
-      ary_s a;
-      ary_init(&a);
-      foo_s *p = ary_push(&a, (foo_s){.i = 42});
-      (void)p; // p->data.i == 42
-      FIO_ARY_EACH(&a, pos) {
-        fprintf(stderr, "* pos: %p : %d\n", (void *)pos, pos->i);
-      }
-      ary_destroy(&a);
-    }
-
-For the full list of functions see: Dynamic Arrays - API
-
+For the full list of the functions that will be created, and the helper macros,
+review the "Linked Lists (embeded) - API" section.
 
 -------------------------------------------------------------------------------
 
@@ -3154,7 +3194,7 @@ IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, unshift)(FIO_LIST_HEAD *head,
 /** Removed a node from the start of the list. Returns NULL if list is empty. */
 IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, shift)(FIO_LIST_HEAD *head);
 
-/** Removed a node from the start of the list. Returns NULL if list is empty. */
+/** Returns a pointer to a list's element, from a pointer to a node. */
 IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, root)(FIO_LIST_HEAD *ptr);
 
 #ifndef FIO_LIST_EACH
