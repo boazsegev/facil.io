@@ -10,12 +10,6 @@ sidebar: 0.8.x/_sidebar.md
 >>
 >> This API is used to power the higher level API offered by the [HTTP / WebSockts extension](./http) and the [dynamic FIOBJ types](./fiobj).
 
-## Required files
-
-The core IO library functions are declared at `fio.h` header and defined in the `fio.c` implementation file. The core IO library requires the `fio-stl.h` header.
-
-The headers should be well documented and the code is usually easy to read. I also do my best to keep this documentation up to date.
-
 ## Overview
 
 The core IO library follows an evented design and uses callbacks for IO events. Using the API described in the [Connection Management section](#connection-protocol-management):
@@ -41,6 +35,12 @@ The core IO library follows an evented design and uses callbacks for IO events. 
 Because the framework is evented, there's API that offers easy [event and task scheduling](#event-task-scheduling), including timers etc'. Also, connection events can be rescheduled, allowing connections to behave like state-machines.
 
 The core library includes [Pub/Sub (publish / subscribe) services](pub-sub-services) which offer easy IPC (inter process communication) in a network friendly API. Pub/Sub services can be extended to synchronize with external databases such as Redis.
+
+## Required files
+
+The core IO library functions are declared at `fio.h` header and defined in the `fio.c` implementation file. The core IO library requires the `fio-stl.h` header.
+
+The headers should be well documented and the code is usually easy to read. I also do my best to keep this documentation up to date.
 
 ## Connection (Protocol) Management
 
