@@ -52,7 +52,13 @@ In addition, the core library includes helpers for common tasks, such as:
 
 Doubly Linked Lists are an incredibly common and useful data structure.
 
-They use pointers in order to provide fast extremely fast add/remove operations with O(1) speeds. However, they suffer from slow seek/find and iteration operations. Seek/find has a worst case scenario O(n) cost and iteration suffers from a high likelihood of CPU cache misses, resulting in degraded performance.
+### Linked Lists Performance
+
+Linked Lists use pointers in order to provide fast add/remove operations with O(1) speeds. This O(1) operation ignores the object allocation time and suffers from poor memory locality, but it's still very fast.
+
+However, Linked Lists suffer from slow seek/find and iteration operations.
+
+Seek/find has a worst case scenario O(n) cost and iteration suffers from a high likelihood of CPU cache misses, resulting in degraded performance.
 
 ### Linked Lists Overview
 
@@ -76,7 +82,7 @@ typedef struct {
 Next define the `FIO_LIST_NAME` macro. The linked list helpers and types will all be prefixed by this name. i.e.:
 
 ```c
-#define FIO_LIST_NAME my_list
+#define FIO_LIST_NAME my_list /* results in (example): my_list_push(...) */
 ```
 
 Optionally, define the `FIO_LIST_TYPE` macro to point at the correct linked-list structure type. By default, the type for linked lists will be `<FIO_LIST_NAME>_s`.
@@ -233,37 +239,74 @@ Loops through every node in the linked list (except the head).
 
 ## Dynamic Arrays
 
+Dynamic arrays are extremely common and useful data structures.
+
+In essence, Arrays are blocks of memory that contain all their elements "in a row". They grow (or shrink) as more items are added (or removed).
+
+Items are accessed using a numerical `index` indicating the element's position within the array.
+
+### Dynamic Array Performance
+
+Seeking time is an extremely fast O(1). Arrays are also very fast to iterate since they enjoy high memory locality.
+
+Adding and editing items is also a very fast O(1), especially if enough memory was previously reserved. Otherwise, memory allocation and copying will slow performance.
+
+However, arrays suffer from slow find operations. Find has a worst case scenario O(n) cost.
+
+They also suffer from slow item removal (except, in our case, for `pop` / `unshift` operations), since middle-element removal requires memory copying when fixing the "hole" made in the array.
+
+A common solution is to reserve a value for "empty" elements and `set` the element's value instead of `remove` the element.
+
+### Dynamic Array Overview
+
 To create a dynamic array type, define the type name using the `FIO_ARY_NAME`
-macro.
+macro. i.e.:
 
-The type (`FIO_ARY_NAME_s`) and the functions will be automatically defined.
+```c
+#define FIO_ARY_NAME int_ary
+```
 
-Use the `FIO_ARY_TYPE` to create a dynamic array where the elements are a
-specific type. Otherwise, the default type, `void *` will be selected for array
-elements.
+Next (usually), define the `FIO_ARY_TYPE` macro with the element type. The default element type is `void *`. For example:
+
+```c
+#define FIO_ARY_TYPE int
+```
+
+For complex types, define any (or all) of the following macros:
+
+```c
+#define FIO_ARY_TYPE_COPY(dest, src)  /* set to adjust element copying */
+#define FIO_ARY_TYPE_DESTROY(obj)     /* set for element cleanup */
+#define FIO_ARY_TYPE_CMP(a, b)        /* set to adjust element comparison */
+#define FIO_ARY_TYPE_INVALID 0 /* to be returned when `index` is out of bounds / holes */
+#define FIO_ARY_TYPE_INVALID_SIMPLE 1 /* set ONLY if the invalid element is all zero bytes */
+```
+
+To create the type and helper functions, include the Simple Template Library header.
 
 For example:
 
-    typedef struct {
-      int i;
-      float f;
-    } foo_s;
+```c
+typedef struct {
+  int i;
+  float f;
+} foo_s;
 
-    #define FIO_ARY_NAME ary
-    #define FIO_ARY_TYPE foo_s
-    #define FIO_ARY_TYPE_CMP(a,b) (a.i == b.i && a.f == b.f)
-    #include "fio_cstl.h"
+#define FIO_ARY_NAME ary
+#define FIO_ARY_TYPE foo_s
+#define FIO_ARY_TYPE_CMP(a,b) (a.i == b.i && a.f == b.f)
+#include "fio_cstl.h"
 
-    void example(void) {
-      ary_s a;
-      ary_init(&a);
-      foo_s *p = ary_push(&a, (foo_s){.i = 42});
-      (void)p; // p->data.i == 42
-      FIO_ARY_EACH(&a, pos) {
-        fprintf(stderr, "* pos: %p : %d\n", (void *)pos, pos->i);
-      }
-      ary_destroy(&a);
-    }
+void example(void) {
+  ary_s a;
+  ary_init(&a);
+  foo_s *p = ary_push(&a, (foo_s){.i = 42});
+  FIO_ARY_EACH(&a, pos) { /* pos will be a pointer to the element */
+    fprintf(stderr, "* [%zu]: %p : %d\n", (size_t)(pos - ary_to_a(&a)), pos->i);
+  }
+  ary_destroy(&a);
+}
+```
 
 For the full list of functions see: Dynamic Arrays - API
 
