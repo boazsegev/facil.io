@@ -262,13 +262,15 @@ void fiobj_test_array(void) {
   fprintf(stderr, "=== Testing Array\n");
 #define TEST_ASSERT(cond, ...)                                                 \
   if (!(cond)) {                                                               \
-    fprintf(stderr, "* " __VA_ARGS__);                                         \
+    fprintf(stderr, "* " __FILE__ " " __VA_ARGS__);                            \
     fprintf(stderr, "Testing failed.\n");                                      \
     exit(-1);                                                                  \
   }
   FIOBJ a = fiobj_ary_new2(4);
   TEST_ASSERT(FIOBJ_TYPE_IS(a, FIOBJ_T_ARRAY), "Array type isn't an array!\n");
   TEST_ASSERT(fiobj_ary_capa(a) > 4, "Array capacity ignored!\n");
+  TEST_ASSERT(fiobj_ary_count(a) == 0,
+              "Array count for new array should be zero!\n");
   fiobj_ary_push(a, fiobj_null());
   TEST_ASSERT(fiobj_ary2ptr(a)[0] == fiobj_null(),
               "Array direct access failed!\n");

@@ -2311,7 +2311,7 @@ SFUNC void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size,
   if (!mem) {
     return NULL;
   }
-  fio____memcpy_16byte(mem, ptr, (copy_length >> 4));
+  fio____memcpy_16byte(mem, ptr, ((copy_length + 15) >> 4));
   fio_mem___block_free(b);
   return mem;
 
@@ -7558,24 +7558,39 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
               "last element `get(-2)` failed to return correct element.");
   ary____test_pop(&a, &tmp);
   TEST_ASSERT(tmp == 2, "pop failed to set correct element.");
-  ary____test_pop(&a, &tmp); /* array is now empty */
+  ary____test_pop(&a, &tmp);
+  /* array is now empty */
+  ary____test_push(&a, 1);
+  ary____test_push(&a, 2);
+  ary____test_push(&a, 3);
   ary____test_set(&a, 99, 1, NULL);
   TEST_ASSERT(ary____test_count(&a) == 100,
               "set with 100 elements should force create elements.");
-  for (int i = 0; i < 99; ++i) {
+  TEST_ASSERT(ary____test_get(&a, 0) == 1,
+              "Intialized element should be kept (index 0)");
+  TEST_ASSERT(ary____test_get(&a, 1) == 2,
+              "Intialized element should be kept (index 1)");
+  TEST_ASSERT(ary____test_get(&a, 2) == 3,
+              "Intialized element should be kept (index 2)");
+  for (int i = 3; i < 99; ++i) {
     TEST_ASSERT(ary____test_get(&a, i) == 0,
                 "Unintialized element should be 0");
   }
   ary____test_remove2(&a, 0);
-  TEST_ASSERT(ary____test_count(&a) == 1,
+  TEST_ASSERT(ary____test_count(&a) == 4,
               "remove2 should have removed all zero elements.");
   TEST_ASSERT(ary____test_get(&a, 0) == 1,
-              "remove2 should have compacted the array.");
-  ary____test_push(&a, 2);
+              "remove2 should have compacted the array (index 0)");
+  TEST_ASSERT(ary____test_get(&a, 1) == 2,
+              "remove2 should have compacted the array (index 1)");
+  TEST_ASSERT(ary____test_get(&a, 2) == 3,
+              "remove2 should have compacted the array (index 2)");
+  TEST_ASSERT(ary____test_get(&a, 3) == 1,
+              "remove2 should have compacted the array (index 4)");
   tmp = 9;
   ary____test_remove(&a, 0, &tmp);
   TEST_ASSERT(tmp == 1, "remove should have copied the value to the pointer.");
-  TEST_ASSERT(ary____test_count(&a) == 1,
+  TEST_ASSERT(ary____test_count(&a) == 3,
               "remove should have removed an element.");
   TEST_ASSERT(ary____test_get(&a, 0) == 2,
               "remove should have compacted the array.");
@@ -7612,25 +7627,40 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   TEST_ASSERT(tmp == 1, "shift failed to set correct element.");
   ary____test_shift(pa, &tmp);
   TEST_ASSERT(tmp == 2, "shift failed to set correct element.");
+  /* array now empty */
+  ary____test_unshift(pa, 1);
+  ary____test_unshift(pa, 2);
+  ary____test_unshift(pa, 3);
   ary____test_set(pa, -100, 1, NULL);
   TEST_ASSERT(ary____test_count(pa) == 100,
               "set with 100 elements should force create elements.");
-  for (int i = 1; i < 100; ++i) {
+  // FIO_ARY_EACH(pa, pos) {
+  //   fprintf(stderr, "[%zu]  %d\n", (size_t)(pos - ary____test_to_a(pa)),
+  //   *pos);
+  // }
+  TEST_ASSERT(ary____test_get(pa, 99) == 1,
+              "Intialized element should be kept (index 99)");
+  TEST_ASSERT(ary____test_get(pa, 98) == 2,
+              "Intialized element should be kept (index 98)");
+  TEST_ASSERT(ary____test_get(pa, 97) == 3,
+              "Intialized element should be kept (index 97)");
+  for (int i = 1; i < 97; ++i) {
     TEST_ASSERT(ary____test_get(pa, i) == 0,
                 "Unintialized element should be 0");
   }
   ary____test_remove2(pa, 0);
-  TEST_ASSERT(ary____test_count(pa) == 1,
+  TEST_ASSERT(ary____test_count(pa) == 4,
               "remove2 should have removed all zero elements.");
-  TEST_ASSERT(ary____test_get(pa, 0) == 1,
-              "remove2 should have compacted the array.");
-  ary____test_push(pa, 2);
+  TEST_ASSERT(ary____test_get(pa, 0) == 1, "remove2 should have kept index 0");
+  TEST_ASSERT(ary____test_get(pa, 1) == 3, "remove2 should have kept index 1");
+  TEST_ASSERT(ary____test_get(pa, 2) == 2, "remove2 should have kept index 2");
+  TEST_ASSERT(ary____test_get(pa, 3) == 1, "remove2 should have kept index 3");
   tmp = 9;
   ary____test_remove(pa, 0, &tmp);
   TEST_ASSERT(tmp == 1, "remove should have copied the value to the pointer.");
-  TEST_ASSERT(ary____test_count(pa) == 1,
+  TEST_ASSERT(ary____test_count(pa) == 3,
               "remove should have removed an element.");
-  TEST_ASSERT(ary____test_get(pa, 0) == 2,
+  TEST_ASSERT(ary____test_get(pa, 0) == 3,
               "remove should have compacted the array.");
   /* test heap allocated array (destroy) */
   ary____test_destroy(pa);
