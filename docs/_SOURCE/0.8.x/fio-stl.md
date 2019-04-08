@@ -28,7 +28,7 @@ The core library includes a Simple Template Library for common types, such as:
 
 In addition, the core library includes helpers for common tasks, such as:
 
-* Logging and Assertion (without heap allocation) - defined by `FIO_LOG_LENGTH_LIMIT`
+* Logging and Assertion (without heap allocation) - defined by `FIO_LOG`
 
 * Atomic operations - defined by `FIO_ATOMIC`
 

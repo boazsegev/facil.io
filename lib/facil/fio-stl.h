@@ -24,7 +24,7 @@ This file contains macros that create generic / common core types, such as:
 
 This file also contains common helper macros / primitives, such as:
 
-* Logging and Assertion (no heap allocation) - defined by `FIO_LOG_LENGTH_LIMIT`
+* Logging and Assertion (no heap allocation) - defined by `FIO_LOG`
 
 * Atomic add/subtract/replace - defined by `FIO_ATOMIC`
 
@@ -64,11 +64,225 @@ the `FIO_EXTERN_COMPLETE` macro to include the API's implementation as well.
 
 -------------------------------------------------------------------------------
 
+## Linked Lists
+
+Doubly Linked Lists are an incredibly common and useful data structure.
+
+They use pointers in order to provide fast extremely fast add/remove operations
+with O(1) speeds. However, they suffer from slow seek/find and iteration
+operations. Seek/find has a worst case scenario O(n) cost and iteration suffers
+from a high likelihood of CPU cache misses, resulting in degraded performance.
+
+### Linked Lists Overview
+
+Before creating linked lists, the library header should be included at least
+once.
+
+To create a linked list type, create a `struct` that includes a `FIO_LIST_NODE`
+typed element somewhere within the structure. For example:
+
+```c
+// initial `include` defines the `FIO_LIST_NODE` macro and type
+#include "fio-stl.h"
+// list element
+typedef struct {
+  long l;
+  FIO_LIST_NODE node;
+  int i;
+  FIO_LIST_NODE node2;
+  double d;
+} my_list_s;
+```
+
+Next define the `FIO_LIST_NAME` macro. The linked list helpers and types will
+all be prefixed by this name. i.e.:
+
+```c
+#define FIO_LIST_NAME my_list
+```
+
+Optionally, define the `FIO_LIST_TYPE` macro to point at the correct linked-list
+structure type. By default, the type for linked lists will be
+`<FIO_LIST_NAME>_s`.
+
+An example were we need to define the `FIO_LIST_TYPE` macro will follow later
+on.
+
+Optionally, define the `FIO_LIST_NODE_NAME` macro to point the linked list's
+node. By default, the node for linked lists will be `node`.
+
+Finally, include the `fio-stl.h` header to create the linked list helpers.
+
+```c
+// initial `include` defines the `FIO_LIST_NODE` macro and type
+#include "fio-stl.h"
+// list element
+typedef struct {
+  long l;
+  FIO_LIST_NODE node;
+  int i;
+  FIO_LIST_NODE node2;
+  double d;
+} my_list_s;
+// create linked list helper functions
+#define FIO_LIST_NAME my_list
+#include "fio-stl.h"
+
+void example(void) {
+  FIO_LIST_HEAD list = FIO_LIST_INIT(list);
+  for (int i = 0; i < 10; ++i) {
+    my_list_s *n = malloc(sizeof(*n));
+    n->i = i;
+    my_list_push(&list, n);
+  }
+  int i = 0;
+  while (my_list_any(&list)) {
+    my_list_s *n = my_list_shift(&list);
+    if (i != n->i) {
+      fprintf(stderr, "list error - value mismatch\n"), exit(-1);
+    }
+    free(n);
+    ++i;
+  }
+  if (i != 10) {
+    fprintf(stderr, "list error - count error\n"), exit(-1);
+  }
+}
+```
+
+**Note**:
+
+Each node is limited to a single list (an item can't belong to more then one
+list, unless it's a list of pointers to that item).
+
+Items with more then a single node can belong to more then one list. i.e.:
+
+```c
+// list element
+typedef struct {
+  long l;
+  FIO_LIST_NODE node;
+  int i;
+  FIO_LIST_NODE node2;
+  double d;
+} my_list_s;
+// list 1
+#define FIO_LIST_NAME my_list
+#include "fio-stl.h"
+// list 2
+#define FIO_LIST_NAME my_list2
+#define FIO_LIST_TYPE my_list_s
+#define FIO_LIST_NODE_NAME node2
+#include "fio-stl.h"
+```
+
+For the full list of the functions that will be created, and the helper macros,
+review the "Linked Lists (embeded) - API" section.
+
+-------------------------------------------------------------------------------
+
+## Hash Maps / Sets
+
+Hash Map and Sets are both mapping / dictionary primitives.
+
+A Set can be viewed as a hash map where the key == value and a Hash Map can be
+viewed as a Set where hash valuses map to (key,value) couplets and equality
+between couplets only tests equality between keys.
+
+To create a Set, define `FIO_MAP_NAME`.
+
+To create a Hash Map, define `FIO_MAP_KEY` (containing the key's type).
+
+Other helpful macros to define might include:
+
+
+- `FIO_MAP_TYPE`, which defaults to `void *`
+- `FIO_MAP_TYPE_INVALID`, which defaults to `((FIO_MAP_TYPE){0})`
+- `FIO_MAP_TYPE_COPY(dest, src)`, which defaults to `(dest) = (src)`
+- `FIO_MAP_TYPE_DESTROY(obj)`
+- `FIO_MAP_TYPE_CMP(a, b)`, which defaults to `1`
+- `FIO_MAP_KEY`
+- `FIO_MAP_KEY_INVALID`
+- `FIO_MAP_KEY_COPY(dest, src)`
+- `FIO_MAP_KEY_DESTROY(obj)`
+- `FIO_MAP_KEY_CMP(a, b)`
+- `FIO_MAP_MAX_FULL_COLLISIONS`, which defaults to `96`
+
+To limit the number of elements in a map (FIFO), allowing it to behave similarly
+to a caching primitive, define: `FIO_MAP_MAX_ELEMENTS`.
+
+if `FIO_MAP_MAX_ELEMENTS` is `0`, then the theoretical maximum number of
+elements should be: (1 << 32) - 1
+
+For the full list of functions see: Hash Map / Set - API
+
+-------------------------------------------------------------------------------
+
+## Dynamic Strings
+
+To create a dynamic string type, define the type name using the `FIO_STR_NAME`
+macro.
+
+The type (`FIO_STR_NAME_s`) and the functions will be automatically defined.
+
+For the full list of functions see: Dynamic Strings
+
+-------------------------------------------------------------------------------
+
+## Reference Counting / Type Wrapping
+
+If the `FIO_REF_NAME` macro is defined, then referece counting helpers can be
+defined for any named type.
+
+By default, `FIO_REF_TYPE` will equal `FIO_REF_NAME_s`, using the naming
+convention in this library.
+
+In addition, the `FIO_REF_METADATA` macro can be defined with any type, allowing
+metadata to be attached and accessed using the helper function
+`FIO_REF_metadata(object)`.
+
+Note: requires the atomic operations to be defined (`FIO_ATOMIC`).
+
+Reference counting adds the following functions:
+
+#### `FIO_REF_TYPE * FIO_REF_NAME_new2(void)`
+
+Allocates a new reference counted object, initializing it using the
+`FIO_REF_INIT(object)` macro.
+
+If `FIO_REF_METADATA` is defined, than the metadata is initialized using the
+`FIO_REF_METADATA_INIT(metadata)` macro.
+
+#### `FIO_REF_TYPE * FIO_REF_NAME_up_ref(FIO_REF_TYPE * object)`
+
+Increases an object's reference count (an atomic operation, thread-safe).
+
+#### `FIO_REF_NAME_free2(FIO_REF_TYPE * object)`
+
+Frees an object or decreses it's reference count (an atomic operation,
+thread-safe).
+
+Before the object is freed, the `FIO_REF_DESTROY(object)` macro will be called.
+
+If `FIO_REF_METADATA` is defined, than the metadata is also destoryed using the
+`FIO_REF_METADATA_DESTROY(metadata)` macro.
+
+
+#### `FIO_REF_METADATA * FIO_REF_NAME_metadata(FIO_REF_TYPE * object)`
+
+If `FIO_REF_METADATA` is defined, than the metadata is accessible using this
+inlined function.
+
+-------------------------------------------------------------------------------
+
 ## Logging and Assertions:
 
-If the `FIO_LOG_LENGTH_LIMIT` macro is defined (it's recommended that it be
-greater than 128), than the `FIO_LOG2STDERR` (weak) function and the
-`FIO_LOG2STDERR2` macro will be defined.
+If the `FIO_LOG` macro is defined than the following logging helpers will be
+added.
+
+The optional `FIO_LOG_LENGTH_LIMIT` macro effects the amount of memory allocated
+on the stack for the log message. Note that logging is defsigned to avoid heap
+allocations. By default `FIO_LOG_LENGTH_LIMIT` is defined as 1024.
 
 #### `FIO_LOG_LEVEL`
 
@@ -506,218 +720,6 @@ However, if a multi-threaded process, calling this function from the child
 process would perform a best attempt at mitigating any arising issues (at the
 expense of possible leaks).
 
--------------------------------------------------------------------------------
-
-
-## Linked Lists
-
-Doubly Linked Lists are an incredibly common and useful data structure.
-
-They use pointers in order to provide fast extremely fast add/remove operations
-with O(1) speeds. However, they suffer from slow seek/find and iteration
-operations. Seek/find has a worst case scenario O(n) cost and iteration suffers
-from a high likelihood of CPU cache misses, resulting in degraded performance.
-
-### Linked Lists Overview
-
-Before creating linked lists, the library header should be included at least
-once.
-
-To create a linked list type, create a `struct` that includes a `FIO_LIST_NODE`
-typed element somewhere within the structure. For example:
-
-```c
-// initial `include` defines the `FIO_LIST_NODE` macro and type
-#include "fio-stl.h"
-// list element
-typedef struct {
-  long l;
-  FIO_LIST_NODE node;
-  int i;
-  FIO_LIST_NODE node2;
-  double d;
-} my_list_s;
-```
-
-Next define the `FIO_LIST_NAME` macro. The linked list helpers and types will
-all be prefixed by this name. i.e.:
-
-```c
-#define FIO_LIST_NAME my_list
-```
-
-Optionally, define the `FIO_LIST_TYPE` macro to point at the correct linked-list
-structure type. By default, the type for linked lists will be
-`<FIO_LIST_NAME>_s`.
-
-An example were we need to define the `FIO_LIST_TYPE` macro will follow later
-on.
-
-Optionally, define the `FIO_LIST_NODE_NAME` macro to point the linked list's
-node. By default, the node for linked lists will be `node`.
-
-Finally, include the `fio-stl.h` header to create the linked list helpers.
-
-```c
-// initial `include` defines the `FIO_LIST_NODE` macro and type
-#include "fio-stl.h"
-// list element
-typedef struct {
-  long l;
-  FIO_LIST_NODE node;
-  int i;
-  FIO_LIST_NODE node2;
-  double d;
-} my_list_s;
-// create linked list helper functions
-#define FIO_LIST_NAME my_list
-#include "fio-stl.h"
-
-void example(void) {
-  FIO_LIST_HEAD list = FIO_LIST_INIT(list);
-  for (int i = 0; i < 10; ++i) {
-    my_list_s *n = malloc(sizeof(*n));
-    n->i = i;
-    my_list_push(&list, n);
-  }
-  int i = 0;
-  while (my_list_any(&list)) {
-    my_list_s *n = my_list_shift(&list);
-    if (i != n->i) {
-      fprintf(stderr, "list error - value mismatch\n"), exit(-1);
-    }
-    free(n);
-    ++i;
-  }
-  if (i != 10) {
-    fprintf(stderr, "list error - count error\n"), exit(-1);
-  }
-}
-```
-
-**Note**:
-
-Each node is limited to a single list (an item can't belong to more then one
-list, unless it's a list of pointers to that item).
-
-Items with more then a single node can belong to more then one list. i.e.:
-
-```c
-// list element
-typedef struct {
-  long l;
-  FIO_LIST_NODE node;
-  int i;
-  FIO_LIST_NODE node2;
-  double d;
-} my_list_s;
-// list 1
-#define FIO_LIST_NAME my_list
-#include "fio-stl.h"
-// list 2
-#define FIO_LIST_NAME my_list2
-#define FIO_LIST_TYPE my_list_s
-#define FIO_LIST_NODE_NAME node2
-#include "fio-stl.h"
-```
-
-For the full list of the functions that will be created, and the helper macros,
-review the "Linked Lists (embeded) - API" section.
-
--------------------------------------------------------------------------------
-
-## Hash Maps / Sets
-
-Hash Map and Sets are both mapping / dictionary primitives.
-
-A Set can be viewed as a hash map where the key == value and a Hash Map can be
-viewed as a Set where hash valuses map to (key,value) couplets and equality
-between couplets only tests equality between keys.
-
-To create a Set, define `FIO_MAP_NAME`.
-
-To create a Hash Map, define `FIO_MAP_KEY` (containing the key's type).
-
-Other helpful macros to define might include:
-
-
-- `FIO_MAP_TYPE`, which defaults to `void *`
-- `FIO_MAP_TYPE_INVALID`, which defaults to `((FIO_MAP_TYPE){0})`
-- `FIO_MAP_TYPE_COPY(dest, src)`, which defaults to `(dest) = (src)`
-- `FIO_MAP_TYPE_DESTROY(obj)`
-- `FIO_MAP_TYPE_CMP(a, b)`, which defaults to `1`
-- `FIO_MAP_KEY`
-- `FIO_MAP_KEY_INVALID`
-- `FIO_MAP_KEY_COPY(dest, src)`
-- `FIO_MAP_KEY_DESTROY(obj)`
-- `FIO_MAP_KEY_CMP(a, b)`
-- `FIO_MAP_MAX_FULL_COLLISIONS`, which defaults to `96`
-
-To limit the number of elements in a map (FIFO), allowing it to behave similarly
-to a caching primitive, define: `FIO_MAP_MAX_ELEMENTS`.
-
-if `FIO_MAP_MAX_ELEMENTS` is `0`, then the theoretical maximum number of
-elements should be: (1 << 32) - 1
-
-For the full list of functions see: Hash Map / Set - API
-
--------------------------------------------------------------------------------
-
-## Dynamic Strings
-
-To create a dynamic string type, define the type name using the `FIO_STR_NAME`
-macro.
-
-The type (`FIO_STR_NAME_s`) and the functions will be automatically defined.
-
-For the full list of functions see: Dynamic Strings
-
--------------------------------------------------------------------------------
-
-## Reference Counting / Type Wrapping
-
-If the `FIO_REF_NAME` macro is defined, then referece counting helpers can be
-defined for any named type.
-
-By default, `FIO_REF_TYPE` will equal `FIO_REF_NAME_s`, using the naming
-convention in this library.
-
-In addition, the `FIO_REF_METADATA` macro can be defined with any type, allowing
-metadata to be attached and accessed using the helper function
-`FIO_REF_metadata(object)`.
-
-Note: requires the atomic operations to be defined (`FIO_ATOMIC`).
-
-Reference counting adds the following functions:
-
-#### `FIO_REF_TYPE * FIO_REF_NAME_new2(void)`
-
-Allocates a new reference counted object, initializing it using the
-`FIO_REF_INIT(object)` macro.
-
-If `FIO_REF_METADATA` is defined, than the metadata is initialized using the
-`FIO_REF_METADATA_INIT(metadata)` macro.
-
-#### `FIO_REF_TYPE * FIO_REF_NAME_up_ref(FIO_REF_TYPE * object)`
-
-Increases an object's reference count (an atomic operation, thread-safe).
-
-#### `FIO_REF_NAME_free2(FIO_REF_TYPE * object)`
-
-Frees an object or decreses it's reference count (an atomic operation,
-thread-safe).
-
-Before the object is freed, the `FIO_REF_DESTROY(object)` macro will be called.
-
-If `FIO_REF_METADATA` is defined, than the metadata is also destoryed using the
-`FIO_REF_METADATA_DESTROY(metadata)` macro.
-
-
-#### `FIO_REF_METADATA * FIO_REF_NAME_metadata(FIO_REF_TYPE * object)`
-
-If `FIO_REF_METADATA` is defined, than the metadata is accessible using this
-inlined function.
-
 
 ***************************************************************************** */
 
@@ -975,8 +977,7 @@ extern "C" {
 /**
  * Enables logging macros that avoid heap memory allocations
  */
-#if !defined(FIO_LOG2STDERR2) &&                                               \
-    (defined(FIO_LOG_LENGTH_LIMIT) || defined(FIO_MALLOC))
+#if !defined(FIO_LOG_PRINT__) && (defined(FIO_LOG) || defined(FIO_MALLOC))
 
 #ifndef FIO_LOG_LENGTH_LIMIT
 #define FIO_LOG_LENGTH_LIMIT 1024
@@ -1042,7 +1043,6 @@ FIO_LOG2STDERR(const char *format, ...) {
 #endif
 int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 
-#ifndef FIO_LOG_PRINT__
 #define FIO_LOG_PRINT__(level, ...)                                            \
   do {                                                                         \
     if (level <= FIO_LOG_LEVEL)                                                \
@@ -1061,7 +1061,6 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
   FIO_LOG_PRINT__(FIO_LOG_LEVEL_ERROR, "ERROR: " __VA_ARGS__)
 #define FIO_LOG_FATAL(...)                                                     \
   FIO_LOG_PRINT__(FIO_LOG_LEVEL_FATAL, "FATAL: " __VA_ARGS__)
-#endif
 
 #define FIO_ASSERT(cond, ...)                                                  \
   if (!(cond)) {                                                               \
@@ -1094,8 +1093,8 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 #else
 #define FIO_ASSERT_DEBUG(...)
 #endif
-
-#endif
+#undef FIO_LOG
+#endif /* FIO_LOG */
 
 /* *****************************************************************************
 
@@ -7163,9 +7162,7 @@ Common cleanup
 #define FIO_FIO_TEST_CSTL_ONLY_ONCE 1
 #define TEST_FUNC static __attribute__((unused))
 #define REPEAT 4096
-#ifndef FIO_LOG_LENGTH_LIMIT
-#define FIO_LOG_LENGTH_LIMIT 1024
-#endif
+#define FIO_LOG
 #define TEST_ASSERT(cond, ...)                                                 \
   if (!(cond)) {                                                               \
     FIO_LOG2STDERR2(__VA_ARGS__);                                              \
