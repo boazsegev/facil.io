@@ -3483,6 +3483,20 @@ IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, count)(FIO_NAME(FIO_ARY_NAME, s) * ary);
 IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, capa)(FIO_NAME(FIO_ARY_NAME, s) * ary);
 
 /**
+ * Reserves a minimal capacity for the array.
+ *
+ * If `capa` is negative, new memory will be allocated at the beginning of the
+ * array rather then it's end.
+ *
+ * Returns the array's new capacity.
+ *
+ * Note: the reserved capacity includes existing data. If the requested reserved
+ * capacity is equal (or less) then the existing capacity, nothing will be done.
+ */
+IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, reserve)(FIO_NAME(FIO_ARY_NAME, s) * ary,
+                                               int32_t capa);
+
+/**
  * Adds all the items in the `src` Array to the end of the `dest` Array.
  *
  * The `src` Array remain untouched.
@@ -3551,6 +3565,9 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, remove)(FIO_NAME(FIO_ARY_NAME, s) * ary,
  */
 IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, remove2)(FIO_NAME(FIO_ARY_NAME, s) * ary,
                                                FIO_ARY_TYPE data);
+
+/** Attempts to lower the array's memory consumption. */
+IFUNC void FIO_NAME(FIO_ARY_NAME, compact)(FIO_NAME(FIO_ARY_NAME, s) * ary);
 
 /**
  * Returns a pointer to the C array containing the objects.
@@ -3679,6 +3696,26 @@ IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, count)(FIO_NAME(FIO_ARY_NAME, s) * ary) {
 
 /** Returns the current, temporary, array capacity (it's dynamic). */
 IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, capa)(FIO_NAME(FIO_ARY_NAME, s) * ary) {
+  return ary->capa;
+}
+/** Reserves a minimal capacity for the array. */
+IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, reserve)(FIO_NAME(FIO_ARY_NAME, s) * ary,
+                                               int32_t capa) {
+  if (!ary)
+    return 0;
+  const uint32_t s = ary->start;
+  const uint32_t e = ary->end;
+  if (capa > 0) {
+    if (ary->capa >= (uint32_t)capa)
+      return ary->capa;
+    FIO_NAME(FIO_ARY_NAME, set)(ary, capa - 1, FIO_ARY_TYPE_INVALID, NULL);
+    ary->end = ary->start + (e - s);
+  } else {
+    if (ary->capa >= (uint32_t)(0 - capa))
+      return ary->capa;
+    FIO_NAME(FIO_ARY_NAME, set)(ary, capa, FIO_ARY_TYPE_INVALID, NULL);
+    ary->start = ary->end - (e - s);
+  }
   return ary->capa;
 }
 
@@ -3875,9 +3912,17 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, remove)(FIO_NAME(FIO_ARY_NAME, s) * ary,
   if (old)
     FIO_ARY_TYPE_COPY(*old, ary->ary[index]);
   FIO_ARY_TYPE_DESTROY(ary->ary[index]);
-  --ary->end;
-  memmove(ary->ary + index, ary->ary + index + 1,
-          (ary->ary + ary->end) - (ary->ary + index));
+  if ((uint32_t)index == ary->start) {
+    /* unshift */
+    ++ary->start;
+  } else {
+    /* pop? */
+    --ary->end;
+    if (ary->end != (uint32_t)index) {
+      memmove(ary->ary + index, ary->ary + index + 1,
+              (ary->ary + ary->end) - (ary->ary + index));
+    }
+  }
   return 0;
 }
 
@@ -3902,6 +3947,28 @@ IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, remove2)(FIO_NAME(FIO_ARY_NAME, s) * ary,
     ++c;
   }
   return c;
+}
+
+/** Attempts to lower the array's memory consumption. */
+IFUNC void FIO_NAME(FIO_ARY_NAME, compact)(FIO_NAME(FIO_ARY_NAME, s) * ary) {
+  FIO_ARY_TYPE *tmp = NULL;
+  if (!(ary->end - ary->start))
+    goto finish;
+  tmp = FIO_MEM_CALLOC((ary->end - ary->start), sizeof(*tmp));
+  if (!tmp)
+    return;
+  memcpy(tmp, ary->ary + ary->start,
+         (ary->end - ary->start) * sizeof(*ary->ary));
+finish:
+  if (ary->ary) {
+    FIO_MEM_FREE_(ary->ary, ary->capa * sizeof(*ary->ary));
+  }
+  *ary = (FIO_NAME(FIO_ARY_NAME, s)){
+      .start = 0,
+      .end = (ary->end - ary->start),
+      .ary = tmp,
+      .capa = (ary->end - ary->start),
+  };
 }
 
 /**
@@ -7685,6 +7752,24 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   TEST_ASSERT(ary____test_count(&a) == 0,
               "Destroyed array should have zero elements");
   TEST_ASSERT(a.ary == NULL, "Destroyed array shouldn't have memory allocated");
+  ary____test_push(&a, 1);
+  ary____test_push(&a, 2);
+  ary____test_push(&a, 3);
+  ary____test_reserve(&a, 100);
+  TEST_ASSERT(ary____test_count(&a) == 3,
+              "reserve shouldn't effect itme count.");
+  TEST_ASSERT(ary____test_capa(&a) >= 100, "reserve should reserve.");
+  TEST_ASSERT(ary____test_get(&a, 0) == 1,
+              "Element should be kept after reserve (index 0)");
+  TEST_ASSERT(ary____test_get(&a, 1) == 2,
+              "Element should be kept after reserve (index 1)");
+  TEST_ASSERT(ary____test_get(&a, 2) == 3,
+              "Element should be kept after reserve (index 2)");
+  ary____test_compact(&a);
+  TEST_ASSERT(ary____test_capa(&a) == 3,
+              "reserve shouldn't effect itme count.");
+  ary____test_destroy(&a);
+
   fprintf(stderr, "* Passed\n");
 
   /* Round 2 - heap, shift/unshift, negative ary_set index */
@@ -7754,6 +7839,17 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
               "Destroyed array should have zero elements");
   TEST_ASSERT(pa->ary == NULL,
               "Destroyed array shouldn't have memory allocated");
+  ary____test_unshift(pa, 1);
+  ary____test_unshift(pa, 2);
+  ary____test_unshift(pa, 3);
+  ary____test_reserve(pa, -100);
+  TEST_ASSERT(ary____test_count(pa) == 3,
+              "reserve shouldn't change item count.");
+  TEST_ASSERT(ary____test_capa(pa) >= 100, "reserve should reserve.");
+  TEST_ASSERT(ary____test_get(pa, 0) == 3, "reserve should have kept index 0");
+  TEST_ASSERT(ary____test_get(pa, 1) == 2, "reserve should have kept index 1");
+  TEST_ASSERT(ary____test_get(pa, 2) == 1, "reserve should have kept index 2");
+  ary____test_destroy(pa);
   ary____test_free(pa);
   fprintf(stderr, "* Passed\n");
 
