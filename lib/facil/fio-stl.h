@@ -232,8 +232,8 @@ For complex types, define any (or all) of the following macros:
 #define FIO_ARY_TYPE_COPY(dest, src)  // set to adjust element copying
 #define FIO_ARY_TYPE_DESTROY(obj)     // set for element cleanup
 #define FIO_ARY_TYPE_CMP(a, b)        // set to adjust element comparison
-#define FIO_ARY_TYPE_INVALID 0 // to be returned when `index` is out of bounds /
-holes #define FIO_ARY_TYPE_INVALID_SIMPLE 1 // set ONLY if the invalid element
+#define FIO_ARY_TYPE_INVALID 0        // required for some functionality
+#define FIO_ARY_TYPE_INVALID_SIMPLE 1 // set ONLY if the invalid element
 is all zero bytes
 ```
 
@@ -3286,9 +3286,13 @@ IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, root)(FIO_LIST_HEAD *ptr);
 #ifndef FIO_LIST_EACH
 /** Loops through every node in the linked list except the head. */
 #define FIO_LIST_EACH(type, node_name, head, pos)                              \
-  for (type *pos = FIO_PTR_FROM_FIELD(type, node_name, (head)->next);          \
+  for (type *pos = FIO_PTR_FROM_FIELD(type, node_name, (head)->next),          \
+            *next____p_ls =                                                    \
+                FIO_PTR_FROM_FIELD(type, node_name, (head)->next->next);       \
        pos != FIO_PTR_FROM_FIELD(type, node_name, (head));                     \
-       pos = FIO_PTR_FROM_FIELD(type, node_name, pos->node_name.next))
+       (pos = next____p_ls),                                                   \
+            (next____p_ls = FIO_PTR_FROM_FIELD(type, node_name,                \
+                                               next____p_ls->node_name.next)))
 #endif
 
 /* *****************************************************************************
@@ -3500,6 +3504,8 @@ IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, reserve)(FIO_NAME(FIO_ARY_NAME, s) * ary,
  * Adds all the items in the `src` Array to the end of the `dest` Array.
  *
  * The `src` Array remain untouched.
+ *
+ * Always returns the destination array (`dest`).
  */
 SFUNC FIO_NAME(FIO_ARY_NAME, s) *
     FIO_NAME(FIO_ARY_NAME, concat)(FIO_NAME(FIO_ARY_NAME, s) * dest,
@@ -3522,7 +3528,7 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_NAME(FIO_ARY_NAME, s) * ary,
                                                 FIO_ARY_TYPE *old);
 
 /**
- * Returns the value located at `index` (no copying is peformed).
+ * Returns the value located at `index` (no copying is performed).
  *
  * If `index` is negative, it will be counted from the end of the Array (-1 ==
  * last element).
@@ -3555,7 +3561,7 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, remove)(FIO_NAME(FIO_ARY_NAME, s) * ary,
                                          int32_t index, FIO_ARY_TYPE *old);
 
 /**
- * Removes all occurences of an object from the array (if any), MOVING all the
+ * Removes all occurrences of an object from the array (if any), MOVING all the
  * existing objects to prevent "holes" in the data.
  *
  * Returns the number of items removed.
@@ -3850,7 +3856,7 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_NAME(FIO_ARY_NAME, s) * ary,
 }
 
 /**
- * Returns the value located at `index` (no copying is peformed).
+ * Returns the value located at `index` (no copying is performed).
  *
  * If `index` is negative, it will be counted from the end of the Array (-1 ==
  * last element).
@@ -3927,7 +3933,7 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, remove)(FIO_NAME(FIO_ARY_NAME, s) * ary,
 }
 
 /**
- * Removes all occurences of an object from the array (if any), MOVING all the
+ * Removes all occurrences of an object from the array (if any), MOVING all the
  * existing objects to prevent "holes" in the data.
  *
  * Returns the number of items removed.
@@ -7643,6 +7649,16 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
     TEST_ASSERT(node, "Linked list pop or any failed");
     TEST_ASSERT(node->data == --tester, "Linked list ordering error for shift");
     FIO_MEM_FREE(node, sizeof(*node));
+  }
+  TEST_ASSERT(ls____test_is_empty(&ls),
+              "Linked list empty should have been true");
+  for (int i = 0; i < REPEAT; ++i) {
+    ls____test_s *node = ls____test_push(&ls, FIO_MEM_CALLOC(sizeof(*node), 1));
+    node->data = i;
+  }
+  FIO_LIST_EACH(ls____test_s, node, &ls, pos) {
+    ls____test_remove(pos);
+    FIO_MEM_FREE(pos, sizeof(*pos));
   }
   TEST_ASSERT(ls____test_is_empty(&ls),
               "Linked list empty should have been true");
