@@ -553,19 +553,17 @@ uint32_t ARY_each(ARY_s * ary, int32_t start_at,
                                int (*task)(FIO_ARY_TYPE obj, void *arg),
                                void *arg);
 ```
-/**
- * Iteration using a callback for each entry in the array.
- *
- * The callback task function must accept an the entry data as well as an opaque
- * user pointer.
- *
- * If the callback returns -1, the loop is broken. Any other value is ignored.
- *
- * Returns the relative "stop" position, i.e., the number of items processed +
- * the starting point.
- */
+
+Iteration using a callback for each entry in the array.
+
+The callback task function must accept an the entry data as well as an opaque user pointer.
+
+If the callback returns -1, the loop is broken. Any other value is ignored.
+
+Returns the relative "stop" position (number of items processed + starting point).
 
 #### `FIO_ARY_EACH`
+
 ```c
 #define FIO_ARY_EACH(array, pos)                                               \
   if ((array)->ary)                                                            \
@@ -586,15 +584,31 @@ It's possible to edit elements within the loop, but avoid editing the array itse
 
 ## Hash Maps / Sets
 
-Hash Map and Sets are both mapping / dictionary primitives.
+Hash maps and sets are extremely useful and common mapping / dictionary primitives, also sometimes known as "dictionary".
 
-A Set can be viewed as a hash map where the key == value and a Hash Map can be
-viewed as a Set where hash valuses map to (key,value) couplets and equality
-between couplets only tests equality between keys.
+While arrays use a numerical "index", maps use a unique numeral identifier known as a "hash". An element's hash is usually calculated using the element's content (or a "key" content) and a hash function (such as Risky Hash or SipHash). This is why these maps are often called hash maps or hash tables.
 
-To create a Set, define `FIO_MAP_NAME`.
+Hash maps use both a `hash` and a `key` to identify a value. The hash value is calculated using the key's data.
 
-To create a Hash Map, define `FIO_MAP_KEY` (containing the key's type).
+Sets use only a `hash` and sometimes the value's content to identify a `value`. The hash value is usually calculated using the value's data. This approach is often desirable when unique values are required (no duplicate values).
+
+Some map implementations support a FIFO limited storage, which could be used for limited-space caching.
+
+### Map Performance
+
+Seeking time is usually a fast O(1), although partial or full `hash` collisions may increase the cost of the operation.
+
+Adding, editing and removing items is also a very fast O(1), especially if enough memory was previously reserved. However, memory allocation and copying will slow performance, especially when the map need to grow or requires de-fragmentation.
+
+Iteration in this implementation doesn't enjoy memory locality, except for small maps or where the order of insertion randomly produces neighboring hashes. Maps are implemented using an array. The objects are accessed by order of insertion, but they are stored out of order (according to their hash value).
+
+This map implementation has protection features against too many full collisions or non-random hashes. When the map detects a possible "attack", it will start overwriting existing data instead of trying to resolve collisions. This can be adjusted using the `FIO_MAP_MAX_FULL_COLLISIONS` macro.
+
+### Map Overview 
+
+To create a map, define `FIO_MAP_NAME`.
+
+To create a hash map (rather then a set), also define `FIO_MAP_KEY` (containing the key's type).
 
 Other helpful macros to define might include:
 
@@ -610,6 +624,12 @@ Other helpful macros to define might include:
 - `FIO_MAP_KEY_DESTROY(obj)`
 - `FIO_MAP_KEY_CMP(a, b)`
 - `FIO_MAP_MAX_FULL_COLLISIONS`, which defaults to `96`
+
+
+- `FIO_MAP_TYPE_DISCARD(obj)` - Handles discarded element data (i.e., insert without overwrite).
+- `FIO_MAP_KEY_DISCARD(obj)` - Handles discarded element data (i.e., when overwriting only the value).
+- `FIO_MAP_MAX_ELEMENTS` - The maximum number of elements allowed before removing old data (FIFO).
+- `FIO_MAP_MAX_SEEK` -  The maximum number of bins to rotate when (partial/full) collisions occur. Limited to 255.
 
 To limit the number of elements in a map (FIFO), allowing it to behave similarly
 to a caching primitive, define: `FIO_MAP_MAX_ELEMENTS`.
