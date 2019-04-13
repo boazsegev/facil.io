@@ -1,4 +1,3 @@
-#include "fio_cli.h"
 #include "http.h"
 
 static void on_response(http_s *h);

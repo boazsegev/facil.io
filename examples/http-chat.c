@@ -57,7 +57,6 @@ two different browser windows.
 #include <fio.h>
 
 /* Include the TLS, CLI, FIOBJ and HTTP / WebSockets extensions */
-#include <fio_cli.h>
 #include <fio_tls.h>
 #include <http.h>
 #include <redis_engine.h>
