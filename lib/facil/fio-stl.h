@@ -527,6 +527,31 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 #error Required builtin "__sync_add_and_fetch" not found.
 #endif
 
+#ifndef FIO_THREAD_RESCHEDULE
+/**
+ * Reschedules the thread by calling nanosleeps for a sinlge nano-second.
+ *
+ * In practice, the thread will probably sleep for 60ns or more.
+ */
+#define FIO_THREAD_RESCHEDULE()                                                \
+  do {                                                                         \
+    const struct timespec tm = {.tv_nsec = 1};                                 \
+    nanosleep(&tm, NULL);                                                      \
+  } while (0)
+#endif
+
+#ifndef FIO_THREAD_WAIT
+/**
+ * Calls nonsleep with the requested nano-second count.
+ */
+#define FIO_THREAD_WAIT(nano_sec)                                              \
+  do {                                                                         \
+    const struct timespec tm = {.tv_nsec = ((nano_sec) % 1000000000),          \
+                                .tv_sec = ((nano_sec) / 1000000000)};          \
+    nanosleep(&tm, NULL);                                                      \
+  } while (0)
+#endif
+
 #define FIO_LOCK_INIT 0
 typedef volatile unsigned char fio_lock_i;
 
@@ -6758,21 +6783,29 @@ Psedo Random Generator - test
 
 #define FIO_RAND
 #include __FILE__
+#include "math.h"
 
 TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
                                                         size_t length,
                                                         const char *name,
                                                         size_t clk) {
   size_t totals[2] = {0};
+  size_t freq[256] = {0};
   const size_t total_bits = (length * sizeof(*stream) * 8);
   uint64_t hemming = 0;
+  /* collect data */
   for (size_t i = 1; i < length; i += 2) {
     hemming += fio_hemming_dist(stream[i], stream[i - 1]);
-    for (size_t j = 0; j < (sizeof(*stream)); ++j) {
-      ++totals[fio_bitmap_get(&stream[i], j)];
+    for (size_t byte = 0; byte < (sizeof(*stream) << 1); ++byte) {
+      uint8_t val = ((uint8_t *)(stream + i))[byte];
+      ++freq[val];
+      for (int bit = 0; bit < 8; ++bit) {
+        ++totals[(val >> bit) & 1];
+      }
     }
   }
   hemming /= length;
+  fprintf(stderr, "\n");
   fprintf(stderr, "\t- %s (%zu CPU cycles):\n", name, clk);
   fprintf(stderr, "\t  zeros / ones == %zu / %zu = %.05f\n", totals[0],
           totals[1], ((float)1.0 * totals[0]) / totals[1]);
@@ -6783,34 +6816,54 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
   /* expect avarage hemming distance of 25% == 16 bits */
   TEST_ASSERT(hemming >= 14 && hemming <= 18,
               "randomness isn't random (hemming)?");
+  /* test chi-square ... I think */
+  if (length * sizeof(*stream) > 2560) {
+    double n_r = (double)1.0 * ((length * sizeof(*stream)) / 256);
+    double chi_square = 0;
+    for (unsigned int i = 0; i < 256; ++i) {
+      double f = freq[i] - n_r;
+      chi_square += (f * f);
+    }
+    chi_square /= n_r;
+    double chi_square_r_abs =
+        (chi_square - 256 >= 0) ? chi_square - 256 : (256 - chi_square);
+    fprintf(stderr,
+            "\t  chi-sq. variation == %.02lf (expect <= ~%0.2lf - %s)\n",
+            chi_square_r_abs, 2 * (sqrt(n_r)),
+            ((chi_square_r_abs <= 2 * (sqrt(n_r)))
+                 ? "good"
+                 : ((chi_square_r_abs <= 3 * (sqrt(n_r))) ? "not amazing"
+                                                          : "BAD")));
+  }
 }
 
 TEST_FUNC void fio___dynamic_types_test___random(void) {
   fprintf(stderr, "* Testing randomness "
                   "(bit frequency / hemming - non-cryptographic test)\n");
-  uint64_t *rs = FIO_MEM_CALLOC(sizeof(*rs), (REPEAT << 1));
+  const size_t test_length = (REPEAT << 3);
+  uint64_t *rs = FIO_MEM_CALLOC(sizeof(*rs), test_length);
   clock_t start, end;
   FIO_ASSERT_ALLOC(rs);
   start = clock();
-  for (size_t i = 0; i < (REPEAT << 1); ++i) {
+  for (size_t i = 0; i < test_length; ++i) {
     rs[i] = ((uint64_t)rand() << 32) | rand();
   }
   end = clock();
-  fio___dynamic_types_test___random_buffer(rs, (REPEAT << 1), "system's `rand`",
+  fio___dynamic_types_test___random_buffer(rs, test_length, "system's `rand`",
                                            end - start);
   start = clock();
-  for (size_t i = 0; i < (REPEAT << 1); ++i) {
+  for (size_t i = 0; i < test_length; ++i) {
     rs[i] = fio_rand64();
   }
   end = clock();
-  fio___dynamic_types_test___random_buffer(rs, (REPEAT << 1), "fio_rand64",
+  fio___dynamic_types_test___random_buffer(rs, test_length, "fio_rand64",
                                            end - start);
   start = clock();
-  fio_rand_bytes(rs, (REPEAT << 1) * sizeof(*rs));
+  fio_rand_bytes(rs, test_length * sizeof(*rs));
   end = clock();
-  fio___dynamic_types_test___random_buffer(rs, (REPEAT << 1), "fio_rand_bytes",
+  fio___dynamic_types_test___random_buffer(rs, test_length, "fio_rand_bytes",
                                            end - start);
-  FIO_MEM_FREE(rs, sizeof(*rs) * (REPEAT << 1));
+  FIO_MEM_FREE(rs, sizeof(*rs) * test_length);
 #if DEBUG
   fprintf(stderr, "* Speed / CPU cycle data invalid - debug mode detected.\n");
 #endif
