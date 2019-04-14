@@ -6806,13 +6806,13 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
   }
   hemming /= length;
   fprintf(stderr, "\n");
-  fprintf(stderr, "\t- %s (%zu CPU cycles):\n", name, clk);
-  fprintf(stderr, "\t  zeros / ones == %zu / %zu = %.05f\n", totals[0],
-          totals[1], ((float)1.0 * totals[0]) / totals[1]);
+  fprintf(stderr, "\t- \x1B[1m%s\x1B[0m (%zu CPU cycles):\n", name, clk);
+  fprintf(stderr, "\t  zeros / ones\t\t\t%.05f (%zu / %zu)\n",
+          ((float)1.0 * totals[0]) / totals[1], totals[0], totals[1]);
   TEST_ASSERT(totals[0] < totals[1] + (total_bits / 20) &&
                   totals[1] < totals[0] + (total_bits / 20),
               "randomness isn't random?");
-  fprintf(stderr, "\t  avarage hemming distance == %zu\n", (size_t)hemming);
+  fprintf(stderr, "\t  avarage hemming distance\t%zu\n", (size_t)hemming);
   /* expect avarage hemming distance of 25% == 16 bits */
   TEST_ASSERT(hemming >= 14 && hemming <= 18,
               "randomness isn't random (hemming)?");
@@ -6827,19 +6827,20 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
     chi_square /= n_r;
     double chi_square_r_abs =
         (chi_square - 256 >= 0) ? chi_square - 256 : (256 - chi_square);
-    fprintf(stderr,
-            "\t  chi-sq. variation == %.02lf (expect <= ~%0.2lf - %s)\n",
-            chi_square_r_abs, 2 * (sqrt(n_r)),
-            ((chi_square_r_abs <= 2 * (sqrt(n_r)))
-                 ? "good"
-                 : ((chi_square_r_abs <= 3 * (sqrt(n_r))) ? "not amazing"
-                                                          : "BAD")));
+    fprintf(
+        stderr, "\t  chi-sq. variation\t\t%.02lf - %s (expect <= ~%0.2lf)\n",
+        chi_square_r_abs,
+        ((chi_square_r_abs <= 2 * (sqrt(n_r)))
+             ? "good"
+             : ((chi_square_r_abs <= 3 * (sqrt(n_r))) ? "not amazing"
+                                                      : "\x1B[1mBAD\x1B[0m")),
+        2 * (sqrt(n_r)));
   }
 }
 
 TEST_FUNC void fio___dynamic_types_test___random(void) {
   fprintf(stderr, "* Testing randomness "
-                  "(bit frequency / hemming - non-cryptographic test)\n");
+                  "- bit frequency / hemming distance / chi-square.\n");
   const size_t test_length = (REPEAT << 3);
   uint64_t *rs = FIO_MEM_CALLOC(sizeof(*rs), test_length);
   clock_t start, end;
@@ -6849,7 +6850,7 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
     rs[i] = ((uint64_t)rand() << 32) | rand();
   }
   end = clock();
-  fio___dynamic_types_test___random_buffer(rs, test_length, "system's `rand`",
+  fio___dynamic_types_test___random_buffer(rs, test_length, "rand (system)",
                                            end - start);
   start = clock();
   for (size_t i = 0; i < test_length; ++i) {
@@ -6864,6 +6865,7 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
   fio___dynamic_types_test___random_buffer(rs, test_length, "fio_rand_bytes",
                                            end - start);
   FIO_MEM_FREE(rs, sizeof(*rs) * test_length);
+  fprintf(stderr, "\n");
 #if DEBUG
   fprintf(stderr, "* Speed / CPU cycle data invalid - debug mode detected.\n");
 #endif
