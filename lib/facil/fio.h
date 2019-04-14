@@ -1702,40 +1702,6 @@ int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);
 
 
 
-
-
-
-
-              Atomic Operations and Spin Locking Helper Functions
-
-
-
-
-
-
-
-
-
-
-
-***************************************************************************** */
-
-/**
- * Nanosleep seems to be the most effective and efficient thread rescheduler.
- */
-FIO_FUNC inline void fio_reschedule_thread(void);
-
-/** Nanosleep the thread - a blocking throttle. */
-FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
-
-/* *****************************************************************************
-
-
-
-
-
-
-
                               Hash Functions and Friends
 
 
@@ -2177,21 +2143,6 @@ C++ extern end
 
 ***************************************************************************** */
 
-/**
- * Nanosleep seems to be the most effective and efficient thread rescheduler.
- */
-FIO_FUNC inline void fio_reschedule_thread(void) {
-  const struct timespec tm = {.tv_nsec = 1};
-  nanosleep(&tm, NULL);
-}
-
-/** Nanosleep the thread - a blocking throttle. */
-FIO_FUNC inline void fio_throttle_thread(size_t nano_sec) {
-  const struct timespec tm = {.tv_nsec = (nano_sec % 1000000000),
-                              .tv_sec = (nano_sec / 1000000000)};
-  nanosleep(&tm, NULL);
-}
-
 #if DEBUG_SPINLOCK
 /** Busy waits for a lock, reports contention. */
 FIO_FUNC inline void fio_lock_dbg(fio_lock_i *lock, const char *file,
@@ -2203,7 +2154,7 @@ FIO_FUNC inline void fio_lock_dbg(fio_lock_i *lock, const char *file,
       fprintf(stderr, "[DEBUG] fio-spinlock spin %s:%d round %zu\n", file, line,
               lock_cycle_count);
     ++lock_cycle_count;
-    fio_reschedule_thread();
+    FIO_THREAD_RESCHEDULE();
   }
   if (lock_cycle_count >= 8)
     fprintf(stderr, "[DEBUG] fio-spinlock spin %s:%d total = %zu\n", file, line,

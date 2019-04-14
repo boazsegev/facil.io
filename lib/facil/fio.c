@@ -8,7 +8,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FIO_EXTERN_COMPLETE 1
 #include <fio.h>
 
-
 #define FIO_LIST
 #define FIO_STR_NAME fio_str
 #define FIO_REF_NAME fio_str
@@ -88,7 +87,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #define MAP_ANONYMOUS 0
 #endif
 #endif
-
 
 /* *****************************************************************************
 FIO_OVERRIDE_MALLOC - override glibc / library malloc
@@ -767,7 +765,7 @@ static void fio_defer_thread_wait(void) {
   } else {
     /* keeps threads active (concurrent), but reduces performance */
     static __thread size_t static_throttle = 262143UL;
-    fio_throttle_thread(static_throttle);
+    FIO_THREAD_WAIT(static_throttle);
     if (fio_defer_has_queue())
       static_throttle = 1;
     else if (static_throttle < FIO_DEFER_THROTTLE_LIMIT)
@@ -2012,7 +2010,7 @@ static size_t fio_poll(void) {
   size_t count = 0;
 
   if (start == end) {
-    fio_throttle_thread((timeout * 1000000UL));
+    FIO_THREAD_WAIT((timeout * 1000000UL));
   } else if (poll(list + start, end - start, timeout) == -1) {
     goto finish;
   }
@@ -3561,7 +3559,6 @@ static void __attribute__((destructor)) fio_lib_destroy(void) {
   if (add_eol)
     fprintf(stderr, "\n"); /* add EOL to logs (logging adds EOL before text */
 }
-
 
 static void fio_cluster_init(void);
 static void fio_pubsub_initialize(void);
@@ -7626,7 +7623,7 @@ FIO_FUNC void fio_socket_test(void) {
          ++i) {
       fio_poll();
       fio_defer_perform();
-      fio_reschedule_thread();
+      FIO_THREAD_RESCHEDULE();
       errno = 0;
       r = fio_read(client2, tmp_buf, 28);
     }
@@ -7663,7 +7660,7 @@ FIO_FUNC void fio_socket_test(void) {
   for (size_t i = 0; i < 100 && (errno == EAGAIN || errno == EWOULDBLOCK);
        ++i) {
     errno = 0;
-    fio_reschedule_thread();
+    FIO_THREAD_RESCHEDULE();
     client2 = fio_accept(uuid);
   }
   if (client2 == -1)
