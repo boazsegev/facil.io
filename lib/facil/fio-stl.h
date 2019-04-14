@@ -6797,7 +6797,7 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
   for (size_t i = 1; i < length; i += 2) {
     hemming += fio_hemming_dist(stream[i], stream[i - 1]);
     for (size_t byte = 0; byte < (sizeof(*stream) << 1); ++byte) {
-      uint8_t val = ((uint8_t *)(stream + i))[byte];
+      uint8_t val = ((uint8_t *)(stream + (i - 1)))[byte];
       ++freq[val];
       for (int bit = 0; bit < 8; ++bit) {
         ++totals[(val >> bit) & 1];
@@ -6806,8 +6806,13 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
   }
   hemming /= length;
   fprintf(stderr, "\n");
+#if DEBUG
+  fprintf(stderr, "\t- \x1B[1m%s\x1B[0m:\n", name);
+  (void)clk;
+#else
   fprintf(stderr, "\t- \x1B[1m%s\x1B[0m (%zu CPU cycles):\n", name, clk);
-  fprintf(stderr, "\t  zeros / ones\t\t\t%.05f (%zu / %zu)\n",
+#endif
+  fprintf(stderr, "\t  zeros / ones (bit frequency)\t%.05f (%zu / %zu)\n",
           ((float)1.0 * totals[0]) / totals[1], totals[0], totals[1]);
   TEST_ASSERT(totals[0] < totals[1] + (total_bits / 20) &&
                   totals[1] < totals[0] + (total_bits / 20),
@@ -6828,7 +6833,7 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
     double chi_square_r_abs =
         (chi_square - 256 >= 0) ? chi_square - 256 : (256 - chi_square);
     fprintf(
-        stderr, "\t  chi-sq. variation\t\t%.02lf - %s (expect <= ~%0.2lf)\n",
+        stderr, "\t  chi-sq. variation\t\t%.02lf - %s (expect <= %0.2lf)\n",
         chi_square_r_abs,
         ((chi_square_r_abs <= 2 * (sqrt(n_r)))
              ? "good"
@@ -6867,7 +6872,8 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
   FIO_MEM_FREE(rs, sizeof(*rs) * test_length);
   fprintf(stderr, "\n");
 #if DEBUG
-  fprintf(stderr, "* Speed / CPU cycle data invalid - debug mode detected.\n");
+  fprintf(stderr,
+          "\t- to compare CPU cycles, test randomness with optimization.\n\n");
 #endif
   fprintf(stderr, "* passed.\n");
 }
