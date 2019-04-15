@@ -6752,6 +6752,7 @@ Common cleanup
 #undef IFUNC_
 #undef FIO_PTR_TAG
 #undef FIO_PTR_UNTAG
+#undef FIO_PTR_TAG_TYPE
 #undef FIO_MEM_CALLOC_
 #undef FIO_MEM_REALLOC_
 #undef FIO_MEM_FREE_
