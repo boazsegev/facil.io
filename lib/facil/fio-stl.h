@@ -7038,7 +7038,7 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
 TEST_FUNC void fio___dynamic_types_test___random(void) {
   fprintf(stderr, "* Testing randomness "
                   "- bit frequency / hemming distance / chi-square.\n");
-  const size_t test_length = (REPEAT << 12);
+  const size_t test_length = (REPEAT << 7);
   uint64_t *rs = FIO_MEM_CALLOC(sizeof(*rs), test_length);
   clock_t start, end;
   FIO_ASSERT_ALLOC(rs);
