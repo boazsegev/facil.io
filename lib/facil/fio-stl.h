@@ -278,17 +278,20 @@ Common macros
 #define FIO_NAME(prefix, postfix) FIO_NAME_FROM_MACRO_STEP1(prefix, postfix)
 
 #if !FIO_EXTERN
-#define SFUNC static __attribute__((unused))
-#define IFUNC static inline __attribute__((unused))
+#define SFUNC_ static __attribute__((unused))
+#define IFUNC_ static inline __attribute__((unused))
 #ifndef FIO_EXTERN_COMPLETE /* force implementation, emitting static data */
 #define FIO_EXTERN_COMPLETE 2
 #endif
 #else
-#define SFUNC
-#define IFUNC
+#define SFUNC_
+#define IFUNC_
 #endif
 #define HFUNC static inline __attribute__((unused)) /* internal helper */
 #define HSFUNC static __attribute__((unused))       /* internal helper */
+
+#define SFUNC SFUNC_
+#define IFUNC IFUNC_
 
 #ifndef FIO_PTR_TAG
 /**
@@ -315,7 +318,12 @@ Common macros
 #ifndef FIO_PTR_TAG_TYPE
 #endif
 
-#endif
+#else /* recursive include should always be `static` */
+#undef SFUNC
+#undef IFUNC
+#define SFUNC HSFUNC
+#define IFUNC HFUNC
+#endif /* FIO_NAME_FROM_MACRO_STEP2 vs FIO_STL_KEEP__*/
 /* *****************************************************************************
 C++ extern start
 ***************************************************************************** */
@@ -6740,6 +6748,8 @@ Common cleanup
 #undef FIO_EXTERN
 #undef SFUNC
 #undef IFUNC
+#undef SFUNC_
+#undef IFUNC_
 #undef FIO_PTR_TAG
 #undef FIO_PTR_UNTAG
 #undef FIO_MEM_CALLOC_
@@ -6750,6 +6760,13 @@ Common cleanup
 #if FIO_EXTERN_COMPLETE == 2
 #undef FIO_EXTERN_COMPLETE
 #endif
+
+#else
+
+#undef SFUNC
+#undef IFUNC
+#define SFUNC SFUNC_
+#define IFUNC IFUNC_
 
 #endif /* !FIO_STL_KEEP__ */
 /* *****************************************************************************
