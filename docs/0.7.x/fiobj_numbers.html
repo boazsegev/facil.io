@@ -93,10 +93,10 @@
 <a href="#fio_ftoa"><code>fio_ftoa</code></a>
 </li>
 <li>
-<a href="#fio_ltocstr"><code>fio_ltocstr</code></a>
+<a href="#fio_ltocstr-deprecated"><code>fio_ltocstr</code> (deprecated)</a>
 </li>
 <li>
-<a href="#fio_ftocstr"><code>fio_ftocstr</code></a>
+<a href="#fio_ftocstr-deprecated"><code>fio_ftocstr</code> (deprecated)</a>
 </li>
 </ul>
 </li>
@@ -183,14 +183,14 @@ beginning of the string).</p>
 
 <p>Returns the number of bytes actually written (excluding the NUL terminator).</p>
 
-<h4 id="fio_ltocstr"><code>fio_ltocstr</code></h4>
+<h4 id="fio_ltocstr-deprecated"><code>fio_ltocstr</code> (deprecated)</h4>
 <div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">fio_ltocstr</span><span class="p">(</span><span class="kt">long</span><span class="p">);</span>
 </code></pre></div>
 <p>Converts a number to a temporary, thread local, C string object</p>
 
 <p>The <code>fio_str_s</code> object is only valid until the function is called again within the same thread or the thread terminates.</p>
 
-<h4 id="fio_ftocstr"><code>fio_ftocstr</code></h4>
+<h4 id="fio_ftocstr-deprecated"><code>fio_ftocstr</code> (deprecated)</h4>
 <div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">fio_ftocstr</span><span class="p">(</span><span class="kt">double</span><span class="p">);</span>
 </code></pre></div>
 <p>Converts a float to a temporary, thread local, C string object</p>

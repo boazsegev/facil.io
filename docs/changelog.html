@@ -951,10 +951,10 @@
 
 <blockquote>
 <p>To use facil.io in a CMake build you may add it as a submodule to the project&#39;s repository.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>  git submodule add https://github.com/boazsegev/facil.io.git
+<div class="highlight"><pre class="highlight c"><code>  <span class="n">git</span> <span class="n">submodule</span> <span class="n">add</span> <span class="n">https</span><span class="o">:</span><span class="c1">//github.com/boazsegev/facil.io.git</span>
 </code></pre></div>
 <p>Then add the following line the project&#39;s <code>CMakeLists.txt</code></p>
-<div class="highlight"><pre class="highlight plaintext"><code>  add_subdirectory(facil.io)
+<div class="highlight"><pre class="highlight c"><code>  <span class="n">add_subdirectory</span><span class="p">(</span><span class="n">facil</span><span class="p">.</span><span class="n">io</span><span class="p">)</span>
 </code></pre></div></blockquote>
 
 <p><strong>Optimize</strong>: (<code>fio_hash_table</code>) optimize <code>fio_ht_s</code> bin memory allocations.</p>

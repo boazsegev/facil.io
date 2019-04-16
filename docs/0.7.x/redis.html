@@ -124,22 +124,22 @@
 <li><p><code>address</code></p>
 
 <p>Redis server&#39;s address, defaults to <code>&quot;localhost&quot;</code>.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>fio_str_info_s address;
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">address</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>port</code></p>
 
 <p>Redis server&#39;s port, defaults to <code>&quot;6379&quot;</code>.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>fio_str_info_s port;
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">port</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>auth</code></p>
 
 <p>Redis server&#39;s password, if any. */</p>
-<div class="highlight"><pre class="highlight plaintext"><code>fio_str_info_s auth;
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">auth</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>ping_interval</code></p>
 
 <p>A <code>ping</code> will be sent every <code>ping_interval</code> interval or inactivity. */</p>
-<div class="highlight"><pre class="highlight plaintext"><code>uint8_t ping_interval;
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uint8_t</span> <span class="n">ping_interval</span><span class="p">;</span>
 </code></pre></div></li>
 </ul>
 
@@ -190,32 +190,32 @@
 
 <ul>
 <li><p><code>resp_on_message</code> - a local static callback, called when the RESP message was completely parsed.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>static int resp_on_message(resp_parser_s *parser);
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_message</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_number</code> - a local static callback, called when a Number object is parsed.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>static int resp_on_number(resp_parser_s *parser, int64_t num);
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_number</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">num</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_okay</code> - a local static callback, called when a OK message is received.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>static int resp_on_okay(resp_parser_s *parser);
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_okay</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_null</code> - a local static callback, called when NULL is received.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>static int resp_on_null(resp_parser_s *parser);
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_null</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_start_string</code> - a local static callback, called when a String should be allocated.</p>
 
 <p><code>str_len</code> is the expected number of bytes that will fill the final string object, without any NUL byte marker (the string might be binary).</p>
 
 <p>If this function returns any value besides 0, parsing is stopped.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>static int resp_on_start_string(resp_parser_s *parser, size_t str_len);
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_start_string</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">str_len</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_string_chunk</code> - a local static callback, called as String objects are streamed. </p>
-<div class="highlight"><pre class="highlight plaintext"><code>static int resp_on_string_chunk(resp_parser_s *parser, void *data, size_t len);
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_string_chunk</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_end_string</code> - a local static callback, called when a String object had finished streaming. </p>
-<div class="highlight"><pre class="highlight plaintext"><code>static int resp_on_end_string(resp_parser_s *parser);
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_end_string</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_err_msg</code> - a local static callback, called an error message is received. </p>
-<div class="highlight"><pre class="highlight plaintext"><code>static int resp_on_err_msg(resp_parser_s *parser, void *data, size_t len);
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_err_msg</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p>a local static callback, called when an Array should be allocated.</p>
 
@@ -225,10 +225,10 @@ There&#39;s no <code>resp_on_end_array</code> callback since the RESP protocol, 
 <p>However, be aware that a client/server might send nested Arrays in some rare cases.</p>
 
 <p>If this function returns any value besides 0, parsing is stopped.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>static int resp_on_start_array(resp_parser_s *parser, size_t array_len);
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_start_array</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">array_len</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_parser_error</code> - a local static callback, called when a parser / protocol error occurs. </p>
-<div class="highlight"><pre class="highlight plaintext"><code>static int resp_on_parser_error(resp_parser_s *parser);
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_parser_error</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
 </code></pre></div></li>
 </ul>
 
