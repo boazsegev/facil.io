@@ -2557,7 +2557,43 @@ SFUNC size_t fio_ftoa(char *dest, double num, uint8_t base) {
 
 
 
+Example:
 
+```c
+// initial `include` defines the `FIO_LIST_NODE` macro and type
+#include "fio-stl.h"
+// list element
+typedef struct {
+  long l;
+  FIO_LIST_NODE node;
+  int i;
+  double d;
+} my_list_s;
+// create linked list helper functions
+#define FIO_LIST_NAME my_list
+#include "fio-stl.h"
+
+void example(void) {
+  FIO_LIST_HEAD list = FIO_LIST_INIT(list);
+  for (int i = 0; i < 10; ++i) {
+    my_list_s *n = malloc(sizeof(*n));
+    n->i = i;
+    my_list_push(&list, n);
+  }
+  int i = 0;
+  while (my_list_any(&list)) {
+    my_list_s *n = my_list_shift(&list);
+    if (i != n->i) {
+      fprintf(stderr, "list error - value mismatch\n"), exit(-1);
+    }
+    free(n);
+    ++i;
+  }
+  if (i != 10) {
+    fprintf(stderr, "list error - count error\n"), exit(-1);
+  }
+}
+```
 
 ***************************************************************************** */
 
@@ -2736,7 +2772,29 @@ Linked Lists (embeded) - cleanup
 
 
 
+Example:
 
+```c
+typedef struct {
+  int i;
+  float f;
+} foo_s;
+
+#define FIO_ARY_NAME ary
+#define FIO_ARY_TYPE foo_s
+#define FIO_ARY_TYPE_CMP(a,b) (a.i == b.i && a.f == b.f)
+#include "fio_cstl.h"
+
+void example(void) {
+  ary_s a;
+  ary_init(&a);
+  foo_s *p = ary_push(&a, (foo_s){.i = 42});
+  FIO_ARY_EACH(&a, pos) { // pos will be a pointer to the element
+    fprintf(stderr, "* [%zu]: %p : %d\n", (size_t)(pos - ary_to_a(&a)), pos->i);
+  }
+  ary_destroy(&a);
+}
+```
 
 ***************************************************************************** */
 

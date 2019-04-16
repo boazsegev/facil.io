@@ -4,6 +4,12 @@ sidebar: 0.8.x/_sidebar.md
 ---
 # {{{title}}}
 
+At the core of the facil.io library is a single header Simple Template Library for C.
+
+The header could be included multiple times with different results, creating different types or helpers functions.
+
+This makes it east to perform common tasks for C projects - such as creating hash maps, dynamic arrays, linked lists etc'.
+
 ## Lower Level API Notice
 
 >> **The core library is probably not the API most developers need to focus on** (although it's good to know and can be helpful).
@@ -16,9 +22,9 @@ The core library is a single file library (`fio-stl.h`).
 
 The core library includes a Simple Template Library for common types, such as:
 
-* Linked Lists - defined by `FIO_LIST_NAME`
+* [Linked Lists](#linked-lists) - defined by `FIO_LIST_NAME`
 
-* Dynamic Arrays - defined by `FIO_ARY_NAME`
+* [Dynamic Arrays](#dynamic-arrays) - defined by `FIO_ARY_NAME`
 
 * Hash Maps / Sets - defined by `FIO_MAP_NAME`
 
@@ -45,6 +51,8 @@ In addition, the core library includes helpers for common tasks, such as:
 * Command Line Interface helpers - defined by `FIO_CLI`
 
 * Custom Memory Allocation - defined by `FIO_MALLOC`
+
+* Pointer Tagging - defined by `FIO_PTR_TAG(p)`/`FIO_PTR_UNTAG(p)`
 
 -------------------------------------------------------------------------------
 
@@ -155,8 +163,6 @@ typedef struct {
 #include "fio-stl.h"
 ```
 
-For the full list of the functions that will be created, and the helper macros, review the "Linked Lists (embeded) - API" section.
-
 ### Linked Lists (embeded) - API
 
 
@@ -250,6 +256,8 @@ The `type` name should reference the list type.
 
 The list **can** be mutated during the loop, but this is not recommended. Specifically, removing `pos` is safe, but pushing elements ahead of `pos` might result in an endless loop.
 
+_Note: this macro won't work with pointer tagging_
+
 -------------------------------------------------------------------------------
 
 ## Dynamic Arrays
@@ -279,8 +287,7 @@ A common solution is to reserve a value for "empty" elements and `set` the eleme
 
 ### Dynamic Array Overview
 
-To create a dynamic array type, define the type name using the `FIO_ARY_NAME`
-macro. i.e.:
+To create a dynamic array type, define the type name using the `FIO_ARY_NAME` macro. i.e.:
 
 ```c
 #define FIO_ARY_NAME int_ary
@@ -327,8 +334,6 @@ void example(void) {
   ary_destroy(&a);
 }
 ```
-
-For the full list of functions see: Dynamic Arrays - API
 
 ### Dynamic Arrays - API
 

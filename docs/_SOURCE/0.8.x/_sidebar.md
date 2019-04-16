@@ -1,31 +1,10 @@
 ## [Version 0.8.x](/0.8.x/index)
 
-### [Core Library](/0.8.x/fio)
-
-* [Protocol Management](/0.8.x/fio#connection-protocol-management)
-* [Running the IO reactor](/0.8.x/fio#running-facil-io)
-* [Connection Functions](/0.8.x/fio#socket-connection-functions)
-* [Event / Task Scheduling](/0.8.x/fio#event-task-scheduling)
-* [Pub/Sub Services](/0.8.x/fio#pub-sub-services)
-* [Memory Allocation](/0.8.x/fio#the-custom-memory-allocator)
-* [General Helpers](/0.8.x/fio#general-helpers)
-* [Compilation Macros](/0.8.x/fio#version-and-compilation-related-macros)
-* [Weak Functions](/0.8.x/fio#weak-functions)
-
-### [Simple Type Library](/0.8.x/fio-stl)
-
-* [Linked Lists](/0.8.x/fio-stl#linked-lists)
-* [String Helpers](/0.8.x/fio-stl#string-helpers)
-* [Dynamic Arrays](/0.8.x/fio-stl#dynamic-arrays)
-* [Hash Maps / Sets](/0.8.x/fio-stl#hash-maps-sets)
-* [General Helpers](/0.8.x/fio-stl#general-helpers)
-
 ### [Extensions](/0.8.x/extensions)
 
-* [TLS (SSL)](/0.8.x/fio_tls)
 * [HTTP / WebSockets](/0.8.x/http)
+* [TLS (SSL)](/0.8.x/fio_tls)
 * [Redis (client)](/0.8.x/redis)
-* [CLI (command line)](/0.8.x/fio_cli)
 
 ### [The FIOBJ types](/0.8.x/fiobj)
 
@@ -39,6 +18,24 @@
 * [JSON](/0.8.x/fiobj_json)
 * [Mustache](/0.8.x/fiobj_mustache)
 
-### Miscellaneous
-
+### [Core Library](/0.8.x/fio-stl)
+* [Linked Lists](/0.8.x/fio-stl#linked-lists)
+* [String Helpers](/0.8.x/fio-stl#string-helpers)
+* [Dynamic Arrays](/0.8.x/fio-stl#dynamic-arrays)
+* [Hash Maps / Sets](/0.8.x/fio-stl#hash-maps-sets)
+* [Memory Allocation](/0.8.x/fio-stl#the-custom-memory-allocator)
+* [CLI (command line)](/0.8.x/fio-stl#cli-command-line-interface)
+* [Pointer Tagging](/0.8.x/fio-stl#pointer-tagging)
+* [General Helpers](/0.8.x/fio-stl#general-helpers)
 * [Risk Hash](/0.8.x/riskyhash)
+
+### [Core IO Library](/0.8.x/fio)
+
+* [Protocol Management](/0.8.x/fio#connection-protocol-management)
+* [Running the IO reactor](/0.8.x/fio#running-facil-io)
+* [Connection Functions](/0.8.x/fio#socket-connection-functions)
+* [Event / Task Scheduling](/0.8.x/fio#event-task-scheduling)
+* [Pub/Sub Services](/0.8.x/fio#pub-sub-services)
+* [Compilation Macros](/0.8.x/fio#version-and-compilation-related-macros)
+* [Weak Functions](/0.8.x/fio#weak-functions)
+* [General Helpers](/0.8.x/fio#general-helpers)
