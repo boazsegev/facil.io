@@ -524,48 +524,48 @@
 <li><p><code>on_request</code>:</p>
 
 <p>Callback for normal HTTP requests.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_request(http_s *request);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_request</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">request</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_request</code>:</p>
 
 <p>Callback for Upgrade and EventSource (SSE) requests.</p>
 
 <p>Server Sent Events (SSE) / EventSource requests set the <code>requested_protocol</code> string to <code>&quot;sse&quot;</code>. Other protocols (i.e., WebSockets) are represented exactly the same was as the client requested them (be aware or lower case vs. capitalized representations).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_upgrade(http_s *request, char *requested_protocol, size_t len);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_upgrade</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">request</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">requested_protocol</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_request</code>:</p>
 
 <p>This callback is ignored for HTTP server mode and is only called when a response (not a request) is received. On server connections, this would normally indicate a protocol error.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_response(http_s *response);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_response</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">response</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_finish</code>:</p>
 
 <p>This (optional) callback will be called when the HTTP service closes. The <code>setting</code> pointer will point to the named arguments passed to the <code>http_listen</code> function.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_finish(struct http_settings_s *settings);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_finish</span><span class="p">(</span><span class="k">struct</span> <span class="n">http_settings_s</span> <span class="o">*</span><span class="n">settings</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>udata</code>:</p>
 
 <p>Opaque user data. facil.io will ignore this field, but you can use it.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-void *udata;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>public_folder</code>:</p>
 
 <p>A public folder for file transfers - allows to circumvent any application layer logic and simply serve static files.</p>
 
 <p>The static file service supports automatic <code>gz</code> pre-compressed file alternatives.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-const char *public_folder;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">public_folder</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>public_folder_length</code>:</p>
 
 <p>The length of the public_folder string.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-size_t public_folder_length;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">size_t</span> <span class="n">public_folder_length</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>max_header_size</code>:</p>
 
@@ -574,16 +574,16 @@ size_t public_folder_length;
 <p>Defaults to 32Kib (which is about 4 times more than I would recommend).</p>
 
 <p>This reflects the total overall size. On HTTP/1.1, each header line (name + value pair) is also limited to a hard-coded HTTP_MAX_HEADER_LENGTH bytes.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-size_t max_header_size;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">size_t</span> <span class="n">max_header_size</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>max_body_size</code>:</p>
 
 <p>The maximum size, in bytes, for an HTTP request&#39;s body (posting / downloading).</p>
 
 <p>Defaults to 50Mb (1024 * 1024 * 50).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-size_t max_body_size;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">size_t</span> <span class="n">max_body_size</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>max_clients</code>:</p>
 
@@ -592,20 +592,20 @@ size_t max_body_size;
 <p>The default value is computed according to the server&#39;s capacity, leaving some breathing room for other network and disk operations.</p>
 
 <p>Note: clients, by the nature of socket programming, are counted according to their internal file descriptor (<code>fd</code>) value. Open files and other sockets count towards a server&#39;s limit.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-intptr_t max_clients;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">intptr_t</span> <span class="n">max_clients</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>ws_max_msg_size</code>:</p>
 
 <p>The maximum WebSocket message size/buffer (in bytes) for WebSocket connections. Defaults to 250KB (250 * 1024).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-size_t ws_max_msg_size;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">size_t</span> <span class="n">ws_max_msg_size</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>timeout</code>:</p>
 
 <p>The maximum WebSocket message size/buffer (in bytes) for WebSocket connections. Defaults to 250KB (250 * 1024).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-uint8_t timeout;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">uint8_t</span> <span class="n">timeout</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>ws_timeout</code>:</p>
 
@@ -614,16 +614,16 @@ uint8_t timeout;
 <p>Defaults to 40 seconds.</p>
 
 <p>Connections are only closed when a ping cannot be sent (the network layer fails). Pongs are ignored.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-uint8_t ws_timeout;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">uint8_t</span> <span class="n">ws_timeout</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>log</code>:</p>
 
 <p>Logging flag - set to TRUE to log HTTP requests.</p>
 
 <p>Defaults to 0 (false).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-uint8_t log;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">uint8_t</span> <span class="n">log</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>is_client</code>:</p>
 
@@ -633,10 +633,10 @@ uint8_t log;
 <li><p><code>reserved*</code>:</p>
 
 <p>Reserved for future use.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-intptr_t reserved1;
-intptr_t reserved2;
-intptr_t reserved3;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">intptr_t</span> <span class="n">reserved1</span><span class="p">;</span>
+<span class="kt">intptr_t</span> <span class="n">reserved2</span><span class="p">;</span>
+<span class="kt">intptr_t</span> <span class="n">reserved3</span><span class="p">;</span>
 </code></pre></div></li>
 </ul>
 
@@ -660,12 +660,12 @@ intptr_t reserved3;
 <p>Use the HTTP Handler API to set it&#39;s content and send the request to the server. The second time the <code>on_response</code> function is called, the <code>http_s</code> handle will contain the actual response.</p>
 
 <p>The <code>address</code> argument should contain a full URL style address for the server. i.e.:</p>
-<div class="highlight"><pre class="highlight plaintext"><code>      "http:/www.example.com:8080/"
+<div class="highlight"><pre class="highlight c"><code>      <span class="s">"http:/www.example.com:8080/"</span>
 </code></pre></div>
 <p>If an <code>address</code> includes a path or query data, they will be automatically attached (both of them) to the HTTP handle&#39;s <code>path</code> property. i.e.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>     "http:/www.example.com:8080/my_path?foo=bar"
-     // will result in:
-     fiobj_obj2cstr(h-&gt;path).data; //=&gt; "/my_path?foo=bar"
+<div class="highlight"><pre class="highlight c"><code>     <span class="s">"http:/www.example.com:8080/my_path?foo=bar"</span>
+     <span class="c1">// will result in:</span>
+     <span class="n">fiobj_obj2cstr</span><span class="p">(</span><span class="n">h</span><span class="o">-&gt;</span><span class="n">path</span><span class="p">).</span><span class="n">data</span><span class="p">;</span> <span class="c1">//=&gt; "/my_path?foo=bar"</span>
 </code></pre></div>
 <p>To open a WebSocket connection, it&#39;s possible to use the <code>ws</code> protocol signature. However, it would be better to use the <a href="#websocket_connect"><code>websocket_connect</code></a> function instead.</p>
 
@@ -837,67 +837,67 @@ intptr_t reserved3;
 <li><p><code>name</code>:</p>
 
 <p>The cookie&#39;s name (Symbol).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-const char *name;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>value</code>:</p>
 
 <p>The cookie&#39;s value. Leave the value blank (NULL) to delete cookie.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-const char *value;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">value</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>domain</code>:</p>
 
 <p>The cookie&#39;s domain (optional).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-const char *domain;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">domain</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>path</code>:</p>
 
 <p>The cookie&#39;s path (optional).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-const char *path;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">path</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>name_len</code>:</p>
 
 <p>The cookie name&#39;s length in bytes or a terminating NUL will be assumed.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-size_t name_len;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">size_t</span> <span class="n">name_len</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>value_len</code>:</p>
 
 <p>The cookie value&#39;s length in bytes or a terminating NULL will be assumed.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-size_t value_len;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">size_t</span> <span class="n">value_len</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>domain_len</code>:</p>
 
 <p>The cookie domain&#39;s length in bytes or a terminating NULL will be assumed.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-size_t domain_len;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">size_t</span> <span class="n">domain_len</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>path_len</code>:</p>
 
 <p>The cookie path&#39;s length in bytes or a terminating NULL will be assumed.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
 </code></pre></div>
 <p>size_t path_len;</p></li>
 <li><p><code>max_age</code>:</p>
 
 <p>Max Age (how long should the cookie persist), in seconds (0 == session).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
 </code></pre></div>
 <p>int max_age;</p></li>
 <li><p><code>secure</code>:</p>
 
 <p>Limit cookie to secure connections.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
 </code></pre></div>
 <p>unsigned secure : 1;</p></li>
 <li><p><code>path_len</code>:</p>
 
 <p>Limit cookie to HTTP (intended to prevent JavaScript access/hijacking).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
 </code></pre></div>
 <p>unsigned http_only : 1;</p></li>
 </ul>
@@ -1138,44 +1138,44 @@ is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.</p>
 <li><p><code>on_open</code>:</p>
 
 <p>The (optional) <code>on_open</code> callback will be called once the WebSocket connection is established and before is is registered with <code>facil</code>, so no <code>on_message</code> events are raised before <code>on_open</code> returns.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_open(ws_s *ws);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_open</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_message</code>:</p>
 
 <p>The (optional) <code>on_message</code> callback will be called whenever a webSocket message is received for this connection.</p>
 
 <p>The data received points to the WebSocket&#39;s message buffer and it will be overwritten once the function exits (it cannot be saved for later, but it can be copied).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_message</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">msg</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">is_text</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_ready</code>:</p>
 
 <p>The (optional) <code>on_ready</code> callback will be after a the underlying socket&#39;s buffer changes it&#39;s state from full to empty.</p>
 
 <p>If the socket&#39;s buffer is never used, the callback is never called.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_ready(ws_s *ws);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_ready</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_shutdown</code>:</p>
 
 <p>The (optional) on_shutdown callback will be called if a WebSocket connection is still open while the server is shutting down (called before <code>on_close</code>).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_shutdown(ws_s *ws);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_shutdown</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_close</code>:</p>
 
 <p>The <code>uuid</code> is the connection&#39;s unique ID that can identify the WebSocket. A value of <code>uuid == -1</code> indicates the WebSocket connection wasn&#39;t established (an error occurred).</p>
 
 <p>The <code>udata</code> is the user data as set during the upgrade or using the <code>websocket_udata_set</code> function.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_close(intptr_t uuid, void *udata);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_close</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>udata</code>:</p>
 
 <p>Opaque user data.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-void *udata;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">;</span>
 </code></pre></div></li>
 </ul>
 
@@ -1242,47 +1242,47 @@ void *udata;
 <li><p><code>channel</code>:</p>
 
 <p>The channel name used for the subscription. If missing, an empty string is assumed to be the channel name.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-fio_str_info_s channel;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>on_message</code>:</p>
 
 <p>An optional callback to be called when a pub/sub message is received.</p>
 
 <p>If missing, Data is directly written to the WebSocket connection.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_message(ws_s *ws, fio_str_info_s channel,
-             fio_str_info_s msg, void *udata);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_message</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">,</span>
+             <span class="n">fio_str_info_s</span> <span class="n">msg</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_unsubscribe</code>:</p>
 
 <p>An optional callback to be called after the subscription was canceled. This should be used for any required cleanup.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_unsubscribe(void *udata);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_unsubscribe</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>match</code>:</p>
 
 <p>A callback for pattern matching, as described in <a href="fio#fio_subscribe"><code>fio_subscribe</code></a>.</p>
 
 <p>Note that only the <code>FIO_MATCH_GLOB</code> matching function (or NULL for no pattern matching) is safe to use with the Redis extension.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-int foo_bar_match_fn(fio_str_info_s pattern, fio_str_info_s channel);
-// type:
-fio_match_fn match;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">int</span> <span class="n">foo_bar_match_fn</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">);</span>
+<span class="c1">// type:</span>
+<span class="n">fio_match_fn</span> <span class="n">match</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>udata</code>:</p>
 
 <p>Opaque user data.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-void *udata;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>force_binary</code>:</p>
 
 <p>When using direct message forwarding (no <code>on_message</code> callback), this indicates if messages should be sent to the client as binary blobs, which is the safest approach.</p>
 
 <p>By default, facil.io will test for UTF-8 data validity and send the data as text if it&#39;s a valid UTF-8. Messages above ~32Kb might be assumed to be binary rather than tested.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-unsigned force_binary : 1;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">unsigned</span> <span class="n">force_binary</span> <span class="o">:</span> <span class="mi">1</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>force_text</code>:</p>
 
@@ -1291,8 +1291,8 @@ unsigned force_binary : 1;
 <p>By default, facil.io will test for UTF-8 data validity and send the data as text if it&#39;s a valid UTF-8. Messages above ~32Kb might be assumed to be binary rather than tested.</p>
 
 <p><code>force_binary</code> has precedence over <code>force_text</code>.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-unsigned force_text : 1;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">unsigned</span> <span class="n">force_text</span> <span class="o">:</span> <span class="mi">1</span><span class="p">;</span>
 </code></pre></div></li>
 </ul>
 
@@ -1317,14 +1317,14 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 
 <ul>
 <li><p><code>WEBSOCKET_OPTIMIZE_PUBSUB</code> - Optimize generic Pub/Sub WebSocket broadcasts.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>#define WEBSOCKET_OPTIMIZE_PUBSUB (-32)
-</code></pre></div></li>
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#define WEBSOCKET_OPTIMIZE_PUBSUB (-32)
+</span></code></pre></div></li>
 <li><p><code>WEBSOCKET_OPTIMIZE_PUBSUB_TEXT</code> - Optimize text Pub/Sub WebSocket broadcasts.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>#define WEBSOCKET_OPTIMIZE_PUBSUB_TEXT (-33)
-</code></pre></div></li>
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#define WEBSOCKET_OPTIMIZE_PUBSUB_TEXT (-33)
+</span></code></pre></div></li>
 <li><p><code>WEBSOCKET_OPTIMIZE_PUBSUB_BINARY</code> - Optimize binary Pub/Sub WebSocket broadcasts.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>#define WEBSOCKET_OPTIMIZE_PUBSUB_BINARY (-34)
-</code></pre></div></li>
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#define WEBSOCKET_OPTIMIZE_PUBSUB_BINARY (-34)
+</span></code></pre></div></li>
 </ul>
 
 <p>This is normally performed automatically by the <code>websocket_subscribe</code> function. However, this function is provided for enabling the pub/sub meta-data based optimizations for external connections / subscriptions.</p>
@@ -1401,8 +1401,8 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 <p>The (optional) <code>on_open</code> callback will be called once the EventSource connection is established.</p>
 
 <p>The <code>http_sse_s</code> pointer passed to the callback contains a copy of the named arguments passed to the <code>http_upgrade2sse</code> function.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_open(http_sse_s *sse);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_open</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_ready</code>:</p>
 
@@ -1411,30 +1411,30 @@ void on_open(http_sse_s *sse);
 <p>If the socket&#39;s buffer is never used, the callback might never get called.</p>
 
 <p>The <code>http_sse_s</code> pointer passed to the callback contains a copy of the named arguments passed to the <code>http_upgrade2sse</code> function.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_ready(http_sse_s *sse);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_ready</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_shutdown</code>:</p>
 
 <p>The (optional) <code>on_shutdown</code> callback will be called if a connection is still open while the server is shutting down (called before <code>on_close</code>).</p>
 
 <p>The <code>http_sse_s</code> pointer passed to the callback contains a copy of the named arguments passed to the <code>http_upgrade2sse</code> function.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_shutdown(http_sse_s *sse);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_shutdown</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_close</code>:</p>
 
 <p>The (optional) <code>on_close</code> callback will be called once a connection is terminated or failed to be established.</p>
 
 <p>The <code>udata</code> passed to the <code>http_upgrade2sse</code> function is available through the <code>http_sse_s</code> pointer (<code>sse-&gt;udata</code>).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_close(http_sse_s *sse);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_close</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>udata</code>:</p>
 
 <p>Opaque user data.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-void *udata;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">;</span>
 </code></pre></div></li>
 </ul>
 
@@ -1471,41 +1471,41 @@ void *udata;
 <li><p><code>channel</code>:</p>
 
 <p>The channel name used for the subscription. If missing, an empty string is assumed to be the channel name.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-fio_str_info_s channel;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>on_message</code>:</p>
 
 <p>An optional callback to be called when a pub/sub message is received.</p>
 
 <p>If missing, Data is directly written to the HTTP connection.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_message(http_sse_s *sse, fio_str_info_s channel,
-             fio_str_info_s msg, void *udata);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_message</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">,</span>
+             <span class="n">fio_str_info_s</span> <span class="n">msg</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_unsubscribe</code>:</p>
 
 <p>An optional callback for when a subscription is fully canceled (the subscription&#39;s <code>udata</code> can be freed).</p>
 
 <p>If missing, Data is directly written to the HTTP connection.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_unsubscribe(void *udata);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_unsubscribe</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>match</code>:</p>
 
 <p>A callback for pattern matching, as described in <a href="fio#fio_subscribe"><code>fio_subscribe</code></a>.</p>
 
 <p>Note that only the <code>FIO_MATCH_GLOB</code> matching function (or NULL for no pattern matching) is safe to use with the Redis extension.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-int foo_bar_match_fn(fio_str_info_s pattern, fio_str_info_s channel);
-// type:
-fio_match_fn match;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">int</span> <span class="n">foo_bar_match_fn</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">);</span>
+<span class="c1">// type:</span>
+<span class="n">fio_match_fn</span> <span class="n">match</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>udata</code>:</p>
 
 <p>Opaque user data.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-void *udata;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">;</span>
 </code></pre></div></li>
 </ul>
 
@@ -1533,26 +1533,26 @@ void *udata;
 <li><p><code>id</code>:</p>
 
 <p>Sets the <code>id</code> event property (optional).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-fio_str_info_s id;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="n">fio_str_info_s</span> <span class="n">id</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>event</code>:</p>
 
 <p>Sets the <code>event</code> event property (optional).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-fio_str_info_s event;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="n">fio_str_info_s</span> <span class="n">event</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>data</code>:</p>
 
 <p>Sets the <code>data</code> event property (optional).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-fio_str_info_s data;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="n">fio_str_info_s</span> <span class="n">data</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>retry</code>:</p>
 
 <p>Sets the <code>retry</code> event property (optional).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-fio_str_info_s retry;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="n">fio_str_info_s</span> <span class="n">retry</span><span class="p">;</span>
 </code></pre></div></li>
 </ul>
 
