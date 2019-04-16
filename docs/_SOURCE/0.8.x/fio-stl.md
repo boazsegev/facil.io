@@ -44,7 +44,7 @@ In addition, the core library includes helpers for common tasks, such as:
 
 * Data Hashing (using Risky Hash) - defined by `FIO_RISKY_HASH`
 
-* Psedo Random Generation - defined by `FIO_RAND`
+* Pseudo Random Generation - defined by `FIO_RAND`
 
 * String / Number conversion - defined by `FIO_ATOL`
 
@@ -591,11 +591,9 @@ It's possible to edit elements within the loop, but avoid editing the array itse
 
 Hash maps and sets are extremely useful and common mapping / dictionary primitives, also sometimes known as "dictionary".
 
-While arrays use a numerical "index", maps use a unique numeral identifier known as a "hash". An element's hash is usually calculated using the element's content (or a "key" content) and a hash function (such as Risky Hash or SipHash). This is why these maps are often called hash maps or hash tables.
+Hash maps use both a `hash` and a `key` to identify a `value`. The `hash` value is calculated by feeding the key's data to a hash function (such as Risky Hash or SipHash).
 
-Hash maps use both a `hash` and a `key` to identify a value. The hash value is calculated using the key's data.
-
-Sets use only a `hash` and sometimes the value's content to identify a `value`. The hash value is usually calculated using the value's data. This approach is often desirable when unique values are required (no duplicate values).
+A hash map without a `key` is known as a Set or a Bag. It uses only a `hash` (often calculated using the `value`) to identify a `value`, sometimes requiring a `value` equality test as well. This approach often promises a collection of unique values (no duplicate values).
 
 Some map implementations support a FIFO limited storage, which could be used for limited-space caching.
 
@@ -631,18 +629,226 @@ Other helpful macros to define might include:
 - `FIO_MAP_MAX_FULL_COLLISIONS`, which defaults to `96`
 
 
-- `FIO_MAP_TYPE_DISCARD(obj)` - Handles discarded element data (i.e., insert without overwrite).
-- `FIO_MAP_KEY_DISCARD(obj)` - Handles discarded element data (i.e., when overwriting only the value).
+- `FIO_MAP_TYPE_DISCARD(obj)` - Handles discarded element data (i.e., insert without overwrite in a Set).
+- `FIO_MAP_KEY_DISCARD(obj)` - Handles discarded element data (i.e., when overwriting an existing value in a hash map).
 - `FIO_MAP_MAX_ELEMENTS` - The maximum number of elements allowed before removing old data (FIFO).
-- `FIO_MAP_MAX_SEEK` -  The maximum number of bins to rotate when (partial/full) collisions occur. Limited to 255.
+- `FIO_MAP_MAX_SEEK` -  The maximum number of bins to rotate when (partial/full) collisions occur. Limited to a maximum of 255.
 
-To limit the number of elements in a map (FIFO), allowing it to behave similarly
-to a caching primitive, define: `FIO_MAP_MAX_ELEMENTS`.
+To limit the number of elements in a map (FIFO), allowing it to behave similarly to a caching primitive, define: `FIO_MAP_MAX_ELEMENTS`.
 
-if `FIO_MAP_MAX_ELEMENTS` is `0`, then the theoretical maximum number of
-elements should be: (1 << 32) - 1
+if `FIO_MAP_MAX_ELEMENTS` is `0`, then the theoretical maximum number of elements should be: `(1 << 32) - 1`. In practice, the safe limit should be calculated as `1 << 31`.
 
 For the full list of functions see: Hash Map / Set - API
+
+### Hash Map / Set - API (initialization)
+
+#### `MAP_new`
+
+```c
+FIO_MAP_PTR MAP_new(void);
+```
+
+Allocates a new map on the heap.
+
+#### `MAP_free`
+
+```c
+void MAP_free(MAP_PTR m);
+```
+
+Frees a map that was allocated on the heap.
+
+#### `MAP_init`
+
+```c
+void MAP_init(MAP_PTR m);
+```
+
+Initializes a map object - often used for maps placed on the stack.
+
+#### `MAP_destroy`
+
+```c
+void MAP_destroy(MAP_PTR m);
+```
+
+Destroys the map's internal data and re-initializes it.
+
+
+### Hash Map - API (hash map only)
+
+#### `MAP_find` (hash map)
+
+```c
+FIO_MAP_TYPE MAP_find(FIO_MAP_PTR m,
+                      FIO_MAP_HASH hash,
+                      FIO_MAP_KEY key);
+```
+Returns the object in the hash map (if any) or FIO_MAP_TYPE_INVALID.
+
+#### `MAP_insert` (hash map)
+
+```c
+FIO_MAP_TYPE MAP_insert(FIO_MAP_PTR m,
+               FIO_MAP_HASH hash,
+               FIO_MAP_KEY key,
+               FIO_MAP_TYPE obj,
+               FIO_MAP_TYPE *old);
+```
+
+
+Inserts an object to the hash map, returning the new object.
+
+If `old` is given, existing data will be copied to that location.
+
+#### `MAP_remove` (hash map)
+
+```c
+int MAP_remove(FIO_MAP_PTR m,
+               FIO_MAP_HASH hash,
+               FIO_MAP_KEY key,
+               FIO_MAP_TYPE *old);
+```
+
+Removes an object from the hash map.
+
+If `old` is given, existing data will be copied to that location.
+
+Returns 0 on success or -1 if the object couldn't be found.
+
+#### Set - API (set only)
+
+#### `MAP_find` (set)
+
+```c
+FIO_MAP_TYPE MAP_find(FIO_MAP_PTR m,
+                       FIO_MAP_HASH hash,
+                       FIO_MAP_TYPE obj);
+```
+
+Returns the object in the hash map (if any) or `FIO_MAP_TYPE_INVALID`.
+
+#### `MAP_insert` (set)
+
+```c
+FIO_MAP_TYPE MAP_insert(FIO_MAP_PTR m,
+                         FIO_MAP_HASH hash,
+                         FIO_MAP_TYPE obj);
+```
+
+Inserts an object to the hash map, returning the existing or new object.
+
+If `old` is given, existing data will be copied to that location.
+
+#### `MAP_overwrite` (set)
+
+```c
+void MAP_overwrite(FIO_MAP_PTR m,
+                    FIO_MAP_HASH hash,
+                    FIO_MAP_TYPE obj,
+                    FIO_MAP_TYPE *old);
+```
+
+Inserts an object to the hash map, returning the new object.
+
+If `old` is given, existing data will be copied to that location.
+
+
+#### `MAP_remove` (set)
+
+```c
+int MAP_remove(FIO_MAP_PTR m, FIO_MAP_HASH hash,
+               FIO_MAP_TYPE obj, FIO_MAP_TYPE *old);
+```
+
+Removes an object from the hash map.
+
+If `old` is given, existing data will be copied to that location.
+
+Returns 0 on success or -1 if the object couldn't be found.
+
+#### Hash Map / Set - API (common)
+
+#### `MAP_count`
+
+```c
+uintptr_t MAP_count(FIO_MAP_PTR m);
+```
+
+Returns the number of objects in the map.
+
+#### `MAP_capa`
+
+```c
+uintptr_t MAP_capa(FIO_MAP_PTR m);
+```
+
+Returns the current map's theoretical capacity.
+
+#### `MAP_reserve`
+
+```c
+uintptr_t MAP_reserve(FIO_MAP_PTR m, uint32_t capa);
+```
+
+Reserves a minimal capacity for the hash map.
+
+#### `MAP_last`
+
+```c
+FIO_MAP_TYPE MAP_last(FIO_MAP_PTR m);
+```
+
+Allows a peak at the Set's last element.
+
+Remember that objects might be destroyed if the Set is altered (`FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
+
+#### `MAP_pop`
+
+```c
+void MAP_pop(FIO_MAP_PTR m);
+```
+
+Allows the Hash to be momentarily used as a stack, destroying the last object added (`FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
+
+#### `MAP_compact`
+
+```c
+void MAP_compact(FIO_MAP_PTR m);
+```
+
+Attempts to lower the map's memory consumption.
+
+#### `MAP_rehash`
+
+```c
+int MAP_rehash(FIO_MAP_PTR m);
+```
+
+Rehashes the Hash Map / Set. Usually this is performed automatically, no need to call the function.
+
+#### `FIO_MAP_EACH`
+
+```c
+#define FIO_MAP_EACH(map_, pos_)                                               \
+  for (__typeof__((map_)->map) prev__ = NULL,                                  \
+                               pos_ = (map_)->map + (map_)->head;              \
+       (map_)->head != (uint32_t)-1 &&                                         \
+       (prev__ == NULL || pos_ != (map_)->map + (map_)->head);                 \
+       (prev__ = pos_), pos_ = (map_)->map + pos_->next)
+```
+
+A macro for a `for` loop that iterates over all the Map's objects (in order).
+
+Use this macro for small Hash Maps / Sets.
+
+`map` is a pointer to the Hash Map / Set variable and `pos` is a temporary variable name to be created for iteration.
+
+`pos->hash` is the hashing value and `pos->obj` is the object's data.
+
+For hash maps, use `pos->obj.key` and `pos->obj.value` to access the stored data.
+
+_Note: this macro doesn't work with pointer tagging_.
 
 -------------------------------------------------------------------------------
 
@@ -922,7 +1128,7 @@ This function will produce a 64 bit hash for X bytes of data.
 
 -------------------------------------------------------------------------------
 
-## Psedo Random Generation
+## Pseudo Random Generation
 
 If the `FIO_RAND` macro is defined, the following, non-cryptographic
 psedo-random generator functions will be defined.
@@ -1481,7 +1687,7 @@ This function will produce a 64 bit hash for X bytes of data.
 
 -------------------------------------------------------------------------------
 
-## Psedo Random Generation
+## Pseudo Random Generation
 
 If the `FIO_RAND` macro is defined, the following, non-cryptographic
 psedo-random generator functions will be defined.

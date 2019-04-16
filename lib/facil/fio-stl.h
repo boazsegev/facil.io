@@ -3828,7 +3828,7 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, find)(FIO_MAP_PTR m,
                                                 FIO_MAP_KEY key);
 
 /**
- * Insters an object to the hash map, returning the new object.
+ * Inserts an object to the hash map, returning the new object.
  *
  * If `old` is given, existing data will be copied to that location.
  */
@@ -3858,7 +3858,7 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, find)(FIO_MAP_PTR m,
                                                 FIO_MAP_TYPE obj);
 
 /**
- * Insters an object to the hash map, returning the existing or new object.
+ * Inserts an object to the hash map, returning the existing or new object.
  *
  * If `old` is given, existing data will be copied to that location.
  */
@@ -3867,7 +3867,7 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, insert)(FIO_MAP_PTR m,
                                                   FIO_MAP_TYPE obj);
 
 /**
- * Insters an object to the hash map, returning the new object.
+ * Inserts an object to the hash map, returning the new object.
  *
  * If `old` is given, existing data will be copied to that location.
  */
@@ -4283,7 +4283,7 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, find)(FIO_MAP_PTR m_,
 }
 
 /**
- * Insters an object to the hash map, returning the new object.
+ * Inserts an object to the hash map, returning the new object.
  *
  * If `old` is given, existing data will be copied to that location.
  */
@@ -4334,7 +4334,7 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, find)(FIO_MAP_PTR m_,
 }
 
 /**
- * Insters an object to the hash map, returning the existing or new object.
+ * Inserts an object to the hash map, returning the existing or new object.
  *
  * If `old` is given, existing data will be copied to that location.
  */
@@ -4349,7 +4349,7 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, insert)(FIO_MAP_PTR m_,
 }
 
 /**
- * Insters an object to the hash map, returning the new object.
+ * Inserts an object to the hash map, returning the new object.
  *
  * If `old` is given, existing data will be copied to that location.
  */
