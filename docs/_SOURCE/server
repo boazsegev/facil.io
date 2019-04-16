@@ -225,9 +225,10 @@ end
   MD_EXTENSIONS = { with_toc_data: true, strikethrough: true, autolink: true, fenced_code_blocks: true, no_intra_emphasis: true, tables: true, footnotes: true, underline: true, highlight: true }.freeze
   class RedcarpetWithRouge < ::Redcarpet::Render::HTML
     include Rouge::Plugins::Redcarpet
-    # def block_code(code, language)
-    #   "<pre><code class='highlight'>#{::Rouge.highlight(code, (language || 'c'), 'html')}</code></pre>"
-    # end
+    def block_code(code, language)
+      language ||= 'c'
+      super
+    end
   end
   # MD_RENDERER = ::Redcarpet::Markdown.new ::Redcarpet::Render::HTML.new(MD_EXTENSIONS.dup), MD_EXTENSIONS.dup
   MD_RENDERER = ::Redcarpet::Markdown.new RedcarpetWithRouge.new(MD_EXTENSIONS.dup), MD_EXTENSIONS.dup

@@ -1457,38 +1457,38 @@ The main function (listens to the `echo` connections and handles CLI)
 <p>This callback will be called whenever a new connection is accepted. It <strong>must</strong> either call <a href="#fio_attach"><code>fio_attach</code></a> or close the connection.</p>
 
 <p>The callback should accept the new connection&#39;s uuid and a void pointer (the optional <code>udata</code> pointer one passed to <code>fio_listen</code>)</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_open(intptr_t uuid, void *udata);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_open</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>port</code>:</p>
 
 <p>The network service / port. A NULL or &quot;0&quot; port indicates a Unix socket should be used.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-const char *port;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">port</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>address</code>:</p>
 
 <p>The socket binding address. Defaults to the recommended NULL (recommended for TCP/IP).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-const char *address;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">address</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>udata</code>:</p>
 
 <p>Opaque user data. This will be passed along to the <code>on_open</code> callback.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-void *udata;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>on_start</code>:</p>
 
 <p>A callback to be called when the server starts (or a worker process is re-spawned), allowing for further initialization, such as timed event scheduling or VM initialization.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_start(intptr_t uuid, void *udata);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_start</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_finish</code>:</p>
 
 <p>A callback to be called for every process once the listening socket is closed.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_finish(intptr_t uuid, void *udata);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_finish</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 </ul>
 
@@ -1508,42 +1508,42 @@ void on_finish(intptr_t uuid, void *udata);
 <li><p><code>port</code>:</p>
 
 <p>The remote network service / port. A NULL or &quot;0&quot; port indicates a Unix socket connection should be attempted.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-const char *port;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">port</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>address</code>:</p>
 
 <p>The remote (or Unix socket) address. Defaults to the recommended NULL (recommended for TCP/IP).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-const char *address;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">address</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>on_connect</code>:</p>
 
 <p>This callback will be called once the new connection is established. It <strong>must</strong> either call <a href="#fio_attach"><code>fio_attach</code></a> or close the connection.</p>
 
 <p>The callback should accept the new connection&#39;s uuid and a void pointer (the optional <code>udata</code> pointer one passed to <code>fio_connect</code>)</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_connect(intptr_t uuid, void *udata);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_connect</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_connect</code>:</p>
 
 <p>This callback will be called when a socket fails to connect. It&#39;s often a good place for cleanup.</p>
 
 <p>The callback should accept the attempted connection&#39;s uuid (might be -1) and a void pointer (the optional <code>udata</code> pointer one passed to <code>fio_connect</code>)</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_connect(intptr_t uuid, void *udata);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_connect</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>udata</code>:</p>
 
 <p>Opaque user data. This will be passed along to the <code>on_connect</code> or <code>on_fail</code> callback.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-void *udata;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>timeout</code>:</p>
 
 <p>A non-system timeout after which connection is assumed to have failed.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-uint8_t timeout;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">uint8_t</span> <span class="n">timeout</span><span class="p">;</span>
 </code></pre></div></li>
 </ul>
 
@@ -1663,16 +1663,16 @@ data from the protocol&#39;s data structure.</p></li>
 <li><p><code>threads</code>:</p>
 
 <p>The number of threads to run in the thread pool.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-int16_t threads;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">int16_t</span> <span class="n">threads</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>workers</code>:</p>
 
 <p>The number of worker processes to run (in addition to a root process)</p>
 
 <p>This invokes facil.io&#39;s cluster mode, where a crashed worker will be automatically re-spawned and &quot;hot restart&quot; is enabled (using the USR1 signal).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-int16_t workers;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">int16_t</span> <span class="n">workers</span><span class="p">;</span>
 </code></pre></div></li>
 </ul>
 
@@ -1864,13 +1864,13 @@ global zombie reaping.</p>
 <li><p><code>data.buffer</code> OR <code>data.fd</code>:</p>
 
 <p>The data to be sent. This can be either a block of memory or a file descriptor.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-union {
-   /** The in-memory data to be sent. */
-   const void *buffer;
-   /** The data to be sent, if this is a file. */
-   const intptr_t fd;
-} data;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="k">union</span> <span class="p">{</span>
+   <span class="cm">/** The in-memory data to be sent. */</span>
+   <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">;</span>
+   <span class="cm">/** The data to be sent, if this is a file. */</span>
+   <span class="k">const</span> <span class="kt">intptr_t</span> <span class="n">fd</span><span class="p">;</span>
+<span class="p">}</span> <span class="n">data</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>after.dealloc</code> OR <code>after.close</code>:</p>
 
@@ -1881,35 +1881,35 @@ union {
 <p>A no-operation (do nothing) function is provided for sending static data: <code>FIO_DEALLOC_NOOP</code>. Use this: <code>.after.dealloc = FIO_DEALLOC_NOOP</code></p>
 
 <p>Note: connection library functions MUST NEVER be called by a callback, or a deadlock might occur.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-union {
-  void (*dealloc)(void *buffer);
-  void (*close)(intptr_t fd);
-} after;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="k">union</span> <span class="p">{</span>
+  <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">dealloc</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">);</span>
+  <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">close</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">fd</span><span class="p">);</span>
+<span class="p">}</span> <span class="n">after</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>length</code>:</p>
 
 <p>The length (size) of the buffer, or the amount of data to be sent from the file descriptor.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-uintptr_t length;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>offset</code>:</p>
 
 <p>Starting point offset from the buffer or file descriptor&#39;s beginning.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-uintptr_t offset;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">uintptr_t</span> <span class="n">offset</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>urgent</code>:</p>
 
 <p>The data will be sent as soon as possible, moving forward in the connection&#39;s queue as much as possible without fragmenting other <code>fio_write2</code> calls.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-unsigned urgent : 1;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">unsigned</span> <span class="n">urgent</span> <span class="o">:</span> <span class="mi">1</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>is_fd</code>:</p>
 
 <p>The <code>data</code> union contains the value of a file descriptor (<code>intptr_t</code>). i.e.: <code>.data.fd = fd</code> or <code>.data.buffer = (void*)fd;</code></p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-unsigned is_fd : 1;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">unsigned</span> <span class="n">is_fd</span> <span class="o">:</span> <span class="mi">1</span><span class="p">;</span>
 </code></pre></div></li>
 </ul>
 
@@ -2168,26 +2168,26 @@ will repeat forever.</p>
 <li><p><code>type</code>:</p>
 
 <p>The type of lock that should be used to protect the IO task. Defaults to <code>FIO_PR_LOCK_TASK</code> (see later).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-enum fio_protocol_lock_e type;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="k">enum</span> <span class="n">fio_protocol_lock_e</span> <span class="n">type</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>task</code>:</p>
 
 <p>The task (function) to be performed. The tasks accepts the connection&#39;s <code>uuid</code>, a pointer to the protocol object and the opaque <code>udata</code> pointer passed to <code>fio_defer_io_task</code>.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// Callback example:
-void task(intptr_t uuid, fio_protocol_s *, void *udata);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// Callback example:</span>
+<span class="kt">void</span> <span class="n">task</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>fallback</code>:</p>
 
 <p>A fallback task (function) to be performed in cases where the <code>uuid</code> isn&#39;t valid by the time the task should be executed. The fallback task accepts the connection&#39;s <code>uuid</code> and the opaque <code>udata</code> pointer passed to <code>fio_defer_io_task</code>.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// Callback example:
-void fallback(intptr_t uuid, void *udata);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// Callback example:</span>
+<span class="kt">void</span> <span class="n">fallback</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>udata</code>:</p>
 
 <p>An opaque pointer that&#39;s passed along to the task.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-void *udata;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">;</span>
 </code></pre></div></li>
 </ul>
 
@@ -2291,16 +2291,16 @@ void *udata;
 <p>Subscriptions can either require a match by filter or match by channel. This will match the subscription by filter.</p>
 
 <p><strong>Note</strong>: filter based messages are considered internal. They aren&#39;t shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks (both subjects are covered later on).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-int32_t filter;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">int32_t</span> <span class="n">filter</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>channel</code>:</p>
 
 <p>If <code>filter == 0</code> (or unset), than the subscription will be made using <code>channel</code> binary name matching. Note that and empty string (NULL pointer and 0 length) is a valid channel name.</p>
 
 <p>Subscriptions can either require a match by filter or match by channel. This will match the subscription by channel (only messages with no <code>filter</code> will be received).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-fio_str_info_s channel;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>match</code>:</p>
 
@@ -2309,31 +2309,31 @@ fio_str_info_s channel;
 <p>A single matching function is bundled with facil.io (<code>FIO_MATCH_GLOB</code>), which follows the Redis matching logic.</p>
 
 <p>This is significantly slower, as no Hash Map can be used to locate a match - each message published to a channel will be tested for a match against each pattern.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-int foo_bar_match_fn(fio_str_info_s pattern, fio_str_info_s channel);
-// type:
-typedef int (*fio_match_fn)(fio_str_info_s pattern, fio_str_info_s channel);
-fio_match_fn match;
-extern fio_match_fn FIO_MATCH_GLOB;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">int</span> <span class="n">foo_bar_match_fn</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">);</span>
+<span class="c1">// type:</span>
+<span class="k">typedef</span> <span class="kt">int</span> <span class="p">(</span><span class="o">*</span><span class="n">fio_match_fn</span><span class="p">)(</span><span class="n">fio_str_info_s</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">);</span>
+<span class="n">fio_match_fn</span> <span class="n">match</span><span class="p">;</span>
+<span class="k">extern</span> <span class="n">fio_match_fn</span> <span class="n">FIO_MATCH_GLOB</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>on_message</code>:</p>
 
 <p>The callback will be called for each message forwarded to the subscription.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void on_message(fio_msg_s *msg);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="n">on_message</span><span class="p">(</span><span class="n">fio_msg_s</span> <span class="o">*</span><span class="n">msg</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_unsubscribe</code>:</p>
 
 <p>The callback will be called once the subscription is canceled, allowing it&#39;s resources to be freed.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// callback example:
-void (*on_unsubscribe)(void *udata1, void *udata2);
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
+<span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">on_unsubscribe</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="n">udata1</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata2</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>udata1</code> and <code>udata2</code>:</p>
 
 <p>These are the opaque user data pointers passed to <code>on_message</code> and <code>on_unsubscribe</code>.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-void *udata1;
-void *udata2;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">void</span> <span class="o">*</span><span class="n">udata1</span><span class="p">;</span>
+<span class="kt">void</span> <span class="o">*</span><span class="n">udata2</span><span class="p">;</span>
 </code></pre></div></li>
 </ul>
 
@@ -2408,28 +2408,28 @@ string representing the filter).</p>
 <p>If <code>filter</code> is set, all messages that match the filter&#39;s numerical value will be forwarded to the subscription&#39;s callback.</p>
 
 <p>Subscriptions can either require a match by filter or match by channel. This will match the subscription by filter.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-int32_t filter;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">int32_t</span> <span class="n">filter</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>channel</code>:</p>
 
 <p>If <code>filter == 0</code> (or unset), than the subscription will be made using <code>channel</code> binary name matching. Note that and empty string (NULL pointer and 0 length) is a valid channel name.</p>
 
 <p>Subscriptions can either require a match by filter or match by channel. This will match the subscription by channel (only messages with no <code>filter</code> will be received).</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-fio_str_info_s channel;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>message</code>:</p>
 
 <p>The message data to be sent.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-fio_str_info_s message;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="n">fio_str_info_s</span> <span class="n">message</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>is_json</code>:</p>
 
 <p>A flag indicating if the message is JSON data or binary/text.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-uint8_t is_json;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="kt">uint8_t</span> <span class="n">is_json</span><span class="p">;</span>
 </code></pre></div></li>
 <li><p><code>engine</code>:</p>
 
@@ -2445,10 +2445,10 @@ uint8_t is_json;
 </ul>
 
 <p>The default pub/sub can be changed globally by assigning a new default engine to the <code>FIO_PUBSUB_DEFAULT</code> global variable.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>// type:
-fio_pubsub_engine_s const *engine;
-// default engine:
-extern fio_pubsub_engine_s *FIO_PUBSUB_DEFAULT;
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// type:</span>
+<span class="n">fio_pubsub_engine_s</span> <span class="k">const</span> <span class="o">*</span><span class="n">engine</span><span class="p">;</span>
+<span class="c1">// default engine:</span>
+<span class="k">extern</span> <span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">FIO_PUBSUB_DEFAULT</span><span class="p">;</span>
 </code></pre></div></li>
 </ul>
 
@@ -2536,19 +2536,19 @@ performance in large network based broadcasting.</p>
 
 <ul>
 <li><p><code>subscribe</code> - Should subscribe channel. Failures are ignored.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>void subscribe(const fio_pubsub_engine_s *eng,
-               fio_str_info_s channel,
-               fio_match_fn match);
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">subscribe</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">eng</span><span class="p">,</span>
+               <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">,</span>
+               <span class="n">fio_match_fn</span> <span class="n">match</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>unsubscribe</code> - Should unsubscribe channel. Failures are ignored.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>void unsubscribe(const fio_pubsub_engine_s *eng,
-                 fio_str_info_s channel,
-                 fio_match_fn match);
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">unsubscribe</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">eng</span><span class="p">,</span>
+                 <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">,</span>
+                 <span class="n">fio_match_fn</span> <span class="n">match</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>publish</code> - Should publish a message through the engine. Failures are ignored.</p>
-<div class="highlight"><pre class="highlight plaintext"><code>int publish(const fio_pubsub_engine_s *eng,
-            fio_str_info_s channel,
-            fio_str_info_s msg, uint8_t is_json);
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">publish</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">eng</span><span class="p">,</span>
+            <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">,</span>
+            <span class="n">fio_str_info_s</span> <span class="n">msg</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">is_json</span><span class="p">);</span>
 </code></pre></div></li>
 </ul>
 

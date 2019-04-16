@@ -179,17 +179,20 @@
 </code></pre></div>
 <p>Returns the object&#39;s type.</p>
 
-<p>Valid return values are:
-<code>FIOBJ_T_NULL</code> - Object is the primitive <code>null</code>
-* <code>FIOBJ_T_TRUE</code> - Object is the primitive <code>true</code> 
-* <code>FIOBJ_T_FALSE</code> - Object is the primitive <code>false</code> 
-* <code>FIOBJ_T_NUMBER</code> - Object is a number.
-* <code>FIOBJ_T_FLOAT</code> - Object is a floating point number (<code>double</code>).
-* <code>FIOBJ_T_STRING</code> - Object is a binary String.
-* <code>FIOBJ_T_ARRAY</code> - Object is a FIOBJ array.
-* <code>FIOBJ_T_HASH</code> - Object is a FIOBJ hash.
-* <code>FIOBJ_T_DATA</code> - Object is a data stream, either wrapping a temporary file or a memory block.
-* <code>FIOBJ_T_UNKNOWN</code> - Object type is unknown (a user&#39;s type).</p>
+<p>Valid return values are:</p>
+
+<ul>
+<li><code>FIOBJ_T_NULL</code> - Object is the primitive <code>null</code></li>
+<li><code>FIOBJ_T_TRUE</code> - Object is the primitive <code>true</code> </li>
+<li><code>FIOBJ_T_FALSE</code> - Object is the primitive <code>false</code> </li>
+<li><code>FIOBJ_T_NUMBER</code> - Object is a number.</li>
+<li><code>FIOBJ_T_FLOAT</code> - Object is a floating point number (<code>double</code>).</li>
+<li><code>FIOBJ_T_STRING</code> - Object is a binary String.</li>
+<li><code>FIOBJ_T_ARRAY</code> - Object is a FIOBJ array.</li>
+<li><code>FIOBJ_T_HASH</code> - Object is a FIOBJ hash.</li>
+<li><code>FIOBJ_T_DATA</code> - Object is a data stream, either wrapping a temporary file or a memory block.</li>
+<li><code>FIOBJ_T_UNKNOWN</code> - Object type is unknown (a user&#39;s type).</li>
+</ul>
 
 <h4 id="fiobj_type_is"><code>fiobj_type_is</code></h4>
 <div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_type_is</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">o</span><span class="p">,</span> <span class="n">fiobj_type_enum</span> <span class="n">type</span><span class="p">)</span>
@@ -271,9 +274,11 @@ will be parsed as a <em>temporary</em>, thread-safe, String.</p>
 <h4 id="fiobj_obj2hash"><code>fiobj_obj2hash</code></h4>
 <div class="highlight"><pre class="highlight c"><code><span class="kt">uint64_t</span> <span class="n">fiobj_obj2hash</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">o</span><span class="p">);</span>
 </code></pre></div>
-<p>Calculates an Objects&#39;s SipHash value for possible use as a HashMap key.</p>
+<p>Calculates an Object&#39;s hash value for possible use as a HashMap key.</p>
 
-<p>The Object MUST answer to the fiobj_obj2cstr, or the result is unusable. In other woords, Hash Objects and Arrays can NOT be used for Hash keys.</p>
+<p>Hash values use the default hashing function defined at compile time. This is usually SipHash 1-3, but could be set to a different hashing function (such as RiskyHash).</p>
+
+<p>The Object MUST answer to the fiobj_obj2cstr, or the result is unusable. In other words, Hash Objects and Arrays can NOT be used for Hash keys.</p>
 
 <h3 id="iteration">Iteration</h3>
 
