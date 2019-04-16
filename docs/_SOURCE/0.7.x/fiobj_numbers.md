@@ -107,7 +107,7 @@ beginning of the string).
 
 Returns the number of bytes actually written (excluding the NUL terminator).
 
-#### `fio_ltocstr`
+#### `fio_ltocstr` (deprecated)
 
 ```c
 fio_str_info_s fio_ltocstr(long);
@@ -117,7 +117,7 @@ Converts a number to a temporary, thread local, C string object
 
 The `fio_str_s` object is only valid until the function is called again within the same thread or the thread terminates.
 
-#### `fio_ftocstr`
+#### `fio_ftocstr` (deprecated)
 
 ```c
 fio_str_info_s fio_ftocstr(double);
