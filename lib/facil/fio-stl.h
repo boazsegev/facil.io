@@ -6738,7 +6738,7 @@ IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME,
 IFUNC FIO_REF_METADATA *FIO_NAME(FIO_REF_NAME,
                                  metadata)(FIO_REF_TYPE_PTR wrapped_) {
   FIO_REF_TYPE *wrapped = (FIO_REF_TYPE *)(FIO_PTR_UNTAG(wrapped_));
-  FIO_NAME(FIO_REF_NAME, s) *o =
+  FIO_NAME(FIO_REF_NAME, _wrapper_s) *o =
       FIO_PTR_FROM_FIELD(FIO_NAME(FIO_REF_NAME, _wrapper_s), wrapped, wrapped);
   return &o->metadata;
 }
@@ -6766,6 +6766,7 @@ Reference Counter (Wrapper) Cleanup
 #undef FIO_REF_TYPE
 #undef FIO_REF_INIT
 #undef FIO_REF_DESTROY
+#undef FIO_REF_METADATA
 #undef FIO_REF_METADATA_INIT
 #undef FIO_REF_METADATA_DESTROY
 #undef FIO_REF_TYPE_PTR
