@@ -20,9 +20,8 @@
 
 <h3 id="extensions"><a href="/0.7.x/extensions">Extensions</a></h3>
 
-<!-- * [TLS (SSL)](/0.7.x/fio_tls) -->
-
 <ul>
+<li><a href="/0.7.x/fio_tls">TLS (SSL)</a></li>
 <li><a href="/0.7.x/http">HTTP / WebSockets</a></li>
 <li><a href="/0.7.x/redis">Redis (client)</a></li>
 <li><a href="/0.7.x/fio_cli">CLI (command line)</a></li>
@@ -73,6 +72,9 @@
 </li>
 <li>
 <a href="#fio_tls_alpn_add"><code>fio_tls_alpn_add</code></a>
+</li>
+<li>
+<a href="#fio_tls_alpn_count"><code>fio_tls_alpn_count</code></a>
 </li>
 </ul>
 </li>
@@ -191,6 +193,15 @@
 <p>The <code>on_cleanup</code> callback will be called when the TLS object is destroyed (or <code>fio_tls_alpn_add</code> is called again with the same protocol name). The <code>udata_tls</code> argument will be passed along, as is, to the callback (if set).</p>
 
 <p>Except for the <code>tls</code> and <code>protocol_name</code> arguments, all arguments can be NULL.</p>
+
+<h4 id="fio_tls_alpn_count"><code>fio_tls_alpn_count</code></h4>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uintptr_t</span> <span class="n">fio_tls_alpn_count</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">);</span>
+</code></pre></div>
+<p>Returns the number of registered ALPN protocol names.</p>
+
+<p>This could be used when deciding if protocol selection should be delegated to the ALPN mechanism, or whether a protocol should be immediately assigned.</p>
+
+<p>If no ALPN protocols are registered, zero (0) is returned.</p>
 
 <h3 id="tls-connection-establishment">TLS Connection Establishment</h3>
 

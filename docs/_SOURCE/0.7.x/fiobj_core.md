@@ -71,16 +71,17 @@ fiobj_type_enum fiobj_type(FIOBJ o);
 Returns the object's type.
 
 Valid return values are:
-`FIOBJ_T_NULL` - Object is the primitive `null`
-* `FIOBJ_T_TRUE` - Object is the primitive `true` 
-* `FIOBJ_T_FALSE` - Object is the primitive `false` 
-* `FIOBJ_T_NUMBER` - Object is a number.
-* `FIOBJ_T_FLOAT` - Object is a floating point number (`double`).
-* `FIOBJ_T_STRING` - Object is a binary String.
-* `FIOBJ_T_ARRAY` - Object is a FIOBJ array.
-* `FIOBJ_T_HASH` - Object is a FIOBJ hash.
-* `FIOBJ_T_DATA` - Object is a data stream, either wrapping a temporary file or a memory block.
-* `FIOBJ_T_UNKNOWN` - Object type is unknown (a user's type).
+
+- `FIOBJ_T_NULL` - Object is the primitive `null`
+- `FIOBJ_T_TRUE` - Object is the primitive `true` 
+- `FIOBJ_T_FALSE` - Object is the primitive `false` 
+- `FIOBJ_T_NUMBER` - Object is a number.
+- `FIOBJ_T_FLOAT` - Object is a floating point number (`double`).
+- `FIOBJ_T_STRING` - Object is a binary String.
+- `FIOBJ_T_ARRAY` - Object is a FIOBJ array.
+- `FIOBJ_T_HASH` - Object is a FIOBJ hash.
+- `FIOBJ_T_DATA` - Object is a data stream, either wrapping a temporary file or a memory block.
+- `FIOBJ_T_UNKNOWN` - Object type is unknown (a user's type).
 
 #### `fiobj_type_is`
 
@@ -188,9 +189,11 @@ A type error results in NULL (i.e. object can't be represented automatically as 
 uint64_t fiobj_obj2hash(const FIOBJ o);
 ```
 
-Calculates an Objects's SipHash value for possible use as a HashMap key.
+Calculates an Object's hash value for possible use as a HashMap key.
 
-The Object MUST answer to the fiobj_obj2cstr, or the result is unusable. In other woords, Hash Objects and Arrays can NOT be used for Hash keys.
+Hash values use the default hashing function defined at compile time. This is usually SipHash 1-3, but could be set to a different hashing function (such as RiskyHash).
+
+The Object MUST answer to the fiobj_obj2cstr, or the result is unusable. In other words, Hash Objects and Arrays can NOT be used for Hash keys.
 
 ### Iteration
 

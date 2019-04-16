@@ -12,6 +12,8 @@ These bundled extensions to the core library provide common functionality. They 
 
 The following extensions come bundled along with facio.io:
 
+* The [TLS (`fio_tls`)](fio_tls) extension for adding SSL/TLS support (requires 3rd party libraries).
+
 * The [CLI (`fio_cli`)](fio_cli) extension for handling command line arguments.
 
 * The [`FIOBJ`](fiobj) extension - this extension defines dynamic soft types and JSON helpers, making it easier to handle network bound information which often contains mixed types.
