@@ -1,5 +1,24 @@
 ## [Version 0.7.x](/0.7.x/index)
 
+### [Extensions](/0.7.x/extensions)
+
+* [HTTP / WebSockets](/0.7.x/http)
+* [Redis (client)](/0.7.x/redis)
+* [CLI (command line)](/0.7.x/fio_cli)
+* [TLS (SSL)](/0.7.x/fio_tls)
+
+### [The FIOBJ types](/0.7.x/fiobj)
+
+* [Core Functions](/0.7.x/fiobj_core)
+* [Primitives](/0.7.x/fiobj_primitives)
+* [Numbers](/0.7.x/fiobj_numbers)
+* [Strings](/0.7.x/fiobj_str)
+* [Array](/0.7.x/fiobj_ary)
+* [HashMap](/0.7.x/fiobj_hash)
+* [Data Streams](/0.7.x/fiobj_data)
+* [JSON](/0.7.x/fiobj_json)
+* [Mustache](/0.7.x/fiobj_mustache)
+
 ### [Core Library](/0.7.x/fio)
 * [Protocol Management](/0.7.x/fio#connection-protocol-management)
 * [Running the IO reactor](/0.7.x/fio#running-facil-io)
@@ -14,25 +33,6 @@
 * [Hash Maps / Sets](/0.7.x/fio#hash-maps-sets)
 * [Compilation Macros](/0.7.x/fio#version-and-compilation-related-macros)
 * [Weak Functions](/0.7.x/fio#weak-functions)
-
-### [Extensions](/0.7.x/extensions)
-
-* [TLS (SSL)](/0.7.x/fio_tls)
-* [HTTP / WebSockets](/0.7.x/http)
-* [Redis (client)](/0.7.x/redis)
-* [CLI (command line)](/0.7.x/fio_cli)
-
-### [The FIOBJ types](/0.7.x/fiobj)
-
-* [Core Functions](/0.7.x/fiobj_core)
-* [Primitives](/0.7.x/fiobj_primitives)
-* [Numbers](/0.7.x/fiobj_numbers)
-* [Strings](/0.7.x/fiobj_str)
-* [Array](/0.7.x/fiobj_ary)
-* [HashMap](/0.7.x/fiobj_hash)
-* [Data Streams](/0.7.x/fiobj_data)
-* [JSON](/0.7.x/fiobj_json)
-* [Mustache](/0.7.x/fiobj_mustache)
 
 ### Miscellaneous
 
