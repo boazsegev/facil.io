@@ -370,7 +370,7 @@ struct http_settings_s {
    *       sockets count towards a server's limit.
    */
   intptr_t max_clients;
-  /** reserved for future SSL/TLS support. */
+  /** SSL/TLS support. */
   void *tls;
   /** reserved for future use. */
   intptr_t reserved1;

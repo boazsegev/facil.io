@@ -370,6 +370,12 @@ The following arguments are supported:
         // type:
         void *udata;
 
+* `tls`:
+
+    A pointer to a `fio_tls_s` object, for [SSL/TLS support](fio_tls) (fio_tls.h).
+
+        // type:
+        void *tls;
 
 * `on_start`:
 
@@ -449,6 +455,13 @@ The following arguments are supported:
 
         // type:
         uint8_t timeout;
+
+* `tls`:
+
+    A pointer to a `fio_tls_s` object, for [SSL/TLS support](fio_tls) (fio_tls.h).
+
+        // type:
+        void *tls;
 
 
 ### URL Parsing

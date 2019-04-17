@@ -91,6 +91,13 @@ In addition to the `port` and `address` argument (explained in [`fio_listen`](fi
         // type:
         size_t public_folder_length;
 
+* `tls`:
+
+    A pointer to a `fio_tls_s` object, for [SSL/TLS support](fio_tls) (fio_tls.h).
+
+        // type:
+        void *tls;
+
 * `max_header_size`:
 
     The maximum number of bytes allowed for the request string (method, path, query), header names and fields.
