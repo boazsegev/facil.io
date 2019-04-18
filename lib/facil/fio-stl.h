@@ -2623,6 +2623,9 @@ Linked Lists (embeded) - Type
 Linked Lists (embeded) - API
 ***************************************************************************** */
 
+/** Initialize FIO_LIST_HEAD objects - already defined. */
+/* FIO_LIST_INIT(obj) */
+
 /** Returns a non-zero value if there are any linked nodes in the list. */
 IFUNC int FIO_NAME(FIO_LIST_NAME, any)(FIO_LIST_HEAD *head);
 
@@ -3546,7 +3549,64 @@ Dynamic Arrays - cleanup
 
 
 
+Example - string based map which automatically copies and frees string data:
 
+```c
+#define FIO_RISKY_HASH 1 // for hash value computation
+#define FIO_ATOL 1       // for string <=> number conversion
+#include "fio-stl.h"
+
+#define FIO_MAP_NAME mstr
+
+#define FIO_MAP_TYPE char *
+#define FIO_MAP_TYPE_DESTROY(s) fio_free(s)
+#define FIO_MAP_TYPE_COPY(dest, src)                                           \
+  do {                                                                         \
+    size_t l = sizeof(char) * (strlen(src) + 1);                               \
+    dest = fio_malloc(l);                                                      \
+    memcpy(dest, src, l);                                                      \
+  } while (0)
+
+#define FIO_MAP_KEY char *
+#define FIO_MAP_KEY_CMP(a, b) (!strcmp((a), (b)))
+#define FIO_MAP_KEY_DESTROY(s) fio_free(s)
+#define FIO_MAP_KEY_COPY(dest, src)                                            \
+  do {                                                                         \
+    size_t l = sizeof(char) * (strlen(src) + 1);                               \
+    dest = fio_malloc(l);                                                      \
+    memcpy(dest, src, l);                                                      \
+  } while (0)
+
+#include "fio-stl.h"
+
+void main2(void) {
+  mstr_s map = FIO_MAP_INIT;
+  for (size_t i = 0; i < 16; ++i) {
+    /. create and insert keys
+    char key_buf[48];
+    char val_buf[48];
+    size_t key_len = fio_ltoa(key_buf, i, 2);
+    key_buf[key_len] = 0;
+    val_buf[fio_ltoa(val_buf, i, 16)] = 0;
+    mstr_insert(&map, fio_risky_hash(key_buf, key_len, 0), key_buf, val_buf,
+                NULL);
+  }
+  fprintf(stderr, "Mapping binary representation strings to hex:\n");
+  FIO_MAP_EACH(&map, pos) {
+    // print keys in insertion order
+    fprintf(stderr, "%s => %s\n", pos->obj.key, pos->obj.value);
+  }
+  for (size_t i = 15; i < 16; --i) {
+    // search keys out of order
+    char key_buf[48];
+    size_t key_len = fio_ltoa(key_buf, i, 2);
+    key_buf[key_len] = 0;
+    char *val = mstr_find(&map, fio_risky_hash(key_buf, key_len, 0), key_buf);
+    fprintf(stderr, "found %s => %s\n", key_buf, val);
+  }
+  mstr_destroy(&map); // will automatically free strings
+}
+```
 
 ***************************************************************************** */
 #ifdef FIO_MAP_NAME
@@ -3764,9 +3824,6 @@ typedef struct {
   uint8_t under_attack;
 } FIO_NAME(FIO_MAP_NAME, s);
 
-#define FIO_MAP_INIT                                                           \
-  { .map = NULL }
-
 #ifdef FIO_PTR_TAG_TYPE
 #define FIO_MAP_PTR FIO_PTR_TAG_TYPE
 #else
@@ -3776,6 +3833,13 @@ typedef struct {
 /* *****************************************************************************
 Hash Map / Set - API (initialization)
 ***************************************************************************** */
+
+#ifndef FIO_MAP_INIT
+/* Initialization macro. */
+#define FIO_MAP_INIT                                                           \
+  { .map = NULL }
+
+#endif
 
 /**
  * Allocates a new map on the heap.

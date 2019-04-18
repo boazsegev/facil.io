@@ -166,12 +166,14 @@ typedef struct {
 ### Linked Lists (embeded) - API
 
 
-#### `LIST_init`
+#### `FIO_LIST_INIT(head)`
 
 ```c
-void LIST_init(FIO_LIST_HEAD *head)
+#define FIO_LIST_INIT(obj)                                                     \
+  { .next = &(obj), .prev = &(obj) }
 ```
-Initializes an uninitialized node (assumes the data in the node is junk). 
+
+This macro initializes an uninitialized node (assumes the data in the node is junk). 
 
 #### `LIST_any`
 
@@ -325,8 +327,7 @@ typedef struct {
 #include "fio_cstl.h"
 
 void example(void) {
-  ary_s a;
-  ary_init(&a);
+  ary_s a = FIO_ARY_INIT;
   foo_s *p = ary_push(&a, (foo_s){.i = 42});
   FIO_ARY_EACH(&a, pos) { // pos will be a pointer to the element
     fprintf(stderr, "* [%zu]: %p : %d\n", (size_t)(pos - ary_to_a(&a)), pos->i);
@@ -350,19 +351,13 @@ typedef struct {
 
 The array type should be considered opaque. Use the helper functions to updated the array's state when possible, even though the array's data is easily understood and could be manually adjusted as needed.
 
-#### `ARY_init`
+#### `FIO_ARY_INIT`
 
 ````c
-void ARY_init(ARY_s * ary);
+#define FIO_ARY_INIT  {0}
 ````
 
-Initializes an uninitialized array object.
-
-In addition, the following macro can be used for static initializations:
-
-```c
-#define FIO_ARY_INIT  {0}
-```
+This macro initializes an uninitialized array object.
 
 #### `ARY_destroy`
 
@@ -638,7 +633,11 @@ To limit the number of elements in a map (FIFO), allowing it to behave similarly
 
 if `FIO_MAP_MAX_ELEMENTS` is `0`, then the theoretical maximum number of elements should be: `(1 << 32) - 1`. In practice, the safe limit should be calculated as `1 << 31`.
 
-For the full list of functions see: Hash Map / Set - API
+Example:
+
+```c
+/* TODO */
+```
 
 ### Hash Map / Set - API (initialization)
 
@@ -658,13 +657,13 @@ void MAP_free(MAP_PTR m);
 
 Frees a map that was allocated on the heap.
 
-#### `MAP_init`
+#### `FIO_MAP_INIT`
 
 ```c
-void MAP_init(MAP_PTR m);
+#define FIO_MAP_INIT { .map = NULL }
 ```
 
-Initializes a map object - often used for maps placed on the stack.
+This macro initializes a map object - often used for maps placed on the stack.
 
 #### `MAP_destroy`
 
