@@ -2623,9 +2623,6 @@ Linked Lists (embeded) - Type
 Linked Lists (embeded) - API
 ***************************************************************************** */
 
-/** Initializes an uninitialized node (assumes the data in the node is junk). */
-IFUNC void FIO_NAME(FIO_LIST_NAME, init)(FIO_LIST_HEAD *head);
-
 /** Returns a non-zero value if there are any linked nodes in the list. */
 IFUNC int FIO_NAME(FIO_LIST_NAME, any)(FIO_LIST_HEAD *head);
 
@@ -2669,12 +2666,6 @@ IFUNC FIO_LIST_TYPE_PTR FIO_NAME(FIO_LIST_NAME, root)(FIO_LIST_HEAD *ptr);
 Linked Lists (embeded) - Implementation
 ***************************************************************************** */
 #ifdef FIO_EXTERN_COMPLETE
-
-/** Initializes an uninitialized node (assumes the data in the node is junk). */
-IFUNC void FIO_NAME(FIO_LIST_NAME, init)(FIO_LIST_HEAD *head) {
-  head = (FIO_LIST_HEAD *)(FIO_PTR_UNTAG(head));
-  head->next = head->prev = head;
-}
 
 /** Returns a non-zero value if there are any linked nodes in the list. */
 IFUNC int FIO_NAME(FIO_LIST_NAME, any)(FIO_LIST_HEAD *head) {
@@ -2786,8 +2777,7 @@ typedef struct {
 #include "fio_cstl.h"
 
 void example(void) {
-  ary_s a;
-  ary_init(&a);
+  ary_s a = FIO_ARY_INIT;
   foo_s *p = ary_push(&a, (foo_s){.i = 42});
   FIO_ARY_EACH(&a, pos) { // pos will be a pointer to the element
     fprintf(stderr, "* [%zu]: %p : %d\n", (size_t)(pos - ary_to_a(&a)), pos->i);
@@ -2878,9 +2868,6 @@ Dynamic Arrays - API
 #define FIO_ARY_INIT                                                           \
   { 0 }
 #endif
-
-/* Initializes an uninitialized array object. */
-IFUNC void FIO_NAME(FIO_ARY_NAME, init)(FIO_ARY_PTR ary);
 
 /* Destroys any objects stored in the array and frees the internal state. */
 IFUNC void FIO_NAME(FIO_ARY_NAME, destroy)(FIO_ARY_PTR ary);
@@ -3074,13 +3061,6 @@ Dynamic Arrays - internal helpers
 /* *****************************************************************************
 Dynamic Arrays - implementation
 ***************************************************************************** */
-
-/* Initializes an uninitialized array object. */
-IFUNC void FIO_NAME(FIO_ARY_NAME, init)(FIO_ARY_PTR ary_) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
-  *ary = (FIO_NAME(FIO_ARY_NAME, s))FIO_ARY_INIT;
-}
 
 /* Destroys any objects stored in the array and frees the internal state. */
 IFUNC void FIO_NAME(FIO_ARY_NAME, destroy)(FIO_ARY_PTR ary_) {
@@ -3808,11 +3788,6 @@ IFUNC FIO_MAP_PTR FIO_NAME(FIO_MAP_NAME, new)(void);
 IFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m);
 
 /**
- * Initializes a map object - often used for maps placed on the stack.
- */
-IFUNC void FIO_NAME(FIO_MAP_NAME, init)(FIO_MAP_PTR m);
-
-/**
  * Destroys the map's internal data and re-initializes it.
  */
 IFUNC void FIO_NAME(FIO_MAP_NAME, destroy)(FIO_MAP_PTR m);
@@ -4212,15 +4187,6 @@ IFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m_) {
 }
 
 /**
- * Initializes a map object - often used for maps placed on the stack.
- */
-IFUNC void FIO_NAME(FIO_MAP_NAME, init)(FIO_MAP_PTR m_) {
-  FIO_NAME(FIO_MAP_NAME, s) *m =
-      (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
-  *m = (FIO_NAME(FIO_MAP_NAME, s))FIO_MAP_INIT;
-}
-
-/**
  * Destroys the map's internal data and re-initializes it.
  */
 IFUNC void FIO_NAME(FIO_MAP_NAME, destroy)(FIO_MAP_PTR m_) {
@@ -4613,11 +4579,6 @@ typedef struct {
 #endif /* FIO_STR_INIT */
 
 /**
- * Initializes the string object, ignoring any existing values / data.
- */
-IFUNC void FIO_NAME(FIO_STR_NAME, init)(FIO_STR_PTR s);
-
-/**
  * Frees the String's resources and reinitializes the container.
  *
  * Note: if the container isn't allocated on the stack, it should be freed
@@ -4886,14 +4847,6 @@ HSFUNC void FIO_NAME(FIO_STR_NAME, _default_dealloc)(void *ptr, size_t size) {
 /* *****************************************************************************
 String Implementation - initialization
 ***************************************************************************** */
-
-/**
- * Initializes the string object, ignoring any existing values / data.
- */
-IFUNC void FIO_NAME(FIO_STR_NAME, init)(FIO_STR_PTR s_) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  *s = (FIO_NAME(FIO_STR_NAME, s))FIO_STR_INIT;
-}
 
 /**
  * Frees the String's resources and reinitializes the container.
@@ -7197,8 +7150,7 @@ typedef struct {
 
 TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
   fprintf(stderr, "* Testing linked lists\n");
-  FIO_LIST_HEAD ls;
-  ls____test_init(&ls);
+  FIO_LIST_HEAD ls = FIO_LIST_INIT(ls);
   for (int i = 0; i < REPEAT; ++i) {
     ls____test_s *node = ls____test_push(&ls, FIO_MEM_CALLOC(sizeof(*node), 1));
     node->data = i;
@@ -7262,7 +7214,7 @@ static int ary____test_was_destroyed = 0;
 #define FIO_ARY_NAME ary____test
 #define FIO_ARY_TYPE int
 #define FIO_REF_NAME ary____test
-#define FIO_REF_INIT(obj) ary____test_init(&obj)
+#define FIO_REF_INIT(obj) obj = (ary____test_s)FIO_ARY_INIT
 #define FIO_REF_DESTROY(obj)                                                   \
   do {                                                                         \
     ary____test_destroy(&obj);                                                 \
@@ -7300,7 +7252,7 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   TEST_ASSERT(ary____test_count(&a) == 0,
               "Freshly initialized array should have zero elements");
   memset(&a, 1, sizeof(a));
-  ary____test_init(&a);
+  a = (ary____test_s)FIO_ARY_INIT;
   TEST_ASSERT(ary____test_capa(&a) == 0,
               "Reinitialized array should have zero capacity");
   TEST_ASSERT(ary____test_count(&a) == 0,
