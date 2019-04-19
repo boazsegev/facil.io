@@ -3982,7 +3982,7 @@ IFUNC uint32_t FIO_NAME(FIO_MAP_NAME,
  *
  * For sets, returns the hash value, for hash maps, returns the key value.
  */
-FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
+IFUNC FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
 #else
 /**
  * Returns the current `key` within an `each` task.
@@ -3991,7 +3991,7 @@ FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
  *
  * For sets, returns the hash value, for hash maps, returns the key value.
  */
-FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
+IFUNC FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
 #endif
 
 #ifndef FIO_MAP_EACH
@@ -4504,14 +4504,14 @@ IFUNC void FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m_) {
 }
 
 /* *****************************************************************************
-Hash Map / Set - API itiration
+Hash Map / Set - API iteration
 ***************************************************************************** */
 
 #ifdef FIO_MAP_KEY
 /* Hash map implementation */
 
-SFUNC __thread uint32_t FIO_NAME(FIO_MAP_NAME, ___each_pos) = -1;
-SFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
+HSFUNC __thread uint32_t FIO_NAME(FIO_MAP_NAME, ___each_pos) = -1;
+HSFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
     FIO_NAME(FIO_MAP_NAME, ___each_map) = NULL;
 
 /**
@@ -4521,7 +4521,7 @@ SFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
  *
  * For sets, returns the hash value, for hash maps, returns the key value.
  */
-FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
+IFUNC FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
   return FIO_NAME(FIO_MAP_NAME, ___each_map)
       ->map[FIO_NAME(FIO_MAP_NAME, ___each_pos)]
       .obj.key;
@@ -4529,8 +4529,8 @@ FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
 #else
 /* Set implementation */
 
-SFUNC __thread uint32_t FIO_NAME(FIO_MAP_NAME, ___each_pos) = -1;
-SFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
+HSFUNC __thread uint32_t FIO_NAME(FIO_MAP_NAME, ___each_pos) = -1;
+HSFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
     FIO_NAME(FIO_MAP_NAME, ___each_map) = NULL;
 
 /**
@@ -4540,7 +4540,7 @@ SFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
  *
  * For sets, returns the hash value, for hash maps, returns the key value.
  */
-FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
+IFUNC FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
   return FIO_NAME(FIO_MAP_NAME, ___each_map)
       ->map[FIO_NAME(FIO_MAP_NAME, ___each_pos)]
       .hash;
