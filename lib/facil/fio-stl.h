@@ -3958,6 +3958,42 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, rehash)(FIO_MAP_PTR m);
 /** Attempts to lower the map's memory consumption. */
 SFUNC void FIO_NAME(FIO_MAP_NAME, compact)(FIO_MAP_PTR m);
 
+/**
+ * Iteration using a callback for each element in the map.
+ *
+ * The callback task function must accept an element variable as well as an
+ * opaque user pointer.
+ *
+ * If the callback returns -1, the loop is broken. Any other value is ignored.
+ *
+ * Returns the relative "stop" position, i.e., the number of items processed +
+ * the starting point.
+ */
+IFUNC uint32_t FIO_NAME(FIO_MAP_NAME,
+                        each)(FIO_MAP_PTR m, int32_t start_at,
+                              int (*task)(FIO_MAP_TYPE obj, void *arg),
+                              void *arg);
+
+#ifdef FIO_MAP_KEY
+/**
+ * Returns the current `key` within an `each` task.
+ *
+ * Only available within an `each` loop.
+ *
+ * For sets, returns the hash value, for hash maps, returns the key value.
+ */
+FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
+#else
+/**
+ * Returns the current `key` within an `each` task.
+ *
+ * Only available within an `each` loop.
+ *
+ * For sets, returns the hash value, for hash maps, returns the key value.
+ */
+FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
+#endif
+
 #ifndef FIO_MAP_EACH
 /**
  * A macro for a `for` loop that iterates over all the Map's objects (in
@@ -4465,6 +4501,93 @@ IFUNC void FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m_) {
   FIO_MAP_OBJ_DESTROY(n->obj);
   FIO_NAME(FIO_MAP_NAME, ___unlink_node)(m, n);
   --m->count;
+}
+
+/* *****************************************************************************
+Hash Map / Set - API itiration
+***************************************************************************** */
+
+#ifdef FIO_MAP_KEY
+/* Hash map implementation */
+
+SFUNC __thread uint32_t FIO_NAME(FIO_MAP_NAME, ___each_pos) = -1;
+SFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
+    FIO_NAME(FIO_MAP_NAME, ___each_map) = NULL;
+
+/**
+ * Returns the current `key` within an `each` task.
+ *
+ * Only available within an `each` loop.
+ *
+ * For sets, returns the hash value, for hash maps, returns the key value.
+ */
+FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
+  return FIO_NAME(FIO_MAP_NAME, ___each_map)
+      ->map[FIO_NAME(FIO_MAP_NAME, ___each_pos)]
+      .obj.key;
+}
+#else
+/* Set implementation */
+
+SFUNC __thread uint32_t FIO_NAME(FIO_MAP_NAME, ___each_pos) = -1;
+SFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
+    FIO_NAME(FIO_MAP_NAME, ___each_map) = NULL;
+
+/**
+ * Returns the current `key` within an `each` task.
+ *
+ * Only available within an `each` loop.
+ *
+ * For sets, returns the hash value, for hash maps, returns the key value.
+ */
+FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
+  return FIO_NAME(FIO_MAP_NAME, ___each_map)
+      ->map[FIO_NAME(FIO_MAP_NAME, ___each_pos)]
+      .hash;
+}
+
+#endif
+
+/**
+ * Iteration using a callback for each element in the map.
+ *
+ * The callback task function must accept an element variable as well as an
+ * opaque user pointer.
+ *
+ * If the callback returns -1, the loop is broken. Any other value is ignored.
+ *
+ * Returns the relative "stop" position, i.e., the number of items processed +
+ * the starting point.
+ */
+IFUNC uint32_t FIO_NAME(FIO_MAP_NAME,
+                        each)(FIO_MAP_PTR m_, int32_t start_at,
+                              int (*task)(FIO_MAP_TYPE obj, void *arg),
+                              void *arg) {
+  FIO_NAME(FIO_MAP_NAME, s) *m =
+      (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
+  FIO_NAME(FIO_MAP_NAME, s) *old_map = FIO_NAME(FIO_MAP_NAME, ___each_map);
+  if (start_at < 0)
+    start_at = m->count + start_at;
+  if (start_at < 0 || (uint32_t)start_at >= m->count)
+    return m->count;
+  uint32_t old_pos = FIO_NAME(FIO_MAP_NAME, ___each_pos);
+  uint32_t count = 0;
+  FIO_NAME(FIO_MAP_NAME, ___each_pos) = m->head;
+  FIO_NAME(FIO_MAP_NAME, ___each_map) = m;
+  count = start_at;
+  while (start_at) {
+    --start_at;
+    FIO_NAME(FIO_MAP_NAME, ___each_pos) =
+        m->map[FIO_NAME(FIO_MAP_NAME, ___each_pos)].next;
+  }
+  while (count < m->count && (++count) &&
+         task(FIO_MAP_OBJ2TYPE(m->map[FIO_NAME(FIO_MAP_NAME, ___each_pos)].obj),
+              arg) != -1)
+    FIO_NAME(FIO_MAP_NAME, ___each_pos) =
+        m->map[FIO_NAME(FIO_MAP_NAME, ___each_pos)].next;
+  FIO_NAME(FIO_MAP_NAME, ___each_pos) = old_pos;
+  FIO_NAME(FIO_MAP_NAME, ___each_map) = old_map;
+  return count;
 }
 
 /* *****************************************************************************
@@ -7600,6 +7723,14 @@ TEST_FUNC void map_____test_key_destroy(char **dest) {
 #define HASHOFi(i) i /* fio_risky_hash(&(i), sizeof((i)), 0) */
 #define HASHOFs(s) fio_risky_hash(s, strlen((s)), 0)
 
+TEST_FUNC int set_____test_each_task(size_t o, void *a_) {
+  uintptr_t *i_p = (uintptr_t *)a_;
+  TEST_ASSERT(o == ++(*i_p), "set_each started at a bad offset!");
+  TEST_ASSERT(HASHOFi((o - 1)) == set_____test_each_get_key(),
+              "set_each key error!");
+  return 0;
+}
+
 TEST_FUNC void fio___dynamic_types_test___map_test(void) {
   {
     set_____test_s m = FIO_MAP_INIT;
@@ -7613,6 +7744,14 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
                 "reserve should increase capacity.");
     for (size_t i = 0; i < REPEAT; ++i) {
       set_____test_insert(&m, HASHOFi(i), i + 1);
+    }
+    {
+      uintptr_t pos_test = (REPEAT >> 1);
+      size_t count =
+          set_____test_each(&m, pos_test, set_____test_each_task, &pos_test);
+      TEST_ASSERT(count == set_____test_count(&m),
+                  "set_each tast returned the wrong counter.");
+      TEST_ASSERT(count == pos_test, "set_each position testing error");
     }
 
     TEST_ASSERT(set_____test_count(&m) == REPEAT,

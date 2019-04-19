@@ -826,6 +826,35 @@ int MAP_rehash(FIO_MAP_PTR m);
 
 Rehashes the Hash Map / Set. Usually this is performed automatically, no need to call the function.
 
+#### `MAP_each`
+
+```c
+uint32_t FIO_NAME(FIO_MAP_NAME, each)(FIO_MAP_PTR m,
+                                      int32_t start_at,
+                                      int (*task)(FIO_MAP_TYPE obj, void *arg),
+                                      void *arg);
+```
+
+Iteration using a callback for each element in the map.
+
+The callback task function must accept an element variable as well as an opaque user pointer.
+
+If the callback returns -1, the loop is broken. Any other value is ignored.
+
+Returns the relative "stop" position, i.e., the number of items processed + the starting point.
+
+#### `MAP_each_get_key`
+
+```c
+FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
+```
+
+Returns the current `key` within an `each` task.
+
+Only available within an `each` loop.
+
+_Note: For sets, returns the hash value, for hash maps, returns the key value._
+
 #### `FIO_MAP_EACH`
 
 ```c
