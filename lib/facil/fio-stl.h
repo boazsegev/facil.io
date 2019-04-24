@@ -6200,10 +6200,15 @@ error: /* handle errors*/
           (int)arg.len, arg.data, arg.len ? "with value" : "",
           value ? (value[0] ? value : "(empty)") : "(null)");
 print_help:
-  fprintf(stderr, "\n%s\n",
-          parser->description ? parser->description
-                              : "This application accepts any of the following "
-                                "possible arguments:");
+  if (parser->description) {
+    fprintf(stderr, "\n%s\n", parser->description);
+  } else {
+    const char *name_tmp = parser->argv[0];
+    while (name_tmp[0] == '.' || name_tmp[0] == '/')
+      ++name_tmp;
+    fprintf(stderr, "\nAvailable command-line options for \x1B[1m%s\x1B[0m:\n",
+            name_tmp);
+  }
   /* print out each line's arguments */
   char const **pos = parser->names;
   while (*pos) {
@@ -6300,7 +6305,9 @@ print_help:
   fprintf(stderr, "\nUse any of the following input formats:\n"
                   "\t-arg <value>\t-arg=<value>\t-arg<value>\n"
                   "\n"
-                  "Use the -h, -help or -? to get this information again.\n"
+                  "Use \x1B[1m-h\x1B[0m , \x1B[1m-help\x1B[0m or "
+                  "\x1B[1m-?\x1B[0m "
+                  "to get this information again.\n"
                   "\n");
   fio_cli_end();
   exit(0);
@@ -8418,7 +8425,9 @@ TEST_FUNC void fio___dynamic_types_test___print_sizes(void) {
   FIO_PRINT_SIZE_OF(char);
   FIO_PRINT_SIZE_OF(short);
   FIO_PRINT_SIZE_OF(int);
+  FIO_PRINT_SIZE_OF(float);
   FIO_PRINT_SIZE_OF(long);
+  FIO_PRINT_SIZE_OF(double);
   FIO_PRINT_SIZE_OF(size_t);
   FIO_PRINT_SIZE_OF(void *);
 }
