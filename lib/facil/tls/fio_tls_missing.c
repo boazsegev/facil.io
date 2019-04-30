@@ -73,6 +73,7 @@ static inline void fio_tls_cert_destroy(cert_s *obj) {
 #define FIO_ARY_TYPE_COPY(dest, obj) fio_tls_cert_copy(&(dest), &(obj))
 #define FIO_ARY_TYPE_DESTROY(key) fio_tls_cert_destroy(&(key))
 #define FIO_ARY_TYPE_INVALID ((cert_s){{0}})
+#define FIO_ARY_TYPE_INVALID_SIMPLE 1
 #define FIO_FORCE_MALLOC_TMP 1
 #include <fio-stl.h>
 
@@ -98,6 +99,8 @@ static inline void fio_tls_trust_destroy(trust_s *obj) {
 #define FIO_ARY_TYPE_CMP(k1, k2) (fio_tls_trust_cmp(&(k1), &(k2)))
 #define FIO_ARY_TYPE_COPY(dest, obj) fio_tls_trust_copy(&(dest), &(obj))
 #define FIO_ARY_TYPE_DESTROY(key) fio_tls_trust_destroy(&(key))
+#define FIO_ARY_TYPE_INVALID ((trust_s){{0}})
+#define FIO_ARY_TYPE_INVALID_SIMPLE 1
 #define FIO_FORCE_MALLOC_TMP 1
 #include <fio-stl.h>
 
