@@ -4,9 +4,17 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#define FIO_INCLUDE_STR
 #include <fio.h>
-#include <fio_cli.h>
+
+#define FIO_STR_NAME fio_str
+#define FIO_CLI 1
+#define FIO_RAND 1
+#define FIO_LOG 1
+#include <fio-stl.h>
+
+#ifndef FIO_FUNC
+#define FIO_FUNC static __attribute__((unused))
+#endif
 
 #ifndef TEST_XXHASH
 #define TEST_XXHASH 1
@@ -31,30 +39,35 @@ static inline int fio_str_eq_print(fio_str_s *a, fio_str_s *b) {
 //   fio_str_free2(a);
 // }
 
-#define FIO_SET_NAME collisions
-#define FIO_SET_OBJ_TYPE fio_str_s *
-#define FIO_SET_OBJ_COPY(dest, src) ((dest) = fio_str_new_copy2((src)))
-#define FIO_SET_OBJ_COMPARE(a, b) fio_str_eq_print((a), (b))
-#define FIO_SET_OBJ_DESTROY(a) fio_str_free2((a))
-#include <fio.h>
+#define FIO_MAP_NAME collisions
+#define FIO_MAP_TYPE fio_str_s *
+#define FIO_MAP_TYPE_COPY(dest, src)                                           \
+  do {                                                                         \
+    (dest) = fio_str_new();                                                    \
+    fio_str_concat((dest), (src));                                             \
+  } while (0)
+#define FIO_MAP_TYPE_CMP(a, b) fio_str_eq_print((a), (b))
+#define FIO_MAP_TYPE_DESTROY(a) fio_str_free((a))
+#include <fio-stl.h>
 
 typedef uintptr_t (*hashing_func_fn)(char *, size_t);
-#define FIO_SET_NAME hash_name
-#define FIO_SET_OBJ_TYPE hashing_func_fn
-#include <fio.h>
+#define FIO_MAP_NAME hash_name
+#define FIO_MAP_TYPE hashing_func_fn
+#include <fio-stl.h>
 
 #define FIO_ARY_NAME words
 #define FIO_ARY_TYPE fio_str_s
-#define FIO_ARY_COMPARE(a, b) fio_str_iseq(&(a), &(b))
-#define FIO_ARY_COPY(dest, src)                                                \
+#define FIO_ARY_TYPE_CMP(a, b) fio_str_iseq(&(a), &(b))
+#define FIO_ARY_TYPE_COPY(dest, src)                                           \
   do {                                                                         \
-    fio_str_clear(&(dest)), fio_str_concat(&(dest), &(src));                   \
+    fio_str_destroy(&(dest));                                                  \
+    fio_str_concat(&(dest), &(src));                                           \
   } while (0)
-#define FIO_ARY_DESTROY(a) fio_str_free((&a))
-#include <fio.h>
+#define FIO_ARY_TYPE_DESTROY(a) fio_str_destroy(&(a))
+#include <fio-stl.h>
 
-static hash_name_s hash_names = FIO_SET_INIT;
-static words_s words = FIO_SET_INIT;
+static hash_name_s hash_names = FIO_MAP_INIT;
+static words_s words = FIO_ARY_INIT;
 
 /* *****************************************************************************
 Main
@@ -84,7 +97,7 @@ int main(int argc, char const *argv[]) {
       print_hash_names();
     }
   } else {
-    FIO_SET_FOR_LOOP(&hash_names, pos) { test_hash_function(pos->obj); }
+    FIO_MAP_EACH(&hash_names, pos) { test_hash_function(pos->obj); }
   }
   cleanup();
   return 0;
@@ -141,14 +154,16 @@ static void load_words(void) {
     FIO_LOG_FATAL("Couldn't find / read dictionary file (or no words?)");
     FIO_LOG_FATAL("\tmissing or empty: %s", fio_str_data(&filename));
     cleanup();
-    fio_str_free(&filename);
+    fio_str_destroy(&filename);
     exit(-1);
   }
+  /* assume an avarage of 8 letters per word */
+  words_reserve(&words, d.len >> 3);
   while (d.len) {
     char *eol = memchr(d.data, '\n', d.len);
     if (!eol) {
       /* push what's left */
-      words_push(&words, FIO_STR_INIT_STATIC2(d.data, d.len));
+      words_push(&words, (fio_str_s)FIO_STR_INIT_STATIC2(d.data, d.len));
       break;
     }
     if (eol == d.data || (eol == d.data + 1 && eol[-1] == '\r')) {
@@ -157,13 +172,14 @@ static void load_words(void) {
       --d.len;
       continue;
     }
-    words_push(&words, FIO_STR_INIT_STATIC2(
+    words_push(&words, (fio_str_s)FIO_STR_INIT_STATIC2(
                            d.data, (eol - (d.data + (eol[-1] == '\r')))));
     d.len -= (eol + 1) - d.data;
     d.data = eol + 1;
   }
-  fio_free(&filename);
-  fio_free(&data);
+  words_compact(&words);
+  fio_str_destroy(&filename);
+  fio_str_destroy(&data);
   FIO_LOG_INFO("Loaded %zu words.", words_count(&words));
 }
 
@@ -173,13 +189,15 @@ Cleanup
 
 static void cleanup(void) {
   print_flag = 0;
-  hash_name_free(&hash_names);
-  words_free(&words);
+  hash_name_destroy(&hash_names);
+  words_destroy(&words);
 }
 
 /* *****************************************************************************
 Hash functions
 ***************************************************************************** */
+
+#ifdef H_FACIL_IO_H
 
 static uintptr_t siphash13(char *data, size_t len) {
   return fio_siphash13(data, len, 0, 0);
@@ -193,11 +211,13 @@ static uintptr_t sha1(char *data, size_t len) {
   fio_sha1_write(&s, data, len);
   return ((uintptr_t *)fio_sha1_result(&s))[0];
 }
+
+#endif /* H_FACIL_IO_H */
+
 static uintptr_t counter(char *data, size_t len) {
   static uintptr_t counter = 0;
-  const size_t len_256 = len & (((size_t)-1) << 5);
 
-  for (size_t i = 0; i < len_256; i += 8) {
+  for (size_t i = len >> 5; i; --i) {
     /* vectorized 32 bytes / 256 bit access */
     uint64_t t0 = fio_str2u64(data);
     uint64_t t1 = fio_str2u64(data + 8);
@@ -277,9 +297,11 @@ struct hash_fn_names_s {
   hashing_func_fn fn;
 } hash_fn_list[] = {
     {"counter (no hash, RAM access test)", counter},
+#ifdef H_FACIL_IO_H
     {"siphash13", siphash13},
     {"siphash24", siphash24},
     {"sha1", sha1},
+#endif /* H_FACIL_IO_H */
 #if TEST_XXHASH
     {"xxhash", xxhash_test},
 #endif
@@ -365,9 +387,9 @@ static void test_hash_function(hashing_func_fn h) {
   /* Speed test */
   test_hash_function_speed(h, name);
   /* Collision test */
-  collisions_s c = FIO_SET_INIT;
+  collisions_s c = FIO_MAP_INIT;
   size_t count = 0;
-  FIO_ARY_FOR(&words, w) {
+  FIO_ARY_EACH(&words, w) {
     fio_str_info_s i = fio_str_info(w);
     // fprintf(stderr, "%s\n", i.data);
     printf("\33[2K [%zu] %s\r", ++count, i.data);
@@ -381,7 +403,7 @@ static void test_hash_function(hashing_func_fn h) {
           collisions_count(&c), collisions_capa(&c));
   fprintf(stderr, "* Best set utilization ratio  %zu/%zu\n", best_count,
           best_capa);
-  collisions_free(&c);
+  collisions_destroy(&c);
 }
 
 /* *****************************************************************************
@@ -631,7 +653,7 @@ FIO_FUNC void add_bad4xxhash(void) {
     fprintf(stderr, "Created %u vectors, now testing...\n", results_count);
     uint64_t origin = XXH64(&results[0][0], 32, 0);
     for (int i = 0; i < results_count; ++i) {
-      words_push(&words, FIO_STR_INIT_STATIC2(&results[0][i], 32));
+      words_push(&words, (fio_str_s)FIO_STR_INIT_STATIC2(&results[0][i], 32));
       if (i && origin == XXH64(&results[0][i], 32, 0))
         fprintf(stderr, "Possible collision [%d]\n", i);
     }
@@ -646,10 +668,11 @@ FIO_FUNC void find_bit_collisions(hashing_func_fn fn, size_t collision_count,
   words_s c = FIO_ARY_INIT;
   const uint64_t mask = (1ULL << bit_count) - 1;
   time_t start = clock();
+  words_reserve(&c, collision_count);
   while (words_count(&c) < collision_count) {
     uint64_t rnd = fio_rand64();
     if ((fn((char *)&rnd, 8) & mask) == mask) {
-      words_push(&c, FIO_STR_INIT_STATIC2((char *)&rnd, 8));
+      words_push(&c, (fio_str_s)FIO_STR_INIT_STATIC2((char *)&rnd, 8));
     }
   }
   time_t end = clock();
@@ -659,21 +682,21 @@ FIO_FUNC void find_bit_collisions(hashing_func_fn fn, size_t collision_count,
   fprintf(stderr,
           "* It took %zu cycles to find %zu (%u bit) collisions for %s (brute "
           "fource):\n",
-          end - start, words_count(&c), bit_count, name);
-  FIO_ARY_FOR(&c, pos) {
+          end - start, (size_t)words_count(&c), bit_count, name);
+  FIO_ARY_EACH(&c, pos) {
     uint64_t tmp = fio_str2u64(fio_str_data(pos));
     fprintf(stderr, "* %p => %p\n", (void *)tmp,
             (void *)fn(fio_str_data(pos), 8));
   }
-  words_free(&c);
+  words_destroy(&c);
 }
 
 static void add_bad_words(void) {
   if (!fio_cli_get("-t")) {
     find_bit_collisions(risky, 16, 16);
     find_bit_collisions(xxhash_test, 16, 16);
-    find_bit_collisions(siphash13, 16, 16);
-    find_bit_collisions(sha1, 16, 16);
+    // find_bit_collisions(siphash13, 16, 16);
+    // find_bit_collisions(sha1, 16, 16);
   }
   add_bad4xxhash();
   add_bad4risky();

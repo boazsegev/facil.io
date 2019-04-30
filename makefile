@@ -558,10 +558,10 @@ test: | clean
 	-@rm $(BIN) 2> /dev/null
 	-@rm -R $(TMP_ROOT) 2> /dev/null
 
-.PHONY : test/speed
-test/speed: | test_add_speed_flags $(LIB_OBJS)
-	@$(CC) -c ./tests/speeds.c -o $(TMP_ROOT)/speeds.o $(CFLAGS_DEPENDENCY) $(CFLAGS)
-	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/speeds.o $(OPTIMIZATION) $(LINKER_FLAGS)
+.PHONY : test/collisions
+test/collisions: | $(LIB_OBJS)
+	@$(CC) -c ./tests/collisions.c -o $(TMP_ROOT)/collisions.o $(CFLAGS_DEPENDENCY) $(CFLAGS)
+	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/collisions.o $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(BIN)
 
 .PHONY : test/optimized
