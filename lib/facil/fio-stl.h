@@ -7030,11 +7030,8 @@ TEST_FUNC uintptr_t fio___dynamic_types_test_tag(uintptr_t *pp) {
   return *pp | 1;
 }
 TEST_FUNC uintptr_t fio___dynamic_types_test_untag(uintptr_t *pp) {
-  return *pp & (~(uintptr_t)1UL);
+  return *pp & (~((uintptr_t)1UL));
 }
-
-// #define FIO_PTR_TAG(p) fio___dynamic_types_test_tag((uintptr_t*)&p)
-// #define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag((uintptr_t*)&p)
 
 /* *****************************************************************************
 Memory copy - test
@@ -7604,7 +7601,7 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
               "Destroyed array should have zero capacity");
   TEST_ASSERT(ary____test_count(pa) == 0,
               "Destroyed array should have zero elements");
-  TEST_ASSERT(pa->ary == NULL,
+  TEST_ASSERT(ary____test_to_a(pa) == NULL,
               "Destroyed array shouldn't have memory allocated");
   ary____test_unshift(pa, 1);
   ary____test_unshift(pa, 2);
