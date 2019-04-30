@@ -361,7 +361,7 @@ static void test_hash_function_speed(hashing_func_fn h, char *name) {
                   (((end - start) * (1000000.0 / CLOCKS_PER_SEC))));
       break;
     }
-    cycles <<= 2;
+    cycles <<= 1;
   }
 }
 

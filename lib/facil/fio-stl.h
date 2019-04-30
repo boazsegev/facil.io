@@ -8427,7 +8427,7 @@ TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h, char *name) {
     memcpy(buffer, &hash, sizeof(hash));
   }
   /* loop until test runs for more than 2 seconds */
-  for (uint64_t cycles = (8192 << 4);;) {
+  for (uint64_t cycles = (8192 << 8);;) {
     clock_t start, end;
     start = clock();
     for (size_t i = cycles; i > 0; i--) {
@@ -8443,7 +8443,7 @@ TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h, char *name) {
                   (((end - start) * (1000000.0 / CLOCKS_PER_SEC))));
       break;
     }
-    cycles <<= 2;
+    cycles <<= 1;
   }
 }
 
