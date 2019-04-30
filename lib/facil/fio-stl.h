@@ -118,6 +118,11 @@ Basic macros and included files
 #define GNUC_BYPASS 1
 #endif
 
+#ifndef __has_include
+#define __has_include(...) 0
+#define GNUC_BYPASS 1
+#endif
+
 #if defined(__GNUC__) && (__GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 5))
 /* GCC < 4.5 doesn't support deprecation reason string */
 #define deprecated(reason) deprecated
