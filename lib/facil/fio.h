@@ -3008,7 +3008,7 @@ FIO_FUNC inline void FIO_NAME(_reallocate_set_mem_)(FIO_NAME(s) * set) {
   set->ordered = (FIO_NAME(_ordered_s_) *)FIO_SET_REALLOC(
       set->ordered, (set->capa * sizeof(*set->ordered)),
       (new_capa * sizeof(*set->ordered)), (set->pos * sizeof(*set->ordered)));
-  if (!set->map || !set->ordered) {
+  if (new_capa && (!set->map || !set->ordered)) {
     perror("FATAL ERROR: couldn't allocate memory for Set data");
     exit(errno);
   }
