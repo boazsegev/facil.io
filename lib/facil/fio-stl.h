@@ -1762,13 +1762,13 @@ big_realloc:
  * `fio_free` can be used for deallocating the memory.
  */
 SFUNC void *FIO_ALIGN_NEW fio_mmap(size_t size) {
-  fio_mem___block_s *b = FIO_MEM_PAGE_ALLOC(
-      FIO_MEM_BYTES2PAGES(size + FIO_MEMORY_BLOCK_HEADER_SIZE),
-      FIO_MEMORY_BLOCK_SIZE_LOG);
+  if (!size)
+    return &fio_mem___on_malloc_zero;
+  size_t pages = FIO_MEM_BYTES2PAGES(size + FIO_MEMORY_BLOCK_HEADER_SIZE);
+  fio_mem___block_s *b = FIO_MEM_PAGE_ALLOC(pages, FIO_MEMORY_BLOCK_SIZE_LOG);
   if (!b)
     return NULL;
-  b->reserved = ((FIO_MEM_BYTES2PAGES(size + FIO_MEMORY_BLOCK_HEADER_SIZE))
-                 << FIO_MEM_PAGE_SIZE_LOG);
+  b->reserved = pages << FIO_MEM_PAGE_SIZE_LOG;
   return (void *)(b + 1);
 }
 
@@ -3253,6 +3253,7 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary_, int32_t index,
   if (pre_existing) {
     FIO_ARY_TYPE_DESTROY(ary->ary[index]);
   }
+  ary->ary[index] = FIO_ARY_TYPE_INVALID;
   FIO_ARY_TYPE_COPY(ary->ary[index], data);
   return ary->ary + index;
 }
@@ -3407,6 +3408,7 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, push)(FIO_ARY_PTR ary_,
   if (ary->end >= ary->capa)
     goto needs_memory;
   FIO_ARY_TYPE *pos = ary->ary + ary->end;
+  *pos = FIO_ARY_TYPE_INVALID;
   ++ary->end;
   FIO_ARY_TYPE_COPY(*pos, data);
   return pos;
@@ -3448,6 +3450,7 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, unshift)(FIO_ARY_PTR ary_,
   if (ary->start) {
     --ary->start;
     FIO_ARY_TYPE *pos = ary->ary + ary->start;
+    *pos = FIO_ARY_TYPE_INVALID;
     FIO_ARY_TYPE_COPY(*pos, data);
     return pos;
   }
@@ -5043,6 +5046,8 @@ String Implementation - initialization
  */
 IFUNC void FIO_NAME(FIO_STR_NAME, destroy)(FIO_STR_PTR s_) {
   FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (!s)
+    return;
   if (!FIO_STR_IS_SMALL(s) && s->dealloc) {
     s->dealloc(s->data, s->capa + 1);
   }
@@ -5297,9 +5302,11 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, reserve)(FIO_STR_PTR s_,
     tmp = (char *)FIO_MEM_CALLOC_(sizeof(*tmp), amount + 1);
     if (!tmp)
       goto no_mem;
-    memcpy(tmp, s->data, s->len + 1);
-    if (s->dealloc)
-      s->dealloc(s->data, s->capa + 1);
+    if (s->data && s->len) {
+      memcpy(tmp, s->data, s->len + 1);
+      if (s->dealloc)
+        s->dealloc(s->data, s->capa + 1);
+    }
     s->dealloc = FIO_NAME(FIO_STR_NAME, _default_dealloc);
   }
   s->capa = amount;
@@ -8354,6 +8361,7 @@ TEST_FUNC void fio___dynamic_types_test___cli(void) {
   TEST_ASSERT(fio_cli_get_i("-i1") == 0, "CLI cleanup error.");
   fprintf(stderr, "* Passed.\n");
 }
+
 /* *****************************************************************************
 Memory Allocation - test
 ***************************************************************************** */
@@ -8397,6 +8405,58 @@ TEST_FUNC void fio___dynamic_types_test___mem(void) {
 #endif
   fprintf(stderr, "* Passed.\n");
 }
+
+/* *****************************************************************************
+Hashing speed test
+***************************************************************************** */
+
+#define FIO_RISKY_HASH
+#include __FILE__
+
+typedef uintptr_t (*fio__hashing_func_fn)(char *, size_t);
+
+TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h, char *name) {
+  fprintf(stderr, "Testing %s speed\n", name);
+  /* test based on code from BearSSL with credit to Thomas Pornin */
+  uint8_t buffer[8192];
+  memset(buffer, 'T', sizeof(buffer));
+  /* warmup */
+  uint64_t hash = 0;
+  for (size_t i = 0; i < 4; i++) {
+    hash += h((char *)buffer, sizeof(buffer));
+    memcpy(buffer, &hash, sizeof(hash));
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (uint64_t cycles = (8192 << 4);;) {
+    clock_t start, end;
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      hash += h((char *)buffer, sizeof(buffer));
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    memcpy(buffer, &hash, sizeof(hash));
+    if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
+        cycles >= ((uint64_t)1 << 62)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", name,
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * (1000000.0 / CLOCKS_PER_SEC))));
+      break;
+    }
+    cycles <<= 2;
+  }
+}
+
+TEST_FUNC uintptr_t fio___dynamic_types_test___risky_wrapper(char *buf,
+                                                             size_t len) {
+  return fio_risky_hash(buf, len, 0);
+}
+
+TEST_FUNC void fio___dynamic_types_test___risky(void) {
+  fio_test_hash_function(fio___dynamic_types_test___risky_wrapper,
+                         "fio_risky_hash");
+}
+
 /* *****************************************************************************
 Environment printout
 ***************************************************************************** */
@@ -8463,6 +8523,8 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fio___dynamic_types_test___cli();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___mem();
+  fprintf(stderr, "===============\n");
+  fio___dynamic_types_test___risky();
   fprintf(stderr, "===============\n");
 }
 
