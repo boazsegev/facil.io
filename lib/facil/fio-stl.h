@@ -4707,8 +4707,12 @@ String API - Initialization and Destruction
  * be used.
  */
 typedef struct {
-  uint8_t special;                            /* Flags and small string data */
+  uint8_t special; /* Flags and small string data */
+#if !FIO_STR_NO_ALIGN
   uint8_t reserved[(sizeof(void *) * 2) - 1]; /* Align to allocator boundary */
+#else
+  uint8_t reserved[(sizeof(void *) * 1) - 1]; /* normal padding length */
+#endif
   size_t capa; /* Known capacity for longer Strings */
   size_t len;  /* String length for longer Strings */
   char *data;  /* Data for longer Strings */
@@ -4904,8 +4908,7 @@ String API - Content Manipulation and Review
 ***************************************************************************** */
 
 /**
- * Writes data at the end of the String (similar to `fio_str_insert` with the
- * argument `pos == -1`).
+ * Writes data at the end of the String.
  */
 IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s,
                                                    const void *src,
@@ -4916,6 +4919,22 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s,
  */
 IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s,
                                                      int64_t num);
+
+/**
+ * Writes data at the end of the String, encoding the data as Base64 encoded
+ * data.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_b64enc)(FIO_STR_PTR s,
+                                                          const void *data,
+                                                          size_t data_len,
+                                                          uint8_t url_encoded);
+
+/**
+ * Writes decoded base64 data to the end of the String.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_b64dec)(FIO_STR_PTR s,
+                                                          const void *encoded,
+                                                          size_t encoded_len);
 
 /**
  * Appens the `src` String to the end of the `dest` String.
@@ -5626,6 +5645,212 @@ zero:
 }
 
 /**
+ * Writes data at the end of the String, encoding the data as Base64 encoded
+ * data.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
+                              write_b64enc)(FIO_STR_PTR s_, const void *data,
+                                            size_t len, uint8_t url_encoded) {
+  if (!FIO_PTR_UNTAG(s_) || !len)
+    return FIO_NAME(FIO_STR_NAME, info)(s_);
+
+  /* the base64 encoding array */
+  const char *encoding;
+  if (url_encoded == 0) {
+    encoding =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+  } else {
+    encoding =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_=";
+  }
+
+  /* base64 length and padding information */
+  int groups = len / 3;
+  const int mod = len - (groups * 3);
+  const int target_size = (groups + (mod != 0)) * 4;
+  const uint32_t org_len = FIO_NAME(FIO_STR_NAME, len)(s_);
+  fio_str_info_s i = FIO_NAME(FIO_STR_NAME, resize)(s_, org_len + target_size);
+  char *writer = i.data + org_len;
+  const unsigned char *reader = (const unsigned char *)data;
+
+  /* write encoded data */
+  while (groups) {
+    --groups;
+    const unsigned char tmp1 = *(reader++);
+    const unsigned char tmp2 = *(reader++);
+    const unsigned char tmp3 = *(reader++);
+    *(writer++) = encoding[(tmp1 >> 2) & 63];
+    *(writer++) = encoding[(((tmp1 & 3) << 4) | ((tmp2 >> 4) & 15))];
+    *(writer++) = encoding[((tmp2 & 15) << 2) | ((tmp3 >> 6) & 3)];
+    *(writer++) = encoding[tmp3 & 63];
+  }
+
+  /* write padding / ending */
+  switch (mod) {
+  case 2: {
+    const unsigned char tmp1 = *(reader++);
+    const unsigned char tmp2 = *(reader++);
+    *(writer++) = encoding[(tmp1 >> 2) & 63];
+    *(writer++) = encoding[((tmp1 & 3) << 4) | ((tmp2 >> 4) & 15)];
+    *(writer++) = encoding[((tmp2 & 15) << 2)];
+    *(writer++) = '=';
+  } break;
+  case 1: {
+    const unsigned char tmp1 = *(reader++);
+    *(writer++) = encoding[(tmp1 >> 2) & 63];
+    *(writer++) = encoding[(tmp1 & 3) << 4];
+    *(writer++) = '=';
+    *(writer++) = '=';
+  } break;
+  }
+  return i;
+}
+
+/**
+ * Writes decoded base64 data to the end of the String.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_b64dec)(FIO_STR_PTR s_,
+                                                          const void *encoded_,
+                                                          size_t len) {
+  /*
+  Base64 decoding array. Generation script (Ruby):
+
+a = []; a[255] = 0
+s = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=".bytes;
+s.length.times {|i| a[s[i]] = i };
+s = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,".bytes;
+s.length.times {|i| a[s[i]] = i };
+s = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".bytes;
+s.length.times {|i| a[s[i]] = i }; a.map!{ |i| i.to_i }; a
+
+  */
+  const unsigned base64_decodes[] = {
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  62, 63, 62, 0,  63, 52, 53, 54, 55, 56, 57,
+      58, 59, 60, 61, 0,  0,  0,  64, 0,  0,  0,  0,  1,  2,  3,  4,  5,  6,
+      7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+      25, 0,  0,  0,  0,  63, 0,  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
+      37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+      0,  0,  0,  0,
+  };
+#define FIO_BASE64_BITVAL(x) (base64_decodes[(x)] & 63)
+
+  if (!FIO_PTR_UNTAG(s_) || !len)
+    return FIO_NAME(FIO_STR_NAME, info)(s_);
+
+  const uint8_t *encoded = (const uint8_t *)encoded_;
+
+  /* skip unknown data at end */
+  while (len && !base64_decodes[encoded[len - 1]]) {
+    len--;
+  }
+
+  /* reserve memory space */
+  const uint32_t org_len = FIO_NAME(FIO_STR_NAME, len)(s_);
+  fio_str_info_s i =
+      FIO_NAME(FIO_STR_NAME, reserve)(s_, org_len + ((len >> 2) * 3) + 3);
+  i.data += org_len;
+
+  /* decoded and count actual length */
+  uint32_t written = 0;
+  uint8_t tmp1, tmp2, tmp3, tmp4;
+  while (len >= 4) {
+    if (isspace((*encoded))) {
+      while (len && isspace((*encoded))) {
+        len--;
+        encoded++;
+      }
+      continue;
+    }
+    tmp1 = *(encoded++);
+    tmp2 = *(encoded++);
+    tmp3 = *(encoded++);
+    tmp4 = *(encoded++);
+    if (!base64_decodes[tmp1] || !base64_decodes[tmp2] ||
+        !base64_decodes[tmp3] || !base64_decodes[tmp4]) {
+      return (fio_str_info_s){.data = NULL};
+    }
+    *(i.data++) =
+        (FIO_BASE64_BITVAL(tmp1) << 2) | (FIO_BASE64_BITVAL(tmp2) >> 4);
+    *(i.data++) =
+        (FIO_BASE64_BITVAL(tmp2) << 4) | (FIO_BASE64_BITVAL(tmp3) >> 2);
+    *(i.data++) = (FIO_BASE64_BITVAL(tmp3) << 6) | (FIO_BASE64_BITVAL(tmp4));
+    /* make sure we don't loop forever */
+    len -= 4;
+    /* count written bytes */
+    written += 3;
+  }
+  /* skip white spaces */
+  while (len && isspace((*encoded))) {
+    len--;
+    encoded++;
+  }
+  /* decode "tail" - if any (mis-encoded, shouldn't happen) */
+  tmp1 = 0;
+  tmp2 = 0;
+  tmp3 = 0;
+  tmp4 = 0;
+  switch (len) {
+  case 1:
+    tmp1 = *(encoded++);
+    if (!base64_decodes[tmp1]) {
+      return (fio_str_info_s){.data = NULL};
+    }
+    *(i.data++) = FIO_BASE64_BITVAL(tmp1);
+    written += 1;
+    break;
+  case 2:
+    tmp1 = *(encoded++);
+    tmp2 = *(encoded++);
+    if (!base64_decodes[tmp1] || !base64_decodes[tmp2]) {
+      return (fio_str_info_s){.data = NULL};
+    }
+    *(i.data++) =
+        (FIO_BASE64_BITVAL(tmp1) << 2) | (FIO_BASE64_BITVAL(tmp2) >> 6);
+    *(i.data++) = (FIO_BASE64_BITVAL(tmp2) << 4);
+    written += 2;
+    break;
+  case 3:
+    tmp1 = *(encoded++);
+    tmp2 = *(encoded++);
+    tmp3 = *(encoded++);
+    if (!base64_decodes[tmp1] || !base64_decodes[tmp2] ||
+        !base64_decodes[tmp3]) {
+      return (fio_str_info_s){.data = NULL};
+    }
+    *(i.data++) =
+        (FIO_BASE64_BITVAL(tmp1) << 2) | (FIO_BASE64_BITVAL(tmp2) >> 6);
+    *(i.data++) =
+        (FIO_BASE64_BITVAL(tmp2) << 4) | (FIO_BASE64_BITVAL(tmp3) >> 2);
+    *(i.data++) = FIO_BASE64_BITVAL(tmp3) << 6;
+    written += 3;
+    break;
+  }
+#undef FIO_BASE64_BITVAL
+
+  if (encoded[-1] == '=') {
+    i.data--;
+    written--;
+    if (encoded[-2] == '=') {
+      i.data--;
+      written--;
+    }
+    if (written < 0)
+      written = 0;
+  }
+
+  return FIO_NAME(FIO_STR_NAME, resize)(s_, org_len + written);
+}
+
+/**
  * Appens the `src` String to the end of the `dest` String.
  *
  * If `dest` is empty, the resulting Strings will be equal.
@@ -5847,6 +6072,7 @@ String Cleanup
 #undef FIO_STR_FREEZE_
 #undef FIO_STR_CAPA2WORDS
 #undef FIO_STR_PTR
+#undef FIO_STR_NO_ALIGN
 #endif /* FIO_STR_NAME */
 
 /* *****************************************************************************
@@ -8024,9 +8250,11 @@ TEST_FUNC void fio___dynamic_types_test___hmap_test(void) {
 Dynamic Strings - test
 ***************************************************************************** */
 
+#define FIO_STR_NO_ALIGN 0
 #define FIO_STR_NAME fio__str_____test
 #define FIO_PTR_TAG(p) fio___dynamic_types_test_tag((uintptr_t *)&(p))
 #define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag((uintptr_t *)&(p))
+#define FIO_REF_NAME fio__str_____test
 #include __FILE__
 #define FIO__STR_SMALL_CAPA (sizeof(fio__str_____test_s) - 2)
 
@@ -8039,7 +8267,10 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
        ? ((num + 1) | (sizeof(long double) - 1))                               \
        : (num))
   fprintf(stderr, "* Testing core string features\n");
-  fprintf(stderr, "* String container size: %zu\n",
+  fprintf(stderr,
+          "* String container + reference counter (with wrapper): %zu\n",
+          sizeof(fio__str_____test__wrapper_s));
+  fprintf(stderr, "* String container size (without wrapper): %zu\n",
           sizeof(fio__str_____test_s));
   fprintf(stderr, "* Self-contained capacity (FIO_STR_SMALL_CAPA): %zu\n",
           FIO__STR_SMALL_CAPA);
@@ -8323,6 +8554,22 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     FIO_MEM_FREE(cstr, state.capa);
     TEST_ASSERT(fio__str_____test_len(&str) == 0,
                 "`fio__str_____test_detach` data wasn't cleared.");
+    fio__str_____test_destroy(&str); /* does nothing, but what the heck... */
+  }
+  {
+    fprintf(stderr, "* Testing Base64 encoding / decoding\n");
+    const char *message = "Hello World, this is the voice of peace:)";
+    fio__str_____test_destroy(&str); /* does nothing, but what the heck... */
+    fio_str_info_s encoded =
+        fio__str_____test_write_b64enc(&str, message, strlen(message), 1);
+    fio_str_info_s decoded =
+        fio__str_____test_write_b64dec(&str, encoded.data, encoded.len);
+
+    TEST_ASSERT(strlen(message) == decoded.len - encoded.len,
+                "Base 64 roundtrip length error:\n %s", decoded.data);
+
+    TEST_ASSERT(!strcmp(message, decoded.data + encoded.len),
+                "Base 64 roundtrip failed:\n %s", decoded.data);
     fio__str_____test_destroy(&str); /* does nothing, but what the heck... */
   }
   fprintf(stderr, "* Passed.\n");
