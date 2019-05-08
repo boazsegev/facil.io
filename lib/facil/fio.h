@@ -1304,7 +1304,7 @@ typedef enum {
   FIO_CALL_ON_CHILD_CRUSH,
   /** An alternative to the system's at_exit. */
   FIO_CALL_AT_EXIT,
-  /** used for testing. */
+  /** used for testing and array allocation - must be last. */
   FIO_CALL_NEVER
 } callback_type_e;
 

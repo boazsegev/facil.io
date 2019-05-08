@@ -14,12 +14,12 @@ Than run:
 
 */
 #include "fio.h"
-#include "fio_cli.h"
 #include "fio_tls.h"
 
 /* add the fio_str_s helpers */
-#define FIO_INCLUDE_STR
-#include "fio.h"
+#define FIO_STR_NAME fio_str
+#define FIO_CLI 1
+#include "fio-stl.h"
 
 #define MAX_BYTES_RAPEL_PER_CYCLE 256
 #define MAX_BYTES_READ_PER_CYCLE 4096
