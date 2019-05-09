@@ -24,6 +24,8 @@ This file contains macros that create generic / common core types, such as:
 
 This file also contains common helper macros / primitives, such as:
 
+* Pointer Tagging - defined by `FIO_PTR_TAG(p)`/`FIO_PTR_UNTAG(p)`
+
 * Logging and Assertion (no heap allocation) - defined by `FIO_LOG`
 
 * Atomic add/subtract/replace - defined by `FIO_ATOMIC`
@@ -3074,6 +3076,11 @@ Dynamic Arrays - implementation
 IFUNC void FIO_NAME(FIO_ARY_NAME, destroy)(FIO_ARY_PTR ary_) {
   FIO_NAME(FIO_ARY_NAME, s) *ary =
       (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+#if !FIO_ARY_TYPE_DESTROY_SIMPLE
+  for (uint32_t i = ary->start; i < ary->end; ++i) {
+    FIO_ARY_TYPE_DESTROY(ary->ary[i]);
+  }
+#endif
   FIO_MEM_FREE_(ary->ary, ary->capa * sizeof(*ary->ary));
   *ary = (FIO_NAME(FIO_ARY_NAME, s))FIO_ARY_INIT;
 }
