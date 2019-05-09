@@ -4921,22 +4921,6 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s,
                                                      int64_t num);
 
 /**
- * Writes data at the end of the String, encoding the data as Base64 encoded
- * data.
- */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_b64enc)(FIO_STR_PTR s,
-                                                          const void *data,
-                                                          size_t data_len,
-                                                          uint8_t url_encoded);
-
-/**
- * Writes decoded base64 data to the end of the String.
- */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_b64dec)(FIO_STR_PTR s,
-                                                          const void *encoded,
-                                                          size_t encoded_len);
-
-/**
  * Appens the `src` String to the end of the `dest` String.
  *
  * If `dest` is empty, the resulting Strings will be equal.
@@ -4999,6 +4983,26 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
                               readfile)(FIO_STR_PTR s, const char *filename,
                                         intptr_t start_at, intptr_t limit);
 #endif
+
+/* *****************************************************************************
+String API - Base64 support
+***************************************************************************** */
+
+/**
+ * Writes data at the end of the String, encoding the data as Base64 encoded
+ * data.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_b64enc)(FIO_STR_PTR s,
+                                                          const void *data,
+                                                          size_t data_len,
+                                                          uint8_t url_encoded);
+
+/**
+ * Writes decoded base64 data to the end of the String.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_b64dec)(FIO_STR_PTR s,
+                                                          const void *encoded,
+                                                          size_t encoded_len);
 
 /* *****************************************************************************
 
@@ -5645,6 +5649,126 @@ zero:
 }
 
 /**
+ * Appens the `src` String to the end of the `dest` String.
+ *
+ * If `dest` is empty, the resulting Strings will be equal.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, concat)(FIO_STR_PTR dest_,
+                                                    FIO_STR_PTR const src_) {
+  FIO_NAME(FIO_STR_NAME, s) *dest =
+      (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(dest_);
+  FIO_NAME(FIO_STR_NAME, s) *src =
+      (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(src_);
+  if (!dest || !src || FIO_STR_IS_FROZEN(dest)) {
+    return FIO_NAME(FIO_STR_NAME, info)(dest_);
+  }
+  fio_str_info_s src_state = FIO_NAME(FIO_STR_NAME, info)(src_);
+  if (!src_state.len)
+    return FIO_NAME(FIO_STR_NAME, info)(dest_);
+  const size_t old_len = FIO_NAME(FIO_STR_NAME, len)(dest_);
+  fio_str_info_s state =
+      FIO_NAME(FIO_STR_NAME, resize)(dest_, src_state.len + old_len);
+  memcpy(state.data + old_len, src_state.data, src_state.len);
+  return state;
+}
+
+/**
+ * Replaces the data in the String - replacing `old_len` bytes starting at
+ * `start_pos`, with the data at `src` (`src_len` bytes long).
+ *
+ * Negative `start_pos` values are calculated backwards, `-1` == end of
+ * String.
+ *
+ * When `old_len` is zero, the function will insert the data at `start_pos`.
+ *
+ * If `src_len == 0` than `src` will be ignored and the data marked for
+ * replacement will be erased.
+ */
+SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
+                              replace)(FIO_STR_PTR s_, intptr_t start_pos,
+                                       size_t old_len, const void *src,
+                                       size_t src_len) {
+  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  fio_str_info_s state = FIO_NAME(FIO_STR_NAME, info)(s_);
+  if (!s || FIO_STR_IS_FROZEN(s) || (!old_len && !src_len))
+    return state;
+
+  if (start_pos < 0) {
+    /* backwards position indexing */
+    start_pos += s->len + 1;
+    if (start_pos < 0)
+      start_pos = 0;
+  }
+
+  if (start_pos + old_len >= state.len) {
+    /* old_len overflows the end of the String */
+    if (FIO_STR_IS_SMALL(s)) {
+      FIO_STR_SMALL_LEN_SET(s, start_pos);
+    } else {
+      s->len = start_pos;
+    }
+    return FIO_NAME(FIO_STR_NAME, write)(s_, src, src_len);
+  }
+
+  /* data replacement is now always in the middle (or start) of the String */
+  const size_t new_size = state.len + (src_len - old_len);
+
+  if (old_len != src_len) {
+    /* there's an offset requiring an adjustment */
+    if (old_len < src_len) {
+      /* make room for new data */
+      const size_t offset = src_len - old_len;
+      state = FIO_NAME(FIO_STR_NAME, resize)(s_, state.len + offset);
+    }
+    memmove(state.data + start_pos + src_len, state.data + start_pos + old_len,
+            (state.len - start_pos) - old_len);
+  }
+  if (src_len) {
+    memcpy(state.data + start_pos, src, src_len);
+  }
+
+  return FIO_NAME(FIO_STR_NAME, resize)(s_, new_size);
+}
+
+/**
+ * Writes to the String using a vprintf like interface.
+ *
+ * Data is written to the end of the String.
+ */
+SFUNC fio_str_info_s __attribute__((format(printf, 2, 0)))
+FIO_NAME(FIO_STR_NAME, vprintf)(FIO_STR_PTR s_, const char *format,
+                                va_list argv) {
+  va_list argv_cpy;
+  va_copy(argv_cpy, argv);
+  int len = vsnprintf(NULL, 0, format, argv_cpy);
+  va_end(argv_cpy);
+  if (len <= 0)
+    return FIO_NAME(FIO_STR_NAME, info)(s_);
+  fio_str_info_s state =
+      FIO_NAME(FIO_STR_NAME, resize)(s_, len + FIO_NAME(FIO_STR_NAME, len)(s_));
+  vsnprintf(state.data + (state.len - len), len + 1, format, argv);
+  return state;
+}
+
+/**
+ * Writes to the String using a printf like interface.
+ *
+ * Data is written to the end of the String.
+ */
+SFUNC fio_str_info_s __attribute__((format(printf, 2, 3)))
+FIO_NAME(FIO_STR_NAME, printf)(FIO_STR_PTR s_, const char *format, ...) {
+  va_list argv;
+  va_start(argv, format);
+  fio_str_info_s state = FIO_NAME(FIO_STR_NAME, vprintf)(s_, format, argv);
+  va_end(argv);
+  return state;
+}
+
+/* *****************************************************************************
+String - Base64 support
+***************************************************************************** */
+
+/**
  * Writes data at the end of the String, encoding the data as Base64 encoded
  * data.
  */
@@ -5852,121 +5976,9 @@ s.length.times {|i| a[s[i]] = (i << 1) | 1 }; a.map!{ |i| i.to_i }; a
   return FIO_NAME(FIO_STR_NAME, resize)(s_, org_len + written);
 }
 
-/**
- * Appens the `src` String to the end of the `dest` String.
- *
- * If `dest` is empty, the resulting Strings will be equal.
- */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, concat)(FIO_STR_PTR dest_,
-                                                    FIO_STR_PTR const src_) {
-  FIO_NAME(FIO_STR_NAME, s) *dest =
-      (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(dest_);
-  FIO_NAME(FIO_STR_NAME, s) *src =
-      (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(src_);
-  if (!dest || !src || FIO_STR_IS_FROZEN(dest)) {
-    return FIO_NAME(FIO_STR_NAME, info)(dest_);
-  }
-  fio_str_info_s src_state = FIO_NAME(FIO_STR_NAME, info)(src_);
-  if (!src_state.len)
-    return FIO_NAME(FIO_STR_NAME, info)(dest_);
-  const size_t old_len = FIO_NAME(FIO_STR_NAME, len)(dest_);
-  fio_str_info_s state =
-      FIO_NAME(FIO_STR_NAME, resize)(dest_, src_state.len + old_len);
-  memcpy(state.data + old_len, src_state.data, src_state.len);
-  return state;
-}
-
-/**
- * Replaces the data in the String - replacing `old_len` bytes starting at
- * `start_pos`, with the data at `src` (`src_len` bytes long).
- *
- * Negative `start_pos` values are calculated backwards, `-1` == end of
- * String.
- *
- * When `old_len` is zero, the function will insert the data at `start_pos`.
- *
- * If `src_len == 0` than `src` will be ignored and the data marked for
- * replacement will be erased.
- */
-SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
-                              replace)(FIO_STR_PTR s_, intptr_t start_pos,
-                                       size_t old_len, const void *src,
-                                       size_t src_len) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  fio_str_info_s state = FIO_NAME(FIO_STR_NAME, info)(s_);
-  if (!s || FIO_STR_IS_FROZEN(s) || (!old_len && !src_len))
-    return state;
-
-  if (start_pos < 0) {
-    /* backwards position indexing */
-    start_pos += s->len + 1;
-    if (start_pos < 0)
-      start_pos = 0;
-  }
-
-  if (start_pos + old_len >= state.len) {
-    /* old_len overflows the end of the String */
-    if (FIO_STR_IS_SMALL(s)) {
-      FIO_STR_SMALL_LEN_SET(s, start_pos);
-    } else {
-      s->len = start_pos;
-    }
-    return FIO_NAME(FIO_STR_NAME, write)(s_, src, src_len);
-  }
-
-  /* data replacement is now always in the middle (or start) of the String */
-  const size_t new_size = state.len + (src_len - old_len);
-
-  if (old_len != src_len) {
-    /* there's an offset requiring an adjustment */
-    if (old_len < src_len) {
-      /* make room for new data */
-      const size_t offset = src_len - old_len;
-      state = FIO_NAME(FIO_STR_NAME, resize)(s_, state.len + offset);
-    }
-    memmove(state.data + start_pos + src_len, state.data + start_pos + old_len,
-            (state.len - start_pos) - old_len);
-  }
-  if (src_len) {
-    memcpy(state.data + start_pos, src, src_len);
-  }
-
-  return FIO_NAME(FIO_STR_NAME, resize)(s_, new_size);
-}
-
-/**
- * Writes to the String using a vprintf like interface.
- *
- * Data is written to the end of the String.
- */
-SFUNC fio_str_info_s __attribute__((format(printf, 2, 0)))
-FIO_NAME(FIO_STR_NAME, vprintf)(FIO_STR_PTR s_, const char *format,
-                                va_list argv) {
-  va_list argv_cpy;
-  va_copy(argv_cpy, argv);
-  int len = vsnprintf(NULL, 0, format, argv_cpy);
-  va_end(argv_cpy);
-  if (len <= 0)
-    return FIO_NAME(FIO_STR_NAME, info)(s_);
-  fio_str_info_s state =
-      FIO_NAME(FIO_STR_NAME, resize)(s_, len + FIO_NAME(FIO_STR_NAME, len)(s_));
-  vsnprintf(state.data + (state.len - len), len + 1, format, argv);
-  return state;
-}
-
-/**
- * Writes to the String using a printf like interface.
- *
- * Data is written to the end of the String.
- */
-SFUNC fio_str_info_s __attribute__((format(printf, 2, 3)))
-FIO_NAME(FIO_STR_NAME, printf)(FIO_STR_PTR s_, const char *format, ...) {
-  va_list argv;
-  va_start(argv, format);
-  fio_str_info_s state = FIO_NAME(FIO_STR_NAME, vprintf)(s_, format, argv);
-  va_end(argv);
-  return state;
-}
+/* *****************************************************************************
+String - read file
+***************************************************************************** */
 
 #if H___FIO_UNIX_TOOLS_H
 #ifndef H___FIO_UNIX_TOOLS4STR_INCLUDED_H
