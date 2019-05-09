@@ -8807,8 +8807,10 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___mem();
   fprintf(stderr, "===============\n");
+  #ifndef DEBUG
   fio___dynamic_types_test___risky();
   fprintf(stderr, "===============\n");
+  #endif
 }
 
 /* *****************************************************************************
