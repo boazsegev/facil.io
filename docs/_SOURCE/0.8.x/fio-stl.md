@@ -1318,12 +1318,12 @@ Increases an object's reference count (an atomic operation, thread-safe).
 
 #### `FIO_REF_NAME_free2(FIO_REF_TYPE * object)`
 
-Frees an object or decreses it's reference count (an atomic operation,
+Frees an object or decreases it's reference count (an atomic operation,
 thread-safe).
 
 Before the object is freed, the `FIO_REF_DESTROY(object)` macro will be called.
 
-If `FIO_REF_METADATA` is defined, than the metadata is also destoryed using the
+If `FIO_REF_METADATA` is defined, than the metadata is also destroyed using the
 `FIO_REF_METADATA_DESTROY(metadata)` macro.
 
 
@@ -1332,7 +1332,33 @@ If `FIO_REF_METADATA` is defined, than the metadata is also destoryed using the
 If `FIO_REF_METADATA` is defined, than the metadata is accessible using this
 inlined function.
 
+-------------------------------------------------------------------------------
 
+## Pointer Tagging Support:
+
+Pointer tagging allows types created using this library to have their pointers "tagged".
+
+This is when creating / managing dynamic types, where some type data could be written to the pointer data itself.
+
+**Note**: pointer tagging can't automatically tag "pointers" to objects placed on the stack.
+
+#### `FIO_PTR_TAG`
+
+Supports embedded pointer tagging / untagging for the included types.
+
+Should resolve to a tagged pointer value. i.e.: `((uintptr_t)(p) | 1)`
+
+#### `FIO_PTR_UNTAG`
+
+Supports embedded pointer tagging / untagging for the included types.
+
+Should resolve to an untagged pointer value. i.e.: `((uintptr_t)(p) | ~1UL)`
+
+**Note**: `FIO_PTR_UNTAG` might be called more then once or on untagged pointers. For this reason, `FIO_PTR_UNTAG` should always return the valid pointer, even if called on an untagged pointer.
+
+#### `FIO_PTR_TAG_TYPE`
+
+If the FIO_PTR_TAG_TYPE is defined, then functions returning a type's pointer will return a pointer of the specified type instead.
 
 -------------------------------------------------------------------------------
 
@@ -1369,7 +1395,7 @@ divert `stderr` rather then the logging function.
 #### `FIO_LOG2STDERR2(msg, ...)`
 
 This macro routs to the `FIO_LOG2STDERR` function after prefixing the message
-with the file name and line number in which the error occured.
+with the file name and line number in which the error occurred.
 
 #### `FIO_LOG_DEBUG(msg, ...)`
 
@@ -1510,11 +1536,11 @@ the bitmap is implemented using atomic operations.
 
 ## Network Byte Ordering Helpers
 
-This are commonly used for file and data storage / transmittions, since they
-allow for system-independant formatting.
+This are commonly used for file and data storage / transmissions, since they
+allow for system-independent formatting.
 
 On big-endian systems, these macros a NOOPs, whereas on little-endian systems
-these bacros flip the byte order.
+these macros flip the byte order.
 
 #### `fio_lton16(i)`
 
@@ -1631,7 +1657,7 @@ arguments is a common task.
 
 By defining `FIO_CLI`, the following functions will be defined.
 
-In addition, `FIO_CLI` automatically includes tha `FIO_ATOL` flag, since CLI
+In addition, `FIO_CLI` automatically includes the `FIO_ATOL` flag, since CLI
 parsing depends on the `fio_atol` function.
 
 #### `fio_cli_start(argc, argv, unnamed_min, unnamed_max, description, ...)`
@@ -1667,10 +1693,10 @@ to be parsed. i.e.,
         return 0;
       }
 
-The `fio_cli_start` macro accepts the `argc` and `argv`, as recieved by the
+The `fio_cli_start` macro accepts the `argc` and `argv`, as received by the
 `main` functions, a maximum and minimum number of unspecified CLI arguments
 (beneath which or after which the parser will fail), an application description
-string and a variable list of (specified) command line argumens.
+string and a variable list of (specified) command line arguments.
 
 Command line arguments can be either String, Integer or Boolean, as indicated by
 the `FIO_CLI_STRING("-arg [-alias] desc.")`, `FIO_CLI_INT("-arg [-alias]
@@ -1703,7 +1729,7 @@ Returns the number of unrecognized arguments (arguments unspecified, in
 
 #### `char const *fio_cli_unnamed(unsigned int index)`
 
-Returns a Strinf containing the unrecognized argument at the stated `index`
+Returns a String containing the unrecognized argument at the stated `index`
 (indexes are zero based).
 
 #### `void fio_cli_set(char const *name, char const *value)`
@@ -1722,7 +1748,7 @@ argument wasn't set by the user.
 The simple template library includes a fast, concurrent, memory allocator
 designed for shot-medium object life-spans.
 
-It's ideal if all long-tem allocations are performed during the start-up phase
+It's ideal if all long-term allocations are performed during the start-up phase
 or using a different memory allocator.
 
 By defining `FIO_MALLOC`, the following functions will be defined.
@@ -1760,8 +1786,7 @@ This variation is slightly faster as it might copy less data.
 
 #### `void * fio_mmap(size_t size)`
 
-
-Allocates memory directly using `mmap`, this is prefered for objects that both
+Allocates memory directly using `mmap`, this is preferred for objects that both
 require almost a page of memory (or more) and expect a long lifetime.
 
 However, since this allocation will invoke the system call (`mmap`), it will be
@@ -1876,12 +1901,12 @@ Increases an object's reference count (an atomic operation, thread-safe).
 
 #### `FIO_REF_NAME_free2(FIO_REF_TYPE * object)`
 
-Frees an object or decreses it's reference count (an atomic operation,
+Frees an object or decreases it's reference count (an atomic operation,
 thread-safe).
 
 Before the object is freed, the `FIO_REF_DESTROY(object)` macro will be called.
 
-If `FIO_REF_METADATA` is defined, than the metadata is also destoryed using the
+If `FIO_REF_METADATA` is defined, than the metadata is also destroyed using the
 `FIO_REF_METADATA_DESTROY(metadata)` macro.
 
 
@@ -1928,7 +1953,7 @@ divert `stderr` rather then the logging function.
 #### `FIO_LOG2STDERR2(msg, ...)`
 
 This macro routs to the `FIO_LOG2STDERR` function after prefixing the message
-with the file name and line number in which the error occured.
+with the file name and line number in which the error occurred.
 
 #### `FIO_LOG_DEBUG(msg, ...)`
 
@@ -2069,11 +2094,11 @@ the bitmap is implemented using atomic operations.
 
 ## Network Byte Ordering Helpers
 
-This are commonly used for file and data storage / transmittions, since they
-allow for system-independant formatting.
+This are commonly used for file and data storage / transmissions, since they
+allow for system-independent formatting.
 
 On big-endian systems, these macros a NOOPs, whereas on little-endian systems
-these bacros flip the byte order.
+these macros flip the byte order.
 
 #### `fio_lton16(i)`
 
@@ -2226,10 +2251,10 @@ to be parsed. i.e.,
         return 0;
       }
 
-The `fio_cli_start` macro accepts the `argc` and `argv`, as recieved by the
+The `fio_cli_start` macro accepts the `argc` and `argv`, as received by the
 `main` functions, a maximum and minimum number of unspecified CLI arguments
 (beneath which or after which the parser will fail), an application description
-string and a variable list of (specified) command line argumens.
+string and a variable list of (specified) command line arguments.
 
 Command line arguments can be either String, Integer or Boolean, as indicated by
 the `FIO_CLI_STRING("-arg [-alias] desc.")`, `FIO_CLI_INT("-arg [-alias]
@@ -2262,7 +2287,7 @@ Returns the number of unrecognized arguments (arguments unspecified, in
 
 #### `char const *fio_cli_unnamed(unsigned int index)`
 
-Returns a Strinf containing the unrecognized argument at the stated `index`
+Returns a String containing the unrecognized argument at the stated `index`
 (indexes are zero based).
 
 #### `void fio_cli_set(char const *name, char const *value)`
@@ -2320,7 +2345,7 @@ This variation is slightly faster as it might copy less data.
 #### `void * fio_mmap(size_t size)`
 
 
-Allocates memory directly using `mmap`, this is prefered for objects that both
+Allocates memory directly using `mmap`, this is preferred for objects that both
 require almost a page of memory (or more) and expect a long lifetime.
 
 However, since this allocation will invoke the system call (`mmap`), it will be

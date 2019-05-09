@@ -1010,7 +1010,7 @@ SFUNC void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size,
                                    size_t copy_length);
 
 /**
- * Allocates memory directly using `mmap`, this is prefered for objects that
+ * Allocates memory directly using `mmap`, this is preferred for objects that
  * both require almost a page of memory (or more) and expect a long lifetime.
  *
  * However, since this allocation will invoke the system call (`mmap`), it will
@@ -1630,7 +1630,7 @@ HSFUNC void __attribute__((destructor)) fio_mem___destroy(void) {
   FIO_MEMORY_PRINT_BLOCK_STAT();
   for (size_t i = 0; i < fio_mem___state->cores; ++i) {
     /* free all blocks in the arean memory pools */
-    /* this should return memory to system unless a memory leak occured */
+    /* this should return memory to system unless a memory leak occurred */
     fio_mem___block_s *b = fio_mem___state->arenas[i].block;
     fio_mem___state->arenas[i].block = NULL;
     fio_mem___state->arenas[i].lock = FIO_LOCK_INIT;
@@ -1758,7 +1758,7 @@ big_realloc:
 }
 
 /**
- * Allocates memory directly using `mmap`, this is prefered for objects that
+ * Allocates memory directly using `mmap`, this is preferred for objects that
  * both require almost a page of memory (or more) and expect a long lifetime.
  *
  * However, since this allocation will invoke the system call (`mmap`), it will
