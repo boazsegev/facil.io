@@ -4734,7 +4734,7 @@ typedef struct {
  *      fio_str_s str = FIO_STR_INIT;
  *
  *      // or on the heap
- *      fio_str_s *str = malloc(sizeof(*str);
+ *      fio_str_s *str = malloc(sizeof(*str));
  *      *str = FIO_STR_INIT;
  *
  * Remember to cleanup:
@@ -4785,7 +4785,7 @@ typedef struct {
  */
 IFUNC void FIO_NAME(FIO_STR_NAME, destroy)(FIO_STR_PTR s);
 
-/** Allocates a new String objcect on the heap. */
+/** Allocates a new String object on the heap. */
 IFUNC FIO_STR_PTR FIO_NAME(FIO_STR_NAME, new)(void);
 
 /**
@@ -4821,17 +4821,6 @@ IFUNC char *FIO_NAME(FIO_STR_NAME, data)(FIO_STR_PTR s);
 IFUNC size_t FIO_NAME(FIO_STR_NAME, capa)(FIO_STR_PTR s);
 
 /**
- * Sets the new String size without reallocating any memory (limited by
- * existing capacity).
- *
- * Returns the updated state of the String.
- *
- * Note: When shrinking, any existing data beyond the new size may be
- * corrupted.
- */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, resize)(FIO_STR_PTR s, size_t size);
-
-/**
  * Prevents further manipulations to the String's content.
  */
 IFUNC void FIO_NAME(FIO_STR_NAME, freeze)(FIO_STR_PTR s);
@@ -4855,9 +4844,21 @@ IFUNC int FIO_NAME(FIO_STR_NAME, iseq)(const FIO_STR_PTR str1,
  */
 SFUNC uint64_t FIO_NAME(FIO_STR_NAME, hash)(const FIO_STR_PTR s);
 #endif
+
 /* *****************************************************************************
 String API - Memory management
 ***************************************************************************** */
+
+/**
+ * Sets the new String size without reallocating any memory (limited by
+ * existing capacity).
+ *
+ * Returns the updated state of the String.
+ *
+ * Note: When shrinking, any existing data beyond the new size may be
+ * corrupted.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, resize)(FIO_STR_PTR s, size_t size);
 
 /**
  * Performs a best attempt at minimizing memory consumption.
@@ -4895,7 +4896,7 @@ SFUNC size_t FIO_NAME(FIO_STR_NAME, utf8_len)(FIO_STR_PTR s);
  * will be updated to `-1` otherwise values are always positive.
  *
  * The returned `len` value may be shorter than the original if there wasn't
- * enough data left to accomodate the requested length. When a `len` value of
+ * enough data left to accommodate the requested length. When a `len` value of
  * `0` is returned, this means that `pos` marks the end of the String.
  *
  * Returns -1 on error and 0 on success.
@@ -4921,7 +4922,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s,
                                                      int64_t num);
 
 /**
- * Appens the `src` String to the end of the `dest` String.
+ * Appends the `src` String to the end of the `dest` String.
  *
  * If `dest` is empty, the resulting Strings will be equal.
  */
@@ -5082,7 +5083,7 @@ IFUNC void FIO_NAME(FIO_STR_NAME, destroy)(FIO_STR_PTR s_) {
   *s = (FIO_NAME(FIO_STR_NAME, s))FIO_STR_INIT;
 }
 
-/** Allocates a new String objcect on the heap. */
+/** Allocates a new String object on the heap. */
 IFUNC FIO_STR_PTR FIO_NAME(FIO_STR_NAME, new)(void) {
   FIO_NAME(FIO_STR_NAME, s) *s = FIO_MEM_CALLOC_(sizeof(*s), 1);
   *s = (FIO_NAME(FIO_STR_NAME, s))FIO_STR_INIT;
@@ -5176,45 +5177,6 @@ IFUNC size_t FIO_NAME(FIO_STR_NAME, capa)(FIO_STR_PTR s_) {
 }
 
 /**
- * Sets the new String size without reallocating any memory (limited by
- * existing capacity).
- *
- * Returns the updated state of the String.
- *
- * Note: When shrinking, any existing data beyond the new size may be
- * corrupted.
- */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, resize)(FIO_STR_PTR s_,
-                                                    size_t size) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  if (!s || FIO_STR_IS_FROZEN(s)) {
-    return FIO_NAME(FIO_STR_NAME, info)(s_);
-  }
-  if (FIO_STR_IS_SMALL(s)) {
-    if (size <= FIO_STR_SMALL_CAPA(s)) {
-      FIO_STR_SMALL_LEN_SET(s, size);
-      FIO_STR_SMALL_DATA(s)[size] = 0;
-      return (fio_str_info_s){.capa = FIO_STR_SMALL_CAPA(s),
-                              .len = size,
-                              .data = FIO_STR_SMALL_DATA(s)};
-    }
-    FIO_STR_SMALL_LEN_SET(s, FIO_STR_SMALL_CAPA(s));
-    FIO_NAME(FIO_STR_NAME, reserve)(s_, size);
-    goto big;
-  }
-  if (size >= s->capa) {
-    if (s->dealloc && s->capa)
-      s->len = s->capa;
-    FIO_NAME(FIO_STR_NAME, reserve)(s_, size);
-  }
-
-big:
-  s->len = size;
-  s->data[size] = 0;
-  return (fio_str_info_s){.capa = s->capa, .len = size, .data = s->data};
-}
-
-/**
  * Prevents further manipulations to the String's content.
  */
 IFUNC void FIO_NAME(FIO_STR_NAME, freeze)(FIO_STR_PTR s_) {
@@ -5264,6 +5226,45 @@ SFUNC uint64_t FIO_NAME(FIO_STR_NAME, hash)(const FIO_STR_PTR s_) {
 /* *****************************************************************************
 String Implementation - Memory management
 ***************************************************************************** */
+
+/**
+ * Sets the new String size without reallocating any memory (limited by
+ * existing capacity).
+ *
+ * Returns the updated state of the String.
+ *
+ * Note: When shrinking, any existing data beyond the new size may be
+ * corrupted.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, resize)(FIO_STR_PTR s_,
+                                                    size_t size) {
+  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (!s || FIO_STR_IS_FROZEN(s)) {
+    return FIO_NAME(FIO_STR_NAME, info)(s_);
+  }
+  if (FIO_STR_IS_SMALL(s)) {
+    if (size <= FIO_STR_SMALL_CAPA(s)) {
+      FIO_STR_SMALL_LEN_SET(s, size);
+      FIO_STR_SMALL_DATA(s)[size] = 0;
+      return (fio_str_info_s){.capa = FIO_STR_SMALL_CAPA(s),
+                              .len = size,
+                              .data = FIO_STR_SMALL_DATA(s)};
+    }
+    FIO_STR_SMALL_LEN_SET(s, FIO_STR_SMALL_CAPA(s));
+    FIO_NAME(FIO_STR_NAME, reserve)(s_, size);
+    goto big;
+  }
+  if (size >= s->capa) {
+    if (s->dealloc && s->capa)
+      s->len = s->capa;
+    FIO_NAME(FIO_STR_NAME, reserve)(s_, size);
+  }
+
+big:
+  s->len = size;
+  s->data[size] = 0;
+  return (fio_str_info_s){.capa = s->capa, .len = size, .data = s->data};
+}
 
 /**
  * Performs a best attempt at minimizing memory consumption.
@@ -5493,7 +5494,7 @@ SFUNC size_t FIO_NAME(FIO_STR_NAME, utf8_len)(FIO_STR_PTR s_) {
  * will be updated to `-1` otherwise values are always positive.
  *
  * The returned `len` value may be shorter than the original if there wasn't
- * enough data left to accomodate the requested length. When a `len` value of
+ * enough data left to accommodate the requested length. When a `len` value of
  * `0` is returned, this means that `pos` marks the end of the String.
  *
  * Returns -1 on error and 0 on success.
@@ -5649,7 +5650,7 @@ zero:
 }
 
 /**
- * Appens the `src` String to the end of the `dest` String.
+ * Appends the `src` String to the end of the `dest` String.
  *
  * If `dest` is empty, the resulting Strings will be equal.
  */
