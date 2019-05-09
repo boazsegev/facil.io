@@ -5717,31 +5717,33 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_b64dec)(FIO_STR_PTR s_,
 
 a = []; a[255] = 0
 s = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=".bytes;
-s.length.times {|i| a[s[i]] = i };
+s.length.times {|i| a[s[i]] = (i << 1) | 1 };
 s = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,".bytes;
-s.length.times {|i| a[s[i]] = i };
+s.length.times {|i| a[s[i]] = (i << 1) | 1 };
 s = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".bytes;
-s.length.times {|i| a[s[i]] = i }; a.map!{ |i| i.to_i }; a
+s.length.times {|i| a[s[i]] = (i << 1) | 1 }; a.map!{ |i| i.to_i }; a
 
   */
-  const unsigned base64_decodes[] = {
-      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-      0,  0,  0,  0,  0,  0,  0,  62, 63, 62, 0,  63, 52, 53, 54, 55, 56, 57,
-      58, 59, 60, 61, 0,  0,  0,  64, 0,  0,  0,  0,  1,  2,  3,  4,  5,  6,
-      7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-      25, 0,  0,  0,  0,  63, 0,  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
-      37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 0,  0,  0,
-      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-      0,  0,  0,  0,
-  };
-#define FIO_BASE64_BITVAL(x) (base64_decodes[(x)] & 63)
+  const uint8_t base64_decodes[] = {
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   125, 127,
+      125, 0,   127, 105, 107, 109, 111, 113, 115, 117, 119, 121, 123, 0,   0,
+      0,   129, 0,   0,   0,   1,   3,   5,   7,   9,   11,  13,  15,  17,  19,
+      21,  23,  25,  27,  29,  31,  33,  35,  37,  39,  41,  43,  45,  47,  49,
+      51,  0,   0,   0,   0,   127, 0,   53,  55,  57,  59,  61,  63,  65,  67,
+      69,  71,  73,  75,  77,  79,  81,  83,  85,  87,  89,  91,  93,  95,  97,
+      99,  101, 103, 0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+      0};
+#define FIO_BASE64_BITVAL(x) ((base64_decodes[(x)] >> 1) & 63)
 
   if (!FIO_PTR_UNTAG(s_) || !len)
     return FIO_NAME(FIO_STR_NAME, info)(s_);
@@ -8558,19 +8560,31 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   }
   {
     fprintf(stderr, "* Testing Base64 encoding / decoding\n");
-    const char *message = "Hello World, this is the voice of peace:)";
     fio__str_____test_destroy(&str); /* does nothing, but what the heck... */
+
+    fio__str_____test_s b64message = FIO_STR_INIT;
+    fio_str_info_s b64i = fio__str_____test_write(
+        &b64message, "Hello World, this is the voice of peace:)", 41);
+    for (int i = 0; i < 255; ++i) {
+      uint8_t c = i;
+      b64i = fio__str_____test_write(&b64message, &c, 1);
+    }
     fio_str_info_s encoded =
-        fio__str_____test_write_b64enc(&str, message, strlen(message), 1);
+        fio__str_____test_write_b64enc(&str, b64i.data, b64i.len, 1);
     fio_str_info_s decoded =
         fio__str_____test_write_b64dec(&str, encoded.data, encoded.len);
+    TEST_ASSERT(encoded.len, "Base64 encoding failed");
+    TEST_ASSERT(decoded.len > encoded.len, "Base64 decoding failed:\n%s",
+                encoded.data);
+    TEST_ASSERT(b64i.len == decoded.len - encoded.len,
+                "Base 64 roundtrip length error, %zu != %zu (%zu - %zu):\n %s",
+                b64i.len, decoded.len - encoded.len, decoded.len, encoded.len,
+                decoded.data);
 
-    TEST_ASSERT(strlen(message) == decoded.len - encoded.len,
-                "Base 64 roundtrip length error:\n %s", decoded.data);
-
-    TEST_ASSERT(!strcmp(message, decoded.data + encoded.len),
+    TEST_ASSERT(!memcmp(b64i.data, decoded.data + encoded.len, b64i.len),
                 "Base 64 roundtrip failed:\n %s", decoded.data);
-    fio__str_____test_destroy(&str); /* does nothing, but what the heck... */
+    fio__str_____test_destroy(&b64message);
+    fio__str_____test_destroy(&str);
   }
   fprintf(stderr, "* Passed.\n");
 }
