@@ -7328,7 +7328,6 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
   TEST_ASSERT(fio_bswap32(0x01020304) == 0x04030201, "fio_bswap32 failed");
   TEST_ASSERT(fio_bswap64(0x0102030405060708ULL) == 0x0807060504030201ULL,
               "fio_bswap64 failed");
-  fprintf(stderr, "* passed.\n");
 
   fprintf(stderr, "* Testing fio_lrotX and fio_rrotX macros.\n");
   {
@@ -7355,7 +7354,6 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
     __asm__ volatile("" ::: "memory");
     TEST_ASSERT(tmp == ((uint64_t)1 << 2), "fio_lrot64 failed");
   }
-  fprintf(stderr, "* passed.\n");
 
   fprintf(stderr, "* Testing fio_u2strX and fio_u2strX macros.\n");
   char buffer[32];
@@ -7380,7 +7378,6 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
                 "fio_u2str16 / fio_str2u16  mismatch %zd != %zd",
                 (ssize_t)(fio_str2u16(buffer)), (ssize_t)i);
   }
-  fprintf(stderr, "* passed.\n");
 
   fprintf(stderr, "* Testing constant-time helpers.\n");
   TEST_ASSERT(fio_ct_true(8), "fio_ct_true should be true.");
@@ -7391,8 +7388,6 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
   TEST_ASSERT(fio_ct_if(1, 1, 2) == 1, "fio_ct_if selection error (true).");
   TEST_ASSERT(fio_ct_if2(0, 1, 2) == 2, "fio_ct_if2 selection error (false).");
   TEST_ASSERT(fio_ct_if2(8, 1, 2) == 1, "fio_ct_if2 selection error (true).");
-  fprintf(stderr, "* passed.\n");
-
   {
     uint8_t bitmap[1024];
     memset(bitmap, 0, 1024);
@@ -7411,7 +7406,6 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
                 "fio_bitmap_get should be 0 after unset.");
     TEST_ASSERT(fio_bitmap_get(bitmap, 96) == 1,
                 "other bits shouldn't be effected by unset");
-    fprintf(stderr, "* passed.\n");
   }
   {
     fprintf(stderr, "* Testing popcount and hemming distance calculation.\n");
@@ -7435,7 +7429,6 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
       TEST_ASSERT(fio_hemming_dist(((uint64_t)1 << i) - 1, 0) == i,
                   "fio_hemming_dist error at %d", i);
     }
-    fprintf(stderr, "* passed.\n");
   }
 }
 
@@ -7540,7 +7533,6 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
   fprintf(stderr,
           "\t- to compare CPU cycles, test randomness with optimization.\n\n");
 #endif
-  fprintf(stderr, "* passed.\n");
 }
 
 /* *****************************************************************************
@@ -7588,7 +7580,6 @@ TEST_FUNC void fio___dynamic_types_test___atomic(void) {
   TEST_ASSERT(s.l == 1 && p->l == 99, "fio_atomic_xchange failed for l");
   TEST_ASSERT(s.w == 1 && p->w == 99, "fio_atomic_xchange failed for w");
   FIO_MEM_FREE(p, sizeof(*p));
-  fprintf(stderr, "* passed.\n");
 }
 /* *****************************************************************************
 Linked List - Test
@@ -7606,7 +7597,7 @@ typedef struct {
 #include __FILE__
 
 TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
-  fprintf(stderr, "* Testing linked lists\n");
+  fprintf(stderr, "* Testing linked lists.\n");
   FIO_LIST_HEAD ls = FIO_LIST_INIT(ls);
   for (int i = 0; i < REPEAT; ++i) {
     ls____test_s *node = ls____test_push(&ls, FIO_MEM_CALLOC(sizeof(*node), 1));
@@ -7660,7 +7651,6 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
   }
   TEST_ASSERT(ls____test_is_empty(&ls),
               "Linked list empty should have been true");
-  fprintf(stderr, "* Passed\n");
 }
 
 /* *****************************************************************************
@@ -7702,7 +7692,9 @@ static int fio_____dynamic_test_array_task(int o, void *c_) {
 TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   int tmp = 0;
   ary____test_s a = FIO_ARY_INIT;
-  fprintf(stderr, "* Testing dynamic arrays (on stack, push/pop)\n");
+  fprintf(stderr, "* Testing dynamic arrays.\n");
+
+  fprintf(stderr, "* Testing on stack, push/pop.\n");
   /* test stack allocated array (initialization) */
   TEST_ASSERT(ary____test_capa(&a) == 0,
               "Freshly initialized array should have zero capacity");
@@ -7788,11 +7780,9 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
               "reserve shouldn't effect itme count.");
   ary____test_destroy(&a);
 
-  fprintf(stderr, "* Passed\n");
-
   /* Round 2 - heap, shift/unshift, negative ary_set index */
 
-  fprintf(stderr, "* Testing dynamic arrays (on heap, shift/unshift)\n");
+  fprintf(stderr, "* Testing on heap, shift/unshift.\n");
   /* test heap allocated array (initialization) */
   ary____test_s *pa = ary____test_new();
   TEST_ASSERT(ary____test_capa(pa) == 0,
@@ -7869,10 +7859,8 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   TEST_ASSERT(ary____test_get(pa, 2) == 1, "reserve should have kept index 2");
   ary____test_destroy(pa);
   ary____test_free(pa);
-  fprintf(stderr, "* Passed\n");
 
-  fprintf(stderr, "* Testing dynamic arrays (non-zero value for "
-                  "uninitialized elements)\n");
+  fprintf(stderr, "* Testing non-zero value for uninitialized elements.\n");
   ary2____test_s a2 = FIO_ARY_INIT;
   ary2____test_set(&a2, 99, 1, NULL);
   FIO_ARY_EACH(&a2, pos) {
@@ -7890,10 +7878,9 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
                 (pos - ary2____test_to_a(&a2)));
   }
   ary2____test_destroy(&a2);
-  fprintf(stderr, "* Passed\n");
 
   /* Round 3 - heap, with reference counting */
-  fprintf(stderr, "* Testing dynamic arrays (reference counting)\n");
+  fprintf(stderr, "* Testing reference counting.\n");
   /* test heap allocated array (initialization) */
   pa = ary____test_new2();
   ary____test_up_ref(pa);
@@ -7913,9 +7900,8 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   ary____test_free2(pa);
   TEST_ASSERT(ary____test_was_destroyed,
               "reference counted array not destroyed.");
-  fprintf(stderr, "* Passed\n");
 
-  fprintf(stderr, "* Testing dynamic arrays helpers\n");
+  fprintf(stderr, "* Testing dynamic arrays helpers.\n");
   for (size_t i = 0; i < REPEAT; ++i) {
     ary____test_push(&a, i);
   }
@@ -7941,7 +7927,6 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
     TEST_ASSERT((size_t)old == i, "shift order / insert issue");
   }
   ary____test_destroy(&a);
-  fprintf(stderr, "* Passed\n");
 }
 
 /* *****************************************************************************
@@ -8004,8 +7989,9 @@ TEST_FUNC int set_____test_each_task(size_t o, void *a_) {
 TEST_FUNC void fio___dynamic_types_test___map_test(void) {
   {
     set_____test_s m = FIO_MAP_INIT;
-    fprintf(stderr,
-            "* Testing dynamic set map (hash map where value == key)\n");
+    fprintf(stderr, "* Testing dynamic hash / set maps.\n");
+
+    fprintf(stderr, "* Testing set (hash map where value == key).\n");
     TEST_ASSERT(set_____test_count(&m) == 0,
                 "freshly initialized map should have no objects");
     TEST_ASSERT(set_____test_capa(&m) == 0,
@@ -8091,11 +8077,10 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
                   "previous items should be accessible after removal");
     }
     set_____test_destroy(&m);
-    fprintf(stderr, "* Passed\n");
   }
   {
     set2_____test_s m = FIO_MAP_INIT;
-    fprintf(stderr, "* Testing dynamic set map without value comparison\n");
+    fprintf(stderr, "* Testing set map without value comparison.\n");
     for (size_t i = 0; i < REPEAT; ++i) {
       set2_____test_insert(&m, HASHOFi(i), i + 1);
     }
@@ -8160,11 +8145,11 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
                   "previous items should NOT be accessible after removal");
     }
     set2_____test_destroy(&m);
-    fprintf(stderr, "* Passed\n");
   }
+
   {
     map_____test_s *m = map_____test_new();
-    fprintf(stderr, "* Testing dynamic hash map.\n");
+    fprintf(stderr, "* Testing hash map.\n");
     TEST_ASSERT(map_____test_count(m) == 0,
                 "freshly initialized map should have no objects");
     TEST_ASSERT(map_____test_capa(m) == 0,
@@ -8204,18 +8189,16 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     map_____test_free(m);
     TEST_ASSERT(map_____test_key_copy_counter == 0,
                 "key destruction error - was the key freed?");
-    fprintf(stderr, "* Passed\n");
   }
   {
     set_____test_s m = FIO_MAP_INIT;
-    fprintf(stderr, "* Testing dynamic map attack resistance.\n");
+    fprintf(stderr, "* Testing attack resistance.\n");
     for (size_t i = 0; i < REPEAT; ++i) {
       set_____test_insert(&m, 1, i + 1);
     }
     TEST_ASSERT(set_____test_count(&m) != REPEAT,
                 "full collision protection failed?");
     set_____test_destroy(&m);
-    fprintf(stderr, "* Passed\n");
   }
 }
 
@@ -8239,7 +8222,7 @@ Hash Map 2 type test
 
 TEST_FUNC void fio___dynamic_types_test___hmap_test(void) {
   hmap_____test_s m = FIO_MAP_INIT;
-  fprintf(stderr, "* Testing dynamic hash map (2)\n");
+  fprintf(stderr, "* Testing dynamic hash map (2).\n");
   TEST_ASSERT(m.count == 0, "freshly initialized map should have no objects");
   for (size_t i = 0; i < REPEAT; ++i) {
     hmap_____test_insert(&m, HASHOFi(i), i, i + 1, NULL);
@@ -8269,7 +8252,6 @@ TEST_FUNC void fio___dynamic_types_test___hmap_test(void) {
                 "item retrival error in hash map with holes.");
   }
   hmap_____test_destroy(&m);
-  fprintf(stderr, "* Passed\n");
 }
 
 #undef HASHOFi
@@ -8294,7 +8276,7 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   (((num + 1) & (sizeof(long double) - 1))                                     \
        ? ((num + 1) | (sizeof(long double) - 1))                               \
        : (num))
-  fprintf(stderr, "* Testing core string features\n");
+  fprintf(stderr, "* Testing core string features.\n");
   fprintf(stderr,
           "* String container + reference counter (with wrapper): %zu\n",
           sizeof(fio__str_____test__wrapper_s));
@@ -8612,7 +8594,6 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     fio__str_____test_destroy(&b64message);
     fio__str_____test_destroy(&str);
   }
-  fprintf(stderr, "* Passed.\n");
 }
 #undef FIO__STR_SMALL_CAPA
 
@@ -8628,7 +8609,7 @@ TEST_FUNC void fio___dynamic_types_test___cli(void) {
       "appname", "-i11", "-i2=2", "-i3", "3", "-t", "-s", "test", "unnamed",
   };
   const int argc = sizeof(argv) / sizeof(argv[0]);
-  fprintf(stderr, "* Testing CLI helpers\n");
+  fprintf(stderr, "* Testing CLI helpers.\n");
   fio_cli_start(argc, argv, 0, -1, NULL,
                 FIO_CLI_INT("-integer1 -i1 first integer"),
                 FIO_CLI_INT("-integer2 -i2 second integer"),
@@ -8648,7 +8629,6 @@ TEST_FUNC void fio___dynamic_types_test___cli(void) {
   TEST_ASSERT(!strcmp(fio_cli_get("-manual"), "okay"), "CLI set/get error.");
   fio_cli_end();
   TEST_ASSERT(fio_cli_get_i("-i1") == 0, "CLI cleanup error.");
-  fprintf(stderr, "* Passed.\n");
 }
 
 /* *****************************************************************************
@@ -8659,7 +8639,7 @@ Memory Allocation - test
 #include __FILE__
 
 TEST_FUNC void fio___dynamic_types_test___mem(void) {
-  fprintf(stderr, "* Testing core memory allocator (fio_malloc)\n");
+  fprintf(stderr, "* Testing core memory allocator (fio_malloc).\n");
   const size_t three_blocks = ((size_t)3 * FIO_MEMORY_BLOCKS_PER_ALLOCATION)
                               << FIO_MEMORY_BLOCK_SIZE_LOG;
   for (int cycles = 4; cycles < 14; ++cycles) {
@@ -8692,7 +8672,6 @@ TEST_FUNC void fio___dynamic_types_test___mem(void) {
   fio_mem___destroy();
   TEST_ASSERT(fio_mem___block_count <= 1, "memory leaks?");
 #endif
-  fprintf(stderr, "* Passed.\n");
 }
 
 /* *****************************************************************************
@@ -8705,7 +8684,7 @@ Hashing speed test
 typedef uintptr_t (*fio__hashing_func_fn)(char *, size_t);
 
 TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h, char *name) {
-  fprintf(stderr, "Testing %s speed\n", name);
+  fprintf(stderr, "Testing %s speed.\n", name);
   /* test based on code from BearSSL with credit to Thomas Pornin */
   uint8_t buffer[8192];
   memset(buffer, 'T', sizeof(buffer));
@@ -8817,6 +8796,7 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fio___dynamic_types_test___risky();
   fprintf(stderr, "===============\n");
 #endif
+  fprintf(stderr, "Dynamic types testing complete - PASS.\n\n");
 }
 
 /* *****************************************************************************
