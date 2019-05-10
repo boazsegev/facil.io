@@ -290,10 +290,12 @@ Common macros
 #ifndef FIO_EXTERN_COMPLETE /* force implementation, emitting static data */
 #define FIO_EXTERN_COMPLETE 2
 #endif
-#else
+
+#else /* FIO_EXTERN */
 #define SFUNC_
 #define IFUNC_
-#endif
+#endif /* FIO_EXTERN */
+
 #define HFUNC static inline __attribute__((unused)) /* internal helper */
 #define HSFUNC static __attribute__((unused))       /* internal helper */
 
@@ -325,7 +327,7 @@ Common macros
 #ifndef FIO_PTR_TAG_TYPE
 #endif
 
-#else /* recursive include should always be `static` */
+#else /* FIO_NAME_FROM_MACRO_STEP2 - internal helper types are `static` */
 #undef SFUNC
 #undef IFUNC
 #define SFUNC HSFUNC
@@ -1432,7 +1434,9 @@ struct fio_mem___block_node_s {
 #define FIO_STL_KEEP__ 1
 #endif
 #include __FILE__
+#if FIO_STL_KEEP__ == 1
 #undef FIO_STL_KEEP__
+#endif
 /* Address returned when allocating 0 bytes ( fio_malloc(0) ) */
 static long double fio_mem___on_malloc_zero;
 
@@ -6296,10 +6300,12 @@ typedef struct {
    (o1.data == o2.data || !memcmp(o1.data, o2.data, o1.len)))
 #define FIO_MAP_NAME fio_cli_hash
 #ifndef FIO_STL_KEEP__
-#define FIO_STL_KEEP__
+#define FIO_STL_KEEP__ 1
 #endif
 #include __FILE__
+#if FIO_STL_KEEP__ == 1
 #undef FIO_STL_KEEP__
+#endif
 
 static fio_cli_hash_s fio_cli__aliases = FIO_MAP_INIT;
 static fio_cli_hash_s fio_cli__values = FIO_MAP_INIT;
@@ -8807,10 +8813,10 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___mem();
   fprintf(stderr, "===============\n");
-  #ifndef DEBUG
+#ifndef DEBUG
   fio___dynamic_types_test___risky();
   fprintf(stderr, "===============\n");
-  #endif
+#endif
 }
 
 /* *****************************************************************************
