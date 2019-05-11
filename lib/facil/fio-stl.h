@@ -4853,7 +4853,7 @@ IFUNC int FIO_NAME(FIO_STR_NAME, iseq)(const FIO_STR_PTR str1,
  *
  * Note: Hash algorithm might change without notice.
  */
-SFUNC uint64_t FIO_NAME(FIO_STR_NAME, hash)(const FIO_STR_PTR s);
+SFUNC uint64_t FIO_NAME(FIO_STR_NAME, hash)(const FIO_STR_PTR s, uint64_t seed);
 #endif
 
 /* *****************************************************************************
@@ -4995,6 +4995,27 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
                               readfile)(FIO_STR_PTR s, const char *filename,
                                         intptr_t start_at, intptr_t limit);
 #endif
+
+/* *****************************************************************************
+String API - C / JSON escaping
+***************************************************************************** */
+
+/**
+ * Writes data at the end of the String, escaping the data using JSON semantics.
+ *
+ * The JSON semantic are common to many programming languages, promising a UTF-8
+ * String while making it easy to read and copy the string during debugging.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escaped)(FIO_STR_PTR s,
+                                                           const void *data,
+                                                           size_t data_len);
+
+/**
+ * Writes an escaped data into the string after unescaping the data.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
+                              write_unescaped)(FIO_STR_PTR s,
+                                               const void *escaped, size_t len);
 
 /* *****************************************************************************
 String API - Base64 support
@@ -5226,12 +5247,13 @@ IFUNC int FIO_NAME(FIO_STR_NAME, iseq)(const FIO_STR_PTR str1_,
  *
  * Note: Hash algorithm might change without notice.
  */
-SFUNC uint64_t FIO_NAME(FIO_STR_NAME, hash)(const FIO_STR_PTR s_) {
+SFUNC uint64_t FIO_NAME(FIO_STR_NAME, hash)(const FIO_STR_PTR s_,
+                                            uint64_t seed) {
   FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
   if (FIO_STR_IS_SMALL(s))
     return fio_risky_hash((void *)FIO_STR_SMALL_DATA(s), FIO_STR_SMALL_LEN(s),
                           0);
-  return fio_risky_hash((void *)s->data, s->len, 0);
+  return fio_risky_hash((void *)s->data, s->len, seed);
 }
 #endif
 /* *****************************************************************************
@@ -5775,6 +5797,317 @@ FIO_NAME(FIO_STR_NAME, printf)(FIO_STR_PTR s_, const char *format, ...) {
   va_end(argv);
   return state;
 }
+
+/* *****************************************************************************
+String API - C / JSON escaping
+***************************************************************************** */
+
+/* constant time (non-branching) if statement used in a loop as a helper */
+#define FIO_STR_WRITE_EXCAPED_CT_OR(cond, a, b)                                \
+  ((b) ^                                                                       \
+   ((0 - ((((cond) | (0 - (cond))) >> ((sizeof((cond)) << 3) - 1)) & 1)) &     \
+    ((a) ^ (b))))
+
+/**
+ * Writes data at the end of the String, escaping the data using JSON semantics.
+ *
+ * The JSON semantic are common to many programming languages, promising a UTF-8
+ * String while making it easy to read and copy the string during debugging.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escaped)(FIO_STR_PTR s,
+                                                           const void *src_,
+                                                           size_t len) {
+  const char hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                            '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+  const uint8_t *src = src_;
+  size_t extra_len = 0;
+  size_t at = 0;
+
+  /* collect escaping requiremnents */
+  for (size_t i = 0; i < len; ++i) {
+    /* skip valid ascii */
+    if ((src[i] > 34 && src[i] < 127 && src[i] != '\\') || src[i] == '!' ||
+        src[i] == ' ')
+      continue;
+    /* skip valid UTF-8 */
+    switch (fio__str_utf8_map[src[i] >> 3]) {
+    case 4:
+      if (fio__str_utf8_map[src[i + 3] >> 3] != 3) {
+        break; /* from switch */
+      }
+    /* fallthrough */
+    case 3:
+      if (fio__str_utf8_map[src[i + 2] >> 3] != 2) {
+        break; /* from switch */
+      }
+    /* fallthrough */
+    case 2:
+      if (fio__str_utf8_map[src[i + 1] >> 3] != 1) {
+        break; /* from switch */
+      }
+      i += fio__str_utf8_map[src[i] >> 3] - 1;
+      continue;
+    }
+    at = FIO_STR_WRITE_EXCAPED_CT_OR(at, at, i);
+
+    /* count extra bytes */
+    switch (src[i]) {
+    case '\b': /* fallthrough */
+    case '\f': /* fallthrough */
+    case '\n': /* fallthrough */
+    case '\r': /* fallthrough */
+    case '\t': /* fallthrough */
+    case '"':  /* fallthrough */
+    case '\\': /* fallthrough */
+    case '/':  /* fallthrough */
+      ++extra_len;
+      break;
+    default:
+      /* escaping all control charactes and non-UTF-8 characters */
+      extra_len += 5;
+    }
+  }
+  /* is escaping required? */
+  if (!extra_len) {
+    return FIO_NAME(FIO_STR_NAME, write)(s, src, len);
+  }
+  /* reserve space and copy any valid "head" */
+  fio_str_info_s dest = FIO_NAME(FIO_STR_NAME, reserve)(
+      s, FIO_NAME(FIO_STR_NAME, len)(s) + extra_len + len);
+  dest.data += dest.len;
+
+  if (at >= 8) {
+    memcpy(dest.data, src, at);
+  } else {
+    at = 0;
+  }
+
+  /* start escaping */
+  for (size_t i = at; i < len; ++i) {
+    /* skip valid ascii */
+    if ((src[i] > 34 && src[i] < 127 && src[i] != '\\') || src[i] == '!' ||
+        src[i] == ' ') {
+      dest.data[at++] = src[i];
+      continue;
+    }
+    /* skip valid UTF-8 */
+    switch (fio__str_utf8_map[src[i] >> 3]) {
+    case 4:
+      if (fio__str_utf8_map[src[i + 3] >> 3] != 3) {
+        break; /* from switch */
+      }
+    /* fallthrough */
+    case 3:
+      if (fio__str_utf8_map[src[i + 2] >> 3] != 2) {
+        break; /* from switch */
+      }
+    /* fallthrough */
+    case 2:
+      if (fio__str_utf8_map[src[i + 1] >> 3] != 1) {
+        break; /* from switch */
+      }
+      switch (fio__str_utf8_map[src[i] >> 3]) {
+      case 4:
+        dest.data[at++] = src[i++];
+      /* fallthrough */
+      case 3:
+        dest.data[at++] = src[i++];
+      /* fallthrough */
+      case 2:
+        dest.data[at++] = src[i++];
+        dest.data[at++] = src[i];
+      }
+      continue;
+    }
+
+    /* count extra bytes */
+    switch (src[i]) {
+    case '\b':
+      dest.data[at++] = '\\';
+      dest.data[at++] = 'b';
+      break;
+    case '\f':
+      dest.data[at++] = '\\';
+      dest.data[at++] = 'f';
+      break;
+    case '\n':
+      dest.data[at++] = '\\';
+      dest.data[at++] = 'n';
+      break;
+    case '\r':
+      dest.data[at++] = '\\';
+      dest.data[at++] = 'r';
+      break;
+    case '\t':
+      dest.data[at++] = '\\';
+      dest.data[at++] = 't';
+      break;
+    case '"':
+      dest.data[at++] = '\\';
+      dest.data[at++] = '"';
+      break;
+    case '\\':
+      dest.data[at++] = '\\';
+      dest.data[at++] = '\\';
+      break;
+    case '/':
+      dest.data[at++] = '\\';
+      dest.data[at++] = '/';
+      break;
+    default:
+      /* escaping all control charactes and non-UTF-8 characters */
+      if (src[i] < 127) {
+        dest.data[at++] = '\\';
+        dest.data[at++] = 'u';
+        dest.data[at++] = '0';
+        dest.data[at++] = '0';
+        dest.data[at++] = hex_chars[src[i] >> 4];
+        dest.data[at++] = hex_chars[src[i] & 15];
+      } else {
+        /* non UTF-8 data... encode as...? */
+        dest.data[at++] = '\\';
+        dest.data[at++] = 'x';
+        dest.data[at++] = hex_chars[src[i] >> 4];
+        dest.data[at++] = hex_chars[src[i] & 15];
+      }
+    }
+  }
+  return FIO_NAME(FIO_STR_NAME, resize)(s, dest.len + at);
+}
+
+/**
+ * Writes an escaped data into the string after unescaping the data.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_unescaped)(FIO_STR_PTR s,
+                                                             const void *src_,
+                                                             size_t len) {
+  const uint8_t is_hex[] = {
+      0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
+      0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
+      0,  0,  0,  0, 0, 0,  0,  0,  1,  2,  3,  4, 5, 6, 7, 8, 9, 10, 0,  0,
+      0,  0,  0,  0, 0, 11, 12, 13, 14, 15, 16, 0, 0, 0, 0, 0, 0, 0,  0,  0,
+      0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 11, 12, 13,
+      14, 15, 16, 0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
+      0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
+      0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
+      0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
+      0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
+      0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
+      0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
+      0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0};
+
+  fio_str_info_s dest =
+      FIO_NAME(FIO_STR_NAME, reserve)(s, FIO_NAME(FIO_STR_NAME, len)(s) + len);
+  size_t at = 0;
+  const uint8_t *src = src_;
+  const uint8_t *end = src + len;
+  dest.data += dest.len;
+  for (;;) {
+    while (src < end && *src != '\\') {
+      dest.data[at++] = *(src++);
+    }
+    if (end - src == 1) {
+      dest.data[at++] = *(src++);
+    }
+    if (src >= end)
+      break;
+    /* escaped data - src[0] == '\\' */
+    ++src;
+    switch (src[0]) {
+    case 'b':
+      dest.data[at++] = '\b';
+      ++src;
+      break; /* from switch */
+    case 'f':
+      dest.data[at++] = '\f';
+      ++src;
+      break; /* from switch */
+    case 'n':
+      dest.data[at++] = '\n';
+      ++src;
+      break; /* from switch */
+    case 'r':
+      dest.data[at++] = '\r';
+      ++src;
+      break; /* from switch */
+    case 't':
+      dest.data[at++] = '\t';
+      ++src;
+      break; /* from switch */
+    case 'u': {
+      /* test UTF-8 notation */
+      if (is_hex[src[1]] && is_hex[src[2]] && is_hex[src[3]] &&
+          is_hex[src[4]]) {
+        uint32_t u =
+            ((((is_hex[src[1]] - 1) << 4) | (is_hex[src[2]] - 1)) << 8) |
+            (((is_hex[src[3]] - 1) << 4) | (is_hex[src[4]] - 1));
+        if ((((is_hex[src[1]] - 1) << 4) | (is_hex[src[2]] - 1)) == 0xD8U &&
+            src[5] == '\\' && src[6] == 'u' && is_hex[src[7]] &&
+            is_hex[src[8]] && is_hex[src[9]] && is_hex[src[10]]) {
+          /* surrogate-pair */
+          u = (u & 0x03FF) << 10;
+          u |= ((((((is_hex[src[7]] - 1) << 4) | (is_hex[src[8]] - 1)) << 8) |
+                 (((is_hex[src[9]] - 1) << 4) | (is_hex[src[10]] - 1))) &
+                0x03FF);
+          u += 0x10000;
+          src += 6;
+        }
+        if (u <= 127) {
+          dest.data[at++] = u;
+        } else if (u <= 2047) {
+          dest.data[at++] = 192 | (u >> 6);
+          dest.data[at++] = 128 | (u & 63);
+        } else if (u <= 65535) {
+          dest.data[at++] = 224 | (u >> 12);
+          dest.data[at++] = 128 | ((u >> 6) & 63);
+          dest.data[at++] = 128 | (u & 63);
+        } else {
+          dest.data[at++] = 240 | ((u >> 18) & 7);
+          dest.data[at++] = 128 | ((u >> 12) & 63);
+          dest.data[at++] = 128 | ((u >> 6) & 63);
+          dest.data[at++] = 128 | (u & 63);
+        }
+        src += 5;
+        break; /* from switch */
+      } else
+        goto invalid_escape;
+    }
+    case 'x': { /* test for hex notation */
+      if (is_hex[src[1]] && is_hex[src[2]]) {
+        dest.data[at++] = ((is_hex[src[1]] - 1) << 4) | (is_hex[src[2]] - 1);
+        src += 3;
+        break; /* from switch */
+      } else
+        goto invalid_escape;
+    }
+    case '0':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7': { /* test for octal notation */
+      if (src[0] >= '0' && src[0] <= '7' && src[1] >= '0' && src[1] <= '7') {
+        dest.data[at++] = ((src[0] - '0') << 3) | (src[1] - '0');
+        src += 2;
+        break; /* from switch */
+      } else
+        goto invalid_escape;
+    }
+    case '"':
+    case '\\':
+    case '/':
+    /* fallthrough */
+    default:
+    invalid_escape:
+      dest.data[at++] = *(src++);
+    }
+  }
+  return FIO_NAME(FIO_STR_NAME, resize)(s, dest.len + at);
+}
+
+#undef FIO_STR_WRITE_EXCAPED_CT_OR
 
 /* *****************************************************************************
 String - Base64 support
@@ -7270,7 +7603,7 @@ Common cleanup
 #undef FIO_TEST_CSTL
 #define FIO_FIO_TEST_CSTL_ONLY_ONCE 1
 #define TEST_FUNC static __attribute__((unused))
-#define REPEAT 4096
+#define TEST_REPEAT 4096
 #define FIO_LOG
 #define TEST_ASSERT(cond, ...)                                                 \
   if (!(cond)) {                                                               \
@@ -7303,7 +7636,7 @@ String <=> Number - test
 
 TEST_FUNC void fio___dynamic_types_test___atol(void) {
   char buffer[1024];
-  for (int i = 0 - REPEAT; i < REPEAT; ++i) {
+  for (int i = 0 - TEST_REPEAT; i < TEST_REPEAT; ++i) {
     size_t tmp = fio_ltoa(buffer, i, 0);
     TEST_ASSERT(tmp > 0, "fio_ltoa return slength error");
     buffer[tmp] = 0;
@@ -7357,21 +7690,21 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
 
   fprintf(stderr, "* Testing fio_u2strX and fio_u2strX macros.\n");
   char buffer[32];
-  for (int64_t i = -REPEAT; i < REPEAT; ++i) {
+  for (int64_t i = -TEST_REPEAT; i < TEST_REPEAT; ++i) {
     fio_u2str64(buffer, i);
     __asm__ volatile("" ::: "memory");
     TEST_ASSERT((int64_t)fio_str2u64(buffer) == i,
                 "fio_u2str64 / fio_str2u64  mismatch %zd != %zd",
                 (ssize_t)fio_str2u64(buffer), (ssize_t)i);
   }
-  for (int32_t i = -REPEAT; i < REPEAT; ++i) {
+  for (int32_t i = -TEST_REPEAT; i < TEST_REPEAT; ++i) {
     fio_u2str32(buffer, i);
     __asm__ volatile("" ::: "memory");
     TEST_ASSERT((int32_t)fio_str2u32(buffer) == i,
                 "fio_u2str32 / fio_str2u32  mismatch %zd != %zd",
                 (ssize_t)(fio_str2u32(buffer)), (ssize_t)i);
   }
-  for (int16_t i = -REPEAT; i < REPEAT; ++i) {
+  for (int16_t i = -TEST_REPEAT; i < TEST_REPEAT; ++i) {
     fio_u2str16(buffer, i);
     __asm__ volatile("" ::: "memory");
     TEST_ASSERT((int16_t)fio_str2u16(buffer) == i,
@@ -7501,7 +7834,7 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
 TEST_FUNC void fio___dynamic_types_test___random(void) {
   fprintf(stderr, "* Testing randomness "
                   "- bit frequency / hemming distance / chi-square.\n");
-  const size_t test_length = (REPEAT << 7);
+  const size_t test_length = (TEST_REPEAT << 7);
   uint64_t *rs = FIO_MEM_CALLOC(sizeof(*rs), test_length);
   clock_t start, end;
   FIO_ASSERT_ALLOC(rs);
@@ -7599,7 +7932,7 @@ typedef struct {
 TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
   fprintf(stderr, "* Testing linked lists.\n");
   FIO_LIST_HEAD ls = FIO_LIST_INIT(ls);
-  for (int i = 0; i < REPEAT; ++i) {
+  for (int i = 0; i < TEST_REPEAT; ++i) {
     ls____test_s *node = ls____test_push(&ls, FIO_MEM_CALLOC(sizeof(*node), 1));
     node->data = i;
   }
@@ -7608,7 +7941,7 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
     TEST_ASSERT(pos->data == tester++,
                 "Linked list ordering error for push or each");
   }
-  TEST_ASSERT(tester == REPEAT,
+  TEST_ASSERT(tester == TEST_REPEAT,
               "linked list EACH didn't loop through all the list");
   while (ls____test_any(&ls)) {
     ls____test_s *node = ls____test_pop(&ls);
@@ -7617,8 +7950,8 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
     TEST_ASSERT(node->data == --tester, "Linked list ordering error for pop");
     FIO_MEM_FREE(node, sizeof(*node));
   }
-  tester = REPEAT;
-  for (int i = 0; i < REPEAT; ++i) {
+  tester = TEST_REPEAT;
+  for (int i = 0; i < TEST_REPEAT; ++i) {
     ls____test_s *node =
         ls____test_unshift(&ls, FIO_MEM_CALLOC(sizeof(*node), 1));
     node->data = i;
@@ -7630,7 +7963,7 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
   TEST_ASSERT(
       tester == 0,
       "linked list EACH didn't loop through all the list after unshift");
-  tester = REPEAT;
+  tester = TEST_REPEAT;
   while (ls____test_any(&ls)) {
     ls____test_s *node = ls____test_shift(&ls);
     fio___dynamic_types_test_untag((uintptr_t *)&(node));
@@ -7640,7 +7973,7 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
   }
   TEST_ASSERT(ls____test_is_empty(&ls),
               "Linked list empty should have been true");
-  for (int i = 0; i < REPEAT; ++i) {
+  for (int i = 0; i < TEST_REPEAT; ++i) {
     ls____test_s *node = ls____test_push(&ls, FIO_MEM_CALLOC(sizeof(*node), 1));
     node->data = i;
   }
@@ -7902,26 +8235,27 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
               "reference counted array not destroyed.");
 
   fprintf(stderr, "* Testing dynamic arrays helpers.\n");
-  for (size_t i = 0; i < REPEAT; ++i) {
+  for (size_t i = 0; i < TEST_REPEAT; ++i) {
     ary____test_push(&a, i);
   }
-  TEST_ASSERT(ary____test_count(&a) == REPEAT, "push object count error");
+  TEST_ASSERT(ary____test_count(&a) == TEST_REPEAT, "push object count error");
   {
     size_t c = 0;
     size_t i = ary____test_each(&a, 3, fio_____dynamic_test_array_task, &c);
     TEST_ASSERT(i < 64, "too many objects counted in each loop.");
     TEST_ASSERT(c >= 256 && c < 512, "each loop too long.");
   }
-  for (size_t i = 0; i < REPEAT; ++i) {
+  for (size_t i = 0; i < TEST_REPEAT; ++i) {
     TEST_ASSERT((size_t)ary____test_get(&a, i) == i,
                 "push order / insert issue");
   }
   ary____test_destroy(&a);
-  for (size_t i = 0; i < REPEAT; ++i) {
+  for (size_t i = 0; i < TEST_REPEAT; ++i) {
     ary____test_unshift(&a, i);
   }
-  TEST_ASSERT(ary____test_count(&a) == REPEAT, "unshift object count error");
-  for (size_t i = 0; i < REPEAT; ++i) {
+  TEST_ASSERT(ary____test_count(&a) == TEST_REPEAT,
+              "unshift object count error");
+  for (size_t i = 0; i < TEST_REPEAT; ++i) {
     int old = 0;
     ary____test_pop(&a, &old);
     TEST_ASSERT((size_t)old == i, "shift order / insert issue");
@@ -7996,13 +8330,14 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
                 "freshly initialized map should have no objects");
     TEST_ASSERT(set_____test_capa(&m) == 0,
                 "freshly initialized map should have no capacity");
-    TEST_ASSERT(set_____test_reserve(&m, (REPEAT >> 1)) >= (REPEAT >> 1),
+    TEST_ASSERT(set_____test_reserve(&m, (TEST_REPEAT >> 1)) >=
+                    (TEST_REPEAT >> 1),
                 "reserve should increase capacity.");
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       set_____test_insert(&m, HASHOFi(i), i + 1);
     }
     {
-      uintptr_t pos_test = (REPEAT >> 1);
+      uintptr_t pos_test = (TEST_REPEAT >> 1);
       size_t count =
           set_____test_each(&m, pos_test, set_____test_each_task, &pos_test);
       TEST_ASSERT(count == set_____test_count(&m),
@@ -8010,19 +8345,19 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
       TEST_ASSERT(count == pos_test, "set_each position testing error");
     }
 
-    TEST_ASSERT(set_____test_count(&m) == REPEAT,
+    TEST_ASSERT(set_____test_count(&m) == TEST_REPEAT,
                 "After inserting %zu items to set, got %zu items",
-                (size_t)REPEAT, (size_t)set_____test_count(&m));
-    for (size_t i = 0; i < REPEAT; ++i) {
+                (size_t)TEST_REPEAT, (size_t)set_____test_count(&m));
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       TEST_ASSERT(set_____test_find(&m, HASHOFi(i), i + 1) == i + 1,
                   "item retrival error in set.");
     }
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       TEST_ASSERT(set_____test_find(&m, HASHOFi(i), i + 2) == 0,
                   "item retrival error in set - object comparisson error?");
     }
 
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       set_____test_insert(&m, HASHOFi(i), i + 1);
     }
     {
@@ -8033,46 +8368,46 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
                     "FIO_MAP_EACH loop out of order?")
         ++i;
       }
-      TEST_ASSERT(i == REPEAT, "FIO_MAP_EACH loop incomplete?")
+      TEST_ASSERT(i == TEST_REPEAT, "FIO_MAP_EACH loop incomplete?")
     }
-    TEST_ASSERT(set_____test_count(&m) == REPEAT,
+    TEST_ASSERT(set_____test_count(&m) == TEST_REPEAT,
                 "Inserting existing object should keep existing object.");
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       TEST_ASSERT(set_____test_find(&m, HASHOFi(i), i + 1) == i + 1,
                   "item retrival error in set - insert failed to update?");
     }
 
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       size_t old = 5;
       set_____test_overwrite(&m, HASHOFi(i), i + 2, &old);
       TEST_ASSERT(old == 0,
                   "old pointer not initialized with old (or missing) data");
     }
 
-    TEST_ASSERT(set_____test_count(&m) == (REPEAT * 2),
+    TEST_ASSERT(set_____test_count(&m) == (TEST_REPEAT * 2),
                 "full hash collision shoudn't break map until attack limit.");
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       TEST_ASSERT(set_____test_find(&m, HASHOFi(i), i + 2) == i + 2,
                   "item retrival error in set - overwrite failed to update?");
     }
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       TEST_ASSERT(set_____test_find(&m, HASHOFi(i), i + 1) == i + 1,
                   "item retrival error in set - collision resolution error?");
     }
 
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       size_t old = 5;
       set_____test_remove(&m, HASHOFi(i), i + 1, &old);
       TEST_ASSERT(old == i + 1,
                   "removed item not initialized with old (or missing) data");
     }
-    TEST_ASSERT(set_____test_count(&m) == REPEAT,
+    TEST_ASSERT(set_____test_count(&m) == TEST_REPEAT,
                 "removal should update object count.");
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       TEST_ASSERT(set_____test_find(&m, HASHOFi(i), i + 1) == 0,
                   "removed items should be unavailable");
     }
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       TEST_ASSERT(set_____test_find(&m, HASHOFi(i), i + 2) == i + 2,
                   "previous items should be accessible after removal");
     }
@@ -8081,42 +8416,42 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
   {
     set2_____test_s m = FIO_MAP_INIT;
     fprintf(stderr, "* Testing set map without value comparison.\n");
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       set2_____test_insert(&m, HASHOFi(i), i + 1);
     }
 
-    TEST_ASSERT(set2_____test_count(&m) == REPEAT,
+    TEST_ASSERT(set2_____test_count(&m) == TEST_REPEAT,
                 "After inserting %zu items to set, got %zu items",
-                (size_t)REPEAT, (size_t)set2_____test_count(&m));
-    for (size_t i = 0; i < REPEAT; ++i) {
+                (size_t)TEST_REPEAT, (size_t)set2_____test_count(&m));
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       TEST_ASSERT(set2_____test_find(&m, HASHOFi(i), 0) == i + 1,
                   "item retrival error in set.");
     }
 
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       set2_____test_insert(&m, HASHOFi(i), i + 2);
     }
-    TEST_ASSERT(set2_____test_count(&m) == REPEAT,
+    TEST_ASSERT(set2_____test_count(&m) == TEST_REPEAT,
                 "Inserting existing object should keep existing object.");
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       TEST_ASSERT(set2_____test_find(&m, HASHOFi(i), 0) == i + 1,
                   "item retrival error in set - insert failed to update?");
     }
 
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       size_t old = 5;
       set2_____test_overwrite(&m, HASHOFi(i), i + 2, &old);
       TEST_ASSERT(old == i + 1,
                   "old pointer not initialized with old (or missing) data");
     }
 
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       TEST_ASSERT(set2_____test_find(&m, HASHOFi(i), 0) == i + 2,
                   "item retrival error in set - overwrite failed to update?");
     }
     {
       /* test partial removal */
-      for (size_t i = 1; i < REPEAT; i += 2) {
+      for (size_t i = 1; i < TEST_REPEAT; i += 2) {
         size_t old = 5;
         set2_____test_remove(&m, HASHOFi(i), 0, &old);
         TEST_ASSERT(old == i + 2,
@@ -8124,13 +8459,13 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
                     "(%zu != %zu)",
                     old, i + 2);
       }
-      for (size_t i = 1; i < REPEAT; i += 2) {
+      for (size_t i = 1; i < TEST_REPEAT; i += 2) {
         TEST_ASSERT(set2_____test_find(&m, HASHOFi(i), 0) == 0,
                     "previous items should NOT be accessible after removal");
         set2_____test_insert(&m, HASHOFi(i), i + 2);
       }
     }
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       size_t old = 5;
       set2_____test_remove(&m, HASHOFi(i), 0, &old);
       TEST_ASSERT(old == i + 2,
@@ -8140,7 +8475,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     }
     TEST_ASSERT(set2_____test_count(&m) == 0,
                 "removal should update object count.");
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       TEST_ASSERT(set2_____test_find(&m, HASHOFi(i), 0) == 0,
                   "previous items should NOT be accessible after removal");
     }
@@ -8154,18 +8489,18 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
                 "freshly initialized map should have no objects");
     TEST_ASSERT(map_____test_capa(m) == 0,
                 "freshly initialized map should have no capacity");
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       char buffer[64];
       int l = snprintf(buffer, 63, "%zu", i);
       buffer[l] = 0;
       map_____test_insert(m, HASHOFs(buffer), buffer, i + 1, NULL);
     }
-    TEST_ASSERT(map_____test_key_copy_counter == REPEAT,
+    TEST_ASSERT(map_____test_key_copy_counter == TEST_REPEAT,
                 "key copying error - was the key copied?");
-    TEST_ASSERT(map_____test_count(m) == REPEAT,
+    TEST_ASSERT(map_____test_count(m) == TEST_REPEAT,
                 "After inserting %zu items to map, got %zu items",
-                (size_t)REPEAT, (size_t)map_____test_count(m));
-    for (size_t i = 0; i < REPEAT; ++i) {
+                (size_t)TEST_REPEAT, (size_t)map_____test_count(m));
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       char buffer[64];
       int l = snprintf(buffer + 1, 61, "%zu", i);
       buffer[l + 1] = 0;
@@ -8174,14 +8509,14 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
                   "item retrival error in map.");
     }
     {
-      TEST_ASSERT(map_____test_last(m) == REPEAT,
+      TEST_ASSERT(map_____test_last(m) == TEST_REPEAT,
                   "last object value retrival error. got %zu",
                   map_____test_last(m));
       map_____test_pop(m);
-      TEST_ASSERT(map_____test_count(m) == REPEAT - 1,
+      TEST_ASSERT(map_____test_count(m) == TEST_REPEAT - 1,
                   "popping an object should have decreased object count.");
       char buffer[64];
-      int l = snprintf(buffer + 1, 61, "%zu", (size_t)(REPEAT - 1));
+      int l = snprintf(buffer + 1, 61, "%zu", (size_t)(TEST_REPEAT - 1));
       buffer[l + 1] = 0;
       TEST_ASSERT(map_____test_find(m, HASHOFs(buffer + 1), buffer + 1) == 0,
                   "popping an object should have removed it.");
@@ -8193,10 +8528,10 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
   {
     set_____test_s m = FIO_MAP_INIT;
     fprintf(stderr, "* Testing attack resistance.\n");
-    for (size_t i = 0; i < REPEAT; ++i) {
+    for (size_t i = 0; i < TEST_REPEAT; ++i) {
       set_____test_insert(&m, 1, i + 1);
     }
-    TEST_ASSERT(set_____test_count(&m) != REPEAT,
+    TEST_ASSERT(set_____test_count(&m) != TEST_REPEAT,
                 "full collision protection failed?");
     set_____test_destroy(&m);
   }
@@ -8224,30 +8559,30 @@ TEST_FUNC void fio___dynamic_types_test___hmap_test(void) {
   hmap_____test_s m = FIO_MAP_INIT;
   fprintf(stderr, "* Testing dynamic hash map (2).\n");
   TEST_ASSERT(m.count == 0, "freshly initialized map should have no objects");
-  for (size_t i = 0; i < REPEAT; ++i) {
+  for (size_t i = 0; i < TEST_REPEAT; ++i) {
     hmap_____test_insert(&m, HASHOFi(i), i, i + 1, NULL);
   }
 
-  TEST_ASSERT(m.count == REPEAT,
+  TEST_ASSERT(m.count == TEST_REPEAT,
               "After inserting %zu items to hash map, got %zu items",
-              (size_t)REPEAT, (size_t)m.count);
-  for (size_t i = 0; i < REPEAT; ++i) {
+              (size_t)TEST_REPEAT, (size_t)m.count);
+  for (size_t i = 0; i < TEST_REPEAT; ++i) {
     TEST_ASSERT(hmap_____test_find(&m, HASHOFi(i), i) == i + 1,
                 "item retrival error in hash map.");
   }
-  for (size_t i = 0; i < REPEAT; ++i) {
+  for (size_t i = 0; i < TEST_REPEAT; ++i) {
     TEST_ASSERT(hmap_____test_find(&m, HASHOFi(i), i + 1) == 0,
                 "item retrival error in hash map - object comparison error?");
   }
-  for (size_t i = 1; i < REPEAT; i += 2) {
+  for (size_t i = 1; i < TEST_REPEAT; i += 2) {
     TEST_ASSERT(hmap_____test_remove(&m, HASHOFi(i), i, NULL) == 0,
                 "item removal error in hash map - object wasn't found?");
   }
-  for (size_t i = 1; i < REPEAT; i += 2) {
+  for (size_t i = 1; i < TEST_REPEAT; i += 2) {
     TEST_ASSERT(hmap_____test_find(&m, HASHOFi(i), i) == 0,
                 "item retrival error in hash map - destroyed object alive?");
   }
-  for (size_t i = 0; i < REPEAT; i += 2) {
+  for (size_t i = 0; i < TEST_REPEAT; i += 2) {
     TEST_ASSERT(hmap_____test_find(&m, HASHOFi(i), i) == i + 1,
                 "item retrival error in hash map with holes.");
   }
@@ -8573,7 +8908,7 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     fio__str_____test_s b64message = FIO_STR_INIT;
     fio_str_info_s b64i = fio__str_____test_write(
         &b64message, "Hello World, this is the voice of peace:)", 41);
-    for (int i = 0; i < 255; ++i) {
+    for (int i = 0; i < 256; ++i) {
       uint8_t c = i;
       b64i = fio__str_____test_write(&b64message, &c, 1);
     }
@@ -8592,6 +8927,32 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     TEST_ASSERT(!memcmp(b64i.data, decoded.data + encoded.len, b64i.len),
                 "Base 64 roundtrip failed:\n %s", decoded.data);
     fio__str_____test_destroy(&b64message);
+    fio__str_____test_destroy(&str);
+  }
+  {
+    fprintf(stderr, "* Testing JSON style character escaping / unescaping\n");
+    fio__str_____test_s unescaped = FIO_STR_INIT;
+    fio_str_info_s ue = fio__str_____test_write(
+        &unescaped, "Hello World, this is the voice of peace:)", 41);
+    for (int i = 0; i < 256; ++i) {
+      uint8_t c = i;
+      ue = fio__str_____test_write(&unescaped, &c, 1);
+    }
+    fio_str_info_s encoded =
+        fio__str_____test_write_escaped(&str, ue.data, ue.len);
+    fio_str_info_s decoded =
+        fio__str_____test_write_unescaped(&str, encoded.data, encoded.len);
+    TEST_ASSERT(encoded.len, "JSON encoding failed");
+    TEST_ASSERT(decoded.len > encoded.len, "JSON decoding failed:\n%s",
+                encoded.data);
+    TEST_ASSERT(ue.len == decoded.len - encoded.len,
+                "JSON roundtrip length error, %zu != %zu (%zu - %zu):\n %s",
+                ue.len, decoded.len - encoded.len, decoded.len, encoded.len,
+                decoded.data);
+
+    TEST_ASSERT(!memcmp(ue.data, decoded.data + encoded.len, ue.len),
+                "JSON roundtrip failed:\n %s", decoded.data);
+    fio__str_____test_destroy(&unescaped);
     fio__str_____test_destroy(&str);
   }
 }
@@ -8768,7 +9129,8 @@ Testing functiun
 TEST_FUNC void fio_test_dynamic_types(void) {
   fprintf(stderr, "===============\n");
   fprintf(stderr, "Testing Dynamic Types (" __FILE__ ")\n");
-  fprintf(stderr, "Version " FIO_VERSION_STRING "\n");
+  fprintf(stderr, "facil.io core: version " FIO_VERSION_STRING "\n");
+  fprintf(stderr, "The facil.io library was originally coded by Boaz Segev.\n");
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___print_sizes();
   fprintf(stderr, "===============\n");
@@ -8803,7 +9165,7 @@ TEST_FUNC void fio_test_dynamic_types(void) {
 Testing cleanup
 ***************************************************************************** */
 
-#undef REPEAT
+#undef TEST_REPEAT
 #undef TEST_FUNC
 #undef TEST_ASSERT
 #endif
