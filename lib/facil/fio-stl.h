@@ -5832,17 +5832,17 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escaped)(FIO_STR_PTR s,
     /* skip valid UTF-8 */
     switch (fio__str_utf8_map[src[i] >> 3]) {
     case 4:
-      if (fio__str_utf8_map[src[i + 3] >> 3] != 3) {
+      if (fio__str_utf8_map[src[i + 3] >> 3] != 5) {
         break; /* from switch */
       }
     /* fallthrough */
     case 3:
-      if (fio__str_utf8_map[src[i + 2] >> 3] != 2) {
+      if (fio__str_utf8_map[src[i + 2] >> 3] != 5) {
         break; /* from switch */
       }
     /* fallthrough */
     case 2:
-      if (fio__str_utf8_map[src[i + 1] >> 3] != 1) {
+      if (fio__str_utf8_map[src[i + 1] >> 3] != 5) {
         break; /* from switch */
       }
       i += fio__str_utf8_map[src[i] >> 3] - 1;
@@ -5893,17 +5893,17 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escaped)(FIO_STR_PTR s,
     /* skip valid UTF-8 */
     switch (fio__str_utf8_map[src[i] >> 3]) {
     case 4:
-      if (fio__str_utf8_map[src[i + 3] >> 3] != 3) {
+      if (fio__str_utf8_map[src[i + 3] >> 3] != 5) {
         break; /* from switch */
       }
     /* fallthrough */
     case 3:
-      if (fio__str_utf8_map[src[i + 2] >> 3] != 2) {
+      if (fio__str_utf8_map[src[i + 2] >> 3] != 5) {
         break; /* from switch */
       }
     /* fallthrough */
     case 2:
-      if (fio__str_utf8_map[src[i + 1] >> 3] != 1) {
+      if (fio__str_utf8_map[src[i + 1] >> 3] != 5) {
         break; /* from switch */
       }
       switch (fio__str_utf8_map[src[i] >> 3]) {
@@ -8829,7 +8829,7 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   }
   fio__str_____test_destroy(&str);
   if (1) {
-
+    /* Testing UTF-8 */
     const char *utf8_sample = /* three hearts, small-big-small*/
         "\xf0\x9f\x92\x95\xe2\x9d\xa4\xef\xb8\x8f\xf0\x9f\x92\x95";
     fio__str_____test_write(&str, utf8_sample, strlen(utf8_sample));
@@ -8878,6 +8878,7 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   }
   fio__str_____test_destroy(&str);
   if (1) {
+    /* Testing Static initialization and writing */
     str = (fio__str_____test_s)FIO_STR_INIT_STATIC("Welcome");
     TEST_ASSERT(fio__str_____test_capa(&str) == 0,
                 "Static string capacity non-zero.");
@@ -8902,7 +8903,7 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     fio__str_____test_destroy(&str); /* does nothing, but what the heck... */
   }
   {
-    fprintf(stderr, "* Testing Base64 encoding / decoding\n");
+    fprintf(stderr, "* Testing Base64 encoding / decoding.\n");
     fio__str_____test_destroy(&str); /* does nothing, but what the heck... */
 
     fio__str_____test_s b64message = FIO_STR_INIT;
@@ -8930,18 +8931,23 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     fio__str_____test_destroy(&str);
   }
   {
-    fprintf(stderr, "* Testing JSON style character escaping / unescaping\n");
+    fprintf(stderr, "* Testing JSON style character escaping / unescaping.\n");
     fio__str_____test_s unescaped = FIO_STR_INIT;
-    fio_str_info_s ue = fio__str_____test_write(
-        &unescaped, "Hello World, this is the voice of peace:)", 41);
+    fio_str_info_s ue;
+    const char *utf8_sample = /* three hearts, small-big-small*/
+        "\xf0\x9f\x92\x95\xe2\x9d\xa4\xef\xb8\x8f\xf0\x9f\x92\x95";
+    fio__str_____test_write(&unescaped, utf8_sample, strlen(utf8_sample));
     for (int i = 0; i < 256; ++i) {
       uint8_t c = i;
       ue = fio__str_____test_write(&unescaped, &c, 1);
     }
     fio_str_info_s encoded =
         fio__str_____test_write_escaped(&str, ue.data, ue.len);
+    // fprintf(stderr, "* %s\n", encoded.data);
     fio_str_info_s decoded =
         fio__str_____test_write_unescaped(&str, encoded.data, encoded.len);
+    TEST_ASSERT(!memcmp(encoded.data, utf8_sample, strlen(utf8_sample)),
+                "valid UTF-8 data shouldn't be escaped");
     TEST_ASSERT(encoded.len, "JSON encoding failed");
     TEST_ASSERT(decoded.len > encoded.len, "JSON decoding failed:\n%s",
                 encoded.data);
