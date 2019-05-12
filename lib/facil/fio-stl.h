@@ -6013,6 +6013,22 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_unescape)(FIO_STR_PTR s,
   const uint8_t *end = src + len;
   dest.data += dest.len;
   for (;;) {
+#if __x86_64__ || __aarch64__
+    /* levarege unaligned memory access to test and copy 8 bytes at a time */
+    while (src + 8 <= end) {
+      const uint64_t wanted1 = 0x0101010101010101ULL * '\\';
+      const uint64_t eq1 =
+          ~((*((uint64_t *)src)) ^ wanted1); /* 0 == eq. inverted, all bits 1 */
+      const uint64_t t0 = (eq1 & 0x7f7f7f7f7f7f7f7fllu) + 0x0101010101010101llu;
+      const uint64_t t1 = (eq1 & 0x8080808080808080llu);
+      if ((t0 & t1)) {
+        break; /* from 8 byte seeking algorithm */
+      }
+      *(uint64_t *)(dest.data + at) = *(uint64_t *)src;
+      src += 8;
+      at += 8;
+    }
+#endif
     while (src < end && *src != '\\') {
       dest.data[at++] = *(src++);
     }
@@ -7596,7 +7612,15 @@ Common cleanup
 
 
 
+
+
+
+
                                 Testing
+
+
+
+
 
 
 
