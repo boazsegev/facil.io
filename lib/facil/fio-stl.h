@@ -5006,16 +5006,16 @@ String API - C / JSON escaping
  * The JSON semantic are common to many programming languages, promising a UTF-8
  * String while making it easy to read and copy the string during debugging.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escaped)(FIO_STR_PTR s,
-                                                           const void *data,
-                                                           size_t data_len);
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
+                                                          const void *data,
+                                                          size_t data_len);
 
 /**
  * Writes an escaped data into the string after unescaping the data.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
-                              write_unescaped)(FIO_STR_PTR s,
-                                               const void *escaped, size_t len);
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_unescape)(FIO_STR_PTR s,
+                                                            const void *escaped,
+                                                            size_t len);
 
 /* *****************************************************************************
 String API - Base64 support
@@ -5814,9 +5814,9 @@ String API - C / JSON escaping
  * The JSON semantic are common to many programming languages, promising a UTF-8
  * String while making it easy to read and copy the string during debugging.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escaped)(FIO_STR_PTR s,
-                                                           const void *src_,
-                                                           size_t len) {
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
+                                                          const void *src_,
+                                                          size_t len) {
   const char hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
                             '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
   const uint8_t *src = src_;
@@ -5978,9 +5978,9 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escaped)(FIO_STR_PTR s,
 /**
  * Writes an escaped data into the string after unescaping the data.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_unescaped)(FIO_STR_PTR s,
-                                                             const void *src_,
-                                                             size_t len) {
+IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_unescape)(FIO_STR_PTR s,
+                                                            const void *src_,
+                                                            size_t len) {
   const uint8_t is_hex[] = {
       0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
       0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
@@ -8942,10 +8942,10 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
       ue = fio__str_____test_write(&unescaped, &c, 1);
     }
     fio_str_info_s encoded =
-        fio__str_____test_write_escaped(&str, ue.data, ue.len);
+        fio__str_____test_write_escape(&str, ue.data, ue.len);
     // fprintf(stderr, "* %s\n", encoded.data);
     fio_str_info_s decoded =
-        fio__str_____test_write_unescaped(&str, encoded.data, encoded.len);
+        fio__str_____test_write_unescape(&str, encoded.data, encoded.len);
     TEST_ASSERT(!memcmp(encoded.data, utf8_sample, strlen(utf8_sample)),
                 "valid UTF-8 data shouldn't be escaped");
     TEST_ASSERT(encoded.len, "JSON encoding failed");
