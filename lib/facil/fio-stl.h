@@ -2460,15 +2460,43 @@ SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
   case 7: /* fallthrough */
   case 9: /* fallthrough */
     /* rare bases */
-    if (num < 0) {
-      dest[len++] = '-';
-      num = 0 - num;
+    {
+      int64_t t = num / base;
+      uint64_t l = 0;
+      if (num < 0) {
+        num = 0 - num; /* might fail due to overflow, but fixed with tail (t) */
+        t = (int64_t)0 - t;
+        dest[len++] = '-';
+      }
+      while (num) {
+        buf[l++] = '0' + (num - (t * base));
+        num = t;
+        t = num / base;
+      }
+      while (l) {
+        --l;
+        dest[len++] = buf[l];
+      }
+      dest[len] = 0;
+      return len;
     }
+
+  default:
+    break;
+  }
+  /* Base 10, the default base */
+  {
+    int64_t t = num / 10;
     uint64_t l = 0;
+    if (num < 0) {
+      num = 0 - num; /* might fail due to overflow, but fixed with tail (t) */
+      t = (int64_t)0 - t;
+      dest[len++] = '-';
+    }
     while (num) {
-      uint64_t t = num / base;
-      buf[l++] = '0' + (num - (t * base));
+      buf[l++] = '0' + (num - (t * 10));
       num = t;
+      t = num / 10;
     }
     while (l) {
       --l;
@@ -2476,27 +2504,7 @@ SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
     }
     dest[len] = 0;
     return len;
-
-  default:
-    break;
   }
-  /* Base 10, the default base */
-  if (num < 0) {
-    dest[len++] = '-';
-    num = 0 - num;
-  }
-  uint64_t l = 0;
-  while (num) {
-    uint64_t t = num / 10;
-    buf[l++] = '0' + (num - (t * 10));
-    num = t;
-  }
-  while (l) {
-    --l;
-    dest[len++] = buf[l];
-  }
-  dest[len] = 0;
-  return len;
 
 zero:
   switch (base) {
@@ -5657,14 +5665,16 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s_,
   char buf[22];
   uint64_t l = 0;
   uint8_t neg;
-  if ((neg = (num < 0))) {
-    num = 0 - num;
+  int64_t t = num / 10;
+  if (num < 0) {
+    num = 0 - num; /* might fail due to overflow, but fixed with tail (t) */
+    t = (int64_t)0 - t;
     neg = 1;
   }
   while (num) {
-    uint64_t t = num / 10;
     buf[l++] = '0' + (num - (t * 10));
     num = t;
+    t = num / 10;
   }
   if (neg) {
     buf[l++] = '-';
@@ -7644,6 +7654,16 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
     int i2 = fio_atol(&tmp2);
     TEST_ASSERT(tmp2 > buffer, "fio_atol pointer motion error");
     TEST_ASSERT(i == i2, "fio_ltoa-fio_atol roundtrip error");
+  }
+  for (uint8_t bit = 0; bit < sizeof(int64_t) * 8; ++bit) {
+    uint64_t i = (uint64_t)1 << bit;
+    size_t tmp = fio_ltoa(buffer, (int64_t)i, 0);
+    TEST_ASSERT(tmp > 0, "fio_ltoa return slength error");
+    buffer[tmp] = 0;
+    char *tmp2 = buffer;
+    int64_t i2 = fio_atol(&tmp2);
+    TEST_ASSERT(tmp2 > buffer, "fio_atol pointer motion error");
+    TEST_ASSERT((int64_t)i == i2, "fio_ltoa-fio_atol roundtrip error");
   }
 }
 
