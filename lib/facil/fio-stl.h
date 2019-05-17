@@ -2853,6 +2853,11 @@ void example(void) {
 #define FIO_ARY_PADDING 4
 #endif
 
+/* Sets memory growth to exponentially increase. Consumes more memory. */
+#ifndef FIO_ARY_EXPONENTIAL
+#define FIO_ARY_EXPONENTIAL 0
+#endif
+
 #undef FIO_ARY_SIZE2WORDS
 #define FIO_ARY_SIZE2WORDS(size)                                               \
   ((sizeof(FIO_ARY_TYPE) & 1)                                                  \
@@ -3202,6 +3207,12 @@ SFUNC FIO_ARY_PTR FIO_NAME(FIO_ARY_NAME, concat)(FIO_ARY_PTR dest_,
 IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary_, int32_t index,
                                                 FIO_ARY_TYPE data,
                                                 FIO_ARY_TYPE *old) {
+#if FIO_ARY_EXPONENTIAL
+#define FIO_ARY_ADD2CAPA ary->capa + FIO_ARY_PADDING
+#else
+#define FIO_ARY_ADD2CAPA FIO_ARY_PADDING
+#endif
+
   FIO_NAME(FIO_ARY_NAME, s) *ary =
       (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   uint8_t pre_existing = 1;
@@ -3211,7 +3222,7 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary_, int32_t index,
     if ((uint32_t)index >= ary->capa) {
       /* we need more memory */
       uint32_t new_capa =
-          FIO_ARY_SIZE2WORDS(((uint32_t)index + FIO_ARY_PADDING));
+          FIO_ARY_SIZE2WORDS(((uint32_t)index + FIO_ARY_ADD2CAPA));
       FIO_ARY_TYPE *tmp = (FIO_ARY_TYPE *)FIO_MEM_REALLOC_(
           ary->ary, ary->capa * sizeof(*tmp), new_capa * sizeof(*tmp),
           ary->end * sizeof(*tmp));
@@ -3238,7 +3249,7 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary_, int32_t index,
     if (index < 0) {
       /* TODO: we need more memory at the HEAD (requires copying...) */
       const uint32_t new_capa = FIO_ARY_SIZE2WORDS(
-          ((uint32_t)ary->capa + FIO_ARY_PADDING + ((uint32_t)0 - index)));
+          ((uint32_t)ary->capa + FIO_ARY_ADD2CAPA + ((uint32_t)0 - index)));
       const uint32_t valid_data = ary->end - ary->start;
       index -= ary->end; /* return to previous state */
       FIO_ARY_TYPE *tmp =
@@ -3283,7 +3294,7 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary_, int32_t index,
   FIO_ARY_TYPE_COPY(ary->ary[index], data);
   return ary->ary + index;
 }
-
+#undef FIO_ARY_ADD2CAPA
 /**
  * Returns the value located at `index` (no copying is performed).
  *
@@ -3557,6 +3568,7 @@ Dynamic Arrays - cleanup
 #undef FIO_ARY_POS2ABS
 #undef FIO_ARY_AB_CT
 #undef FIO_ARY_PTR
+#undef FIO_ARY_EXPONENTIAL
 #endif /* FIO_ARY_NAME */
 
 /* *****************************************************************************
@@ -3726,7 +3738,7 @@ Hash Map / Set - type and hash macros
 
 #ifndef FIO_MAP_KEY_INVALID
 /** An invalid value for that type (if any). */
-#define FIO_MAP_KEY_INVALID ((FIO_ARY_KEY){0})
+#define FIO_MAP_KEY_INVALID ((FIO_MAP_KEY){0})
 /* internal flag - don not set */
 #define FIO_MAP_KEY_INVALID_SIMPLE 1
 #endif
@@ -4012,7 +4024,7 @@ IFUNC uint32_t FIO_NAME(FIO_MAP_NAME,
  *
  * For sets, returns the hash value, for hash maps, returns the key value.
  */
-IFUNC FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
+SFUNC FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
 #else
 /**
  * Returns the current `key` within an `each` task.
@@ -4021,7 +4033,7 @@ IFUNC FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
  *
  * For sets, returns the hash value, for hash maps, returns the key value.
  */
-IFUNC FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
+SFUNC FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
 #endif
 
 #ifndef FIO_MAP_EACH
@@ -4553,7 +4565,10 @@ HSFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
  *
  * For sets, returns the hash value, for hash maps, returns the key value.
  */
-IFUNC FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
+SFUNC FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
+  if (!FIO_NAME(FIO_MAP_NAME, ___each_map) ||
+      !FIO_NAME(FIO_MAP_NAME, ___each_map)->map)
+    return FIO_MAP_KEY_INVALID;
   return FIO_NAME(FIO_MAP_NAME, ___each_map)
       ->map[FIO_NAME(FIO_MAP_NAME, ___each_pos)]
       .obj.key;
@@ -4572,7 +4587,7 @@ HSFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
  *
  * For sets, returns the hash value, for hash maps, returns the key value.
  */
-IFUNC FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
+SFUNC FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
   return FIO_NAME(FIO_MAP_NAME, ___each_map)
       ->map[FIO_NAME(FIO_MAP_NAME, ___each_pos)]
       .hash;
@@ -5833,8 +5848,8 @@ String API - C / JSON escaping
 IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
                                                           const void *src_,
                                                           size_t len) {
-  const char hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
-                            '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+  const char escape_hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                                   '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
   const uint8_t *src = (const uint8_t *)src_;
   size_t extra_len = 0;
   size_t at = 0;
@@ -5977,14 +5992,14 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
         dest.data[at++] = 'u';
         dest.data[at++] = '0';
         dest.data[at++] = '0';
-        dest.data[at++] = hex_chars[src[i] >> 4];
-        dest.data[at++] = hex_chars[src[i] & 15];
+        dest.data[at++] = escape_hex_chars[src[i] >> 4];
+        dest.data[at++] = escape_hex_chars[src[i] & 15];
       } else {
         /* non UTF-8 data... encode as...? */
         dest.data[at++] = '\\';
         dest.data[at++] = 'x';
-        dest.data[at++] = hex_chars[src[i] >> 4];
-        dest.data[at++] = hex_chars[src[i] & 15];
+        dest.data[at++] = escape_hex_chars[src[i] >> 4];
+        dest.data[at++] = escape_hex_chars[src[i] & 15];
       }
     }
   }
@@ -7556,8 +7571,12 @@ IFUNC FIO_REF_METADATA *FIO_NAME(FIO_REF_NAME,
 /** Frees a reference counted object (or decreases the reference count). */
 IFUNC int FIO_NAME(FIO_REF_NAME, free2)(FIO_REF_TYPE_PTR wrapped_) {
   FIO_REF_TYPE *wrapped = (FIO_REF_TYPE *)(FIO_PTR_UNTAG(wrapped_));
+  if (!wrapped)
+    return -1;
   FIO_NAME(FIO_REF_NAME, _wrapper_s) *o =
       FIO_PTR_FROM_FIELD(FIO_NAME(FIO_REF_NAME, _wrapper_s), wrapped, wrapped);
+  if (!o)
+    return -1;
   if (fio_atomic_sub(&o->ref, 1))
     return 0;
   FIO_REF_DESTROY(o->wrapped);
