@@ -3099,7 +3099,8 @@ IFUNC void FIO_NAME(FIO_ARY_NAME, destroy)(FIO_ARY_PTR ary_) {
 
 /* Allocates a new array object on the heap and initializes it's memory. */
 IFUNC FIO_ARY_PTR FIO_NAME(FIO_ARY_NAME, new)(void) {
-  FIO_NAME(FIO_ARY_NAME, s) *a = FIO_MEM_CALLOC_(sizeof(*a), 1);
+  FIO_NAME(FIO_ARY_NAME, s) *a =
+      (FIO_NAME(FIO_ARY_NAME, s) *)FIO_MEM_CALLOC_(sizeof(*a), 1);
   *a = (FIO_NAME(FIO_ARY_NAME, s))FIO_ARY_INIT;
   return (FIO_ARY_PTR)FIO_PTR_TAG(a);
 }
@@ -3165,9 +3166,9 @@ SFUNC FIO_ARY_PTR FIO_NAME(FIO_ARY_NAME, concat)(FIO_ARY_PTR dest_,
   if (dest->capa + src->start > src->end + dest->end) {
     /* insufficiant memory, (re)allocate */
     uint32_t new_capa = dest->end + (src->end - src->start);
-    FIO_ARY_TYPE *tmp =
-        FIO_MEM_REALLOC_(dest->ary, dest->capa * sizeof(*tmp),
-                         new_capa * sizeof(*tmp), dest->end * sizeof(*tmp));
+    FIO_ARY_TYPE *tmp = (FIO_ARY_TYPE *)FIO_MEM_REALLOC_(
+        dest->ary, dest->capa * sizeof(*tmp), new_capa * sizeof(*tmp),
+        dest->end * sizeof(*tmp));
     if (!tmp)
       return (FIO_ARY_PTR)(NULL);
     dest->ary = tmp;
@@ -3211,9 +3212,9 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary_, int32_t index,
       /* we need more memory */
       uint32_t new_capa =
           FIO_ARY_SIZE2WORDS(((uint32_t)index + FIO_ARY_PADDING));
-      FIO_ARY_TYPE *tmp =
-          FIO_MEM_REALLOC_(ary->ary, ary->capa * sizeof(*tmp),
-                           new_capa * sizeof(*tmp), ary->end * sizeof(*tmp));
+      FIO_ARY_TYPE *tmp = (FIO_ARY_TYPE *)FIO_MEM_REALLOC_(
+          ary->ary, ary->capa * sizeof(*tmp), new_capa * sizeof(*tmp),
+          ary->end * sizeof(*tmp));
       if (!tmp)
         return NULL;
       ary->ary = tmp;
@@ -3240,7 +3241,8 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary_, int32_t index,
           ((uint32_t)ary->capa + FIO_ARY_PADDING + ((uint32_t)0 - index)));
       const uint32_t valid_data = ary->end - ary->start;
       index -= ary->end; /* return to previous state */
-      FIO_ARY_TYPE *tmp = FIO_MEM_CALLOC_(new_capa, sizeof(*tmp));
+      FIO_ARY_TYPE *tmp =
+          (FIO_ARY_TYPE *)FIO_MEM_CALLOC_(new_capa, sizeof(*tmp));
       if (!tmp)
         return NULL;
       if (valid_data)
@@ -3396,7 +3398,7 @@ IFUNC void FIO_NAME(FIO_ARY_NAME, compact)(FIO_ARY_PTR ary_) {
   FIO_ARY_TYPE *tmp = NULL;
   if (!(ary->end - ary->start))
     goto finish;
-  tmp = FIO_MEM_CALLOC((ary->end - ary->start), sizeof(*tmp));
+  tmp = (FIO_ARY_TYPE *)FIO_MEM_CALLOC((ary->end - ary->start), sizeof(*tmp));
   if (!tmp)
     return;
   memcpy(tmp, ary->ary + ary->start,
@@ -4147,9 +4149,10 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, _remap2bits)(FIO_NAME(FIO_MAP_NAME, s) * m,
                                               const uint8_t bits) {
   FIO_NAME(FIO_MAP_NAME, s)
   dest = {
-      .map = FIO_MEM_CALLOC_(sizeof(*dest.map), (uint32_t)1 << (bits & 31)),
+      .map = (FIO_NAME(FIO_MAP_NAME, _map_s) *)FIO_MEM_CALLOC_(
+          sizeof(*dest.map), (uint32_t)1 << (bits & 31)),
       .used_bits = bits,
-      .head = -1,
+      .head = (uint32_t)(-1),
       .under_attack = m->under_attack,
   };
   if (!m->map || m->head == (uint32_t)-1) {
@@ -4300,7 +4303,8 @@ Hash Map / Set - API (initialization)
  * Allocates a new map on the heap.
  */
 IFUNC FIO_MAP_PTR FIO_NAME(FIO_MAP_NAME, new)(void) {
-  FIO_NAME(FIO_MAP_NAME, s) *m = FIO_MEM_CALLOC_(sizeof(*m), 1);
+  FIO_NAME(FIO_MAP_NAME, s) *m =
+      (FIO_NAME(FIO_MAP_NAME, s) *)FIO_MEM_CALLOC_(sizeof(*m), 1);
   return (FIO_MAP_PTR)(FIO_PTR_TAG(m));
 }
 
@@ -5064,7 +5068,7 @@ String Helpers
 #define FIO_STR_SMALL_DATA(s) ((char *)((&(s)->special) + 1))
 #define FIO_STR_IS_SMALL(s) (((s)->special & 1) || !s->data)
 
-#define FIO_STR_SMALL_LEN(s) ((s)->special >> 2)
+#define FIO_STR_SMALL_LEN(s) ((size_t)((s)->special >> 2))
 #define FIO_STR_SMALL_LEN_SET(s, l)                                            \
   ((s)->special = (((s)->special & 2) | ((uint8_t)(l) << 2) | 1) & 0xFF)
 #define FIO_STR_SMALL_CAPA(s) (sizeof(*s) - 2)
@@ -5126,7 +5130,8 @@ IFUNC void FIO_NAME(FIO_STR_NAME, destroy)(FIO_STR_PTR s_) {
 
 /** Allocates a new String object on the heap. */
 IFUNC FIO_STR_PTR FIO_NAME(FIO_STR_NAME, new)(void) {
-  FIO_NAME(FIO_STR_NAME, s) *s = FIO_MEM_CALLOC_(sizeof(*s), 1);
+  FIO_NAME(FIO_STR_NAME, s) *s =
+      (FIO_NAME(FIO_STR_NAME, s) *)FIO_MEM_CALLOC_(sizeof(*s), 1);
   *s = (FIO_NAME(FIO_STR_NAME, s))FIO_STR_INIT;
   return (FIO_STR_PTR)FIO_PTR_TAG(s);
 }
@@ -5154,7 +5159,7 @@ SFUNC char *FIO_NAME(FIO_STR_NAME, detach)(FIO_STR_PTR s_) {
   char *data = NULL;
   if (FIO_STR_IS_SMALL(s)) {
     if (FIO_STR_SMALL_LEN(s)) {
-      data = FIO_MEM_CALLOC_(sizeof(*data), (FIO_STR_SMALL_LEN(s) + 1));
+      data = (char *)FIO_MEM_CALLOC_(sizeof(*data), (FIO_STR_SMALL_LEN(s) + 1));
       if (!data)
         return NULL;
       memcpy(data, FIO_STR_SMALL_DATA(s), (FIO_STR_SMALL_LEN(s) + 1));
@@ -5164,7 +5169,7 @@ SFUNC char *FIO_NAME(FIO_STR_NAME, detach)(FIO_STR_PTR s_) {
       data = s->data;
       s->data = NULL;
     } else if (s->len) {
-      data = FIO_MEM_CALLOC_(sizeof(*data), (s->len + 1));
+      data = (char *)FIO_MEM_CALLOC_(sizeof(*data), (s->len + 1));
       if (!data)
         return NULL;
       memcpy(data, s->data, (s->len + 1));
@@ -5321,7 +5326,8 @@ SFUNC void FIO_NAME(FIO_STR_NAME, compact)(FIO_STR_PTR s_) {
   FIO_NAME(FIO_STR_NAME, s) tmp = FIO_STR_INIT;
   if (s->len <= FIO_STR_SMALL_CAPA(s))
     goto shrink2small;
-  tmp.data = FIO_MEM_REALLOC_(s->data, s->capa + 1, s->len + 1, s->len + 1);
+  tmp.data =
+      (char *)FIO_MEM_REALLOC_(s->data, s->capa + 1, s->len + 1, s->len + 1);
   if (tmp.data) {
     s->data = tmp.data;
     s->capa = s->len;
@@ -5391,19 +5397,19 @@ is_small:
   tmp = (char *)FIO_MEM_CALLOC_(sizeof(*tmp), amount + 1);
   if (!tmp)
     goto no_mem;
-  const size_t existing_len = FIO_STR_SMALL_LEN(s);
-  if (existing_len) {
-    memcpy(tmp, FIO_STR_SMALL_DATA(s), existing_len + 1);
+  if (FIO_STR_SMALL_LEN(s)) {
+    memcpy(tmp, FIO_STR_SMALL_DATA(s), FIO_STR_SMALL_LEN(s) + 1);
   } else {
     tmp[0] = 0;
   }
   *s = (FIO_NAME(FIO_STR_NAME, s)){
       .capa = amount,
-      .len = existing_len,
+      .len = FIO_STR_SMALL_LEN(s),
       .dealloc = FIO_NAME(FIO_STR_NAME, _default_dealloc),
       .data = tmp,
   };
-  return (fio_str_info_s){.capa = amount, .len = existing_len, .data = s->data};
+  return (fio_str_info_s){
+      .capa = amount, .len = FIO_STR_SMALL_LEN(s), .data = s->data};
 no_mem:
   return FIO_NAME(FIO_STR_NAME, info)(s_);
 }
@@ -5544,15 +5550,15 @@ SFUNC size_t FIO_NAME(FIO_STR_NAME, utf8_len)(FIO_STR_PTR s_) {
 SFUNC int FIO_NAME(FIO_STR_NAME, utf8_select)(FIO_STR_PTR s_, intptr_t *pos,
                                               size_t *len) {
   fio_str_info_s state = FIO_NAME(FIO_STR_NAME, info)(s_);
-  if (!state.data)
-    goto error;
-  if (!state.len || *pos == -1)
-    goto at_end;
-
   int32_t c = 0;
   char *p = state.data;
   char *const end = state.data + state.len;
   size_t start;
+
+  if (!state.data)
+    goto error;
+  if (!state.len || *pos == -1)
+    goto at_end;
 
   if (*pos) {
     if ((*pos) > 0) {
@@ -5661,8 +5667,11 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s_,
   if (!s || FIO_STR_IS_FROZEN(s))
     return FIO_NAME(FIO_STR_NAME, info)(s_);
   fio_str_info_s i;
-  if (!num)
-    goto zero;
+  if (!num) {
+    i = FIO_NAME(FIO_STR_NAME, resize)(s_, FIO_NAME(FIO_STR_NAME, len)(s_) + 1);
+    i.data[i.len - 1] = '0';
+    return i;
+  }
   char buf[22];
   uint64_t l = 0;
   uint8_t neg;
@@ -5686,10 +5695,6 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s_,
     --l;
     i.data[i.len - (l + 1)] = buf[l];
   }
-  return i;
-zero:
-  i = FIO_NAME(FIO_STR_NAME, resize)(s_, FIO_NAME(FIO_STR_NAME, len)(s_) + 1);
-  i.data[i.len - 1] = '0';
   return i;
 }
 
@@ -5830,7 +5835,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
                                                           size_t len) {
   const char hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
                             '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
-  const uint8_t *src = src_;
+  const uint8_t *src = (const uint8_t *)src_;
   size_t extra_len = 0;
   size_t at = 0;
 
@@ -6409,7 +6414,7 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
       if (home[home_len - 1] == '/' || home[home_len - 1] == '\\')
         --home_len;
       path_len = home_len + filename_len - 1;
-      path = FIO_MEM_CALLOC_(sizeof(*path), path_len + 1);
+      path = (char *)FIO_MEM_CALLOC_(sizeof(*path), path_len + 1);
       if (!path)
         return state;
       memcpy(path, home, home_len);
@@ -7518,7 +7523,8 @@ Reference Counter (Wrapper) Implementation
 
 /** Allocates a reference counted object. */
 IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME, new2)(void) {
-  FIO_NAME(FIO_REF_NAME, _wrapper_s) *o = FIO_MEM_CALLOC_(sizeof(*o), 1);
+  FIO_NAME(FIO_REF_NAME, _wrapper_s) *o =
+      (FIO_NAME(FIO_REF_NAME, _wrapper_s) *)FIO_MEM_CALLOC_(sizeof(*o), 1);
   o->ref = 1;
   FIO_REF_METADATA_INIT((o->metadata));
   FIO_REF_INIT(o->wrapped);
