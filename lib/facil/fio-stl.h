@@ -2530,7 +2530,7 @@ zero:
 SFUNC size_t fio_ftoa(char *dest, double num, uint8_t base) {
   if (base == 2 || base == 16) {
     /* handle binary / Hex representation the same as an int64_t */
-    int64_t *i = (void *)&num;
+    int64_t *i = (int64_t *)&num;
     return fio_ltoa(dest, *i, base);
   }
 
@@ -3429,9 +3429,10 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, push)(FIO_ARY_PTR ary_,
                                                  FIO_ARY_TYPE data) {
   FIO_NAME(FIO_ARY_NAME, s) *ary =
       (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+  FIO_ARY_TYPE *pos;
   if (ary->end >= ary->capa)
     goto needs_memory;
-  FIO_ARY_TYPE *pos = ary->ary + ary->end;
+  pos = ary->ary + ary->end;
   *pos = FIO_ARY_TYPE_INVALID;
   ++ary->end;
   FIO_ARY_TYPE_COPY(*pos, data);
@@ -4039,7 +4040,7 @@ IFUNC FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
 #define FIO_MAP_EACH(map_, pos_)                                               \
   for (__typeof__((map_)->map) prev__ = NULL,                                  \
                                pos_ = (map_)->map + (map_)->head;              \
-       (map_)->head != (uint32_t)-1 &&                                         \
+       (map_)->head != (uint32_t)-1 && pos_ &&                                 \
        (prev__ == NULL || pos_ != (map_)->map + (map_)->head);                 \
        (prev__ = pos_), pos_ = (map_)->map + pos_->next)
 
@@ -4066,7 +4067,7 @@ HFUNC FIO_NAME(FIO_MAP_NAME, _map_s) *
     FIO_NAME(FIO_MAP_NAME, _find_map_pos)(FIO_NAME(FIO_MAP_NAME, s) * m,
                                           FIO_MAP_OBJ obj, FIO_MAP_HASH hash) {
   if (FIO_MAP_HASH_CMP(hash, FIO_MAP_HASH_INVALID)) {
-    FIO_MAP_HASH_COPY(hash, (FIO_MAP_HASH){~0});
+    FIO_MAP_HASH_COPY(hash, (FIO_MAP_HASH){~0ULL});
   }
   if (!m->map)
     return NULL;
@@ -4185,7 +4186,7 @@ HFUNC FIO_NAME(FIO_MAP_NAME, _map_s) *
                                    FIO_MAP_TYPE *old, uint8_t overwrite) {
   FIO_NAME(FIO_MAP_NAME, _map_s) *pos = NULL;
   if (FIO_MAP_HASH_CMP(hash, FIO_MAP_HASH_INVALID)) {
-    FIO_MAP_HASH_COPY(hash, (FIO_MAP_HASH){~0});
+    FIO_MAP_HASH_COPY(hash, (FIO_MAP_HASH){~0ULL});
   }
 
 #if FIO_MAP_MAX_ELEMENTS
@@ -4263,7 +4264,7 @@ HFUNC int FIO_NAME(FIO_MAP_NAME, _remove)(FIO_NAME(FIO_MAP_NAME, s) * m,
                                           FIO_MAP_OBJ obj, FIO_MAP_HASH hash,
                                           FIO_MAP_TYPE *old) {
   if (FIO_MAP_HASH_CMP(hash, FIO_MAP_HASH_INVALID)) {
-    FIO_MAP_HASH_COPY(hash, (FIO_MAP_HASH){~0});
+    FIO_MAP_HASH_COPY(hash, (FIO_MAP_HASH){~0ULL});
   }
   FIO_NAME(FIO_MAP_NAME, _map_s) *pos =
       FIO_NAME(FIO_MAP_NAME, _find_map_pos)(m, obj, hash);
@@ -6009,10 +6010,23 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_unescape)(FIO_STR_PTR s,
   fio_str_info_s dest =
       FIO_NAME(FIO_STR_NAME, reserve)(s, FIO_NAME(FIO_STR_NAME, len)(s) + len);
   size_t at = 0;
-  const uint8_t *src = src_;
+  const uint8_t *src = (const uint8_t *)src_;
   const uint8_t *end = src + len;
   dest.data += dest.len;
-  for (;;) {
+  while (src < end) {
+#if 1 /* A/B performance at a later stage */
+    if (*src != '\\') {
+      const uint8_t *escape_pos = (const uint8_t *)memchr(src, '\\', end - src);
+      if (!escape_pos)
+        escape_pos = end;
+      const size_t valid_len = escape_pos - src;
+      if (valid_len) {
+        memmove(dest.data + at, src, valid_len);
+        at += valid_len;
+        src = escape_pos;
+      }
+    }
+#else
 #if __x86_64__ || __aarch64__
     /* levarege unaligned memory access to test and copy 8 bytes at a time */
     while (src + 8 <= end) {
@@ -6032,6 +6046,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_unescape)(FIO_STR_PTR s,
     while (src < end && *src != '\\') {
       dest.data[at++] = *(src++);
     }
+#endif
     if (end - src == 1) {
       dest.data[at++] = *(src++);
     }
@@ -6414,8 +6429,9 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
   }
 
   file = open(filename, O_RDONLY);
-  if (-1 == file)
+  if (-1 == file) {
     goto finish;
+  }
 
   if (start_at < 0) {
     start_at = f_data.st_size + start_at;
@@ -6426,12 +6442,26 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
   if (limit <= 0 || f_data.st_size < (limit + start_at))
     limit = f_data.st_size - start_at;
 
-  const size_t org_len = FIO_NAME(FIO_STR_NAME, len)(s_);
-  state = FIO_NAME(FIO_STR_NAME, resize)(s_, org_len + limit);
-  if (pread(file, state.data + org_len, limit, start_at) != (ssize_t)limit) {
-    FIO_NAME(FIO_STR_NAME, resize)(s_, org_len);
-    state.data = NULL;
-    state.len = state.capa = 0;
+  {
+    const size_t org_len = FIO_NAME(FIO_STR_NAME, len)(s_);
+    size_t write_pos = org_len;
+    state = FIO_NAME(FIO_STR_NAME, resize)(s_, org_len + limit);
+    while (limit) {
+      /* copy up to 128Mb at a time... why? because pread might fail */
+      const size_t to_read =
+          (limit & (((size_t)1 << 27) - 1)) | ((!!(limit >> 27)) << 27);
+      if (pread(file, state.data + write_pos, to_read, start_at) !=
+          (ssize_t)to_read) {
+        FIO_NAME(FIO_STR_NAME, resize)(s_, org_len);
+        state.data = NULL;
+        state.len = state.capa = 0;
+        close(file);
+        goto finish;
+      }
+      limit -= to_read;
+      write_pos += to_read;
+      start_at += to_read;
+    }
   }
   close(file);
 finish:
@@ -6440,6 +6470,7 @@ finish:
   }
   return state;
 }
+
 #endif /* H___FIO_UNIX_TOOLS_H */
 
 /* *****************************************************************************
@@ -7807,6 +7838,16 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
                   "fio_hemming_dist error at %d", i);
     }
   }
+  {
+    struct test_s {
+      int a;
+      char force_padding;
+      int b;
+    } stst = {.a = 1};
+    struct test_s *stst_p = FIO_PTR_FROM_FIELD(struct test_s, b, &stst.b);
+    TEST_ASSERT(stst_p == &stst,
+                "FIO_PTR_FROM_FIELD failed to retrace pointer");
+  }
 }
 
 /* *****************************************************************************
@@ -8959,6 +9000,9 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     }
     fio_str_info_s encoded =
         fio__str_____test_write_b64enc(&str, b64i.data, b64i.len, 1);
+    /* prevent encoded data from being deallocated during unencoding */
+    encoded = fio__str_____test_reserve(&str, encoded.len +
+                                                  ((encoded.len >> 2) * 3) + 8);
     fio_str_info_s decoded =
         fio__str_____test_write_b64dec(&str, encoded.data, encoded.len);
     TEST_ASSERT(encoded.len, "Base64 encoding failed");
@@ -8987,6 +9031,8 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     }
     fio_str_info_s encoded =
         fio__str_____test_write_escape(&str, ue.data, ue.len);
+    /* prevent encoded data from being deallocated during unencoding */
+    encoded = fio__str_____test_reserve(&str, encoded.len << 1);
     // fprintf(stderr, "* %s\n", encoded.data);
     fio_str_info_s decoded =
         fio__str_____test_write_unescape(&str, encoded.data, encoded.len);
