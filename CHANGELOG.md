@@ -8,12 +8,19 @@ Major API changes.
 
 - Core types and common helpers have been re-written and moved to a separate, stand alone, header-library: `fio-stl.h`
 
-   This updates the core type API in an attempt to create a more unified and intuitive API.
+   This updates the core type API in an attempt to create a more unified and intuitive API. for both core types and dynamic types (FIOBJ).
 
    Hash Maps and Arrays are now limited to a theoretical capacity of 1^31 elements, improving memory usage for most common use-cases.
 
-   This also makes facil.io's core IO library a 3 file library (rather then 2 files).
+   This increases facil.io's core IO library to a 3 file library (from a 2 file library), however, the `fio-stl.h` library can be used as a powerful single-file macro based library.
 
+- FIOBJ was re-written from the ground up, unifying the API used for core types and for the FIOBJ library.
+
+    This updates make FIOBJ types dynamically extendible, allowing new types to be added, removed or altered during both compilation and runtime stages.
+
+    This update simplifies some behavior (some FIOBJ algorithms are now recursive), making FIOBJ nesting slightly more dangerous (could explode the stack). Nesting limits should be enforced.
+
+    Also, this update **should** improve type recognition performance for primitive types (`true`, `false`, `null`, numbers, floats, Arrays, Strings and Hash Maps), increasing pointer tagging usage (at the expense of the number range that optimizes away memory allocation).
 
 ### v. 0.7.0
 
