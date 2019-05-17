@@ -1,5 +1,9 @@
 # Change Log
 
+### v. 0.7.1
+
+**Security**: a heap-overflow vulnerability was fixed in the WebSocket parser, which could have been triggered by a maliciously crafted message-header. Credit to Dane (4cad@silvertoque) for exposing this issue and providing a Python script demonstrating the attack. 
+
 ### v. 0.7.0
 
 Stable API release. Future API updates will be wait for the 0.8.x release.
