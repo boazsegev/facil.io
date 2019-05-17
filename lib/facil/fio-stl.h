@@ -2207,7 +2207,7 @@ Strings to Numbers - API
 SFUNC int64_t fio_atol(char **pstr);
 
 /** A helper function that converts between String data to a signed double. */
-SFUNC double fio_atof(char **pstr);
+IFUNC double fio_atof(char **pstr);
 
 /* *****************************************************************************
 Numbers to Strings - API
@@ -2360,7 +2360,7 @@ sign:
 }
 #undef FIO_ATOL_SKIP_HEX_TEST
 
-SFUNC double fio_atof(char **pstr) { return strtold(*pstr, pstr); }
+IFUNC double fio_atof(char **pstr) { return strtold(*pstr, pstr); }
 
 /* *****************************************************************************
 Numbers to Strings - Implementation
