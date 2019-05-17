@@ -22,6 +22,10 @@ Major API changes.
 
     Also, this update **should** improve type recognition performance for primitive types (`true`, `false`, `null`, numbers, floats, Arrays, Strings and Hash Maps), increasing pointer tagging usage (at the expense of the number range that optimizes away memory allocation).
 
+### v. 0.7.1
+
+**Security**: a heap-overflow vulnerability was fixed in the WebSocket parser, which could have been triggered by a maliciously crafted message-header. Credit to Dane (4cad@silvertoque) for exposing this issue and providing a Python script demonstrating the attack. 
+
 ### v. 0.7.0
 
 Stable API release. Future API updates will be wait for the 0.8.x release.

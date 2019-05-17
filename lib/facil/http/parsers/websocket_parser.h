@@ -403,9 +403,13 @@ websocket_buffer_peek(void *buffer, uint64_t len) {
     if (len < 10)
       return (struct websocket_packet_info_s){0, (uint8_t)(10 + mask_l),
                                               mask_f};
-    return (struct websocket_packet_info_s){
-        websocket_str2u64(((uint8_t *)buffer + 2)), (uint8_t)(10 + mask_l),
-        mask_f};
+    {
+      uint64_t msg_len = websocket_str2u64(((uint8_t *)buffer + 2));
+      if (msg_len >> 62)
+        return (struct websocket_packet_info_s){0, 0, 0};
+      return (struct websocket_packet_info_s){msg_len, (uint8_t)(10 + mask_l),
+                                              mask_f};
+    }
   default:
     return (struct websocket_packet_info_s){len_indicator,
                                             (uint8_t)(2 + mask_l), mask_f};
@@ -421,6 +425,13 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
                                   uint8_t require_masking) {
   volatile struct websocket_packet_info_s info =
       websocket_buffer_peek(buffer, len);
+  if (!info.head_length) {
+#if DEBUG
+    fprintf(stderr, "ERROR: WebSocket protocol error - malicious header.\n");
+#endif
+    websocket_on_protocol_error(udata);
+    return 0;
+  }
   if (info.head_length + info.packet_length > len)
     return len;
   uint64_t reminder = len;
