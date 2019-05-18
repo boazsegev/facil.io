@@ -2350,7 +2350,7 @@ SFUNC int64_t fio_atol(char **pstr) {
     if (fio_atol___skip_test(&str, 10)) /* too large for a number */
       return 0;
   }
-  if (result > INT64_MAX + invert)
+  if (result > (uint64_t)INT64_MAX + invert)
     result = INT64_MAX + invert; /* signed overflow protection */
 sign:
   if (invert)
@@ -6292,7 +6292,7 @@ s.length.times {|i| a[s[i]] = (i << 1) | 1 }; a.map!{ |i| i.to_i }; a
   i.data += org_len;
 
   /* decoded and count actual length */
-  uint32_t written = 0;
+  int32_t written = 0;
   uint8_t tmp1, tmp2, tmp3, tmp4;
   while (len >= 4) {
     if (isspace((*encoded))) {
