@@ -2350,8 +2350,8 @@ SFUNC int64_t fio_atol(char **pstr) {
     if (fio_atol___skip_test(&str, 10)) /* too large for a number */
       return 0;
   }
-  if (result & ((uint64_t)1 << 63))
-    result = INT64_MAX; /* signed overflow protection */
+  if (result > INT64_MAX + invert)
+    result = INT64_MAX + invert; /* signed overflow protection */
 sign:
   if (invert)
     result = 0 - result;
@@ -2360,7 +2360,7 @@ sign:
 }
 #undef FIO_ATOL_SKIP_HEX_TEST
 
-IFUNC double fio_atof(char **pstr) { return strtold(*pstr, pstr); }
+IFUNC double fio_atof(char **pstr) { return strtod(*pstr, pstr); }
 
 /* *****************************************************************************
 Numbers to Strings - Implementation
@@ -7725,15 +7725,17 @@ String <=> Number - test
 #include __FILE__
 
 TEST_FUNC void fio___dynamic_types_test___atol(void) {
+  fprintf(stderr, "* Testing fio_atol and fio_ltoa.\n");
   char buffer[1024];
   for (int i = 0 - TEST_REPEAT; i < TEST_REPEAT; ++i) {
     size_t tmp = fio_ltoa(buffer, i, 0);
     TEST_ASSERT(tmp > 0, "fio_ltoa return slength error");
-    buffer[tmp] = 0;
+    buffer[tmp++] = 0;
     char *tmp2 = buffer;
     int i2 = fio_atol(&tmp2);
     TEST_ASSERT(tmp2 > buffer, "fio_atol pointer motion error");
-    TEST_ASSERT(i == i2, "fio_ltoa-fio_atol roundtrip error");
+    TEST_ASSERT(i == i2, "fio_ltoa-fio_atol roundtrip error %lld != %lld", i,
+                i2);
   }
   for (uint8_t bit = 0; bit < sizeof(int64_t) * 8; ++bit) {
     uint64_t i = (uint64_t)1 << bit;
@@ -7743,8 +7745,38 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
     char *tmp2 = buffer;
     int64_t i2 = fio_atol(&tmp2);
     TEST_ASSERT(tmp2 > buffer, "fio_atol pointer motion error");
-    TEST_ASSERT((int64_t)i == i2, "fio_ltoa-fio_atol roundtrip error");
+    TEST_ASSERT((int64_t)i == i2,
+                "fio_ltoa-fio_atol roundtrip error %lld != %lld", i, i2);
   }
+#if !DEBUG
+  {
+    clock_t start, stop;
+    memcpy(buffer, "1234567890.123", 14);
+    buffer[14] = 0;
+    size_t r = 0;
+    start = clock();
+    for (int i = 0; i < (TEST_REPEAT << 3); ++i) {
+      char *pos = buffer;
+      r += fio_atol(&pos);
+      __asm__ volatile("" ::: "memory");
+      // TEST_ASSERT(r == exp, "fio_atol failed during speed test");
+    }
+    stop = clock();
+    fprintf(stderr, "* fio_atol speed test completed in %zu cycles\n",
+            stop - start);
+    r = 0;
+    start = clock();
+    for (int i = 0; i < (TEST_REPEAT << 3); ++i) {
+      char *pos = buffer;
+      r += strtol(pos, NULL, 10);
+      __asm__ volatile("" ::: "memory");
+      // TEST_ASSERT(r == exp, "system strtol failed during speed test");
+    }
+    stop = clock();
+    fprintf(stderr, "* system atol speed test completed in %zu cycles\n",
+            stop - start);
+  }
+#endif
 }
 
 /* *****************************************************************************
@@ -9260,6 +9292,8 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fio___dynamic_types_test___atomic();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___bitwise();
+  fprintf(stderr, "===============\n");
+  fio___dynamic_types_test___atol();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___linked_list_test();
   fprintf(stderr, "===============\n");
