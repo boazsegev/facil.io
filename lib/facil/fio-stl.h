@@ -5879,7 +5879,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
       i += fio__str_utf8_map[src[i] >> 3] - 1;
       continue;
     }
-    at = FIO_STR_WRITE_EXCAPED_CT_OR(at, at, i);
+    at = FIO_STR_WRITE_EXCAPED_CT_OR(at, at, i + 1);
 
     /* count extra bytes */
     switch (src[i]) {
@@ -5888,7 +5888,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
     case '\n': /* fallthrough */
     case '\r': /* fallthrough */
     case '\t': /* fallthrough */
-    case '"':  /* fallthrough */
+    case '\"': /* fallthrough */
     case '\\': /* fallthrough */
     case '/':  /* fallthrough */
       ++extra_len;
@@ -5906,7 +5906,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
   fio_str_info_s dest = FIO_NAME(FIO_STR_NAME, reserve)(
       s, FIO_NAME(FIO_STR_NAME, len)(s) + extra_len + len);
   dest.data += dest.len;
-
+  --at;
   if (at >= 8) {
     memcpy(dest.data, src, at);
   } else {
