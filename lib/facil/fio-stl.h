@@ -21,6 +21,8 @@ This file contains macros that create generic / common core types, such as:
 
 * Reference counting / Type wrapper - defined by `FIO_REF_NAME` (adds atomic)
 
+* Soft / Dynamic Types (FIOBJ) - defined by `FIO_FIOBJ`
+
 
 This file also contains common helper macros / primitives, such as:
 
@@ -43,6 +45,8 @@ This file also contains common helper macros / primitives, such as:
 * Command Line Interface helpers - defined by `FIO_CLI`
 
 * Custom Memory Allocation - defined by `FIO_MALLOC`
+
+* Custom JSON Parser - defined by `FIO_JSON`
 
 However, this file does very little (if anything) unless specifically requested.
 
@@ -1343,6 +1347,7 @@ typedef struct {
 /* The memory allocators persistent state */
 static fio_mem___state_s *fio_mem___state = NULL;
 
+/* see destructor at: fio_mem___destroy */
 HSFUNC void __attribute__((constructor)) fio_mem___state_allocate(void) {
   if (fio_mem___state)
     return;
@@ -2189,7 +2194,8 @@ small_random:
 
 
 ***************************************************************************** */
-#if (defined(FIO_ATOL) || defined(FIO_CLI)) && !defined(H___FIO_ATOL_H)
+#if (defined(FIO_ATOL) || defined(FIO_CLI) || defined(FIO_JSON)) &&            \
+    !defined(H___FIO_ATOL_H)
 #define H___FIO_ATOL_H
 /* *****************************************************************************
 Strings to Numbers - API
@@ -7611,6 +7617,470 @@ Reference Counter (Wrapper) Cleanup
 
 
 
+                                JSON Parsing
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if defined(FIO_JSON) && !defined(H___FIO_JSON_H)
+#define H___FIO_JSON_H
+
+/** The JSON parser type. Memory must be initialized to 0 before first uses. */
+typedef struct {
+  /** nesting bit flags - dictionary bit = 0, array bit = 1. */
+  uint32_t nesting;
+  /** level of nesting. */
+  uint8_t depth;
+  /** expectataion bit flag: 0=key, 1=colon, 2=value, 4=comma/closure . */
+  uint8_t expect;
+} fio_json_parser_s;
+
+#define FIO_JSON_INIT                                                          \
+  { .nesting = 0 }
+
+/* maximum allowed depth values max out at 32, since a bitmap is used */
+#if !defined(JSON_MAX_DEPTH) || JSON_MAX_DEPTH > 32
+#undef JSON_MAX_DEPTH
+#define JSON_MAX_DEPTH 31
+#endif
+
+/**
+ * Returns the number of bytes consumed. Stops as close as possible to the end
+ * of the buffer or once an object parsing was completed.
+ */
+SFUNC size_t fio_json_parse(fio_json_parser_s *parser, const char *buffer,
+                            const size_t length);
+
+/* *****************************************************************************
+JSON Parsing - Implementation - Callbacks
+
+
+Note: static Callacks must be implemented in the C file that uses the parser
+***************************************************************************** */
+
+#ifdef FIO_EXTERN_COMPLETE
+
+#ifdef FIO_LOG_DEBUG
+#define JSON_LOG_DEBUG_ERROR(...) FIO_LOG_DEBUG(__VA_ARGS__)
+#else
+#define JSON_LOG_DEBUG_ERROR(...)
+#endif
+
+/** common FIO_JSON callback function properties */
+#define FIO_JSON_CB static inline __attribute__((unused))
+
+/** a NULL object was detected */
+FIO_JSON_CB void fio_json_on_null(fio_json_parser_s *p);
+/** a TRUE object was detected */
+static inline void fio_json_on_true(fio_json_parser_s *p);
+/** a FALSE object was detected */
+FIO_JSON_CB void fio_json_on_false(fio_json_parser_s *p);
+/** a Numberl was detected (long long). */
+FIO_JSON_CB void fio_json_on_number(fio_json_parser_s *p, long long i);
+/** a Float was detected (double). */
+FIO_JSON_CB void fio_json_on_float(fio_json_parser_s *p, double f);
+/** a String was detected (int / float). update `pos` to point at ending */
+FIO_JSON_CB void fio_json_on_string(fio_json_parser_s *p, const void *start,
+                                    size_t length);
+/** a dictionary object was detected, should return 0 unless error occurred. */
+FIO_JSON_CB int fio_json_on_start_object(fio_json_parser_s *p);
+/** a dictionary object closure detected */
+FIO_JSON_CB void fio_json_on_end_object(fio_json_parser_s *p);
+/** an array object was detected, should return 0 unless error occurred. */
+FIO_JSON_CB int fio_json_on_start_array(fio_json_parser_s *p);
+/** an array closure was detected */
+FIO_JSON_CB void fio_json_on_end_array(fio_json_parser_s *p);
+/** the JSON parsing is complete */
+FIO_JSON_CB void fio_json_on_json(fio_json_parser_s *p);
+/** the JSON parsing is complete */
+FIO_JSON_CB void fio_json_on_error(fio_json_parser_s *p);
+
+/* *****************************************************************************
+JSON Parsing - Implementation - Parser
+
+
+Note: static Callacks must be implemented in the C file that uses the parser
+***************************************************************************** */
+
+HFUNC const char *fio_json_____skip_whitespace(const char *buffer,
+                                               const char *stop) {
+  if (buffer + 15 < stop)
+    goto tail;
+
+  while (((uintptr_t)(buffer)&7)) {
+    if (*buffer == 0x09 || *buffer == 0x0A || *buffer == 0x0D ||
+        *buffer == 0x20) {
+      ++buffer;
+      continue;
+    }
+    return buffer;
+  }
+
+  /* white-space SIMD skip */
+  while (buffer + 8 < stop) {
+    const uint64_t w1 = 0x0101010101010101 * 0x09;
+    const uint64_t w2 = 0x0101010101010101 * 0x0A;
+    const uint64_t w3 = 0x0101010101010101 * 0x0D;
+    const uint64_t w4 = 0x0101010101010101 * 0x20;
+    const uint64_t t1 = ~(w1 ^ (*(uint64_t *)(buffer)));
+    const uint64_t t2 = ~(w2 ^ (*(uint64_t *)(buffer)));
+    const uint64_t t3 = ~(w3 ^ (*(uint64_t *)(buffer)));
+    const uint64_t t4 = ~(w4 ^ (*(uint64_t *)(buffer)));
+    const uint64_t b1 =
+        (((t1 & 0x7f7f7f7f7f7f7f7fULL) + 0x0101010101010101ULL) &
+         (t1 & 0x8080808080808080ULL));
+    const uint64_t b2 =
+        (((t2 & 0x7f7f7f7f7f7f7f7fULL) + 0x0101010101010101ULL) &
+         (t2 & 0x8080808080808080ULL));
+    const uint64_t b3 =
+        (((t3 & 0x7f7f7f7f7f7f7f7fULL) + 0x0101010101010101ULL) &
+         (t3 & 0x8080808080808080ULL));
+    const uint64_t b4 =
+        (((t4 & 0x7f7f7f7f7f7f7f7fULL) + 0x0101010101010101ULL) &
+         (t4 & 0x8080808080808080ULL));
+    if ((b1 | b2 | b3 | b4) != 0x8080808080808080ULL)
+      break;
+    buffer += 8;
+  }
+tail:
+  while (buffer < stop) {
+    if (*buffer == 0x09 || *buffer == 0x0A || *buffer == 0x0D ||
+        *buffer == 0x20) {
+      ++buffer;
+      continue;
+    }
+    return buffer;
+  }
+  return buffer;
+}
+
+HFUNC const char *fio_json_____skip_comments(const char *buffer,
+                                             const char *stop) {
+  if (*buffer == '#' ||
+      ((stop - buffer) > 2 && buffer[0] == '/' && buffer[1] == '/')) {
+    /* EOL style comment, C style or Bash/Ruby style*/
+    buffer = memchr(buffer + 1, '\n', stop - (buffer + 1));
+    return buffer;
+  }
+  if (((stop - buffer) > 3 && buffer[0] == '/' && buffer[1] == '*')) {
+    while ((buffer = memchr(buffer, '/', stop - buffer)) && buffer &&
+           ++buffer && buffer[-2] != '*')
+      ;
+    return buffer;
+  }
+  return NULL;
+}
+
+HFUNC const char *fio_json_____consume_string(fio_json_parser_s *p,
+                                              const char *buffer,
+                                              const char *stop) {
+  const char *start = ++buffer;
+  for (;;) {
+    buffer = memchr(buffer, '\"', stop - buffer);
+    if (!buffer)
+      return NULL;
+    size_t escaped = 1;
+    while (buffer[0 - escaped] == '\\')
+      ++escaped;
+    if (escaped & 1)
+      break;
+    ++buffer;
+  }
+  fio_json_on_string(p, start, buffer - start);
+  return buffer + 1;
+}
+
+HFUNC const char *fio_json_____consume_number(fio_json_parser_s *p,
+                                              const char *buffer,
+                                              const char *stop) {
+  const char *tmp = buffer;
+  long long i = fio_atol((char **)&tmp);
+  if (tmp == stop ||
+      (tmp < stop && *tmp != '.' && *tmp != '+' && *tmp != '-' &&
+       (*tmp | 32) != 'e' && (*tmp | 32) != 'i' && *tmp != 'b')) {
+    fio_json_on_number(p, i);
+    return tmp;
+  }
+  tmp = buffer;
+  double f = fio_atof((char **)&tmp);
+  if (tmp < stop &&
+      ((*tmp >= '0' && *tmp <= '9') || *tmp == '+' || *tmp == '-')) {
+    return NULL;
+  }
+  fio_json_on_float(p, f);
+  return tmp;
+}
+
+HFUNC const char *fio_json_____identify(fio_json_parser_s *p,
+                                        const char *buffer, const char *stop) {
+  /* Use `break` to change separator requirement status.
+   * Use `continue` to keep separator requirement the same.
+   */
+  switch (*buffer) {
+  case ',': /* comma separator */
+    if (!p->depth || !(p->expect & 4))
+      goto unexpected_separator;
+    ++buffer;
+    p->expect = ((p->nesting & 1) << 1);
+    return buffer;
+  case ':': /* colon separator */
+    if (!p->depth || !(p->expect & 1))
+      goto unexpected_separator;
+    ++buffer;
+    p->expect = 2;
+    return buffer;
+    /*
+     *
+     * JSON Strings
+     *
+     */
+  case '"':
+    if (p->depth && (p->expect & ((uint8_t)5)))
+      goto missing_separator;
+    buffer = fio_json_____consume_string(p, buffer, stop);
+    if (!buffer)
+      goto unterminated_string;
+    break;
+    /*
+     *
+     * JSON Objects
+     *
+     */
+  case '{':
+    if (p->depth && !(p->expect & 2))
+      goto missing_separator;
+    p->expect = 0;
+    p->nesting <<= 1;
+    if (p->depth == JSON_MAX_DEPTH)
+      goto too_deep;
+    ++p->depth;
+    fio_json_on_start_object(p);
+    return buffer + 1;
+  case '}':
+    if ((p->nesting & 1) || !p->depth || (p->expect & 3))
+      goto object_closure_unexpected;
+    p->nesting >>= 1;
+    p->expect = 4; /* 4, if depth != 0 */
+    --p->depth;
+    fio_json_on_end_object(p);
+    ++buffer;
+    return buffer; /* still expect comma */
+
+    /*
+     *
+     * JSON Arrays
+     *
+     */
+  case '[':
+    if (p->depth && !(p->expect & 2))
+      goto missing_separator;
+    fio_json_on_start_array(p);
+    p->expect = 2;
+    p->nesting = (p->nesting << 1) | 1;
+    if (p->depth == JSON_MAX_DEPTH)
+      goto too_deep;
+    ++p->depth;
+    return buffer + 1;
+  case ']':
+    if (!(p->nesting & 1) || !p->depth)
+      goto array_closure_unexpected;
+    p->nesting >>= 1;
+    p->expect = 4; /* 4, if depth != 0 */
+    --p->depth;
+    fio_json_on_end_array(p);
+    ++buffer;
+    return buffer; /* still expect comma */
+    /*
+     *
+     * JSON Primitives (true / false / null (NaN))
+     *
+     */
+  case 'N': /* NaN or null? - fallthrough */
+  case 'n':
+    if (p->depth && !(p->expect & 2))
+      goto missing_separator;
+    if (buffer + 4 > stop || buffer[1] != 'u' || buffer[2] != 'l' ||
+        buffer[3] != 'l') {
+      if (buffer + 3 > stop || (buffer[1] | 32) != 'a' ||
+          (buffer[2] | 32) != 'n')
+        return NULL;
+      char *nan_str = "NaN";
+      fio_atof(&nan_str);
+      buffer += 3;
+      break;
+    }
+    fio_json_on_null(p);
+    buffer += 4;
+    break;
+  case 't': /* true */
+    if (p->depth && !(p->expect & 2))
+      goto missing_separator;
+    if (buffer + 4 > stop || buffer[1] != 'r' || buffer[2] != 'u' ||
+        buffer[3] != 'e')
+      return NULL;
+    fio_json_on_true(p);
+    buffer += 4;
+    break;
+  case 'f': /* false */
+    if (p->depth && !(p->expect & 2))
+      goto missing_separator;
+    if (buffer + 5 > stop || buffer[1] != 'a' || buffer[2] != 'l' ||
+        buffer[3] != 's' || buffer[4] != 'e')
+      return NULL;
+    fio_json_on_false(p);
+    buffer += 5;
+    break;
+    /*
+     *
+     * JSON Numbers (Integers / Floats)
+     *
+     */
+  case '+': /* fallthrough */
+  case '-': /* fallthrough */
+  case '0': /* fallthrough */
+  case '1': /* fallthrough */
+  case '2': /* fallthrough */
+  case '3': /* fallthrough */
+  case '4': /* fallthrough */
+  case '5': /* fallthrough */
+  case '6': /* fallthrough */
+  case '7': /* fallthrough */
+  case '8': /* fallthrough */
+  case '9': /* fallthrough */
+  case 'x': /* fallthrough */
+  case '.': /* fallthrough */
+  case 'e': /* fallthrough */
+  case 'E': /* fallthrough */
+  case 'i': /* fallthrough */
+  case 'I':
+    if (p->depth && !(p->expect & 2))
+      goto missing_separator;
+    buffer = fio_json_____consume_number(p, buffer, stop);
+    if (!buffer)
+      goto bad_number_format;
+    break;
+    /*
+     *
+     * Comments
+     *
+     */
+  case '#': /* fallthrough */
+  case '/': /* fallthrough */
+    return fio_json_____skip_comments(buffer, stop);
+    /*
+     *
+     * Unrecognized Data Handling
+     *
+     */
+  default:
+    JSON_LOG_DEBUG_ERROR("unrecognized JSON identifier at:\n%.*s",
+                         ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))),
+                         buffer);
+    return NULL;
+  }
+  /* p->expect should be either 0 (key) or 2 (value) */
+  p->expect = (p->expect << 1) + ((p->expect ^ 2) >> 1);
+  return buffer;
+
+missing_separator:
+  JSON_LOG_DEBUG_ERROR("missing JSON separator '%c' at (%d):\n%.*s",
+                       (p->expect == 2 ? ':' : ','), p->expect,
+                       ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))),
+                       buffer);
+  fio_json_on_error(p);
+  return NULL;
+unexpected_separator:
+  JSON_LOG_DEBUG_ERROR("unexpected JSON separator at:\n%.*s",
+                       ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))),
+                       buffer);
+  fio_json_on_error(p);
+  return NULL;
+unterminated_string:
+  JSON_LOG_DEBUG_ERROR("unterminated JSON string at:\n%.*s",
+                       ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))),
+                       buffer);
+  fio_json_on_error(p);
+  return NULL;
+bad_number_format:
+  JSON_LOG_DEBUG_ERROR("bad JSON numeral format at:\n%.*s",
+                       ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))),
+                       buffer);
+  fio_json_on_error(p);
+  return NULL;
+array_closure_unexpected:
+  JSON_LOG_DEBUG_ERROR("JSON array closure unexpected at:\n%.*s",
+                       ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))),
+                       buffer);
+  fio_json_on_error(p);
+  return NULL;
+object_closure_unexpected:
+  JSON_LOG_DEBUG_ERROR(
+      "JSON object closure unexpected at (%d):\n%.*s", p->expect,
+      ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))), buffer);
+  fio_json_on_error(p);
+  return NULL;
+too_deep:
+  JSON_LOG_DEBUG_ERROR("JSON object nesting too deep at:\n%.*s", p->expect,
+                       ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))),
+                       buffer);
+  fio_json_on_error(p);
+  return NULL;
+}
+
+/**
+ * Returns the number of bytes consumed. Stops as close as possible to the end
+ * of the buffer or once an object parsing was completed.
+ */
+SFUNC size_t fio_json_parse(fio_json_parser_s *p, const char *buffer,
+                            const size_t length) {
+  const char *start = buffer;
+  const char *stop = buffer + length;
+  { /* move to the beginning of the JSON data */
+    const char *tmp = buffer;
+    do {
+      buffer = fio_json_____skip_whitespace(tmp, stop);
+      tmp = fio_json_____skip_comments(buffer, stop);
+    } while (tmp && tmp != buffer);
+  }
+  const char *last;
+  do {
+    last = buffer;
+    buffer = fio_json_____identify(
+        p, fio_json_____skip_whitespace(buffer, stop), stop);
+  } while (p->depth && buffer && buffer < stop);
+  if (!buffer) {
+    JSON_LOG_DEBUG_ERROR("JSON parsing failed after:\n%.*s",
+                         ((stop - last > 48) ? 48 : ((int)(stop - last))),
+                         last);
+    return last - start;
+  }
+  p->expect = 0;
+  fio_json_on_json(p);
+  return buffer - start;
+}
+
+#undef JSON_LOG_DEBUG_ERROR
+#endif /* FIO_EXTERN_COMPLETE */
+#undef FIO_JSON
+#endif /* FIO_JSON */
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
                             Common Cleanup
 
 
@@ -7637,6 +8107,8 @@ Common cleanup
 #undef IFUNC
 #undef SFUNC_
 #undef IFUNC_
+#undef HSFUNC
+#undef HFUNC
 #undef FIO_PTR_TAG
 #undef FIO_PTR_UNTAG
 #undef FIO_PTR_TAG_TYPE
@@ -7657,6 +8129,1415 @@ Common cleanup
 #define IFUNC IFUNC_
 
 #endif /* !FIO_STL_KEEP__ */
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                          FIOBJ - soft (dynamic) types
+
+
+
+
+
+
+
+
+
+FIOBJ - dynamic types
+
+These are dynamic types that use pointer tagging for fast type identification.
+
+Pointer tagging on 64 bit systems allows for 3 bits at the lower bits...
+On most 32 bit systems this is also true due to allocator alignment.
+
+To keep the 64bit memory address alignment on 32bit systems, a 32bit metadata
+integer is added when a virtual function table is missing. This doesn't effect
+memory consumption on 64 bit systems and uses 4 bytes on 32 bit systems.
+
+Note: this should be included after the STL file, since it leverages most of the
+SLT features.
+***************************************************************************** */
+#if (defined(FIO_FIOBJ)) && !defined(H___FHIOBJ_H)
+#define H___FHIOBJ_H
+
+/* *****************************************************************************
+General Requirements / Macros
+***************************************************************************** */
+
+#define FIO_STR_INFO 1
+#define FIO_ATOL 1
+#define FIO_ATOMIC 1
+#include __FILE__
+
+#if !FIOBJ_EXTERN
+#define FIOBJ_FUNC static __attribute__((unused))
+#define FIOBJ_IFUNC static inline __attribute__((unused))
+#ifndef FIOBJ_EXTERN_COMPLETE /* force implementation, emitting static data */
+#define FIOBJ_EXTERN_COMPLETE 2
+#endif
+
+#else /* FIO_EXTERN */
+#define FIOBJ_FUNC
+#define FIOBJ_IFUNC
+#endif /* FIO_EXTERN */
+
+#define FIOBJ_HFUNC static __attribute__((unused))
+#define FIOBJ_HIFUNC static inline __attribute__((unused))
+
+#ifdef FIO_LOG_DEBUG
+#define FIOBJ_LOG_DEBUG(...) FIO_LOG_DEBUG(__VA_ARGS__)
+#define FIOBJ_LOG_ERROR(...) FIO_LOG_ERROR(__VA_ARGS__)
+#define FIOBJ_LOG_WARNING(...) FIO_LOG_WARNING(__VA_ARGS__)
+#define FIOBJ_LOG_INFO(...) FIO_LOG_INFO(__VA_ARGS__)
+#define FIOBJ_LOG_PRINT__(...) FIO_LOG_PRINT__(__VA_ARGS__)
+#else
+#define FIOBJ_LOG_DEBUG(...)
+#define FIOBJ_LOG_ERROR(...)
+#define FIOBJ_LOG_WARNING(...)
+#define FIOBJ_LOG_INFO(...)
+#define FIOBJ_LOG_PRINT__(...)
+#endif
+
+/* *****************************************************************************
+Debugging / Leak Detection
+***************************************************************************** */
+#if DEBUG && !defined(FIOBJ_MARK_MEMORY)
+#define FIOBJ_MARK_MEMORY 1
+#endif
+
+#if FIOBJ_MARK_MEMORY
+size_t __attribute__((weak)) FIOBJ_MARK_MEMORY_ALLOC_COUNTER = 0;
+size_t __attribute__((weak)) FIOBJ_MARK_MEMORY_FREE_COUNTER = 0;
+#define FIOBJ_MARK_MEMORY_ALLOC()                                              \
+  fio_atomic_add(&FIOBJ_MARK_MEMORY_ALLOC_COUNTER, 1)
+#define FIOBJ_MARK_MEMORY_FREE()                                               \
+  fio_atomic_add(&FIOBJ_MARK_MEMORY_FREE_COUNTER, 1)
+#define FIOBJ_MARK_MEMORY_PRINT()                                              \
+  FIOBJ_LOG_PRINT__(                                                           \
+      ((FIOBJ_MARK_MEMORY_ALLOC_COUNTER == FIOBJ_MARK_MEMORY_FREE_COUNTER)     \
+           ? 4 /* FIO_LOG_LEVEL_INFO */                                        \
+           : 3 /* FIO_LOG_LEVEL_WARNING */),                                   \
+      ((FIOBJ_MARK_MEMORY_ALLOC_COUNTER == FIOBJ_MARK_MEMORY_FREE_COUNTER)     \
+           ? "INFO: total FIOBJ allocations: %zu (%zu/%zu)"                    \
+           : "WARNING: LEAKED! FIOBJ allocations: %zu (%zu/%zu)"),             \
+      FIOBJ_MARK_MEMORY_ALLOC_COUNTER - FIOBJ_MARK_MEMORY_FREE_COUNTER,        \
+      FIOBJ_MARK_MEMORY_FREE_COUNTER, FIOBJ_MARK_MEMORY_ALLOC_COUNTER)
+
+#else
+
+#define FIOBJ_MARK_MEMORY_ALLOC_COUNTER 0 /* when testing unmarked FIOBJ */
+#define FIOBJ_MARK_MEMORY_FREE_COUNTER 0  /* when testing unmarked FIOBJ */
+#define FIOBJ_MARK_MEMORY_ALLOC()
+#define FIOBJ_MARK_MEMORY_FREE()
+#define FIOBJ_MARK_MEMORY_PRINT()
+#endif
+
+/* *****************************************************************************
+The FIOBJ Type
+***************************************************************************** */
+
+/** Use the FIOBJ type for dynamic types. */
+typedef uintptr_t FIOBJ;
+
+/** FIOBJ type enum for common / primitive types. */
+typedef enum {
+  FIOBJ_T_NUMBER = 0x01, /* 0b001 3 bits taken for small numbers */
+  FIOBJ_T_PRIMITIVE = 2, /* 0b010 a lonely second bit signifies a primitive */
+  FIOBJ_T_STRING = 3,    /* 0b011 */
+  FIOBJ_T_ARRAY = 4,     /* 0b100 */
+  FIOBJ_T_HASH = 5,      /* 0b101 */
+  FIOBJ_T_FLOAT = 6,     /* 0b110 */
+  FIOBJ_T_OTHER = 7,     /* 0b111 dynamic type - test content */
+} fiobj_class_en;
+
+#define FIOBJ_T_NULL 2   /* 0b010 a lonely second bit signifies a primitive */
+#define FIOBJ_T_TRUE 18  /* 0b010 010 - primitive value */
+#define FIOBJ_T_FALSE 34 /* 0b100 010 - primitive value */
+
+/** Use the macros to avoid future API changes. */
+#define FIOBJ_TYPE(o) fiobj_type(o)
+/** Use the macros to avoid future API changes. */
+#define FIOBJ_TYPE_IS(o, type) (fiobj_type(o) == type)
+/** Identifies an invalid type identifier (returned from FIOBJ_TYPE(o) */
+#define FIOBJ_T_INVALID 0
+/** Identifies an invalid object */
+#define FIOBJ_INVALID 0
+/** Tests if the object is (probably) a valid FIOBJ */
+#define FIOBJ_IS_INVALID(o) ((o & 7UL) == 0)
+#define FIOBJ_TYPE_CLASS(o) ((fiobj_class_en)((o)&7UL))
+
+/** Returns an objects type. This isn't limited to known types. */
+FIOBJ_HIFUNC size_t fiobj_type(FIOBJ o);
+
+/* *****************************************************************************
+FIOBJ Memory Management
+***************************************************************************** */
+
+/** Increases an object's reference count (or copies) and returns it. */
+FIOBJ_HIFUNC FIOBJ fiobj_dup(FIOBJ o);
+
+/** Decreases an object's reference count or frees it. */
+FIOBJ_HIFUNC void fiobj_free(FIOBJ o);
+
+/* *****************************************************************************
+FIOBJ Data / Info
+***************************************************************************** */
+
+/** Compares two objects. */
+FIOBJ_HIFUNC unsigned char fiobj_is_eq(FIOBJ a, FIOBJ b);
+
+/** Returns a temporary String representation for any FIOBJ object. */
+FIOBJ_HIFUNC fio_str_info_s fiobj2cstr(FIOBJ o);
+
+/** Returns an integer representation for any FIOBJ object. */
+FIOBJ_HIFUNC intptr_t fiobj2i(FIOBJ o);
+
+/** Returns a float (double) representation for any FIOBJ object. */
+FIOBJ_HIFUNC double fiobj2f(FIOBJ o);
+
+/* *****************************************************************************
+FIOBJ Containers (iteration)
+***************************************************************************** */
+
+/**
+ * Performs a task for each element held by the FIOBJ object.
+ *
+ * If `task` returns -1, the `each` loop will break (stop).
+ *
+ * Returns the "stop" position - the number of elements processed + `start_at`.
+ */
+FIOBJ_HFUNC uint32_t fiobj_each1(FIOBJ o, int32_t start_at,
+                                 int (*task)(FIOBJ child, void *arg),
+                                 void *arg);
+
+/**
+ * Performs a task for the object itself and each element held by the FIOBJ
+ * object or any of it's elements (a deep task).
+ *
+ * The order of performance is by order of appearance, as if all nesting levels
+ * were flattened.
+ *
+ * If `task` returns -1, the `each` loop will break (stop).
+ *
+ * Returns the number of elements processed.
+ */
+FIOBJ_FUNC uint32_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ child, void *arg),
+                                void *arg);
+
+/* *****************************************************************************
+FIOBJ Primitives (NULL, True, False)
+***************************************************************************** */
+
+/** Returns the `nil` / `null` primitive. */
+FIOBJ_IFUNC FIOBJ fiobj_null(void) { return (FIOBJ)(FIOBJ_T_NULL); }
+
+/** Returns the `true` primitive. */
+FIOBJ_IFUNC FIOBJ fiobj_false(void) { return (FIOBJ)(FIOBJ_T_FALSE); }
+
+/** Returns the `false` primitive. */
+FIOBJ_IFUNC FIOBJ fiobj_true(void) { return (FIOBJ)(FIOBJ_T_TRUE); }
+
+/* *****************************************************************************
+FIOBJ Type - Extendability (FIOBJ_T_OTHER)
+***************************************************************************** */
+
+/** FIOBJ types can be extended using virtual function tables. */
+typedef struct {
+  /**
+   * MUST return a unique number to identify object type.
+   *
+   * Numbers (IDs) under 100 are reserved.
+   */
+  size_t type_id;
+  /** Test for equality between two objects with the same `type_id` */
+  unsigned char (*is_eq)(FIOBJ a, FIOBJ b);
+  /** Converts an object to a String */
+  fio_str_info_s (*to_s)(FIOBJ o);
+  /** Converts an object to an integer */
+  intptr_t (*to_i)(FIOBJ o);
+  /** Converts an object to a double */
+  double (*to_f)(FIOBJ o);
+  /** Returns the number of exposed elements held by the object, if any. */
+  uint32_t (*count)(FIOBJ o);
+  /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
+  uint32_t (*each1)(FIOBJ o, int32_t start_at,
+                    int (*task)(FIOBJ child, void *arg), void *arg);
+  /**
+   * Decreases the referenmce count and/or frees the object, calling `free2` for
+   * any nested objects.
+   *
+   * Returns 0 if the object is still alive or 1 if the object was freed. The
+   * return value is currently ignored, but this might change in the future.
+   */
+  int (*free2)(FIOBJ o);
+} FIOBJ_class_vtable_s;
+
+FIOBJ_FUNC FIOBJ_class_vtable_s FIOBJ_OBJECT_CLASS_VTBL = {
+    .type_id = 99, /* type IDs below 100 are reserved. */
+};
+
+#define FIO_REF_NAME fiobj_object
+#define FIO_REF_TYPE void *
+#define FIO_REF_METADATA FIOBJ_class_vtable_s *
+#define FIO_REF_METADATA_INIT(m)                                               \
+  do {                                                                         \
+    m = &FIOBJ_OBJECT_CLASS_VTBL;                                              \
+    FIOBJ_MARK_MEMORY_ALLOC();                                                 \
+  } while (0)
+#define FIO_REF_METADATA_DESTROY(m)                                            \
+  do {                                                                         \
+    FIOBJ_MARK_MEMORY_FREE();                                                  \
+  } while (0)
+#define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_OTHER)
+#define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
+#define FIO_PTR_TAG_TYPE FIOBJ
+#include __FILE__
+
+/* *****************************************************************************
+FIOBJ Integers
+***************************************************************************** */
+
+/** Creates a new Number object. */
+FIOBJ_HIFUNC FIOBJ fiobj_num_new(intptr_t i);
+
+/** Reads the number from a FIOBJ Number. */
+FIOBJ_HIFUNC intptr_t fiobj_num_2i(FIOBJ i);
+
+/** Reads the number from a FIOBJ Number, fitting it in a double. */
+FIOBJ_HIFUNC double fiobj_num_2f(FIOBJ i);
+
+/** Returns a String representation of the number (in base 10). */
+FIOBJ_FUNC fio_str_info_s fiobj_num_to_s(FIOBJ i);
+
+/** Frees a FIOBJ number. */
+FIOBJ_HIFUNC void fiobj_num_free(FIOBJ i);
+
+FIOBJ_FUNC FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL;
+
+/* *****************************************************************************
+FIOBJ Floats
+***************************************************************************** */
+
+/** Creates a new Float (double) object. */
+FIOBJ_HIFUNC FIOBJ fiobj_float_new(double i);
+
+/** Reads the number from a FIOBJ Float rounnding it to an interger. */
+FIOBJ_HIFUNC intptr_t fiobj_float_2i(FIOBJ i);
+
+/** Reads the value from a FIOBJ Float, as a double. */
+FIOBJ_HIFUNC double fiobj_float_2f(FIOBJ i);
+
+/** Returns a String representation of the float. */
+FIOBJ_FUNC fio_str_info_s fiobj_float_to_s(FIOBJ i);
+
+/** Frees a FIOBJ Float. */
+FIOBJ_HIFUNC void fiobj_float_free(FIOBJ i);
+
+FIOBJ_FUNC FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL;
+
+/* *****************************************************************************
+FIOBJ Strings
+***************************************************************************** */
+
+#define FIO_STR_NAME fiobj_str
+#define FIO_REF_NAME fiobj_str
+#define FIO_REF_DESTROY(s)                                                     \
+  do {                                                                         \
+    fiobj_str_destroy((FIOBJ)&s);                                              \
+    FIOBJ_MARK_MEMORY_FREE();                                                  \
+  } while (0)
+#define FIO_REF_INIT(s)                                                        \
+  do {                                                                         \
+    s = (fiobj_str_s)FIO_STR_INIT;                                             \
+    FIOBJ_MARK_MEMORY_ALLOC();                                                 \
+  } while (0)
+#define FIO_REF_METADATA uint32_t /* for 32bit system padding */
+#define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_STRING)
+#define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
+#define FIO_PTR_TAG_TYPE FIOBJ
+#include __FILE__
+#define fiobj_str_new fiobj_str_new2
+#define fiobj_str_free fiobj_str_free2
+
+/* *****************************************************************************
+FIOBJ Arrays
+***************************************************************************** */
+
+#define FIO_ARY_NAME fiobj_array
+#define FIO_REF_NAME fiobj_array
+#define FIO_REF_DESTROY(a)                                                     \
+  do {                                                                         \
+    fiobj_array_destroy((FIOBJ)&a);                                            \
+    FIOBJ_MARK_MEMORY_FREE();                                                  \
+  } while (0)
+#define FIO_REF_INIT(a)                                                        \
+  do {                                                                         \
+    a = (fiobj_array_s)FIO_ARY_INIT;                                           \
+    FIOBJ_MARK_MEMORY_ALLOC();                                                 \
+  } while (0)
+#define FIO_REF_METADATA uint32_t /* for 32bit system padding */
+#define FIO_ARY_TYPE FIOBJ
+#define FIO_ARY_TYPE_CMP(a, b) fiobj_is_eq((a), (b))
+#define FIO_ARY_TYPE_DESTROY(o) fiobj_free(o)
+#define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_ARRAY)
+#define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
+#define FIO_PTR_TAG_TYPE FIOBJ
+#include __FILE__
+#define fiobj_array_new fiobj_array_new2
+#define fiobj_array_free fiobj_array_free2
+
+/* *****************************************************************************
+FIOBJ Hash Maps
+***************************************************************************** */
+
+#define FIO_MAP_NAME fiobj_hash
+#define FIO_REF_NAME fiobj_hash
+#define FIO_REF_DESTROY(a)                                                     \
+  do {                                                                         \
+    fiobj_hash_destroy((FIOBJ)&a);                                             \
+    FIOBJ_MARK_MEMORY_FREE();                                                  \
+  } while (0)
+#define FIO_REF_INIT(a)                                                        \
+  do {                                                                         \
+    a = (fiobj_hash_s)FIO_MAP_INIT;                                            \
+    FIOBJ_MARK_MEMORY_ALLOC();                                                 \
+  } while (0)
+#define FIO_REF_METADATA uint32_t /* for 32bit system padding */
+#define FIO_MAP_TYPE FIOBJ
+#define FIO_MAP_TYPE_DESTROY(o) fiobj_free(o)
+#define FIO_MAP_KEY FIOBJ
+#define FIO_MAP_KEY_CMP(a, b) fiobj_is_eq((a), (b))
+#define FIO_MAP_KEY_COPY(dest, o) (dest = fiobj_dup(o))
+#define FIO_MAP_KEY_DESTROY(o) fiobj_free(o)
+#define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_HASH)
+#define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
+#define FIO_PTR_TAG_TYPE FIOBJ
+#include __FILE__
+#define fiobj_hash_new fiobj_hash_new2
+#define fiobj_hash_free fiobj_hash_free2
+
+/** Inserts a value to a hash map, automatically calculating the hash value. */
+FIOBJ_HIFUNC FIOBJ fiobj_hash_insert2(FIOBJ hash, FIOBJ key, FIOBJ value);
+
+/** Finds a value in a hash map, automatically calculating the hash value. */
+FIOBJ_HIFUNC FIOBJ fiobj_hash_find2(FIOBJ hash, FIOBJ key);
+
+/** Calculates an object's hash value for a specific hash map object. */
+FIOBJ_HIFUNC uint64_t fiobj2hash(FIOBJ target_hash, FIOBJ object_key);
+
+/* *****************************************************************************
+FIOBJ JSON support
+***************************************************************************** */
+
+#ifndef FIOBJ_JSON_MAX_NESTING
+/** Limits the JSON output nesting level. Can be any value between 0 and 255. */
+#define FIOBJ_JSON_MAX_NESTING 28
+#endif
+
+/**
+ * Returns a JSON valid FIOBJ String, representing the object.
+ *
+ * If `dest` is an existing String, the formatted JSON data will be appended to
+ * the existing string.
+ */
+FIOBJ_HIFUNC FIOBJ fiobj2json(FIOBJ dest, FIOBJ o, uint8_t beautify);
+
+/* internal helper funnction for recursive JSON formatting. */
+FIOBJ_FUNC void fiobj___json_format_internal__(FIOBJ, FIOBJ, uint8_t, uint8_t);
+
+/**
+ * Returns a JSON valid FIOBJ String, representing the object.
+ *
+ * If `dest` is an existing String, the formatted JSON data will be appended to
+ * the existing string.
+ */
+FIOBJ_HIFUNC FIOBJ fiobj2json(FIOBJ dest, FIOBJ o, uint8_t beautify) {
+  if (FIOBJ_TYPE_CLASS(dest) != FIOBJ_T_STRING)
+    dest = fiobj_str_new();
+  fiobj___json_format_internal__(dest, o, 0, beautify);
+  return dest;
+}
+
+/**
+ * Updates a Hash using JSON data.
+ *
+ * Parsing errors and non-dictionary object JSON data are silently ignored,
+ * attempting to update the Hash as much as possible before any errors
+ * encountered.
+ *
+ * Conflicting Hash data is overwritten (prefering the new over the old).
+ *
+ * Returns the number of bytes consumed. On Error, 0 is returned and no data is
+ * consumed.
+ */
+FIOBJ_FUNC size_t fiobj_hash_update_json(FIOBJ hash, fio_str_info_s str);
+
+/** Helper macro, calls `fiobj_hash_update_json` with string information */
+#define fiobj_hash_update_json2(hash, data_, len_)                             \
+  fiobj_hash_update_json(hash, (fio_str_info_s){.data = data_, .len = len_})
+
+/** Returns a JSON valid FIOBJ String, representing the object. */
+FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_str_info_s str);
+
+/** Helper macro, calls `fiobj_json_parse` with string information */
+#define fiobj_json_parse2(data_, len_)                                         \
+  fiobj_json_parse((fio_str_info_s){.data = data_, .len = len_})
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+FIOBJ - Implementation - Inline / Macro like fucntions
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/* *****************************************************************************
+The FIOBJ Type
+***************************************************************************** */
+
+/** Returns an objects type. This isn't limited to known types. */
+FIOBJ_HIFUNC size_t fiobj_type(FIOBJ o) {
+  switch (FIOBJ_TYPE_CLASS(o)) {
+  case FIOBJ_T_PRIMITIVE:
+    switch (o) {
+    case FIOBJ_T_NULL:
+      return FIOBJ_T_NULL;
+    case FIOBJ_T_TRUE:
+      return FIOBJ_T_TRUE;
+    case FIOBJ_T_FALSE:
+      return FIOBJ_T_FALSE;
+    };
+    return FIOBJ_T_INVALID;
+  case FIOBJ_T_NUMBER:
+    return FIOBJ_T_NUMBER;
+  case FIOBJ_T_FLOAT:
+    return FIOBJ_T_FLOAT;
+  case FIOBJ_T_STRING:
+    return FIOBJ_T_STRING;
+  case FIOBJ_T_ARRAY:
+    return FIOBJ_T_ARRAY;
+  case FIOBJ_T_HASH:
+    return FIOBJ_T_HASH;
+  case FIOBJ_T_OTHER:
+    return (*fiobj_object_metadata(o))->type_id;
+  }
+  if (!o)
+    return FIOBJ_T_NULL;
+  return FIOBJ_T_INVALID;
+}
+
+/* *****************************************************************************
+FIOBJ Memory Management
+***************************************************************************** */
+
+/** Increases an object's reference count (or copies) and returns it. */
+FIOBJ_HIFUNC FIOBJ fiobj_dup(FIOBJ o) {
+  switch (FIOBJ_TYPE_CLASS(o)) {
+  case FIOBJ_T_PRIMITIVE: /* fallthrough */
+  case FIOBJ_T_NUMBER:    /* fallthrough */
+  case FIOBJ_T_FLOAT:     /* fallthrough */
+    return o;
+  case FIOBJ_T_STRING: /* fallthrough */
+    fiobj_str_up_ref(o);
+    break;
+  case FIOBJ_T_ARRAY: /* fallthrough */
+    fiobj_array_up_ref(o);
+    break;
+  case FIOBJ_T_HASH: /* fallthrough */
+    fiobj_hash_up_ref(o);
+    break;
+  case FIOBJ_T_OTHER: /* fallthrough */
+    fiobj_object_up_ref(o);
+  }
+  return o;
+}
+
+/** Decreases an object's reference count or frees it. */
+FIOBJ_HIFUNC void fiobj_free(FIOBJ o) {
+  switch (FIOBJ_TYPE_CLASS(o)) {
+  case FIOBJ_T_PRIMITIVE: /* fallthrough */
+  case FIOBJ_T_NUMBER:    /* fallthrough */
+  case FIOBJ_T_FLOAT:
+    return;
+  case FIOBJ_T_STRING:
+    fiobj_str_free2(o);
+    return;
+  case FIOBJ_T_ARRAY:
+    fiobj_array_free2(o);
+    return;
+  case FIOBJ_T_HASH:
+    fiobj_hash_free2(o);
+    return;
+  case FIOBJ_T_OTHER:
+    (*fiobj_object_metadata(o))->free2(o);
+    return;
+  }
+}
+
+/* *****************************************************************************
+FIOBJ Data / Info
+***************************************************************************** */
+
+/** Compares two objects. */
+FIOBJ_HIFUNC unsigned char fiobj_is_eq(FIOBJ a, FIOBJ b) {
+  if (a == b)
+    return 1;
+  if (FIOBJ_TYPE_CLASS(a) != FIOBJ_TYPE_CLASS(b))
+    return 0;
+  switch (FIOBJ_TYPE_CLASS(a)) {
+  case FIOBJ_T_PRIMITIVE:
+  case FIOBJ_T_NUMBER: /* fallthrough */
+  case FIOBJ_T_FLOAT:  /* fallthrough */
+    return a == b;
+  case FIOBJ_T_STRING:
+    return fiobj_str_iseq(a, b);
+  case FIOBJ_T_ARRAY:
+    return 0;
+  case FIOBJ_T_HASH:
+    return 0;
+  case FIOBJ_T_OTHER:
+    return (*fiobj_object_metadata(a))->type_id ==
+               (*fiobj_object_metadata(b))->type_id &&
+           (*fiobj_object_metadata(a))->is_eq(a, b);
+  }
+  return 0;
+}
+
+#define FIOBJ2CSTR_BUFFER_LIMIT 4096
+__thread char __attribute__((weak))
+fiobj2cstr___buffer__perthread[FIOBJ2CSTR_BUFFER_LIMIT];
+
+/** Returns a temporary String representation for any FIOBJ object. */
+FIOBJ_HIFUNC fio_str_info_s fiobj2cstr(FIOBJ o) {
+  switch (FIOBJ_TYPE_CLASS(o)) {
+  case FIOBJ_T_PRIMITIVE:
+    switch (o) {
+    case FIOBJ_T_NULL:
+      return (fio_str_info_s){.data = "null", .len = 4};
+    case FIOBJ_T_TRUE:
+      return (fio_str_info_s){.data = "true", .len = 4};
+    case FIOBJ_T_FALSE:
+      return (fio_str_info_s){.data = "false", .len = 5};
+    };
+    return (fio_str_info_s){.data = ""};
+  case FIOBJ_T_NUMBER:
+    return fiobj_num_to_s(o);
+  case FIOBJ_T_FLOAT:
+    return fiobj_float_to_s(o);
+  case FIOBJ_T_STRING:
+    return fiobj_str_info(o);
+  case FIOBJ_T_ARRAY: /* fallthrough */
+  case FIOBJ_T_HASH: {
+    FIOBJ j = fiobj2json(FIOBJ_INVALID, o, 0);
+    if (!j || fiobj_str_len(j) >= FIOBJ2CSTR_BUFFER_LIMIT) {
+      return (fio_str_info_s){
+          .data = (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_ARRAY ? "[...]" : "{...}"),
+          .len = 5};
+    }
+    fio_str_info_s i = fiobj_str_info(j);
+    memcpy(fiobj2cstr___buffer__perthread, i.data, i.len + 1);
+    fiobj_free(j);
+    i.data = fiobj2cstr___buffer__perthread;
+    return i;
+  }
+    return (fio_str_info_s){.data = "<...>", .len = 5};
+  case FIOBJ_T_OTHER:
+    return (*fiobj_object_metadata(o))->to_s(o);
+  }
+  if (!o)
+    return (fio_str_info_s){.data = "null", .len = 4};
+  return (fio_str_info_s){.data = ""};
+}
+
+/** Returns an integer representation for any FIOBJ object. */
+FIOBJ_HIFUNC intptr_t fiobj2i(FIOBJ o) {
+  fio_str_info_s tmp;
+  switch (FIOBJ_TYPE_CLASS(o)) {
+  case FIOBJ_T_PRIMITIVE:
+    switch (o) {
+    case FIOBJ_T_NULL:
+      return 0;
+    case FIOBJ_T_TRUE:
+      return 1;
+    case FIOBJ_T_FALSE:
+      return 0;
+    };
+    return -1;
+  case FIOBJ_T_NUMBER:
+    return fiobj_num_2i(o);
+  case FIOBJ_T_FLOAT:
+    /* FIXME */
+    return fiobj_float_2i(o);
+  case FIOBJ_T_STRING:
+    tmp = fiobj_str_info(o);
+    if (!tmp.len)
+      return 0;
+    return fio_atol(&tmp.data);
+  case FIOBJ_T_ARRAY:
+    /* FIXME */
+    return fiobj_array_count(o);
+  case FIOBJ_T_HASH:
+    /* FIXME */
+    return fiobj_hash_count(o);
+  case FIOBJ_T_OTHER:
+    return (*fiobj_object_metadata(o))->to_i(o);
+  }
+  if (!o)
+    return 0;
+  return -1;
+}
+
+/** Returns a float (double) representation for any FIOBJ object. */
+FIOBJ_HIFUNC double fiobj2f(FIOBJ o) {
+  fio_str_info_s tmp;
+  switch (FIOBJ_TYPE_CLASS(o)) {
+  case FIOBJ_T_PRIMITIVE:
+    switch (o) {
+    case FIOBJ_T_FALSE: /* fallthrough */
+    case FIOBJ_T_NULL:
+      return 0.0;
+    case FIOBJ_T_TRUE:
+      return 1.0;
+    };
+    return -1.0;
+  case FIOBJ_T_NUMBER:
+    return fiobj_num_2f(o);
+  case FIOBJ_T_FLOAT:
+    return fiobj_float_2f(o);
+  case FIOBJ_T_STRING:
+    tmp = fiobj_str_info(o);
+    if (!tmp.len)
+      return 0;
+    return (double)fio_atof(&tmp.data);
+  case FIOBJ_T_ARRAY:
+    /* FIXME */
+    return (double)fiobj_array_count(o);
+  case FIOBJ_T_HASH:
+    /* FIXME */
+    return (double)fiobj_hash_count(o);
+  case FIOBJ_T_OTHER:
+    return (*fiobj_object_metadata(o))->to_f(o);
+  }
+  if (!o)
+    return 0.0;
+  return -1.0;
+}
+
+/* *****************************************************************************
+FIOBJ Integers
+***************************************************************************** */
+
+#define FIO_REF_NAME fiobj__bignum
+#define FIO_REF_TYPE intptr_t
+#define FIO_REF_METADATA FIOBJ_class_vtable_s *
+#define FIO_REF_METADATA_INIT(m)                                               \
+  do {                                                                         \
+    m = &FIOBJ___NUMBER_CLASS_VTBL;                                            \
+    FIOBJ_MARK_MEMORY_ALLOC();                                                 \
+  } while (0)
+#define FIO_REF_METADATA_DESTROY(m)                                            \
+  do {                                                                         \
+    FIOBJ_MARK_MEMORY_FREE();                                                  \
+  } while (0)
+#define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_OTHER)
+#define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
+#define FIO_PTR_TAG_TYPE FIOBJ
+#include __FILE__
+
+#define FIO_NUMBER_ENCODE(i) (((uintptr_t)(i) << 3) | FIOBJ_T_NUMBER)
+#define FIO_NUMBER_REVESE(i)                                                   \
+  ((intptr_t)(((uintptr_t)(i) >> 3) |                                          \
+              ((((uintptr_t)(i) >> ((sizeof(uintptr_t) * 8) - 1)) *            \
+                ((uintptr_t)3 << ((sizeof(uintptr_t) * 8) - 3))))))
+
+/** Creates a new Number object. */
+FIOBJ_HIFUNC FIOBJ fiobj_num_new(intptr_t i) {
+  FIOBJ o = FIO_NUMBER_ENCODE(i);
+  if (FIO_NUMBER_REVESE(o) == i)
+    return o;
+  o = fiobj__bignum_new2();
+  FIO_PTR_MATH_RMASK(intptr_t, o, 3)[0] = i;
+  return o;
+}
+
+/** Reads the number from a FIOBJ number. */
+FIOBJ_HIFUNC intptr_t fiobj_num_2i(FIOBJ i) {
+  if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_NUMBER)
+    return FIO_NUMBER_REVESE(i);
+  /* FIXME */
+  return FIO_PTR_MATH_RMASK(intptr_t, i, 3)[0];
+}
+
+/** Reads the number from a FIOBJ number, fitting it in a double. */
+FIOBJ_HIFUNC double fiobj_num_2f(FIOBJ i) { return (double)fiobj_num_2i(i); }
+
+/** Frees a FIOBJ number. */
+FIOBJ_HIFUNC void fiobj_num_free(FIOBJ i) {
+  if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_NUMBER)
+    return;
+  fiobj__bignum_free2(i);
+  return;
+}
+#undef FIO_NUMBER_ENCODE
+#undef FIO_NUMBER_REVESE
+
+/* *****************************************************************************
+FIOBJ Floats
+***************************************************************************** */
+
+#define FIO_REF_NAME fiobj__bigfloat
+#define FIO_REF_TYPE double
+#define FIO_REF_METADATA FIOBJ_class_vtable_s *
+#define FIO_REF_METADATA_INIT(m)                                               \
+  do {                                                                         \
+    m = &FIOBJ___FLOAT_CLASS_VTBL;                                             \
+    FIOBJ_MARK_MEMORY_ALLOC();                                                 \
+  } while (0)
+#define FIO_REF_METADATA_DESTROY(m)                                            \
+  do {                                                                         \
+    FIOBJ_MARK_MEMORY_FREE();                                                  \
+  } while (0)
+#define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_OTHER)
+#define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
+#define FIO_PTR_TAG_TYPE FIOBJ
+#include __FILE__
+
+/** Creates a new Number object. */
+FIOBJ_HIFUNC FIOBJ fiobj_float_new(double i) {
+  FIOBJ ui;
+  if (sizeof(double) <= sizeof(FIOBJ)) {
+    union {
+      double d;
+      FIOBJ i;
+    } punned;
+    punned.i = 0; /* dead code, but leave it, just in case */
+    punned.d = i;
+    if ((punned.i & 7) == 0) {
+      return (FIOBJ)(punned.i | FIOBJ_T_FLOAT);
+    }
+  }
+  ui = fiobj__bigfloat_new2();
+  FIO_PTR_MATH_RMASK(double, ui, 3)[0] = i;
+  return ui;
+}
+
+/** Reads the number from a FIOBJ number. */
+FIOBJ_HIFUNC intptr_t fiobj_float_2i(FIOBJ i) {
+  /* FIXME */
+  return (intptr_t)fiobj_num_2f(i);
+}
+
+/** Reads the number from a FIOBJ number, fitting it in a double. */
+FIOBJ_HIFUNC double fiobj_float_2f(FIOBJ i) {
+  if (sizeof(double) <= sizeof(FIOBJ) && FIOBJ_TYPE_CLASS(i) == FIOBJ_T_FLOAT) {
+    union {
+      double d;
+      FIOBJ i;
+    } punned;
+    punned.d = 0; /* dead code, but leave it, just in case */
+    punned.i = i;
+    punned.i = (i & (~(FIOBJ)7));
+    return punned.d;
+  }
+  return FIO_PTR_MATH_RMASK(double, i, 3)[0];
+}
+
+/** Frees a FIOBJ number. */
+FIOBJ_HIFUNC void fiobj_float_free(FIOBJ i) {
+  if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_FLOAT)
+    return;
+  fiobj__bignum_free2(i);
+  return;
+}
+
+/* *****************************************************************************
+FIOBJ Basic Iteration
+***************************************************************************** */
+
+/**
+ * Performs a task for each element held by the FIOBJ object.
+ *
+ * If `task` returns -1, the `each` loop will break (stop).
+ *
+ * Returns the "stop" position - the number of elements processed + `start_at`.
+ */
+FIOBJ_HFUNC uint32_t fiobj_each1(FIOBJ o, int32_t start_at,
+                                 int (*task)(FIOBJ child, void *arg),
+                                 void *arg) {
+  switch (FIOBJ_TYPE_CLASS(o)) {
+  case FIOBJ_T_PRIMITIVE: /* fallthrough */
+  case FIOBJ_T_NUMBER:    /* fallthrough */
+  case FIOBJ_T_STRING:    /* fallthrough */
+  case FIOBJ_T_FLOAT:
+    return 0;
+  case FIOBJ_T_ARRAY:
+    return fiobj_array_each(o, start_at, task, arg);
+  case FIOBJ_T_HASH: /* fallthrough */
+    return fiobj_hash_each(o, start_at, task, arg);
+  /* FIXME */
+  case FIOBJ_T_OTHER: /* fallthrough */
+    return (*fiobj_object_metadata(o))->each1(o, start_at, task, arg);
+  }
+  return 0;
+}
+
+/* *****************************************************************************
+FIOBJ Hash Maps
+***************************************************************************** */
+
+/** Calculates an object's hash value for a specific hash map object. */
+FIOBJ_HIFUNC uint64_t fiobj2hash(FIOBJ target_hash, FIOBJ o) {
+  switch (FIOBJ_TYPE_CLASS(o)) {
+  case FIOBJ_T_PRIMITIVE:
+    return fio_risky_hash(&o, sizeof(o), target_hash + o);
+  case FIOBJ_T_NUMBER: {
+    uintptr_t tmp = fiobj2i(o);
+    return fio_risky_hash(&tmp, sizeof(tmp), target_hash);
+  }
+  case FIOBJ_T_FLOAT: {
+    double tmp = fiobj2f(o);
+    return fio_risky_hash(&tmp, sizeof(tmp), target_hash);
+  }
+  case FIOBJ_T_STRING: /* fallthrough */
+    return fiobj_str_hash(o, target_hash);
+  case FIOBJ_T_ARRAY: {
+    uint64_t h = fiobj_array_count(o);
+    size_t c = 0;
+    h += fio_risky_hash(&h, sizeof(h), target_hash + FIOBJ_T_ARRAY);
+    FIO_ARY_EACH(((fiobj_array_s *)(o & (~(uintptr_t)7))), pos) {
+      h += fiobj2hash(target_hash + FIOBJ_T_ARRAY + (c++), *pos);
+    }
+    return h;
+  }
+  case FIOBJ_T_HASH: {
+    uint64_t h = fiobj_hash_count(o);
+    size_t c = 0;
+    h += fio_risky_hash(&h, sizeof(h), target_hash + FIOBJ_T_HASH);
+    FIO_MAP_EACH(((fiobj_hash_s *)(o & (~(uintptr_t)7))), pos) {
+      h += fiobj2hash(target_hash + FIOBJ_T_HASH + (c++), pos->obj.key);
+      h += fiobj2hash(target_hash + FIOBJ_T_HASH + (c++), pos->obj.value);
+    }
+    return h;
+  }
+  case FIOBJ_T_OTHER: {
+    /* FIXME */
+    fio_str_info_s tmp = (*fiobj_object_metadata(o))->to_s(o);
+    return fio_risky_hash(tmp.data, tmp.len, target_hash);
+  }
+  }
+  return 0;
+}
+
+/** Inserts a value to a hash map, automatically calculating the hash value. */
+FIOBJ_HIFUNC FIOBJ fiobj_hash_insert2(FIOBJ hash, FIOBJ key, FIOBJ value) {
+  return fiobj_hash_insert(hash, fiobj2hash(hash, key), key, value, NULL);
+}
+
+/** Finds a value in a hash map, automatically calculating the hash value. */
+FIOBJ_HIFUNC FIOBJ fiobj_hash_find2(FIOBJ hash, FIOBJ key) {
+  return fiobj_hash_find(hash, fiobj2hash(hash, key), key);
+}
+
+/* *****************************************************************************
+FIOBJ - Implementation
+***************************************************************************** */
+#if FIOBJ_EXTERN_COMPLETE
+
+/* *****************************************************************************
+FIOBJ Complex Iteration
+***************************************************************************** */
+
+typedef struct {
+  FIOBJ obj;
+  uint32_t pos;
+} fiobj____stack_element_s;
+
+#define FIO_ARY_NAME fiobj____active_stack
+#define FIO_ARY_TYPE fiobj____stack_element_s
+#define FIO_ARY_COPY(dest, src)                                                \
+  do {                                                                         \
+    (dest).obj = fiobj_dup((src).obj);                                         \
+    (dest).pos = (src).pos;                                                    \
+  } while (0)
+#define FIO_ARY_TYPE_CMP(a, b) (a).obj == (b).obj
+#define FIO_ARY_DESTROY(o) fiobj_free(o)
+#include __FILE__
+#define FIO_ARY_TYPE_CMP(a, b) (a).obj == (b).obj
+#define FIO_ARY_NAME fiobj____stack
+#define FIO_ARY_TYPE fiobj____stack_element_s
+#include __FILE__
+
+typedef struct {
+  int (*task)(FIOBJ, void *);
+  void *arg;
+  FIOBJ next;
+  size_t count;
+  fiobj____stack_s stack;
+  uint32_t end;
+  uint8_t stop;
+} fiobj_____each2_data_s;
+
+FIOBJ_HFUNC uint32_t fiobj____each2_element_count(FIOBJ o) {
+  switch (FIOBJ_TYPE_CLASS(o)) {
+  case FIOBJ_T_PRIMITIVE: /* fallthrough */
+  case FIOBJ_T_NUMBER:    /* fallthrough */
+  case FIOBJ_T_STRING:    /* fallthrough */
+  case FIOBJ_T_FLOAT:
+    return 0;
+  case FIOBJ_T_ARRAY:
+    return fiobj_array_count(o);
+  case FIOBJ_T_HASH:
+    return fiobj_hash_count(o);
+  case FIOBJ_T_OTHER: /* fallthrough */
+    return (*fiobj_object_metadata(o))->count(o);
+  }
+  return 0;
+}
+FIOBJ_HFUNC int fiobj____each2_wrapper_task(FIOBJ child, void *arg) {
+  fiobj_____each2_data_s *d = (fiobj_____each2_data_s *)arg;
+  d->stop = (d->task(child, d->arg) == -1);
+  ++d->count;
+  if (d->stop)
+    return -1;
+  uint32_t c = fiobj____each2_element_count(child);
+  if (c) {
+    d->next = child;
+    d->end = c;
+    return -1;
+  }
+  return 0;
+}
+
+/**
+ * Performs a task for the object itself and each element held by the FIOBJ
+ * object or any of it's elements (a deep task).
+ *
+ * The order of performance is by order of appearance, as if all nesting levels
+ * were flattened.
+ *
+ * If `task` returns -1, the `each` loop will break (stop).
+ *
+ * Returns the number of elements processed.
+ */
+FIOBJ_FUNC uint32_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ child, void *arg),
+                                void *arg) {
+  fiobj_____each2_data_s d = {
+      .stack = FIO_ARY_INIT,
+      .task = task,
+      .arg = arg,
+      .next = FIOBJ_INVALID,
+  };
+  fiobj____stack_element_s i = {.obj = o, .pos = 0};
+  uint32_t end = fiobj____each2_element_count(o);
+  fiobj____each2_wrapper_task(i.obj, &d);
+  while (!d.stop && i.obj && i.pos < end) {
+    i.pos = fiobj_each1(i.obj, i.pos, fiobj____each2_wrapper_task, &d);
+    if (d.next != FIOBJ_INVALID) {
+      fiobj____stack_push(&d.stack, i);
+      i.pos = 0;
+      i.obj = d.next;
+      d.next = FIOBJ_INVALID;
+      end = d.end;
+    } else {
+      /* re-collect end position to acommodate for changes */
+      end = fiobj____each2_element_count(i.obj);
+    }
+    while (i.pos >= end && fiobj____stack_count(&d.stack)) {
+      fiobj____stack_pop(&d.stack, &i);
+      end = fiobj____each2_element_count(i.obj);
+    }
+  };
+  fiobj____stack_destroy(&d.stack);
+  return d.count;
+}
+
+/* *****************************************************************************
+FIOBJ general helpers
+***************************************************************************** */
+FIOBJ_HFUNC __thread char fiobj__tmp_buffer[256];
+
+FIOBJ_HFUNC uint32_t fiobj__count_noop(FIOBJ o) {
+  return 0;
+  (void)o;
+}
+
+/* *****************************************************************************
+FIOBJ Integers (bigger numbers)
+***************************************************************************** */
+
+FIOBJ_FUNC unsigned char fiobj_num__is_eq(FIOBJ a, FIOBJ b) {
+  return fiobj_num_2i(a) == fiobj_num_2i(b);
+}
+
+FIOBJ_FUNC fio_str_info_s fiobj_num_to_s(FIOBJ i) {
+  size_t len = fio_ltoa(fiobj__tmp_buffer, fiobj_num_2i(i), 10);
+  fiobj__tmp_buffer[len] = 0;
+  return (fio_str_info_s){.data = fiobj__tmp_buffer, .len = len};
+}
+
+FIOBJ_FUNC FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL = {
+    /**
+     * MUST return a unique number to identify object type.
+     *
+     * Numbers (IDs) under 100 are reserved.
+     */
+    .type_id = FIOBJ_T_NUMBER,
+    /** Test for equality between two objects with the same `type_id` */
+    .is_eq = fiobj_num__is_eq,
+    /** Converts an object to a String */
+    .to_s = fiobj_num_to_s,
+    /** Converts and object to an integer */
+    .to_i = fiobj_num_2i,
+    /** Converts and object to a float */
+    .to_f = fiobj_num_2f,
+    /** Returns the number of exposed elements held by the object, if any. */
+    .count = fiobj__count_noop,
+    /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
+    .each1 = NULL,
+    /** Deallocates the element (but NOT any of it's exposed elements). */
+    .free2 = fiobj__bignum_free2,
+};
+
+/* *****************************************************************************
+FIOBJ Floats (bigger / smaller doubles)
+***************************************************************************** */
+
+FIOBJ_FUNC unsigned char fiobj_float__is_eq(FIOBJ a, FIOBJ b) {
+  return fiobj_float_2i(a) == fiobj_float_2i(b);
+}
+
+FIOBJ_FUNC fio_str_info_s fiobj_float_to_s(FIOBJ i) {
+  size_t len = fio_ftoa(fiobj__tmp_buffer, fiobj_float_2f(i), 10);
+  fiobj__tmp_buffer[len] = 0;
+  return (fio_str_info_s){.data = fiobj__tmp_buffer, .len = len};
+}
+
+FIOBJ_FUNC FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL = {
+    /**
+     * MUST return a unique number to identify object type.
+     *
+     * Numbers (IDs) under 100 are reserved.
+     */
+    .type_id = FIOBJ_T_FLOAT,
+    /** Test for equality between two objects with the same `type_id` */
+    .is_eq = fiobj_float__is_eq,
+    /** Converts an object to a String */
+    .to_s = fiobj_float_to_s,
+    /** Converts and object to an integer */
+    .to_i = fiobj_float_2i,
+    /** Converts and object to a float */
+    .to_f = fiobj_float_2f,
+    /** Returns the number of exposed elements held by the object, if any. */
+    .count = fiobj__count_noop,
+    /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
+    .each1 = NULL,
+    /** Deallocates the element (but NOT any of it's exposed elements). */
+    .free2 = fiobj__bigfloat_free2,
+};
+
+/* *****************************************************************************
+FIOBJ JSON support - output
+***************************************************************************** */
+
+FIOBJ_HIFUNC void fiobj___json_format_internal_beauty_pad(FIOBJ json,
+                                                          uint8_t level) {
+  uint32_t pos = fiobj_str_len(json);
+  fio_str_info_s tmp = fiobj_str_resize(json, level + pos + 2);
+  tmp.data[pos++] = '\r';
+  tmp.data[pos++] = '\n';
+  for (uint8_t i = 0; i < level; ++i)
+    tmp.data[pos++] = '\t';
+}
+
+FIOBJ_HIFUNC void fiobj___json_format_internal__(FIOBJ json, FIOBJ o,
+                                                 uint8_t level,
+                                                 uint8_t beautify) {
+  switch (FIOBJ_TYPE(o)) {
+  case FIOBJ_T_TRUE:   /* fallthrough */
+  case FIOBJ_T_FALSE:  /* fallthrough */
+  case FIOBJ_T_NULL:   /* fallthrough */
+  case FIOBJ_T_NUMBER: /* fallthrough */
+  case FIOBJ_T_FLOAT:  /* fallthrough */
+  {
+    fio_str_info_s info = fiobj2cstr(o);
+    fiobj_str_write(json, info.data, info.len);
+    return;
+  }
+  case FIOBJ_T_STRING: /* fallthrough */
+  default: {
+    fio_str_info_s info = fiobj2cstr(o);
+    fiobj_str_write(json, "\"", 1);
+    fiobj_str_write_escape(json, info.data, info.len);
+    fiobj_str_write(json, "\"", 1);
+    return;
+  }
+  case FIOBJ_T_ARRAY:
+    if (level == FIOBJ_JSON_MAX_NESTING) {
+      fiobj_str_write(json, "[ ]", 3);
+      return;
+    }
+    {
+      ++level;
+      fiobj_str_write(json, "[", 1);
+      const uint32_t len = fiobj_array_count(o);
+      for (uint32_t i = 0; i < len; ++i) {
+        if (beautify) {
+          fiobj___json_format_internal_beauty_pad(json, level);
+        }
+        FIOBJ child = fiobj_array_get(o, i);
+        fiobj___json_format_internal__(json, child, level, beautify);
+        if (i + 1 < len)
+          fiobj_str_write(json, ",", 1);
+      }
+      --level;
+      if (beautify) {
+        fiobj___json_format_internal_beauty_pad(json, level);
+      }
+      fiobj_str_write(json, "]", 1);
+    }
+    return;
+  case FIOBJ_T_HASH:
+    if (level == FIOBJ_JSON_MAX_NESTING) {
+      fiobj_str_write(json, "{ }", 3);
+      return;
+    }
+    {
+      ++level;
+      fiobj_str_write(json, "{", 1);
+      uint32_t i = fiobj_hash_count(o);
+      if (i) {
+        FIO_MAP_EACH(((fiobj_hash_s *)(o & (~(FIOBJ)7))), couplet) {
+          if (beautify) {
+            fiobj___json_format_internal_beauty_pad(json, level);
+          }
+          fio_str_info_s info = fiobj2cstr(couplet->obj.key);
+          fiobj_str_write(json, "\"", 1);
+          fiobj_str_write_escape(json, info.data, info.len);
+          fiobj_str_write(json, "\":", 2);
+          fiobj___json_format_internal__(json, couplet->obj.value, level,
+                                         beautify);
+          if (--i)
+            fiobj_str_write(json, ",", 1);
+        }
+      }
+      --level;
+      if (beautify) {
+        fiobj___json_format_internal_beauty_pad(json, level);
+      }
+      fiobj_str_write(json, "}", 1);
+    }
+    return;
+  }
+}
+
+/* *****************************************************************************
+FIOBJ JSON parsing
+***************************************************************************** */
+
+#define FIO_JSON
+#include __FILE__
+
+/* FIOBJ JSON parser */
+typedef struct {
+  fio_json_parser_s p;
+  FIOBJ key;
+  FIOBJ top;
+  FIOBJ target;
+  FIOBJ stack[JSON_MAX_DEPTH + 1];
+  uint8_t so; /* stack offset */
+} fiobj_json_parser_s;
+
+static inline void fiobj_json_add2parser(fiobj_json_parser_s *p, FIOBJ o) {
+  if (p->top) {
+    if (FIOBJ_TYPE_CLASS(p->top) == FIOBJ_T_HASH) {
+      if (p->key) {
+        fiobj_hash_insert2(p->top, p->key, o);
+        fiobj_free(p->key);
+        p->key = FIOBJ_INVALID;
+      } else {
+        p->key = o;
+      }
+    } else {
+      fiobj_array_push(p->top, o);
+    }
+  } else {
+    p->top = o;
+  }
+}
+
+/** a NULL object was detected */
+static inline void fio_json_on_null(fio_json_parser_s *p) {
+  fiobj_json_add2parser((fiobj_json_parser_s *)p, fiobj_null());
+}
+/** a TRUE object was detected */
+static inline void fio_json_on_true(fio_json_parser_s *p) {
+  fiobj_json_add2parser((fiobj_json_parser_s *)p, fiobj_true());
+}
+/** a FALSE object was detected */
+static inline void fio_json_on_false(fio_json_parser_s *p) {
+  fiobj_json_add2parser((fiobj_json_parser_s *)p, fiobj_false());
+}
+/** a Numberl was detected (long long). */
+static inline void fio_json_on_number(fio_json_parser_s *p, long long i) {
+  fiobj_json_add2parser((fiobj_json_parser_s *)p, fiobj_num_new(i));
+}
+/** a Float was detected (double). */
+static inline void fio_json_on_float(fio_json_parser_s *p, double f) {
+  fiobj_json_add2parser((fiobj_json_parser_s *)p, fiobj_float_new(f));
+}
+/** a String was detected (int / float). update `pos` to point at ending */
+static inline void fio_json_on_string(fio_json_parser_s *p, const void *start,
+                                      size_t length) {
+  FIOBJ str = fiobj_str_new();
+  fiobj_str_write_unescape(str, start, length);
+  fiobj_json_add2parser((fiobj_json_parser_s *)p, str);
+}
+/** a dictionary object was detected */
+static inline int fio_json_on_start_object(fio_json_parser_s *p) {
+  fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
+  if (pr->target) {
+    /* push NULL, don't free the objects */
+    pr->stack[pr->so++] = FIOBJ_INVALID;
+    pr->top = pr->target;
+    pr->target = FIOBJ_INVALID;
+  } else {
+    FIOBJ hash = fiobj_hash_new();
+    fiobj_json_add2parser(pr, hash);
+    pr->stack[pr->so++] = pr->top;
+    pr->top = hash;
+  }
+  return 0;
+}
+/** a dictionary object closure detected */
+static inline void fio_json_on_end_object(fio_json_parser_s *p) {
+  fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
+  if (pr->key) {
+    FIOBJ_LOG_WARNING("(JSON parsing) malformed JSON, "
+                      "ignoring dangling Hash key.");
+    fiobj_free(pr->key);
+    pr->key = FIOBJ_INVALID;
+  }
+  pr->top = FIOBJ_INVALID;
+  if (pr->so)
+    pr->top = pr->stack[--pr->so];
+}
+/** an array object was detected */
+static int fio_json_on_start_array(fio_json_parser_s *p) {
+  fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
+  if (pr->target)
+    return -1;
+  FIOBJ ary = fiobj_array_new();
+  fiobj_json_add2parser(pr, ary);
+  pr->stack[pr->so++] = pr->top;
+  pr->top = ary;
+  return 0;
+}
+/** an array closure was detected */
+static inline void fio_json_on_end_array(fio_json_parser_s *p) {
+  fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
+  pr->top = FIOBJ_INVALID;
+  if (pr->so)
+    pr->top = pr->stack[--pr->so];
+}
+/** the JSON parsing is complete */
+static void fio_json_on_json(fio_json_parser_s *p) {
+  (void)p; /* nothing special... right? */
+}
+/** the JSON parsing is complete */
+static inline void fio_json_on_error(fio_json_parser_s *p) {
+  fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
+  fiobj_free(pr->stack[0]);
+  fiobj_free(pr->key);
+  *pr = (fiobj_json_parser_s){.top = FIOBJ_INVALID};
+  FIOBJ_LOG_DEBUG("JSON on_error callback called.");
+}
+
+/**
+ * Updates a Hash using JSON data.
+ *
+ * Parsing errors and non-dictionary object JSON data are silently ignored,
+ * attempting to update the Hash as much as possible before any errors
+ * encountered.
+ *
+ * Conflicting Hash data is overwritten (prefering the new over the old).
+ *
+ * Returns the number of bytes consumed. On Error, 0 is returned and no data is
+ * consumed.
+ */
+FIOBJ_FUNC size_t fiobj_hash_update_json(FIOBJ hash, fio_str_info_s str) {
+  if (!hash)
+    return 0;
+  fiobj_json_parser_s p = {.top = FIOBJ_INVALID, .target = hash};
+  size_t consumed = fio_json_parse(&p.p, str.data, str.len);
+  fiobj_free(p.key);
+  if (p.top != hash)
+    fiobj_free(p.top);
+  return consumed;
+}
+
+/** Returns a JSON valid FIOBJ String, representing the object. */
+FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_str_info_s str) {
+  fiobj_json_parser_s p = {.top = FIOBJ_INVALID};
+  size_t consumed = fio_json_parse(&p.p, str.data, str.len);
+  if (!consumed || p.p.depth) {
+    if (p.top) {
+      FIOBJ_LOG_DEBUG(
+          "WARNING - JSON failed secondary validation, no on_error");
+    }
+    fiobj_free(p.stack[0]);
+#if DEBUG
+    FIOBJ s = fiobj2json(FIOBJ_INVALID, p.top, 0);
+    FIOBJ_LOG_DEBUG("JSON data being deleted:\n%s", fiobj2cstr(s).data);
+    fiobj_free(s);
+#endif
+    p.top = FIOBJ_INVALID;
+  }
+  fiobj_free(p.key);
+  return p.top;
+}
+
+/* *****************************************************************************
+FIOBJ cleanup
+***************************************************************************** */
+
+#if FIOBJ_EXTERN_COMPLETE == 2
+#undef FIOBJ_EXTERN_COMPLETE
+#endif
+
+#endif /* FIOBJ_EXTERN_COMPLETE */
+#undef FIOBJ_FUNC
+#undef FIOBJ_IFUNC
+#undef FIOBJ_HFUNC
+#undef FIOBJ_HIFUNC
+#undef FIO_FIOBJ
+#undef FIOBJ_LOG_DEBUG
+#undef FIOBJ_LOG_ERROR
+#undef FIOBJ_LOG_WARNING
+#undef FIOBJ_LOG_INFO
+#endif /* FIO_FIOBJ */
+
 /* *****************************************************************************
 
 
@@ -9240,6 +11121,176 @@ TEST_FUNC void fio___dynamic_types_test___risky(void) {
 }
 
 /* *****************************************************************************
+FIOBJ and JSON testing
+***************************************************************************** */
+#define FIOBJ_MARK_MEMORY 1
+#define FIO_FIOBJ
+#include __FILE__
+
+TEST_FUNC int fio___dynamic_types_test___fiobj_task(FIOBJ o, void *e_) {
+  static size_t index = 0;
+  int *expect = (int *)e_;
+  if (expect[index] == -1) {
+    TEST_ASSERT(FIOBJ_TYPE(o) == FIOBJ_T_ARRAY,
+                "each2 ordering issue [%zu] (array).", index);
+  } else {
+    TEST_ASSERT(fiobj2i(o) == expect[index],
+                "each2 ordering issue [%zu] (number) %ld != %d", index,
+                fiobj2i(o), expect[index]);
+  }
+  ++index;
+  return 0;
+}
+
+TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
+  FIOBJ o = FIOBJ_INVALID;
+  /* primitives - (in)sanity */
+  {
+    fprintf(stderr, "* Testing FIOBJ primitives.\n");
+    TEST_ASSERT(FIOBJ_TYPE(o) == FIOBJ_T_NULL,
+                "invalid FIOBJ type should be FIOBJ_T_NULL.");
+    TEST_ASSERT(!fiobj_is_eq(o, fiobj_null()),
+                "invalid FIOBJ is NOT a fiobj_null().");
+    TEST_ASSERT(!fiobj_is_eq(fiobj_true(), fiobj_null()),
+                "fiobj_true() is NOT fiobj_null().");
+    TEST_ASSERT(!fiobj_is_eq(fiobj_false(), fiobj_null()),
+                "fiobj_false() is NOT fiobj_null().");
+    TEST_ASSERT(!fiobj_is_eq(fiobj_false(), fiobj_true()),
+                "fiobj_false() is NOT fiobj_true().");
+    TEST_ASSERT(FIOBJ_TYPE(fiobj_null()) == FIOBJ_T_NULL,
+                "fiobj_null() type should be FIOBJ_T_NULL.");
+    TEST_ASSERT(FIOBJ_TYPE(fiobj_true()) == FIOBJ_T_TRUE,
+                "fiobj_true() type should be FIOBJ_T_TRUE.");
+    TEST_ASSERT(FIOBJ_TYPE(fiobj_false()) == FIOBJ_T_FALSE,
+                "fiobj_false() type should be FIOBJ_T_FALSE.");
+    TEST_ASSERT(fiobj_is_eq(fiobj_null(), fiobj_null()),
+                "fiobj_null() should be equal to self.");
+    TEST_ASSERT(fiobj_is_eq(fiobj_true(), fiobj_true()),
+                "fiobj_true() should be equal to self.");
+    TEST_ASSERT(fiobj_is_eq(fiobj_false(), fiobj_false()),
+                "fiobj_false() should be equal to self.");
+  }
+  {
+    fprintf(stderr, "* Testing FIOBJ integers.\n");
+    uint8_t allocation_flags = 0;
+    for (uint8_t bit = 0; bit < (sizeof(intptr_t) * 8); ++bit) {
+      uintptr_t i = (uintptr_t)1 << bit;
+      o = fiobj_num_new((intptr_t)i);
+      TEST_ASSERT(fiobj2i(o) == (intptr_t)i,
+                  "Number not reversible at bit %d (%zd != %zd)!", (int)bit,
+                  (ssize_t)fiobj2i(o), (ssize_t)i);
+      allocation_flags |= (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_NUMBER) ? 1 : 2;
+      fiobj_free(o);
+    }
+    TEST_ASSERT(allocation_flags == 3,
+                "no bits are allocated / no allocations optimized away (%d)",
+                (int)allocation_flags);
+  }
+  {
+    fprintf(stderr, "* Testing FIOBJ floats.\n");
+    uint8_t allocation_flags = 0;
+    for (uint8_t bit = 0; bit < (sizeof(double) * 8); ++bit) {
+      union {
+        double d;
+        uint64_t i;
+      } punned;
+      punned.i = (uint64_t)1 << bit;
+      o = fiobj_float_new(punned.d);
+      TEST_ASSERT(fiobj2f(o) == punned.d,
+                  "Float not reversible at bit %d (%lf != %lf)!", (int)bit,
+                  fiobj2f(o), punned.d);
+      allocation_flags |= (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_FLOAT) ? 1 : 2;
+      fiobj_free(o);
+    }
+    TEST_ASSERT(allocation_flags == 3,
+                "no bits are allocated / no allocations optimized away (%d)",
+                (int)allocation_flags);
+  }
+  {
+    fprintf(stderr, "* Testing FIOBJ each2.\n");
+    FIOBJ a = fiobj_array_new();
+    o = fiobj_array_new();
+    fiobj_array_push(o, a);
+    for (int i = 1; i < 10; ++i) // 1, 2, 3 ... 10
+    {
+      fiobj_array_push(a, fiobj_num_new(i));
+      if (i % 3 == 0) {
+        a = fiobj_array_new();
+        fiobj_array_push(o, a);
+      }
+    }
+    int expectation[] = {
+        -1 /* array */, -1, 1, 2, 3, -1, 4, 5, 6, -1, 7, 8, 9, -1};
+    size_t c = fiobj_each2(o, fio___dynamic_types_test___fiobj_task,
+                           (void *)expectation);
+    TEST_ASSERT(c == fiobj_array_count(o) + 9 + 1,
+                "each2 repetition count error");
+    fiobj_free(o);
+  }
+  {
+    fprintf(stderr, "* Testing FIOBJ JSON handling.\n");
+    char json[] =
+        "                    "
+        "{\"true\":true,\"false\":false,\"null\":null,\"array\":[1,2,3,4.2,"
+        "\"five\"],"
+        "\"string\":\"hello\\tjson\\bworld!\\r\\n\",\"hash\":{\"true\":true,"
+        "\"false\":false},\"array2\":[1,2,3,4.2,\"five\",{\"hash\":true}]}";
+    o = fiobj_json_parse2(json, strlen(json));
+    TEST_ASSERT(o, "JSON parsing failed - no data returned.");
+    FIOBJ j = fiobj2json(FIOBJ_INVALID, o, 0);
+#if DEBUG
+    fprintf(stderr, "JSON: %s\n", fiobj2cstr(j).data);
+#endif
+    TEST_ASSERT(fiobj_str_len(j) == strlen(json + 20),
+                "JSON roundtrip failed (length error).");
+    TEST_ASSERT(!memcmp(json + 20, fiobj_str_data(j), strlen(json + 20)),
+                "JSON roundtrip failed (data error).");
+    fiobj_free(o);
+    fiobj_free(j);
+    o = FIOBJ_INVALID;
+  }
+#if FIOBJ_MARK_MEMORY
+  {
+    fprintf(stderr, "* Testing FIOBJ for memory leaks.\n");
+    FIOBJ a = fiobj_array_new();
+    fiobj_array_reserve(a, 64);
+    for (uint8_t bit = 0; bit < (sizeof(intptr_t) * 8); ++bit) {
+      uintptr_t i = (uintptr_t)1 << bit;
+      fiobj_array_push(a, fiobj_num_new((intptr_t)i));
+    }
+    FIOBJ h = fiobj_hash_new();
+    FIOBJ key = fiobj_str_new();
+    fiobj_str_write(key, "array", 5);
+    fiobj_hash_insert2(h, key, a);
+    TEST_ASSERT(fiobj_hash_find2(h, key) == a, "FIOBJ Hash retrival failed");
+    fiobj_array_push(a, key);
+    if (0) {
+      fiobj_array_push(a, fiobj_null());
+      fiobj_array_push(a, fiobj_true());
+      fiobj_array_push(a, fiobj_false());
+      fiobj_array_push(a, fiobj_float_new(0.42));
+
+      FIOBJ json = fiobj2json(FIOBJ_INVALID, h, 0);
+      fiobj_str_write(json, "\n", 1);
+      fiobj_str_reserve(json, fiobj_str_len(json)
+                                  << 1); /* prevent memory realloc */
+      fiobj_str_write_escape(json, fiobj_str_data(json),
+                             fiobj_str_len(json) - 1);
+      fprintf(stderr, "%s\n", fiobj2cstr(json).data);
+      fiobj_free(json);
+    }
+    fiobj_free(h);
+
+    TEST_ASSERT(
+        FIOBJ_MARK_MEMORY_ALLOC_COUNTER == FIOBJ_MARK_MEMORY_FREE_COUNTER,
+        "FIOBJ leak detected (freed %zu/%zu)", FIOBJ_MARK_MEMORY_FREE_COUNTER,
+        FIOBJ_MARK_MEMORY_ALLOC_COUNTER);
+  }
+#endif
+  fprintf(stderr, "* Passed.\n");
+}
+
+/* *****************************************************************************
 Environment printout
 ***************************************************************************** */
 
@@ -9308,6 +11359,8 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fio___dynamic_types_test___cli();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___mem();
+  fprintf(stderr, "===============\n");
+  fio___dynamic_types_test___fiobj();
   fprintf(stderr, "===============\n");
 #ifndef DEBUG
   fio___dynamic_types_test___risky();
