@@ -247,6 +247,41 @@ Miscellaneous helper macros
 
 /** An empty macro, adding white space. Used to avoid function like macros. */
 #define FIO_NOOP
+/* allow logging to quitely fail unless enabled */
+#define FIO_LOG_DEBUG(...)
+#define FIO_LOG_INFO(...)
+#define FIO_LOG_WARNING(...)
+#define FIO_LOG_ERROR(...)
+#define FIO_LOG_FATAL(...)
+#define FIO_LOG2STDERR(...)
+#define FIO_LOG2STDERR2(...)
+
+/* Asserts a condition is true, or kills the application using SIGINT. */
+#define FIO_ASSERT(cond, ...)                                                  \
+  if (!(cond)) {                                                               \
+    FIO_LOG_FATAL("(" __FILE__ ":" FIO_MACRO2STR(__LINE__) ") "__VA_ARGS__);   \
+    perror("     errno");                                                      \
+    kill(0, SIGINT);                                                           \
+    exit(-1);                                                                  \
+  }
+
+#ifndef FIO_ASSERT_ALLOC
+/** Tests for an allocation failure. The behavior can be overridden. */
+#define FIO_ASSERT_ALLOC(ptr)                                                  \
+  if (!(ptr)) {                                                                \
+    FIO_LOG_FATAL("memory allocation error "__FILE__                           \
+                  ":" FIO_MACRO2STR(__LINE__));                                \
+    kill(0, SIGINT);                                                           \
+    exit(-1);                                                                  \
+  }
+#endif
+
+#ifdef DEBUG
+/** If `DEBUG` is defined, acts as `FIO_ASSERT`, otherwaise a NOOP. */
+#define FIO_ASSERT_DEBUG(cond, ...) FIO_ASSERT(cond, __VA_ARGS__)
+#else
+#define FIO_ASSERT_DEBUG(...)
+#endif
 
 /* *****************************************************************************
 End persistent segment (end include-once guard)
@@ -393,6 +428,8 @@ FIO_LOG_WARNING("number invalid: %d", i); // => WARNING: number invalid: 3
 #define FIO_LOG____LENGTH_BORDER FIO_LOG_LENGTH_LIMIT
 #endif
 
+#undef FIO_LOG2STDERR
+
 #pragma weak FIO_LOG2STDERR
 void __attribute__((format(printf, 1, 0), weak))
 FIO_LOG2STDERR(const char *format, ...) {
@@ -418,6 +455,7 @@ FIO_LOG2STDERR(const char *format, ...) {
 #undef FIO_LOG____LENGTH_ON_STACK
 #undef FIO_LOG____LENGTH_BORDER
 
+#undef FIO_LOG2STDERR2
 #define FIO_LOG2STDERR2(...)                                                   \
   FIO_LOG2STDERR("("__FILE__                                                   \
                  ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
@@ -451,50 +489,24 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
       FIO_LOG2STDERR(__VA_ARGS__);                                             \
   } while (0)
 
+#undef FIO_LOG_DEBUG
 #define FIO_LOG_DEBUG(...)                                                     \
   FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG,                                         \
                   "DEBUG ("__FILE__                                            \
                   ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
+#undef FIO_LOG_INFO
 #define FIO_LOG_INFO(...)                                                      \
   FIO_LOG_PRINT__(FIO_LOG_LEVEL_INFO, "INFO: " __VA_ARGS__)
+#undef FIO_LOG_WARNING
 #define FIO_LOG_WARNING(...)                                                   \
   FIO_LOG_PRINT__(FIO_LOG_LEVEL_WARNING, "WARNING: " __VA_ARGS__)
+#undef FIO_LOG_ERROR
 #define FIO_LOG_ERROR(...)                                                     \
   FIO_LOG_PRINT__(FIO_LOG_LEVEL_ERROR, "ERROR: " __VA_ARGS__)
+#undef FIO_LOG_FATAL
 #define FIO_LOG_FATAL(...)                                                     \
   FIO_LOG_PRINT__(FIO_LOG_LEVEL_FATAL, "FATAL: " __VA_ARGS__)
 
-#define FIO_ASSERT(cond, ...)                                                  \
-  if (!(cond)) {                                                               \
-    FIO_LOG_FATAL("(" __FILE__ ":" FIO_MACRO2STR(__LINE__) ") "__VA_ARGS__);   \
-    perror("     errno");                                                      \
-    kill(0, SIGINT);                                                           \
-    exit(-1);                                                                  \
-  }
-
-#ifndef FIO_ASSERT_ALLOC
-/** Tests for an allocation failure. The behavior can be overridden. */
-#define FIO_ASSERT_ALLOC(ptr)                                                  \
-  if (!(ptr)) {                                                                \
-    FIO_LOG_FATAL("memory allocation error "__FILE__                           \
-                  ":" FIO_MACRO2STR(__LINE__));                                \
-    kill(0, SIGINT);                                                           \
-    exit(-1);                                                                  \
-  }
-#endif
-
-#ifdef DEBUG
-/** If `DEBUG` is defined, acts as `FIO_ASSERT`, otherwaise a NOOP. */
-#define FIO_ASSERT_DEBUG(cond, ...)                                            \
-  if (!(cond)) {                                                               \
-    FIO_LOG_DEBUG(__VA_ARGS__);                                                \
-    perror("     errno");                                                      \
-    kill(0, SIGINT);                                                           \
-    abort();                                                                   \
-  }
-#else
-#define FIO_ASSERT_DEBUG(...)
-#endif
 #undef FIO_LOG
 #endif /* FIO_LOG */
 
@@ -2210,7 +2222,7 @@ Strings to Numbers - API
  * The most significant difference between this function and `strtol` (aside of
  * API design), is the added support for binary representations.
  */
-SFUNC int64_t fio_atol(char **pstr);
+SFUNC long long fio_atol(char **pstr);
 
 /** A helper function that converts between String data to a signed double. */
 IFUNC double fio_atof(char **pstr);
@@ -2253,35 +2265,47 @@ Strings to Numbers - Implementation
 ***************************************************************************** */
 #ifdef FIO_EXTERN_COMPLETE
 
-HFUNC size_t fio_atol___skip_zero(char **pstr) {
-  char *const start = *pstr;
-  while (**pstr == '0') {
+typedef struct {
+  unsigned long long val;
+  long long expo;
+  uint8_t sign;
+} fio___number_s;
+
+/** Reads number information in base 2. Returned expo in base 2. */
+HFUNC fio___number_s fio_aton___read_b2(char **pstr) {
+  fio___number_s r = (fio___number_s){0};
+  const unsigned long long mask = ((1ULL) << ((sizeof(mask) << 3) - 1));
+  while (**pstr >= '0' && **pstr <= '1' && !(r.val & mask)) {
+    r.val = (r.val << 1) | (**pstr - '0');
     ++(*pstr);
   }
-  return (size_t)(*pstr - *start);
-}
-
-/* consumes any digits in the string (base 2-10), returning their value */
-HFUNC uint64_t fio_atol___consume(char **pstr, uint8_t base) {
-  uint64_t result = 0;
-  const uint64_t limit = UINT64_MAX - (base * base);
-  while (**pstr >= '0' && **pstr < ('0' + base) && result <= (limit)) {
-    result = (result * base) + (**pstr - '0');
+  while (**pstr >= '0' && **pstr <= '1') {
+    ++r.expo;
     ++(*pstr);
   }
-  return result;
+  return r;
 }
 
-/* returns true if there's data to be skipped */
-HFUNC uint8_t fio_atol___skip_test(char **pstr, uint8_t base) {
-  return (**pstr >= '0' && **pstr < ('0' + base));
+/** Reads number information, up to base 10 numbers. Returned expo in `base`. */
+HFUNC fio___number_s fio_aton___read_b10(char **pstr, uint8_t base) {
+  fio___number_s r = (fio___number_s){0};
+  const unsigned long long limit = ((~0ULL) / base) - base;
+  while (**pstr >= '0' && **pstr < ('0' + base) && r.val <= (limit)) {
+    r.val = (r.val * base) + (**pstr - '0');
+    ++(*pstr);
+  }
+  while (**pstr >= '0' && **pstr < ('0' + base)) {
+    ++r.expo;
+    ++(*pstr);
+  }
+  return r;
 }
 
-/* consumes any hex data in the string, returning their value */
-HFUNC uint64_t fio_atol___consume_hex(char **pstr) {
-  uint64_t result = 0;
-  const uint64_t limit = UINT64_MAX - (16 * 16);
-  for (; result <= limit;) {
+/** Reads number information for base 16 (hex). Returned expo in base 4. */
+HFUNC fio___number_s fio_aton___read_b16(char **pstr) {
+  fio___number_s r = (fio___number_s){0};
+  const unsigned long long mask = (~0ULL) << ((sizeof(mask) << 3) - 4);
+  for (; !(r.val & mask);) {
     uint8_t tmp;
     if (**pstr >= '0' && **pstr <= '9')
       tmp = **pstr - '0';
@@ -2290,83 +2314,246 @@ HFUNC uint64_t fio_atol___consume_hex(char **pstr) {
     else if (**pstr >= 'a' && **pstr <= 'f')
       tmp = **pstr - ('a' - 10);
     else
-      return result;
-    result = (result << 4) | tmp;
+      return r;
+    r.val = (r.val << 4) | tmp;
     ++(*pstr);
   }
-  return result;
+  for (;;) {
+    if ((**pstr >= '0' && **pstr <= '9') || (**pstr >= 'A' && **pstr <= 'F') ||
+        (**pstr >= 'a' && **pstr <= 'f'))
+      ++r.expo;
+    else
+      return r;
+  }
+  return r;
 }
 
-/* returns true if there's data to be skipped */
-#define FIO_ATOL_SKIP_HEX_TEST(pstr)                                           \
-  ((**pstr >= '0' && **pstr <= '9') || (**pstr >= 'A' && **pstr <= 'F') ||     \
-   (**pstr >= 'a' && **pstr <= 'f'))
+SFUNC long long fio_atol(char **pstr) {
+  if (!pstr || !(*pstr))
+    return 0;
+  char *p = *pstr;
+  unsigned char invert = 0;
+  fio___number_s n = (fio___number_s){0};
+  while (isspace(*p))
+    ++p;
+  if (*p == '-') {
+    invert = 1;
+    ++p;
+  } else if (*p == '+') {
+    ++p;
+  }
+  switch (*p) {
+  case 'x': /* fallthrough */
+  case 'X':
+    goto is_hex;
+  case 'b': /* fallthrough */
+  case 'B':
+    goto is_binary;
+  case '0':
+    ++p;
+    switch (*p) {
+    case 'x': /* fallthrough */
+    case 'X':
+      goto is_hex;
+    case 'b': /* fallthrough */
+    case 'B':
+      goto is_binary;
+    }
+    goto is_base8;
+  }
 
-SFUNC int64_t fio_atol(char **pstr) {
-  /* No binary representation in strtol */
-  if (!pstr || !*pstr)
-    return 0;
+  /* is_base10: */
+  *pstr = p;
+  n = fio_aton___read_b10(pstr, 10);
+
+  /* sign can't be embeded */
+#define CALC_N_VAL()                                                           \
+  if (invert) {                                                                \
+    if (n.expo || (n.val >> ((sizeof(n.val) << 3) - 1)))                       \
+      return (long long)(1ULL << ((sizeof(n.val) << 3) - 1));                  \
+    n.val = 0 - n.val;                                                         \
+  } else {                                                                     \
+    if (n.expo || (n.val >> ((sizeof(n.val) << 3) - 1)))                       \
+      return (long long)((~0ULL) >> 1);                                        \
+  }
+
+  CALC_N_VAL();
+  return n.val;
+
+is_hex:
+  ++p;
+  while (*p == '0') {
+    ++p;
+  }
+  *pstr = p;
+  n = fio_aton___read_b16(pstr);
+
+  /* sign can be embeded */
+#define CALC_N_VAL_EMBEDABLE()                                                 \
+  if (invert) {                                                                \
+    if (n.expo)                                                                \
+      return (long long)(1ULL << ((sizeof(n.val) << 3) - 1));                  \
+    n.val = 0 - n.val;                                                         \
+  } else {                                                                     \
+    if (n.expo)                                                                \
+      return (long long)((~0ULL) >> 1);                                        \
+  }
+
+  CALC_N_VAL_EMBEDABLE();
+  return n.val;
+
+is_binary:
+  ++p;
+  while (*p == '0') {
+    ++p;
+  }
+  *pstr = p;
+  n = fio_aton___read_b2(pstr);
+  CALC_N_VAL_EMBEDABLE()
+  return n.val;
+
+is_base8:
+  while (*p == '0') {
+    ++p;
+  }
+  *pstr = p;
+  n = fio_aton___read_b10(pstr, 8);
+  CALC_N_VAL();
+  return n.val;
+}
+
+IFUNC double fio_atof(char **pstr) {
+  return strtod(*pstr, pstr);
+  uint8_t inv_base = 0;
+  uint8_t inv_expo = 0;
+  uint64_t top = 0;
+  uint64_t expo = 0;
+  double result = 0;
   char *str = *pstr;
-  uint64_t result = 0;
-  uint8_t invert = 0;
-  if (!pstr)
-    return 0;
+  /* skip white-space */
   while (isspace(*str))
     ++(str);
-  if (str[0] == '-') {
-    invert ^= 1;
-    ++str;
+  if (*str == '-') {
+    inv_base = 1;
+    ++(str);
   } else if (*str == '+') {
     ++(str);
   }
 
-  if (str[0] == 'B' || str[0] == 'b' ||
-      (str[0] == '0' && (str[1] == 'b' || str[1] == 'B'))) {
-    /* base 2 */
-    if (str[0] == '0')
-      str++;
-    str++;
-    fio_atol___skip_zero(&str);
-    while (str[0] == '0' || str[0] == '1') {
-      result = (result << 1) | (str[0] - '0');
+  if ((*str) == '0' && (str[1] == 'x' || str[1] == 'X')) {
+    /* Hex notation */
+    str += 2;
+    uint64_t utop = 0;
+    for (;;) {
+      uint8_t tmp = 0;
+      if (str[0] >= '0' && str[0] <= '9')
+        tmp = str[0] - '0';
+      else if (str[0] >= 'A' && str[0] <= 'F')
+        tmp = str[0] - ('A' - 10);
+      else if (str[0] >= 'a' && str[0] <= 'f')
+        tmp = str[0] - ('a' - 10);
+      else
+        break;
+      utop = (utop << 4) | tmp;
       str++;
     }
-    goto sign; /* no overlow protection, since sign might be embedded */
-
-  } else if (str[0] == 'x' || str[0] == 'X' ||
-             (str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))) {
-    /* base 16 */
-    if (str[0] == '0')
-      str++;
-    str++;
-    fio_atol___skip_zero(&str);
-    result = fio_atol___consume_hex(&str);
-    if (FIO_ATOL_SKIP_HEX_TEST(&str)) /* too large for a number */
-      return 0;
-    goto sign; /* no overlow protection, since sign might be embedded */
-  } else if (str[0] == '0') {
-    fio_atol___skip_zero(&str);
-    /* base 8 */
-    result = fio_atol___consume(&str, 8);
-    if (fio_atol___skip_test(&str, 8)) /* too large for a number */
-      return 0;
-  } else {
-    /* base 10 */
-    result = fio_atol___consume(&str, 10);
-    if (fio_atol___skip_test(&str, 10)) /* too large for a number */
-      return 0;
+    top = utop;
+    if (*str == '.') {
+      ++str;
+      utop = 0;
+      for (;;) {
+        uint8_t tmp = 0;
+        if (str[0] >= '0' && str[0] <= '9')
+          tmp = str[0] - '0';
+        else if (str[0] >= 'A' && str[0] <= 'F')
+          tmp = str[0] - ('A' - 10);
+        else if (str[0] >= 'a' && str[0] <= 'f')
+          tmp = str[0] - ('a' - 10);
+        else
+          break;
+        utop = (utop << 4) | tmp;
+        str++;
+      }
+      result = utop;
+      while (utop) {
+        result = result / 16;
+        utop >>= 4;
+      }
+    }
+    result += top;
+    if (*str == 'p' || *str == 'P') {
+      ++str;
+      /* base 2 exponent */
+      if (*str == '-') {
+        inv_expo = 1;
+        ++(str);
+      } else if (*str == '+') {
+        ++(str);
+      }
+      while ((*str) >= '0' && (*str) <= '9') {
+        expo = (expo * 10) + (*str) - '0';
+        ++(str);
+      }
+      if (inv_expo) {
+        while (expo--) {
+          result = result / 2;
+        }
+      } else {
+        while (expo--) {
+          result = result * 2;
+        }
+      }
+    }
+    if (inv_base)
+      result *= -1;
+    *pstr = str;
+    return result;
   }
-  if (result > (uint64_t)INT64_MAX + invert)
-    result = INT64_MAX + invert; /* signed overflow protection */
-sign:
-  if (invert)
-    result = 0 - result;
-  *pstr = str;
-  return (int64_t)result;
-}
-#undef FIO_ATOL_SKIP_HEX_TEST
 
-IFUNC double fio_atof(char **pstr) { return strtod(*pstr, pstr); }
+  /* Decimal scientific notation  */
+  while ((*str) >= '0' && (*str) <= '9') {
+    top = (top * 10) + (*str) - '0';
+    ++(str);
+  }
+  if (*str == '.') {
+    uint64_t tmp = 0;
+    double tmp_lg = 1;
+    ++(str);
+    while ((*str) >= '0' && (*str) <= '9') {
+      tmp = (tmp * 10) + (*str) - '0';
+      tmp_lg *= 10;
+      ++(str);
+    }
+    result = tmp / tmp_lg;
+  }
+  result += top;
+  if (*str == 'e' || *str == 'E') {
+    ++(str);
+    if (*str == '-') {
+      inv_expo = 1;
+      ++(str);
+    } else if (*str == '+') {
+      ++(str);
+    }
+    while ((*str) >= '0' && (*str) <= '9') {
+      expo = (expo * 10) + (*str) - '0';
+      ++(str);
+    }
+    if (inv_expo) {
+      while (expo--) {
+        result = result / 10;
+      }
+    } else {
+      while (expo--) {
+        result = result * 10;
+      }
+    }
+  }
+  if (inv_base)
+    result *= -1;
+  *pstr = str;
+  return result;
+}
 
 /* *****************************************************************************
 Numbers to Strings - Implementation
@@ -3237,6 +3424,7 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary_, int32_t index,
       ary->ary = tmp;
       ary->capa = new_capa;
     }
+    ary->ary[ary->end++] = FIO_ARY_TYPE_INVALID;
     if ((uint32_t)index >= ary->end) {
       /* we to initialize memory between ary->end and index + ary->start */
       pre_existing = 0;
@@ -7666,12 +7854,6 @@ Note: static Callacks must be implemented in the C file that uses the parser
 
 #ifdef FIO_EXTERN_COMPLETE
 
-#ifdef FIO_LOG_DEBUG
-#define JSON_LOG_DEBUG_ERROR(...) FIO_LOG_DEBUG(__VA_ARGS__)
-#else
-#define JSON_LOG_DEBUG_ERROR(...)
-#endif
-
 /** common FIO_JSON callback function properties */
 #define FIO_JSON_CB static inline __attribute__((unused))
 
@@ -7707,58 +7889,6 @@ JSON Parsing - Implementation - Parser
 
 Note: static Callacks must be implemented in the C file that uses the parser
 ***************************************************************************** */
-
-HFUNC const char *fio_json_____skip_whitespace(const char *buffer,
-                                               const char *stop) {
-  if (buffer + 15 < stop)
-    goto tail;
-
-  while (((uintptr_t)(buffer)&7)) {
-    if (*buffer == 0x09 || *buffer == 0x0A || *buffer == 0x0D ||
-        *buffer == 0x20) {
-      ++buffer;
-      continue;
-    }
-    return buffer;
-  }
-
-  /* white-space SIMD skip */
-  while (buffer + 8 < stop) {
-    const uint64_t w1 = 0x0101010101010101 * 0x09;
-    const uint64_t w2 = 0x0101010101010101 * 0x0A;
-    const uint64_t w3 = 0x0101010101010101 * 0x0D;
-    const uint64_t w4 = 0x0101010101010101 * 0x20;
-    const uint64_t t1 = ~(w1 ^ (*(uint64_t *)(buffer)));
-    const uint64_t t2 = ~(w2 ^ (*(uint64_t *)(buffer)));
-    const uint64_t t3 = ~(w3 ^ (*(uint64_t *)(buffer)));
-    const uint64_t t4 = ~(w4 ^ (*(uint64_t *)(buffer)));
-    const uint64_t b1 =
-        (((t1 & 0x7f7f7f7f7f7f7f7fULL) + 0x0101010101010101ULL) &
-         (t1 & 0x8080808080808080ULL));
-    const uint64_t b2 =
-        (((t2 & 0x7f7f7f7f7f7f7f7fULL) + 0x0101010101010101ULL) &
-         (t2 & 0x8080808080808080ULL));
-    const uint64_t b3 =
-        (((t3 & 0x7f7f7f7f7f7f7f7fULL) + 0x0101010101010101ULL) &
-         (t3 & 0x8080808080808080ULL));
-    const uint64_t b4 =
-        (((t4 & 0x7f7f7f7f7f7f7f7fULL) + 0x0101010101010101ULL) &
-         (t4 & 0x8080808080808080ULL));
-    if ((b1 | b2 | b3 | b4) != 0x8080808080808080ULL)
-      break;
-    buffer += 8;
-  }
-tail:
-  while (buffer < stop) {
-    if (*buffer == 0x09 || *buffer == 0x0A || *buffer == 0x0D ||
-        *buffer == 0x20) {
-      ++buffer;
-      continue;
-    }
-    return buffer;
-  }
-  return buffer;
-}
 
 HFUNC const char *fio_json_____skip_comments(const char *buffer,
                                              const char *stop) {
@@ -7799,22 +7929,19 @@ HFUNC const char *fio_json_____consume_string(fio_json_parser_s *p,
 HFUNC const char *fio_json_____consume_number(fio_json_parser_s *p,
                                               const char *buffer,
                                               const char *stop) {
-  const char *tmp = buffer;
-  long long i = fio_atol((char **)&tmp);
-  if (tmp == stop ||
-      (tmp < stop && *tmp != '.' && *tmp != '+' && *tmp != '-' &&
-       (*tmp | 32) != 'e' && (*tmp | 32) != 'i' && *tmp != 'b')) {
+
+  const char *const was = buffer;
+  long long i = fio_atol((char **)&buffer);
+  if (buffer < stop &&
+      ((*buffer) == '.' || (*buffer | 32) == 'e' || (*buffer | 32) == 'x' ||
+       (*buffer | 32) == 'p' || (*buffer | 32) == 'i')) {
+    buffer = was;
+    double f = fio_atof((char **)&buffer);
+    fio_json_on_float(p, f);
+  } else {
     fio_json_on_number(p, i);
-    return tmp;
   }
-  tmp = buffer;
-  double f = fio_atof((char **)&tmp);
-  if (tmp < stop &&
-      ((*tmp >= '0' && *tmp <= '9') || *tmp == '+' || *tmp == '-')) {
-    return NULL;
-  }
-  fio_json_on_float(p, f);
-  return tmp;
+  return buffer;
 }
 
 HFUNC const char *fio_json_____identify(fio_json_parser_s *p,
@@ -7823,6 +7950,40 @@ HFUNC const char *fio_json_____identify(fio_json_parser_s *p,
    * Use `continue` to keep separator requirement the same.
    */
   switch (*buffer) {
+  case 0x09: /* fallthrough */
+  case 0x0A: /* fallthrough */
+  case 0x0D: /* fallthrough */
+  case 0x20:
+    /* consume whitespace */
+    ++buffer;
+    if (!((uintptr_t)buffer & 7)) {
+      while (buffer + 8 < stop) {
+        const uint64_t w1 = 0x0101010101010101 * 0x09;
+        const uint64_t w2 = 0x0101010101010101 * 0x0A;
+        const uint64_t w3 = 0x0101010101010101 * 0x0D;
+        const uint64_t w4 = 0x0101010101010101 * 0x20;
+        const uint64_t t1 = ~(w1 ^ (*(uint64_t *)(buffer)));
+        const uint64_t t2 = ~(w2 ^ (*(uint64_t *)(buffer)));
+        const uint64_t t3 = ~(w3 ^ (*(uint64_t *)(buffer)));
+        const uint64_t t4 = ~(w4 ^ (*(uint64_t *)(buffer)));
+        const uint64_t b1 =
+            (((t1 & 0x7f7f7f7f7f7f7f7fULL) + 0x0101010101010101ULL) &
+             (t1 & 0x8080808080808080ULL));
+        const uint64_t b2 =
+            (((t2 & 0x7f7f7f7f7f7f7f7fULL) + 0x0101010101010101ULL) &
+             (t2 & 0x8080808080808080ULL));
+        const uint64_t b3 =
+            (((t3 & 0x7f7f7f7f7f7f7f7fULL) + 0x0101010101010101ULL) &
+             (t3 & 0x8080808080808080ULL));
+        const uint64_t b4 =
+            (((t4 & 0x7f7f7f7f7f7f7f7fULL) + 0x0101010101010101ULL) &
+             (t4 & 0x8080808080808080ULL));
+        if ((b1 | b2 | b3 | b4) != 0x8080808080808080ULL)
+          break;
+        buffer += 8;
+      }
+    }
+    return buffer;
   case ',': /* comma separator */
     if (!p->depth || !(p->expect & 4))
       goto unexpected_separator;
@@ -7866,12 +8027,10 @@ HFUNC const char *fio_json_____identify(fio_json_parser_s *p,
     if ((p->nesting & 1) || !p->depth || (p->expect & 3))
       goto object_closure_unexpected;
     p->nesting >>= 1;
-    p->expect = 4; /* 4, if depth != 0 */
+    p->expect = 4; /* expect comma */
     --p->depth;
     fio_json_on_end_object(p);
-    ++buffer;
-    return buffer; /* still expect comma */
-
+    return buffer + 1;
     /*
      *
      * JSON Arrays
@@ -7891,11 +8050,10 @@ HFUNC const char *fio_json_____identify(fio_json_parser_s *p,
     if (!(p->nesting & 1) || !p->depth)
       goto array_closure_unexpected;
     p->nesting >>= 1;
-    p->expect = 4; /* 4, if depth != 0 */
+    p->expect = 4; /* expect comma */
     --p->depth;
     fio_json_on_end_array(p);
-    ++buffer;
-    return buffer; /* still expect comma */
+    return buffer + 1;
     /*
      *
      * JSON Primitives (true / false / null (NaN))
@@ -7979,9 +8137,8 @@ HFUNC const char *fio_json_____identify(fio_json_parser_s *p,
      *
      */
   default:
-    JSON_LOG_DEBUG_ERROR("unrecognized JSON identifier at:\n%.*s",
-                         ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))),
-                         buffer);
+    FIO_LOG_DEBUG("unrecognized JSON identifier at:\n%.*s",
+                  ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))), buffer);
     return NULL;
   }
   /* p->expect should be either 0 (key) or 2 (value) */
@@ -7989,46 +8146,39 @@ HFUNC const char *fio_json_____identify(fio_json_parser_s *p,
   return buffer;
 
 missing_separator:
-  JSON_LOG_DEBUG_ERROR("missing JSON separator '%c' at (%d):\n%.*s",
-                       (p->expect == 2 ? ':' : ','), p->expect,
-                       ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))),
-                       buffer);
+  FIO_LOG_DEBUG("missing JSON separator '%c' at (%d):\n%.*s",
+                (p->expect == 2 ? ':' : ','), p->expect,
+                ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))), buffer);
   fio_json_on_error(p);
   return NULL;
 unexpected_separator:
-  JSON_LOG_DEBUG_ERROR("unexpected JSON separator at:\n%.*s",
-                       ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))),
-                       buffer);
+  FIO_LOG_DEBUG("unexpected JSON separator at:\n%.*s",
+                ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))), buffer);
   fio_json_on_error(p);
   return NULL;
 unterminated_string:
-  JSON_LOG_DEBUG_ERROR("unterminated JSON string at:\n%.*s",
-                       ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))),
-                       buffer);
+  FIO_LOG_DEBUG("unterminated JSON string at:\n%.*s",
+                ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))), buffer);
   fio_json_on_error(p);
   return NULL;
 bad_number_format:
-  JSON_LOG_DEBUG_ERROR("bad JSON numeral format at:\n%.*s",
-                       ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))),
-                       buffer);
+  FIO_LOG_DEBUG("bad JSON numeral format at:\n%.*s",
+                ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))), buffer);
   fio_json_on_error(p);
   return NULL;
 array_closure_unexpected:
-  JSON_LOG_DEBUG_ERROR("JSON array closure unexpected at:\n%.*s",
-                       ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))),
-                       buffer);
+  FIO_LOG_DEBUG("JSON array closure unexpected at:\n%.*s",
+                ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))), buffer);
   fio_json_on_error(p);
   return NULL;
 object_closure_unexpected:
-  JSON_LOG_DEBUG_ERROR(
-      "JSON object closure unexpected at (%d):\n%.*s", p->expect,
-      ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))), buffer);
+  FIO_LOG_DEBUG("JSON object closure unexpected at (%d):\n%.*s", p->expect,
+                ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))), buffer);
   fio_json_on_error(p);
   return NULL;
 too_deep:
-  JSON_LOG_DEBUG_ERROR("JSON object nesting too deep at:\n%.*s", p->expect,
-                       ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))),
-                       buffer);
+  FIO_LOG_DEBUG("JSON object nesting too deep at:\n%.*s", p->expect,
+                ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))), buffer);
   fio_json_on_error(p);
   return NULL;
 }
@@ -8041,31 +8191,30 @@ SFUNC size_t fio_json_parse(fio_json_parser_s *p, const char *buffer,
                             const size_t length) {
   const char *start = buffer;
   const char *stop = buffer + length;
-  { /* move to the beginning of the JSON data */
-    const char *tmp = buffer;
-    do {
-      buffer = fio_json_____skip_whitespace(tmp, stop);
-      tmp = fio_json_____skip_comments(buffer, stop);
-    } while (tmp && tmp != buffer);
-  }
   const char *last;
   do {
     last = buffer;
-    buffer = fio_json_____identify(
-        p, fio_json_____skip_whitespace(buffer, stop), stop);
-  } while (p->depth && buffer && buffer < stop);
-  if (!buffer) {
-    JSON_LOG_DEBUG_ERROR("JSON parsing failed after:\n%.*s",
-                         ((stop - last > 48) ? 48 : ((int)(stop - last))),
-                         last);
-    return last - start;
+    buffer = fio_json_____identify(p, buffer, stop);
+    if (!buffer)
+      goto failed;
+  } while (!p->expect && buffer < stop);
+  while (p->depth && buffer < stop) {
+    last = buffer;
+    buffer = fio_json_____identify(p, buffer, stop);
+    if (!buffer)
+      goto failed;
   }
-  p->expect = 0;
-  fio_json_on_json(p);
+  if (!p->depth) {
+    p->expect = 0;
+    fio_json_on_json(p);
+  }
   return buffer - start;
+failed:
+  FIO_LOG_DEBUG("JSON parsing failed after:\n%.*s",
+                ((stop - last > 48) ? 48 : ((int)(stop - last))), last);
+  return last - start;
 }
 
-#undef JSON_LOG_DEBUG_ERROR
 #endif /* FIO_EXTERN_COMPLETE */
 #undef FIO_JSON
 #endif /* FIO_JSON */
@@ -9271,9 +9420,9 @@ FIOBJ_HIFUNC void fiobj___json_format_internal_beauty_pad(FIOBJ json,
     tmp.data[pos++] = '\t';
 }
 
-FIOBJ_HIFUNC void fiobj___json_format_internal__(FIOBJ json, FIOBJ o,
-                                                 uint8_t level,
-                                                 uint8_t beautify) {
+FIOBJ_FUNC void fiobj___json_format_internal__(FIOBJ json, FIOBJ o,
+                                               uint8_t level,
+                                               uint8_t beautify) {
   switch (FIOBJ_TYPE(o)) {
   case FIOBJ_T_TRUE:   /* fallthrough */
   case FIOBJ_T_FALSE:  /* fallthrough */
@@ -9522,10 +9671,6 @@ FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_str_info_s str) {
 FIOBJ cleanup
 ***************************************************************************** */
 
-#if FIOBJ_EXTERN_COMPLETE == 2
-#undef FIOBJ_EXTERN_COMPLETE
-#endif
-
 #endif /* FIOBJ_EXTERN_COMPLETE */
 #undef FIOBJ_FUNC
 #undef FIOBJ_IFUNC
@@ -9629,6 +9774,153 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
     TEST_ASSERT((int64_t)i == i2,
                 "fio_ltoa-fio_atol roundtrip error %lld != %lld", i, i2);
   }
+
+#define TEST_ATOL(s, n)                                                        \
+  do {                                                                         \
+    char *p = (char *)(s);                                                     \
+    int64_t r = fio_atol(&p);                                                  \
+    FIO_ASSERT(r == (n), "fio_atol test error! %s => %zd (not %zd)",           \
+               ((char *)(s)), (size_t)r, (size_t)n);                           \
+    FIO_ASSERT((s) + strlen((s)) == p,                                         \
+               "fio_atol test error! %s reading position not at end (%zu)",    \
+               (s), (size_t)(p - (s)));                                        \
+    char buf[72];                                                              \
+    buf[fio_ltoa(buf, n, 2)] = 0;                                              \
+    p = buf;                                                                   \
+    FIO_ASSERT(fio_atol(&p) == (n),                                            \
+               "fio_ltoa base 2 test error! "                                  \
+               "%s != %s (%zd)",                                               \
+               buf, ((char *)(s)), (size_t)((p = buf), fio_atol(&p)));         \
+    buf[fio_ltoa(buf, n, 8)] = 0;                                              \
+    p = buf;                                                                   \
+    FIO_ASSERT(fio_atol(&p) == (n),                                            \
+               "fio_ltoa base 8 test error! "                                  \
+               "%s != %s (%zd)",                                               \
+               buf, ((char *)(s)), (size_t)((p = buf), fio_atol(&p)));         \
+    buf[fio_ltoa(buf, n, 10)] = 0;                                             \
+    p = buf;                                                                   \
+    FIO_ASSERT(fio_atol(&p) == (n),                                            \
+               "fio_ltoa base 10 test error! "                                 \
+               "%s != %s (%zd)",                                               \
+               buf, ((char *)(s)), (size_t)((p = buf), fio_atol(&p)));         \
+    buf[fio_ltoa(buf, n, 16)] = 0;                                             \
+    p = buf;                                                                   \
+    FIO_ASSERT(fio_atol(&p) == (n),                                            \
+               "fio_ltoa base 16 test error! "                                 \
+               "%s != %s (%zd)",                                               \
+               buf, ((char *)(s)), (size_t)((p = buf), fio_atol(&p)));         \
+  } while (0)
+  TEST_ATOL("0x1", 1);
+  TEST_ATOL("-0x1", -1);
+  TEST_ATOL("-0xa", -10);                                /* sign before hex */
+  TEST_ATOL("0xe5d4c3b2a1908770", -1885667171979196560); /* sign within hex */
+  TEST_ATOL("0b00000000000011", 3);
+  TEST_ATOL("-0b00000000000011", -3);
+  TEST_ATOL("0b0000000000000000000000000000000000000000000000000", 0);
+  TEST_ATOL("0", 0);
+  TEST_ATOL("1", 1);
+  TEST_ATOL("2", 2);
+  TEST_ATOL("-2", -2);
+  TEST_ATOL("0000000000000000000000000000000000000000000000042", 34); /* oct */
+  TEST_ATOL("9223372036854775807", 9223372036854775807LL); /* INT64_MAX */
+  TEST_ATOL("9223372036854775808",
+            9223372036854775807LL); /* INT64_MAX overflow protection */
+  TEST_ATOL("9223372036854775999",
+            9223372036854775807LL); /* INT64_MAX overflow protection */
+
+#define TEST_DOUBLE(s, d, must)                                                \
+  do {                                                                         \
+    char *p = (char *)(s);                                                     \
+    double r = fio_atof(&p);                                                   \
+    if (r != (d)) {                                                            \
+      FIO_LOG_DEBUG("Double Test Error! %s => %.19g (not %.19g)",              \
+                    ((char *)(s)), r, d);                                      \
+      if (must) {                                                              \
+        FIO_ASSERT(0, "double test failed on %s", ((char *)(s)));              \
+        exit(-1);                                                              \
+      }                                                                        \
+    }                                                                          \
+  } while (0)
+  /* The numbers were copied from https://github.com/miloyip/rapidjson */
+  TEST_DOUBLE("0.0", 0.0, 1);
+  TEST_DOUBLE("-0.0", -0.0, 1);
+  TEST_DOUBLE("1.0", 1.0, 1);
+  TEST_DOUBLE("-1.0", -1.0, 1);
+  TEST_DOUBLE("1.5", 1.5, 1);
+  TEST_DOUBLE("-1.5", -1.5, 1);
+  TEST_DOUBLE("3.1416", 3.1416, 1);
+  TEST_DOUBLE("1E10", 1E10, 1);
+  TEST_DOUBLE("1e10", 1e10, 1);
+  TEST_DOUBLE("1E+10", 1E+10, 1);
+  TEST_DOUBLE("1E-10", 1E-10, 1);
+  TEST_DOUBLE("-1E10", -1E10, 1);
+  TEST_DOUBLE("-1e10", -1e10, 1);
+  TEST_DOUBLE("-1E+10", -1E+10, 1);
+  TEST_DOUBLE("-1E-10", -1E-10, 1);
+  TEST_DOUBLE("1.234E+10", 1.234E+10, 1);
+  TEST_DOUBLE("1.234E-10", 1.234E-10, 1);
+  TEST_DOUBLE("1.79769e+308", 1.79769e+308, 1);
+  TEST_DOUBLE("2.22507e-308", 2.22507e-308, 1);
+  TEST_DOUBLE("-1.79769e+308", -1.79769e+308, 1);
+  TEST_DOUBLE("-2.22507e-308", -2.22507e-308, 1);
+  TEST_DOUBLE("4.9406564584124654e-324", 4.9406564584124654e-324, 0);
+  TEST_DOUBLE("2.2250738585072009e-308", 2.2250738585072009e-308, 0);
+  TEST_DOUBLE("2.2250738585072014e-308", 2.2250738585072014e-308, 1);
+  TEST_DOUBLE("1.7976931348623157e+308", 1.7976931348623157e+308, 1);
+  TEST_DOUBLE("1e-10000", 0.0, 0);
+  TEST_DOUBLE("18446744073709551616", 18446744073709551616.0, 0);
+
+  TEST_DOUBLE("-9223372036854775809", -9223372036854775809.0, 0);
+
+  TEST_DOUBLE("0.9868011474609375", 0.9868011474609375, 0);
+  TEST_DOUBLE("123e34", 123e34, 1);
+  TEST_DOUBLE("45913141877270640000.0", 45913141877270640000.0, 1);
+  TEST_DOUBLE("2.2250738585072011e-308", 2.2250738585072011e-308, 0);
+  TEST_DOUBLE("1e-214748363", 0.0, 1);
+  TEST_DOUBLE("1e-214748364", 0.0, 1);
+  TEST_DOUBLE("0.017976931348623157e+310, 1", 1.7976931348623157e+308, 0);
+
+  TEST_DOUBLE("2.2250738585072012e-308", 2.2250738585072014e-308, 0);
+  TEST_DOUBLE("2.22507385850720113605740979670913197593481954635164565e-308",
+              2.2250738585072014e-308, 0);
+
+  TEST_DOUBLE("0.999999999999999944488848768742172978818416595458984375", 1.0,
+              0);
+  TEST_DOUBLE("0.999999999999999944488848768742172978818416595458984376", 1.0,
+              0);
+  TEST_DOUBLE("1.00000000000000011102230246251565404236316680908203125", 1.0,
+              0);
+  TEST_DOUBLE("1.00000000000000011102230246251565404236316680908203124", 1.0,
+              0);
+
+  TEST_DOUBLE("72057594037927928.0", 72057594037927928.0, 0);
+  TEST_DOUBLE("72057594037927936.0", 72057594037927936.0, 0);
+  TEST_DOUBLE("72057594037927932.0", 72057594037927936.0, 0);
+  TEST_DOUBLE("7205759403792793200001e-5", 72057594037927936.0, 0);
+
+  TEST_DOUBLE("9223372036854774784.0", 9223372036854774784.0, 0);
+  TEST_DOUBLE("9223372036854775808.0", 9223372036854775808.0, 0);
+  TEST_DOUBLE("9223372036854775296.0", 9223372036854775808.0, 0);
+  TEST_DOUBLE("922337203685477529600001e-5", 9223372036854775808.0, 0);
+
+  TEST_DOUBLE("10141204801825834086073718800384",
+              10141204801825834086073718800384.0, 0);
+  TEST_DOUBLE("10141204801825835211973625643008",
+              10141204801825835211973625643008.0, 0);
+  TEST_DOUBLE("10141204801825834649023672221696",
+              10141204801825835211973625643008.0, 0);
+  TEST_DOUBLE("1014120480182583464902367222169600001e-5",
+              10141204801825835211973625643008.0, 0);
+
+  TEST_DOUBLE("5708990770823838890407843763683279797179383808",
+              5708990770823838890407843763683279797179383808.0, 0);
+  TEST_DOUBLE("5708990770823839524233143877797980545530986496",
+              5708990770823839524233143877797980545530986496.0, 0);
+  TEST_DOUBLE("5708990770823839207320493820740630171355185152",
+              5708990770823839524233143877797980545530986496.0, 0);
+  TEST_DOUBLE("5708990770823839207320493820740630171355185152001e-3",
+              5708990770823839524233143877797980545530986496.0, 0);
+
 #if !DEBUG
   {
     clock_t start, stop;
@@ -11123,6 +11415,7 @@ TEST_FUNC void fio___dynamic_types_test___risky(void) {
 /* *****************************************************************************
 FIOBJ and JSON testing
 ***************************************************************************** */
+#if defined(FIOBJ_EXTERN_COMPLETE) || defined(FIOBJ_EXTERN)
 #define FIOBJ_MARK_MEMORY 1
 #define FIO_FIOBJ
 #include __FILE__
@@ -11289,7 +11582,11 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
 #endif
   fprintf(stderr, "* Passed.\n");
 }
-
+#else
+#define fio___dynamic_types_test___fiobj()                                     \
+  fprintf(stderr,                                                              \
+          "WARNING: STL FIOBJ functions couldn't be initialized / tested.\n");
+#endif
 /* *****************************************************************************
 Environment printout
 ***************************************************************************** */

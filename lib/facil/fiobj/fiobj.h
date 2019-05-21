@@ -4,6 +4,7 @@ License: MIT
 */
 #ifndef H_FIOBJ_H
 #define H_FIOBJ_H
+#define H___FHIOBJ_H
 
 #include <fiobj_ary.h>
 #include <fiobj_data.h>
