@@ -2222,7 +2222,7 @@ Strings to Numbers - API
  * The most significant difference between this function and `strtol` (aside of
  * API design), is the added support for binary representations.
  */
-SFUNC long long fio_atol(char **pstr);
+SFUNC int64_t fio_atol(char **pstr);
 
 /** A helper function that converts between String data to a signed double. */
 IFUNC double fio_atof(char **pstr);
@@ -2266,15 +2266,15 @@ Strings to Numbers - Implementation
 #ifdef FIO_EXTERN_COMPLETE
 
 typedef struct {
-  unsigned long long val;
-  long long expo;
+  uint64_t val;
+  int64_t expo;
   uint8_t sign;
 } fio___number_s;
 
 /** Reads number information in base 2. Returned expo in base 2. */
-HFUNC fio___number_s fio_aton___read_b2(char **pstr) {
+HFUNC fio___number_s fio___aton_read_b2_b2(char **pstr) {
   fio___number_s r = (fio___number_s){0};
-  const unsigned long long mask = ((1ULL) << ((sizeof(mask) << 3) - 1));
+  const uint64_t mask = ((1ULL) << ((sizeof(mask) << 3) - 1));
   while (**pstr >= '0' && **pstr <= '1' && !(r.val & mask)) {
     r.val = (r.val << 1) | (**pstr - '0');
     ++(*pstr);
@@ -2287,9 +2287,9 @@ HFUNC fio___number_s fio_aton___read_b2(char **pstr) {
 }
 
 /** Reads number information, up to base 10 numbers. Returned expo in `base`. */
-HFUNC fio___number_s fio_aton___read_b10(char **pstr, uint8_t base) {
+HFUNC fio___number_s fio___aton_read_b2_b10(char **pstr, uint8_t base) {
   fio___number_s r = (fio___number_s){0};
-  const unsigned long long limit = ((~0ULL) / base) - base;
+  const uint64_t limit = ((~0ULL) / base) - base;
   while (**pstr >= '0' && **pstr < ('0' + base) && r.val <= (limit)) {
     r.val = (r.val * base) + (**pstr - '0');
     ++(*pstr);
@@ -2302,9 +2302,9 @@ HFUNC fio___number_s fio_aton___read_b10(char **pstr, uint8_t base) {
 }
 
 /** Reads number information for base 16 (hex). Returned expo in base 4. */
-HFUNC fio___number_s fio_aton___read_b16(char **pstr) {
+HFUNC fio___number_s fio___aton_read_b2_b16(char **pstr) {
   fio___number_s r = (fio___number_s){0};
-  const unsigned long long mask = (~0ULL) << ((sizeof(mask) << 3) - 4);
+  const uint64_t mask = (~0ULL) << ((sizeof(mask) << 3) - 4);
   for (; !(r.val & mask);) {
     uint8_t tmp;
     if (**pstr >= '0' && **pstr <= '9')
@@ -2328,13 +2328,13 @@ HFUNC fio___number_s fio_aton___read_b16(char **pstr) {
   return r;
 }
 
-SFUNC long long fio_atol(char **pstr) {
+SFUNC int64_t fio_atol(char **pstr) {
   if (!pstr || !(*pstr))
     return 0;
   char *p = *pstr;
   unsigned char invert = 0;
   fio___number_s n = (fio___number_s){0};
-  while (isspace(*p))
+  while ((int)(unsigned char)isspace(*p))
     ++p;
   if (*p == '-') {
     invert = 1;
@@ -2364,17 +2364,17 @@ SFUNC long long fio_atol(char **pstr) {
 
   /* is_base10: */
   *pstr = p;
-  n = fio_aton___read_b10(pstr, 10);
+  n = fio___aton_read_b2_b10(pstr, 10);
 
   /* sign can't be embeded */
 #define CALC_N_VAL()                                                           \
   if (invert) {                                                                \
     if (n.expo || (n.val >> ((sizeof(n.val) << 3) - 1)))                       \
-      return (long long)(1ULL << ((sizeof(n.val) << 3) - 1));                  \
+      return (int64_t)(1ULL << ((sizeof(n.val) << 3) - 1));                    \
     n.val = 0 - n.val;                                                         \
   } else {                                                                     \
     if (n.expo || (n.val >> ((sizeof(n.val) << 3) - 1)))                       \
-      return (long long)((~0ULL) >> 1);                                        \
+      return (int64_t)((~0ULL) >> 1);                                          \
   }
 
   CALC_N_VAL();
@@ -2386,17 +2386,17 @@ is_hex:
     ++p;
   }
   *pstr = p;
-  n = fio_aton___read_b16(pstr);
+  n = fio___aton_read_b2_b16(pstr);
 
   /* sign can be embeded */
 #define CALC_N_VAL_EMBEDABLE()                                                 \
   if (invert) {                                                                \
     if (n.expo)                                                                \
-      return (long long)(1ULL << ((sizeof(n.val) << 3) - 1));                  \
+      return (int64_t)(1ULL << ((sizeof(n.val) << 3) - 1));                    \
     n.val = 0 - n.val;                                                         \
   } else {                                                                     \
     if (n.expo)                                                                \
-      return (long long)((~0ULL) >> 1);                                        \
+      return (int64_t)((~0ULL) >> 1);                                          \
   }
 
   CALC_N_VAL_EMBEDABLE();
@@ -2408,7 +2408,7 @@ is_binary:
     ++p;
   }
   *pstr = p;
-  n = fio_aton___read_b2(pstr);
+  n = fio___aton_read_b2_b2(pstr);
   CALC_N_VAL_EMBEDABLE()
   return n.val;
 
@@ -2417,142 +2417,277 @@ is_base8:
     ++p;
   }
   *pstr = p;
-  n = fio_aton___read_b10(pstr, 8);
+  n = fio___aton_read_b2_b10(pstr, 8);
   CALC_N_VAL();
   return n.val;
 }
 
 IFUNC double fio_atof(char **pstr) {
   return strtod(*pstr, pstr);
-  uint8_t inv_base = 0;
-  uint8_t inv_expo = 0;
-  uint64_t top = 0;
-  uint64_t expo = 0;
-  double result = 0;
-  char *str = *pstr;
-  /* skip white-space */
-  while (isspace(*str))
-    ++(str);
-  if (*str == '-') {
-    inv_base = 1;
-    ++(str);
-  } else if (*str == '+') {
-    ++(str);
+  if (!pstr || !(*pstr))
+    return 0;
+  char *p = *pstr;
+  const uint64_t last_bit = ((uint64_t)1) << ((sizeof(last_bit) << 3) - 1);
+  int32_t base10_expo = 0;
+  int32_t base2_expo = 0;
+  unsigned char invert_base = 0;
+  unsigned char invert_expo = 0;
+  union {
+    uint64_t i;
+    double d;
+  } punned = {.i = 0};
+  fio___number_s b = (fio___number_s){0};
+  fio___number_s m = (fio___number_s){0};
+
+  while (isspace((int)(unsigned char)*p))
+    ++p;
+
+  if (*p == '-') {
+    invert_base = 1;
+    ++p;
+  } else if (*p == '+') {
+    ++p;
+  }
+  switch (*p) {
+  case 'x': /* fallthrough */
+  case 'X':
+    goto base_is_hex;
+  case 'i': /* fallthrough */
+  case 'I':
+    goto is_infinity;
+  case 'n': /* fallthrough */
+  case 'N':
+    goto is_nan;
+  case '0':
+    if ((p[1] | 32) == 'x') {
+      ++p;
+      goto base_is_hex;
+    }
+    if ((p[1] | 32) == 'b') {
+      goto is_binary;
+    }
+    break;
   }
 
-  if ((*str) == '0' && (str[1] == 'x' || str[1] == 'X')) {
-    /* Hex notation */
-    str += 2;
-    uint64_t utop = 0;
-    for (;;) {
-      uint8_t tmp = 0;
-      if (str[0] >= '0' && str[0] <= '9')
-        tmp = str[0] - '0';
-      else if (str[0] >= 'A' && str[0] <= 'F')
-        tmp = str[0] - ('A' - 10);
-      else if (str[0] >= 'a' && str[0] <= 'f')
-        tmp = str[0] - ('a' - 10);
-      else
-        break;
-      utop = (utop << 4) | tmp;
-      str++;
-    }
-    top = utop;
-    if (*str == '.') {
-      ++str;
-      utop = 0;
-      for (;;) {
-        uint8_t tmp = 0;
-        if (str[0] >= '0' && str[0] <= '9')
-          tmp = str[0] - '0';
-        else if (str[0] >= 'A' && str[0] <= 'F')
-          tmp = str[0] - ('A' - 10);
-        else if (str[0] >= 'a' && str[0] <= 'f')
-          tmp = str[0] - ('a' - 10);
-        else
-          break;
-        utop = (utop << 4) | tmp;
-        str++;
-      }
-      result = utop;
-      while (utop) {
-        result = result / 16;
-        utop >>= 4;
-      }
-    }
-    result += top;
-    if (*str == 'p' || *str == 'P') {
-      ++str;
-      /* base 2 exponent */
-      if (*str == '-') {
-        inv_expo = 1;
-        ++(str);
-      } else if (*str == '+') {
-        ++(str);
-      }
-      while ((*str) >= '0' && (*str) <= '9') {
-        expo = (expo * 10) + (*str) - '0';
-        ++(str);
-      }
-      if (inv_expo) {
-        while (expo--) {
-          result = result / 2;
-        }
-      } else {
-        while (expo--) {
-          result = result * 2;
-        }
-      }
-    }
-    if (inv_base)
-      result *= -1;
-    *pstr = str;
-    return result;
+  b = fio___aton_read_b2_b10(&p, 10);
+  if (b.expo) {
+    if (((p[0 - b.expo] - '0') > 5) ||
+        (((p[0 - b.expo] - '0') == 5) && (b.val & 1)))
+      ++b.val;
   }
 
-  /* Decimal scientific notation  */
-  while ((*str) >= '0' && (*str) <= '9') {
-    top = (top * 10) + (*str) - '0';
-    ++(str);
+  if (p[0] == '.') {
+    /* handle radix */
+    ++p;
+    const unsigned long long limit = ((~0ULL) / 10) - 10;
+    if (b.val <= (limit)) {
+      while (*p >= '0' && *p < ('0' + 10) && b.val <= (limit)) {
+        b.val = (b.val * 10) + (*p - '0');
+        ++p;
+        --b.expo;
+      }
+      if ((*p >= '5' && *p < ('0' + 10)) || (*p == '5' && (b.val & 1)))
+        ++b.val;
+    }
+
+    while (*p >= '0' && *p < ('0' + 10)) {
+      ++p;
+    }
   }
-  if (*str == '.') {
-    uint64_t tmp = 0;
-    double tmp_lg = 1;
-    ++(str);
-    while ((*str) >= '0' && (*str) <= '9') {
-      tmp = (tmp * 10) + (*str) - '0';
-      tmp_lg *= 10;
-      ++(str);
-    }
-    result = tmp / tmp_lg;
+  base10_expo = (int32_t)b.expo;
+  b.expo = 0;
+  goto after_base;
+
+base_is_hex:
+  ++p;
+  b = fio___aton_read_b2_b16(&p);
+  if (p[0] == '.') {
+    /* handle radix */
+    ++p;
+    /* FIXME */
   }
-  result += top;
-  if (*str == 'e' || *str == 'E') {
-    ++(str);
-    if (*str == '-') {
-      inv_expo = 1;
-      ++(str);
-    } else if (*str == '+') {
-      ++(str);
+  base2_expo = (int32_t)b.expo * 4;
+  b.expo = 0;
+
+after_base:
+  if ((*p | 32) == 'p' || (*p | 32) == 'e') {
+    uint8_t c = *p;
+    ++p;
+    if (*p == '-') {
+      invert_expo = 1;
+      ++p;
+    } else if (*p == '+') {
+      ++p;
     }
-    while ((*str) >= '0' && (*str) <= '9') {
-      expo = (expo * 10) + (*str) - '0';
-      ++(str);
+    switch (c) {
+    case 'p': /* fallthrough */
+    case 'P':
+      goto mant_is_hex;
+    case 'e': /* fallthrough */
+    case 'E':
+      goto mant_is_dec;
     }
-    if (inv_expo) {
-      while (expo--) {
-        result = result / 10;
+  }
+  goto after_mant;
+
+mant_is_dec:
+  m = fio___aton_read_b2_b10(&p, 10);
+  if (invert_expo)
+    base10_expo -= (int32_t)m.val;
+  else
+    base10_expo += (int32_t)m.val;
+  goto after_mant;
+
+mant_is_hex:
+  m = fio___aton_read_b2_b16(&p);
+  if (invert_expo)
+    base2_expo -= (int32_t)m.val * 4;
+  else
+    base2_expo += (int32_t)m.val * 4;
+
+after_mant:
+  *pstr = p;
+  if (!b.val)
+    goto value_is_zero;
+  if (m.expo) {
+    if (invert_expo)
+      goto value_is_zero;
+    goto value_is_infinity;
+  }
+
+  const double b10expo_small[] = {1,   1e1, 1e2,  1e3,  1e4,  1e5,  1e6,  1e7,
+                                  1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15};
+
+  {
+    /* normalize and round number and base 2 exponent */
+    uint8_t flag = 0;
+    while (!(b.val & 1)) {
+      /* for testing, prevents superflus round2even messages */
+      b.val >>= 1;
+      ++base2_expo;
+    }
+    while ((b.val & ((~0ULL) << 54))) {
+      flag |= (b.val & 1);
+      b.val >>= 1;
+      ++base2_expo;
+    }
+    if (flag) {
+      /* round to even (or truncate) if last bit is zero, nothing happens */
+      b.val += flag;
+      b.val >>= 1;
+      ++base2_expo;
+    } else if ((b.val & ((~0ULL) << 53))) {
+      /* we have one extra bit and everything before was zero... */
+      b.val >>= 1;
+      ++base2_expo;
+      b.val += (b.val & 1); /* round to even */
+    }
+  }
+
+  /* mark "float" as 52nd bit + count backwards */
+  base2_expo += 52;
+  while (!(b.val & ((~0ULL) << 52))) {
+    b.val <<= 1;
+    --base2_expo;
+  }
+
+  /* test range for overflow - adding a large margine for base 10 limits */
+  if (base2_expo < -1023 || base10_expo <= -1024)
+    goto value_is_zero;
+  if (base2_expo > 1023 || base10_expo >= 1024)
+    goto value_is_infinity;
+
+  base2_expo += 1023; /* offset negative range (result range: 0-2046) */
+  b.val &= (((uint64_t)1 << 52) - 1);
+  punned.i =
+      ((uint64_t)invert_base << 63) | ((((uint64_t)base2_expo) << 52) | b.val);
+
+  /*  multiply by base10 exponent */
+  if (base10_expo) {
+    invert_expo = 0;
+    if (base10_expo > 0) {
+      if ((base10_expo & 15)) {
+        punned.d *= b10expo_small[(uint8_t)(base10_expo & 15)];
+        base10_expo ^= (base10_expo & 15);
+      }
+      while (base10_expo >= 256) {
+        base10_expo -= 256;
+        punned.d *= 1e256;
+      }
+      if (base10_expo & 128) {
+        punned.d *= 1e128;
+      }
+      if (base10_expo & 64) {
+        punned.d *= 1e64;
+      }
+      if (base10_expo & 32) {
+        punned.d *= 1e32;
+      }
+      if (base10_expo & 16) {
+        punned.d *= 1e16;
       }
     } else {
-      while (expo--) {
-        result = result * 10;
+      base10_expo = 0 - base10_expo;
+      if ((base10_expo & 15)) {
+        punned.d /= b10expo_small[(uint8_t)(base10_expo & 15)];
+        base10_expo ^= (base10_expo & 15);
+      }
+      while (base10_expo >= 256) {
+        base10_expo -= 256;
+        punned.d /= 1e256;
+      }
+      if (base10_expo & 128) {
+        punned.d /= 1e128;
+      }
+      if (base10_expo & 64) {
+        punned.d /= 1e64;
+      }
+      if (base10_expo & 32) {
+        punned.d /= 1e32;
+      }
+      if (base10_expo & 16) {
+        punned.d /= 1e16;
       }
     }
   }
-  if (inv_base)
-    result *= -1;
-  *pstr = str;
-  return result;
+  return punned.d;
+
+is_infinity:
+  if ((p[1] | 32) == 'n' && (p[2] | 32) == 'f' &&
+      ((p[3] | 32) == 'i' || (p[3]) == '.')) {
+    p += 3;
+    if ((p[0] | 32) == 'i' && (p[1] | 32) == 'n' && (p[2] | 32) == 'i' &&
+        (p[3] | 32) == 't' && (p[4] | 32) == 'y')
+      p += 4;
+    ++p;
+    *pstr = p;
+    goto value_is_infinity;
+  }
+  return 0.0;
+is_nan:
+  if ((p[1] | 32) == 'a' && (p[2] | 32) == 'n') {
+    p += 3;
+    *pstr = p;
+    punned.i = invert_base;
+    punned.i <<= 11;
+    punned.i = ((((1ULL << 12) - 1) << 51) | ((invert_base * 1ULL)) << 63);
+    return punned.d;
+  }
+  return 0.0;
+
+is_binary:
+  /* binary representation is assumed to spell an exact double */
+  *pstr = p;
+  punned.i = fio_atol(pstr);
+  return punned.d;
+
+value_is_zero:
+  punned.i = ((invert_base * 1ULL)) << 63;
+  return punned.d;
+
+value_is_infinity:
+  punned.i = ((((1ULL << 11) - 1) << 52) | ((invert_base * 1ULL)) << 63);
+  return punned.d;
 }
 
 /* *****************************************************************************
@@ -9827,19 +9962,13 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
             9223372036854775807LL); /* INT64_MAX overflow protection */
   TEST_ATOL("9223372036854775999",
             9223372036854775807LL); /* INT64_MAX overflow protection */
-
+#undef TEST_ATOL
 #define TEST_DOUBLE(s, d, must)                                                \
   do {                                                                         \
     char *p = (char *)(s);                                                     \
     double r = fio_atof(&p);                                                   \
-    if (r != (d)) {                                                            \
-      FIO_LOG_DEBUG("Double Test Error! %s => %.19g (not %.19g)",              \
-                    ((char *)(s)), r, d);                                      \
-      if (must) {                                                              \
-        FIO_ASSERT(0, "double test failed on %s", ((char *)(s)));              \
-        exit(-1);                                                              \
-      }                                                                        \
-    }                                                                          \
+    FIO_ASSERT(r == (d), "Double Test Error! %s => %.19g (not %.19g)",         \
+               ((char *)(s)), r, d);                                           \
   } while (0)
   /* The numbers were copied from https://github.com/miloyip/rapidjson */
   TEST_DOUBLE("0.0", 0.0, 1);
@@ -9920,7 +10049,7 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
               5708990770823839524233143877797980545530986496.0, 0);
   TEST_DOUBLE("5708990770823839207320493820740630171355185152001e-3",
               5708990770823839524233143877797980545530986496.0, 0);
-
+#undef TEST_DOUBLE
 #if !DEBUG
   {
     clock_t start, stop;
