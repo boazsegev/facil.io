@@ -2426,27 +2426,18 @@ IFUNC double fio_atof(char **pstr) {
   if (!pstr || !(*pstr))
     return 0;
   char *p = *pstr;
-  const uint64_t last_bit = ((uint64_t)1) << ((sizeof(last_bit) << 3) - 1);
-  int32_t base10_expo = 0;
-  int32_t base2_expo = 0;
+  uint64_t base = 0;
+  double multiplier = 1.0;
+  int32_t expo = 0;
   unsigned char invert_base = 0;
   unsigned char invert_expo = 0;
+  unsigned char round_flag = 0;
+  unsigned char digits = 0;
+
   union {
     uint64_t i;
     double d;
   } punned = {.i = 0};
-  fio___number_s r = (fio___number_s){0};
-#if defined(__SIZEOF_INT128__) && __SIZEOF_INT128__ >= 16
-  __uint128_t base = 0;
-  const __uint128_t limit10 = (((~(__uint128_t)0) / 10) - 9);
-  const __uint128_t limit16 = (((~(__uint128_t)0) / 16) - 15);
-  const __uint128_t mant_mask = ((~(__uint128_t)0) << 53);
-#else
-  uint64_t base = 0;
-  const uint64_t limit10 = (((~(uint64_t)0) / 10) - 9);
-  const uint64_t limit16 = (((~(uint64_t)0) / 16) - 15);
-  const uint64_t mant_mask = ((~(uint64_t)0) << 53);
-#endif
 
   while (isspace((int)(unsigned char)*p))
     ++p;
@@ -2460,90 +2451,71 @@ IFUNC double fio_atof(char **pstr) {
   switch (*p) {
   case 'x': /* fallthrough */
   case 'X':
-    goto base_is_hex;
+    goto hex_notation;
   case 'i': /* fallthrough */
   case 'I':
     goto is_infinity;
   case 'n': /* fallthrough */
   case 'N':
     goto is_nan;
+  case 'b':
+    goto is_binary;
   case '0':
     if ((p[1] | 32) == 'x') {
       ++p;
-      goto base_is_hex;
+      goto hex_notation;
     }
     if ((p[1] | 32) == 'b') {
+      ++p;
       goto is_binary;
     }
     break;
   }
-  while (*p >= '0' && *p <= '9' && base <= limit10) {
+
+  /******* decimal notation *******/
+
+  /* consume digits */
+  while (*p >= '0' && *p <= '9' && digits < 18) {
     base *= 10;
     base += *p - '0';
-    ++p;
-  }
-  while (*p >= '0' && *p <= '9') {
-    ++base10_expo;
+    ++digits;
     ++p;
   }
   if (*p == '.') {
-    /* handle radix */
     ++p;
-    if (base <= (limit10)) {
-      while (*p >= '0' && *p <= '9' && base <= limit10) {
-        base *= 10;
-        base += *p - '0';
-        --base10_expo;
-        ++p;
-      }
-    }
-    while (*p >= '0' && *p <= '9') {
-      ++p;
-    }
-  }
-  goto after_base;
-
-base_is_hex:
-  ++p;
-  while (((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
-          (*p >= 'A' && *p <= 'F')) &&
-         base <= limit16) {
-    base <<= 4;
-    if (*p >= '0' && *p <= '9')
+    while (*p >= '0' && *p <= '9' && digits < 18) {
+      base *= 10;
       base += *p - '0';
-    else
-      base += (*p | 32) - ('a' - 10);
-    ++p;
-  }
-  while ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
-         (*p >= 'A' && *p <= 'F')) {
-    base2_expo += 4;
-    ++p;
-  }
-  if (*p == '.') {
-    /* handle radix */
-    ++p;
-    if (base <= (limit16)) {
-      while (((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
-              (*p >= 'A' && *p <= 'F')) &&
-             base <= limit16) {
-        base <<= 4;
-        if (*p >= '0' && *p <= '9')
-          base += *p - '0';
-        else
-          base += (*p | 32) - ('a' - 10);
-        base2_expo -= 4;
-        ++p;
-      }
+      ++digits;
+      ++p;
+      --expo;
     }
+    if (*p > '5' && *p <= '9')
+      ++base; /* decimal rounding */
     while (*p >= '0' && *p <= '9') {
       ++p;
     }
+  } else {
+    if (*p > '5' && *p <= '9')
+      ++base; /* decimal rounding */
+    while (*p >= '0' && *p <= '9') {
+      ++expo;
+      ++p;
+    }
+    if (*p == '.') {
+      ++p;
+      while (*p >= '0' && *p <= '9') {
+        ++p;
+      }
+    }
   }
+  /* fix sign (negative / positive) */
+  base *= 1 - (2 * invert_base);
 
-after_base:
-  if ((*p | 32) == 'p' || (*p | 32) == 'e') {
-    uint8_t c = *p;
+  /* consume exponent */
+  if ((*p | 32) == 'e') {
+    uint32_t e = 0;
+
     ++p;
     if (*p == '-') {
       invert_expo = 1;
@@ -2551,132 +2523,186 @@ after_base:
     } else if (*p == '+') {
       ++p;
     }
-    switch (c) {
-    case 'p': /* fallthrough */
-    case 'P':
-      goto mant_is_hex;
-    case 'e': /* fallthrough */
-    case 'E':
-      goto mant_is_dec;
+    while (*p >= '0' && *p <= '9' && e < 2048) {
+      e *= 10;
+      e += *p - '0';
+      ++p;
     }
+    while (*p >= '0' && *p <= '9') {
+      ++p;
+    }
+    if (invert_expo)
+      expo -= e;
+    else
+      expo += e;
   }
-  goto after_mant;
 
-mant_is_dec:
-  r = fio___aton_read_b2_b10(&p, 10);
-  if (invert_expo)
-    base10_expo -= (int32_t)r.val;
-  else
-    base10_expo += (int32_t)r.val;
-  goto after_mant;
+  // fprintf(stderr, "base %zd, expo: %d\n", (ssize_t)base, expo);
 
-mant_is_hex:
-  r = fio___aton_read_b2_b16(&p);
-  if (invert_expo)
-    base2_expo -= (int32_t)r.val * 4;
-  else
-    base2_expo += (int32_t)r.val * 4;
-
-after_mant:
   *pstr = p;
   if (!base)
     goto value_is_zero;
-  if (r.expo) {
-    if (invert_expo)
-      goto value_is_zero;
+  if (expo > 511)
     goto value_is_infinity;
-  }
+  if (expo < -511)
+    goto value_is_zero;
 
   const double b10expo_small[] = {1,   1e1, 1e2,  1e3,  1e4,  1e5,  1e6,  1e7,
                                   1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15};
 
-  {
-    /* normalize and round number and base 2 exponent */
-    uint8_t flag = 0;
-    while ((base & (mant_mask << 1))) {
-      flag |= (base & 1);
-      base >>= 1;
-      ++base2_expo;
-    }
-    if (flag) {
-      /* round to even (or truncate) if last bit is zero, nothing happens */
-      base += flag;
-      base >>= 1;
-      ++base2_expo;
-    } else if ((base & (mant_mask))) {
-      /* we have one extra bit and everything before was zero... */
-      base >>= 1;
-      ++base2_expo;
-      base += (base & 1); /* round to even */
-    }
-  }
-
-  /* mark "float" as 52nd bit + count backwards */
-  base2_expo += 52;
-  while (!(base & ((~0ULL) << 52))) {
-    base <<= 1;
-    --base2_expo;
-  }
-
-  /* test range for overflow - adding a large margine for base 10 limits */
-  if (base2_expo < -1023 || base10_expo <= -1024)
-    goto value_is_zero;
-  if (base2_expo > 1023 || base10_expo >= 1024)
-    goto value_is_infinity;
-
-  base2_expo += 1023; /* offset negative range (result range: 0-2046) */
-  base &= (((uint64_t)1 << 52) - 1);
-  punned.i =
-      ((uint64_t)invert_base << 63) | ((((uint64_t)base2_expo) << 52) | base);
-
-  /*  multiply by base10 exponent */
-  if (base10_expo) {
-    invert_expo = 0;
-    if (base10_expo > 0) {
-      if ((base10_expo & 15)) {
-        punned.d *= b10expo_small[(uint8_t)(base10_expo & 15)];
-        base10_expo ^= (base10_expo & 15);
+  /*  compute multiplier for base 10 exponent */
+  if (expo) {
+    if (expo > 0) {
+      if (expo & 256) {
+        multiplier *= 1e256;
       }
-      while (base10_expo >= 256) {
-        base10_expo -= 256;
-        punned.d *= 1e256;
+      if (expo & 128) {
+        multiplier *= 1e128;
       }
-      if (base10_expo & 128) {
-        punned.d *= 1e128;
+      if (expo & 64) {
+        multiplier *= 1e64;
       }
-      if (base10_expo & 64) {
-        punned.d *= 1e64;
+      if (expo & 32) {
+        multiplier *= 1e32;
       }
-      if (base10_expo & 32) {
-        punned.d *= 1e32;
+      if (expo & 16) {
+        multiplier *= 1e16;
       }
-      if (base10_expo & 16) {
-        punned.d *= 1e16;
+      if ((expo & 15)) {
+        multiplier *= b10expo_small[(uint8_t)(expo & 15)];
       }
     } else {
-      base10_expo = 0 - base10_expo;
-      if ((base10_expo & 15)) {
-        punned.d /= b10expo_small[(uint8_t)(base10_expo & 15)];
-        base10_expo ^= (base10_expo & 15);
+      expo = 0 - expo;
+      if (expo & 256) {
+        multiplier /= 1e256;
       }
-      while (base10_expo >= 256) {
-        base10_expo -= 256;
-        punned.d /= 1e256;
+      if (expo & 128) {
+        multiplier /= 1e128;
       }
-      if (base10_expo & 128) {
-        punned.d /= 1e128;
+      if (expo & 64) {
+        multiplier /= 1e64;
       }
-      if (base10_expo & 64) {
-        punned.d /= 1e64;
+      if (expo & 32) {
+        multiplier /= 1e32;
       }
-      if (base10_expo & 32) {
-        punned.d /= 1e32;
+      if (expo & 16) {
+        multiplier /= 1e16;
       }
-      if (base10_expo & 16) {
-        punned.d /= 1e16;
+      if ((expo & 15)) {
+        multiplier /= b10expo_small[(uint8_t)(expo & 15)];
       }
     }
   }
+
+  punned.d = (int64_t)base * (multiplier);
+  return punned.d;
+
+  /******* hex notation *******/
+
+hex_notation:
+
+  ++p;
+  while (((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
+          (*p >= 'A' && *p <= 'F')) &&
+         base < ((uint64_t)1ULL << 53)) {
+    base <<= 4;
+    if (*p >= '0' && *p <= '9')
+      base += *p - '0';
+    else
+      base += (*p | 32) - ('a' - 10);
+    ++p;
+  }
+  if (*p == '.') {
+    ++p;
+    while (((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
+            (*p >= 'A' && *p <= 'F')) &&
+           base < ((uint64_t)1ULL << 53)) {
+      base <<= 4;
+      if (*p >= '0' && *p <= '9')
+        base += *p - '0';
+      else
+        base += (*p | 32) - ('a' - 10);
+      ++p;
+      expo -= 4;
+    }
+    while ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
+           (*p >= 'A' && *p <= 'F')) {
+      ++p;
+    }
+  } else { /* hex overflowed */
+    while ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
+           (*p >= 'A' && *p <= 'F')) {
+      ++p;
+    }
+    if (*p == '.') {
+      ++p;
+      while ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
+             (*p >= 'A' && *p <= 'F')) {
+        ++p;
+      }
+    }
+  }
+  if ((*p | 32) != 'p') {
+    return 0.0; /* don't advance pstr pointer, since this is an error */
+  } else {
+    uint32_t e = 0;
+    ++p;
+    if (*p == '-') {
+      invert_expo = 1;
+      ++p;
+    } else if (*p == '+') {
+      ++p;
+    }
+    while (*p >= '0' && *p <= '9' && e < 1024) {
+      e *= 10;
+      e += *p - '0';
+      ++p;
+    }
+    if (invert_expo)
+      expo -= (int32_t)e;
+    else
+      expo += (int32_t)e;
+  }
+  *pstr = p;
+  if (!base)
+    goto value_is_zero;
+
+  while ((base & ((~(uint64_t)0ULL) << 54))) {
+    round_flag |= (base & 1);
+    base >>= 1;
+    ++expo;
+  }
+  if ((base & ((~(uint64_t)0ULL) << 53))) {
+    if (round_flag) {
+      ++base;
+      base >>= 1;
+    } else {
+      base >>= 1;
+      base += (base & 1);
+    }
+  }
+  expo += 52;
+  while (!(base & ((uint64_t)1ULL << 52))) {
+    base <<= 1;
+    --expo;
+  }
+
+  if (expo >= 1024)
+    goto value_is_infinity;
+  if (expo <= -1024) {
+    base >>= 1; /* denormalize */
+    while (expo <= -1024 && !(base & 1)) {
+      base >>= 1;
+      ++expo;
+    }
+    if (expo <= -1024) {
+      goto value_is_zero;
+    }
+  }
+  expo += 1023;
+  base &= ((uint64_t)1ULL << 52) - 1;
+
+  punned.i = ((uint64_t)invert_base << 63) | ((uint64_t)expo << 52) | base;
   return punned.d;
 
 is_infinity:
@@ -2701,6 +2727,8 @@ is_nan:
     return punned.d;
   }
   return 0.0;
+
+  /******* binary notation *******/
 
 is_binary:
   /* binary representation is assumed to spell an exact double */
@@ -9936,7 +9964,7 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
     TEST_ASSERT((int64_t)i == i2,
                 "fio_ltoa-fio_atol roundtrip error %lld != %lld", i, i2);
   }
-
+  fprintf(stderr, "* Testing fio_atol samples.\n");
 #define TEST_ATOL(s, n)                                                        \
   do {                                                                         \
     char *p = (char *)(s);                                                     \
@@ -9999,21 +10027,45 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
     } pn, pn2;                                                                 \
     pn2.d_ = d;                                                                \
     char *p = (char *)(s);                                                     \
+    char *p2 = (char *)(s);                                                    \
     double r = fio_atof(&p);                                                   \
+    double std = strtod(p2, &p2);                                              \
+    (void)std;                                                                 \
     pn.d_ = r;                                                                 \
-    FIO_ASSERT(*p == stop,                                                     \
-               "parsing didn't stop at correct possition! %x != %x", *p,       \
+    FIO_ASSERT(*p == stop || p == p2,                                          \
+               "float parsing didn't stop at correct possition! %x != %x", *p, \
                stop);                                                          \
-    if ((double)d == r) {                                                      \
+    if ((double)d == r || r == std) {                                          \
       /** fprintf(stderr, "Okay for %s\n", s); */                              \
     } else if ((pn2.as_i + 1) == (pn.as_i) || (pn.as_i + 1) == pn2.as_i) {     \
-      fprintf(stderr, "* WARNING: Single bit rounding error detected:%s\n",    \
+      fprintf(stderr, "* WARNING: Single bit rounding error detected: %s\n",   \
               s);                                                              \
+    } else if (r == 0.0 && d != 0.0) {                                         \
+      fprintf(stderr, "* WARNING: float range limit marked before: %s\n", s);  \
     } else {                                                                   \
-      FIO_ASSERT(0, "Float error bigger than a single bit rounding error.");   \
+      char f_buf[164];                                                         \
+      pn.d_ = std;                                                             \
+      pn2.d_ = r;                                                              \
+      size_t tmp_pos = fio_ltoa(f_buf, pn.as_i, 2);                            \
+      f_buf[tmp_pos] = '\n';                                                   \
+      fio_ltoa(f_buf + tmp_pos + 1, pn2.as_i, 2);                              \
+      FIO_ASSERT(0,                                                            \
+                 "Float error bigger than a single bit rounding error. exp. "  \
+                 "vs. act.:\n%.19g\n%.19g\nBinary:\n%s",                       \
+                 std, r, f_buf);                                               \
     }                                                                          \
   } while (0)
 
+  fprintf(stderr, "* Testing fio_atof samples.\n");
+  /* A few hex-float examples  */
+  TEST_DOUBLE("0x10.1p0", 0x10.1p0, 0);
+  TEST_DOUBLE("0x1.8p1", 0x1.8p1, 0);
+  TEST_DOUBLE("0x1.8p5", 0x1.8p5, 0);
+  TEST_DOUBLE("0x4.0p5", 0x4.0p5, 0);
+  TEST_DOUBLE("0x1.0p50a", 0x1.0p50, 'a');
+  TEST_DOUBLE("0x1.0p500", 0x1.0p500, 0);
+  TEST_DOUBLE("0x1.0P-1074", 0x1.0P-1074, 0);
+  TEST_DOUBLE("0x3a.0P-1074", 0x3a.0P-1074, 0);
   /* These numbers were copied from https://gist.github.com/mattn/1890186 */
   TEST_DOUBLE(".1", 0.1, 0);
   TEST_DOUBLE("  .", 0, 0);
