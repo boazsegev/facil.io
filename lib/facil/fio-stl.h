@@ -2289,7 +2289,7 @@ HFUNC fio___number_s fio___aton_read_b2_b2(char **pstr) {
 /** Reads number information, up to base 10 numbers. Returned expo in `base`. */
 HFUNC fio___number_s fio___aton_read_b2_b10(char **pstr, uint8_t base) {
   fio___number_s r = (fio___number_s){0};
-  const uint64_t limit = ((~0ULL) / base) - base;
+  const uint64_t limit = ((~0ULL) / base) - (base - 1);
   while (**pstr >= '0' && **pstr < ('0' + base) && r.val <= (limit)) {
     r.val = (r.val * base) + (**pstr - '0');
     ++(*pstr);
@@ -2309,10 +2309,9 @@ HFUNC fio___number_s fio___aton_read_b2_b16(char **pstr) {
     uint8_t tmp;
     if (**pstr >= '0' && **pstr <= '9')
       tmp = **pstr - '0';
-    else if (**pstr >= 'A' && **pstr <= 'F')
-      tmp = **pstr - ('A' - 10);
-    else if (**pstr >= 'a' && **pstr <= 'f')
-      tmp = **pstr - ('a' - 10);
+    else if ((**pstr >= 'A' && **pstr <= 'F') ||
+             (**pstr >= 'a' && **pstr <= 'f'))
+      tmp = (**pstr | 32) - ('a' - 10);
     else
       return r;
     r.val = (r.val << 4) | tmp;
@@ -2436,8 +2435,18 @@ IFUNC double fio_atof(char **pstr) {
     uint64_t i;
     double d;
   } punned = {.i = 0};
-  fio___number_s b = (fio___number_s){0};
-  fio___number_s m = (fio___number_s){0};
+  fio___number_s r = (fio___number_s){0};
+#if defined(__SIZEOF_INT128__) && __SIZEOF_INT128__ >= 16
+  __uint128_t base = 0;
+  const __uint128_t limit10 = (((~(__uint128_t)0) / 10) - 9);
+  const __uint128_t limit16 = (((~(__uint128_t)0) / 16) - 15);
+  const __uint128_t mant_mask = ((~(__uint128_t)0) << 53);
+#else
+  uint64_t base = 0;
+  const uint64_t limit10 = (((~(uint64_t)0) / 10) - 9);
+  const uint64_t limit16 = (((~(uint64_t)0) / 16) - 15);
+  const uint64_t mant_mask = ((~(uint64_t)0) << 53);
+#endif
 
   while (isspace((int)(unsigned char)*p))
     ++p;
@@ -2468,46 +2477,69 @@ IFUNC double fio_atof(char **pstr) {
     }
     break;
   }
-
-  b = fio___aton_read_b2_b10(&p, 10);
-  if (b.expo) {
-    if (((p[0 - b.expo] - '0') > 5) ||
-        (((p[0 - b.expo] - '0') == 5) && (b.val & 1)))
-      ++b.val;
+  while (*p >= '0' && *p <= '9' && base <= limit10) {
+    base *= 10;
+    base += *p - '0';
+    ++p;
   }
-
-  if (p[0] == '.') {
+  while (*p >= '0' && *p <= '9') {
+    ++base10_expo;
+    ++p;
+  }
+  if (*p == '.') {
     /* handle radix */
     ++p;
-    const unsigned long long limit = ((~0ULL) / 10) - 10;
-    if (b.val <= (limit)) {
-      while (*p >= '0' && *p < ('0' + 10) && b.val <= (limit)) {
-        b.val = (b.val * 10) + (*p - '0');
+    if (base <= (limit10)) {
+      while (*p >= '0' && *p <= '9' && base <= limit10) {
+        base *= 10;
+        base += *p - '0';
+        --base10_expo;
         ++p;
-        --b.expo;
       }
-      if ((*p >= '5' && *p < ('0' + 10)) || (*p == '5' && (b.val & 1)))
-        ++b.val;
     }
-
-    while (*p >= '0' && *p < ('0' + 10)) {
+    while (*p >= '0' && *p <= '9') {
       ++p;
     }
   }
-  base10_expo = (int32_t)b.expo;
-  b.expo = 0;
   goto after_base;
 
 base_is_hex:
   ++p;
-  b = fio___aton_read_b2_b16(&p);
-  if (p[0] == '.') {
+  while (((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
+          (*p >= 'A' && *p <= 'F')) &&
+         base <= limit16) {
+    base <<= 4;
+    if (*p >= '0' && *p <= '9')
+      base += *p - '0';
+    else
+      base += (*p | 32) - ('a' - 10);
+    ++p;
+  }
+  while ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
+         (*p >= 'A' && *p <= 'F')) {
+    base2_expo += 4;
+    ++p;
+  }
+  if (*p == '.') {
     /* handle radix */
     ++p;
-    /* FIXME */
+    if (base <= (limit16)) {
+      while (((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
+              (*p >= 'A' && *p <= 'F')) &&
+             base <= limit16) {
+        base <<= 4;
+        if (*p >= '0' && *p <= '9')
+          base += *p - '0';
+        else
+          base += (*p | 32) - ('a' - 10);
+        base2_expo -= 4;
+        ++p;
+      }
+    }
+    while (*p >= '0' && *p <= '9') {
+      ++p;
+    }
   }
-  base2_expo = (int32_t)b.expo * 4;
-  b.expo = 0;
 
 after_base:
   if ((*p | 32) == 'p' || (*p | 32) == 'e') {
@@ -2531,25 +2563,25 @@ after_base:
   goto after_mant;
 
 mant_is_dec:
-  m = fio___aton_read_b2_b10(&p, 10);
+  r = fio___aton_read_b2_b10(&p, 10);
   if (invert_expo)
-    base10_expo -= (int32_t)m.val;
+    base10_expo -= (int32_t)r.val;
   else
-    base10_expo += (int32_t)m.val;
+    base10_expo += (int32_t)r.val;
   goto after_mant;
 
 mant_is_hex:
-  m = fio___aton_read_b2_b16(&p);
+  r = fio___aton_read_b2_b16(&p);
   if (invert_expo)
-    base2_expo -= (int32_t)m.val * 4;
+    base2_expo -= (int32_t)r.val * 4;
   else
-    base2_expo += (int32_t)m.val * 4;
+    base2_expo += (int32_t)r.val * 4;
 
 after_mant:
   *pstr = p;
-  if (!b.val)
+  if (!base)
     goto value_is_zero;
-  if (m.expo) {
+  if (r.expo) {
     if (invert_expo)
       goto value_is_zero;
     goto value_is_infinity;
@@ -2561,33 +2593,28 @@ after_mant:
   {
     /* normalize and round number and base 2 exponent */
     uint8_t flag = 0;
-    while (!(b.val & 1)) {
-      /* for testing, prevents superflus round2even messages */
-      b.val >>= 1;
-      ++base2_expo;
-    }
-    while ((b.val & ((~0ULL) << 54))) {
-      flag |= (b.val & 1);
-      b.val >>= 1;
+    while ((base & (mant_mask << 1))) {
+      flag |= (base & 1);
+      base >>= 1;
       ++base2_expo;
     }
     if (flag) {
       /* round to even (or truncate) if last bit is zero, nothing happens */
-      b.val += flag;
-      b.val >>= 1;
+      base += flag;
+      base >>= 1;
       ++base2_expo;
-    } else if ((b.val & ((~0ULL) << 53))) {
+    } else if ((base & (mant_mask))) {
       /* we have one extra bit and everything before was zero... */
-      b.val >>= 1;
+      base >>= 1;
       ++base2_expo;
-      b.val += (b.val & 1); /* round to even */
+      base += (base & 1); /* round to even */
     }
   }
 
   /* mark "float" as 52nd bit + count backwards */
   base2_expo += 52;
-  while (!(b.val & ((~0ULL) << 52))) {
-    b.val <<= 1;
+  while (!(base & ((~0ULL) << 52))) {
+    base <<= 1;
     --base2_expo;
   }
 
@@ -2598,9 +2625,9 @@ after_mant:
     goto value_is_infinity;
 
   base2_expo += 1023; /* offset negative range (result range: 0-2046) */
-  b.val &= (((uint64_t)1 << 52) - 1);
+  base &= (((uint64_t)1 << 52) - 1);
   punned.i =
-      ((uint64_t)invert_base << 63) | ((((uint64_t)base2_expo) << 52) | b.val);
+      ((uint64_t)invert_base << 63) | ((((uint64_t)base2_expo) << 52) | base);
 
   /*  multiply by base10 exponent */
   if (base10_expo) {
@@ -9963,51 +9990,115 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
   TEST_ATOL("9223372036854775999",
             9223372036854775807LL); /* INT64_MAX overflow protection */
 #undef TEST_ATOL
-#define TEST_DOUBLE(s, d, must)                                                \
+
+#define TEST_DOUBLE(s, d, stop)                                                \
   do {                                                                         \
+    union {                                                                    \
+      double d_;                                                               \
+      uint64_t as_i;                                                           \
+    } pn, pn2;                                                                 \
+    pn2.d_ = d;                                                                \
     char *p = (char *)(s);                                                     \
     double r = fio_atof(&p);                                                   \
-    FIO_ASSERT(r == (d), "Double Test Error! %s => %.19g (not %.19g)",         \
-               ((char *)(s)), r, d);                                           \
+    pn.d_ = r;                                                                 \
+    FIO_ASSERT(*p == stop,                                                     \
+               "parsing didn't stop at correct possition! %x != %x", *p,       \
+               stop);                                                          \
+    if ((double)d == r) {                                                      \
+      /** fprintf(stderr, "Okay for %s\n", s); */                              \
+    } else if ((pn2.as_i + 1) == (pn.as_i) || (pn.as_i + 1) == pn2.as_i) {     \
+      fprintf(stderr, "* WARNING: Single bit rounding error detected:%s\n",    \
+              s);                                                              \
+    } else {                                                                   \
+      FIO_ASSERT(0, "Float error bigger than a single bit rounding error.");   \
+    }                                                                          \
   } while (0)
-  /* The numbers were copied from https://github.com/miloyip/rapidjson */
-  TEST_DOUBLE("0.0", 0.0, 1);
-  TEST_DOUBLE("-0.0", -0.0, 1);
-  TEST_DOUBLE("1.0", 1.0, 1);
-  TEST_DOUBLE("-1.0", -1.0, 1);
-  TEST_DOUBLE("1.5", 1.5, 1);
-  TEST_DOUBLE("-1.5", -1.5, 1);
-  TEST_DOUBLE("3.1416", 3.1416, 1);
-  TEST_DOUBLE("1E10", 1E10, 1);
-  TEST_DOUBLE("1e10", 1e10, 1);
-  TEST_DOUBLE("1E+10", 1E+10, 1);
-  TEST_DOUBLE("1E-10", 1E-10, 1);
-  TEST_DOUBLE("-1E10", -1E10, 1);
-  TEST_DOUBLE("-1e10", -1e10, 1);
-  TEST_DOUBLE("-1E+10", -1E+10, 1);
-  TEST_DOUBLE("-1E-10", -1E-10, 1);
-  TEST_DOUBLE("1.234E+10", 1.234E+10, 1);
-  TEST_DOUBLE("1.234E-10", 1.234E-10, 1);
-  TEST_DOUBLE("1.79769e+308", 1.79769e+308, 1);
-  TEST_DOUBLE("2.22507e-308", 2.22507e-308, 1);
-  TEST_DOUBLE("-1.79769e+308", -1.79769e+308, 1);
-  TEST_DOUBLE("-2.22507e-308", -2.22507e-308, 1);
+
+  /* These numbers were copied from https://gist.github.com/mattn/1890186 */
+  TEST_DOUBLE(".1", 0.1, 0);
+  TEST_DOUBLE("  .", 0, 0);
+  TEST_DOUBLE("  1.2e3", 1.2e3, 0);
+  TEST_DOUBLE(" +1.2e3", 1.2e3, 0);
+  TEST_DOUBLE("1.2e3", 1.2e3, 0);
+  TEST_DOUBLE("+1.2e3", 1.2e3, 0);
+  TEST_DOUBLE("+1.e3", 1000, 0);
+  TEST_DOUBLE("-1.2e3", -1200, 0);
+  TEST_DOUBLE("-1.2e3.5", -1200, '.');
+  TEST_DOUBLE("-1.2e", -1.2, 0);
+  TEST_DOUBLE("--1.2e3.5", 0, '-');
+  TEST_DOUBLE("--1-.2e3.5", 0, '-');
+  TEST_DOUBLE("-a", 0, 'a');
+  TEST_DOUBLE("a", 0, 'a');
+  TEST_DOUBLE(".1e", 0.1, 0);
+  TEST_DOUBLE(".1e3", 100, 0);
+  TEST_DOUBLE(".1e-3", 0.1e-3, 0);
+  TEST_DOUBLE(".1e-", 0.1, 0);
+  TEST_DOUBLE(" .e-", 0, 0);
+  TEST_DOUBLE(" .e", 0, 0);
+  TEST_DOUBLE(" e", 0, 0);
+  TEST_DOUBLE(" e0", 0, 0);
+  TEST_DOUBLE(" ee", 0, 'e');
+  TEST_DOUBLE(" -e", 0, 0);
+  TEST_DOUBLE(" .9", 0.9, 0);
+  TEST_DOUBLE(" ..9", 0, '.');
+  TEST_DOUBLE("009", 9, 0);
+  TEST_DOUBLE("0.09e02", 9, 0);
+  /* http://thread.gmane.org/gmane.editors.vim.devel/19268/ */
+  TEST_DOUBLE("0.9999999999999999999999999999999999", 1, 0);
+  TEST_DOUBLE("2.2250738585072010e-308", 2.225073858507200889e-308, 0); // BUG
+  /* PHP (slashdot.jp):
+   * http://opensource.slashdot.jp/story/11/01/08/0527259/PHP%E3%81%AE%E6%B5%AE%E5%8B%95%E5%B0%8F%E6%95%B0%E7%82%B9%E5%87%A6%E7%90%86%E3%81%AB%E7%84%A1%E9%99%90%E3%83%AB%E3%83%BC%E3%83%97%E3%81%AE%E3%83%90%E3%82%B0
+   */
+  TEST_DOUBLE("2.2250738585072011e-308", 2.225073858507200889e-308, 0);
+  /* Gauche:
+   * http://blog.practical-scheme.net/gauche/20110203-bitten-by-floating-point-numbers-again
+   */
+  TEST_DOUBLE("2.2250738585072012e-308", 2.225073858507201383e-308, 0);
+  TEST_DOUBLE("2.2250738585072013e-308", 2.225073858507201383e-308, 0); // Hmm.
+  TEST_DOUBLE("2.2250738585072014e-308", 0, 0);                         // Hmm.
+  TEST_DOUBLE("9214843084008499", 9214843084008499, 0);
+  TEST_DOUBLE("30078505129381147446200", 3.007850512938114954e+22, 0);
+  /* These numbers were copied from https://github.com/miloyip/rapidjson */
+  TEST_DOUBLE("0.0", 0.0, 0);
+  TEST_DOUBLE("-0.0", -0.0, 0);
+  TEST_DOUBLE("1.0", 1.0, 0);
+  TEST_DOUBLE("-1.0", -1.0, 0);
+  TEST_DOUBLE("1.5", 1.5, 0);
+  TEST_DOUBLE("-1.5", -1.5, 0);
+  TEST_DOUBLE("3.1416", 3.1416, 0);
+  TEST_DOUBLE("1E10", 1E10, 0);
+  TEST_DOUBLE("1e10", 1e10, 0);
+  TEST_DOUBLE("100000000000000000000000000000000000000000000000000000000000"
+              "000000000000000000000",
+              1E80, 0);
+  TEST_DOUBLE("1E+10", 1E+10, 0);
+  TEST_DOUBLE("1E-10", 1E-10, 0);
+  TEST_DOUBLE("-1E10", -1E10, 0);
+  TEST_DOUBLE("-1e10", -1e10, 0);
+  TEST_DOUBLE("-1E+10", -1E+10, 0);
+  TEST_DOUBLE("-1E-10", -1E-10, 0);
+  TEST_DOUBLE("1.234E+10", 1.234E+10, 0);
+  TEST_DOUBLE("1.234E-10", 1.234E-10, 0);
+  TEST_DOUBLE("1.79769e+308", 1.79769e+308, 0);
+  TEST_DOUBLE("2.22507e-308", 2.22507e-308, 0);
+  TEST_DOUBLE("-1.79769e+308", -1.79769e+308, 0);
+  TEST_DOUBLE("-2.22507e-308", -2.22507e-308, 0);
   TEST_DOUBLE("4.9406564584124654e-324", 4.9406564584124654e-324, 0);
   TEST_DOUBLE("2.2250738585072009e-308", 2.2250738585072009e-308, 0);
-  TEST_DOUBLE("2.2250738585072014e-308", 2.2250738585072014e-308, 1);
-  TEST_DOUBLE("1.7976931348623157e+308", 1.7976931348623157e+308, 1);
+  TEST_DOUBLE("2.2250738585072014e-308", 2.2250738585072014e-308, 0);
+  TEST_DOUBLE("1.7976931348623157e+308", 1.7976931348623157e+308, 0);
   TEST_DOUBLE("1e-10000", 0.0, 0);
   TEST_DOUBLE("18446744073709551616", 18446744073709551616.0, 0);
 
   TEST_DOUBLE("-9223372036854775809", -9223372036854775809.0, 0);
 
   TEST_DOUBLE("0.9868011474609375", 0.9868011474609375, 0);
-  TEST_DOUBLE("123e34", 123e34, 1);
-  TEST_DOUBLE("45913141877270640000.0", 45913141877270640000.0, 1);
+  TEST_DOUBLE("123e34", 123e34, 0);
+  TEST_DOUBLE("45913141877270640000.0", 45913141877270640000.0, 0);
   TEST_DOUBLE("2.2250738585072011e-308", 2.2250738585072011e-308, 0);
-  TEST_DOUBLE("1e-214748363", 0.0, 1);
-  TEST_DOUBLE("1e-214748364", 0.0, 1);
-  TEST_DOUBLE("0.017976931348623157e+310, 1", 1.7976931348623157e+308, 0);
+  TEST_DOUBLE("1e-214748363", 0.0, 0);
+  TEST_DOUBLE("1e-214748364", 0.0, 0);
+  TEST_DOUBLE("0.017976931348623157e+310, 1", 1.7976931348623157e+308, ',');
 
   TEST_DOUBLE("2.2250738585072012e-308", 2.2250738585072014e-308, 0);
   TEST_DOUBLE("2.22507385850720113605740979670913197593481954635164565e-308",
