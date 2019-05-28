@@ -666,6 +666,8 @@ static int http1_on_body_chunk(http1_parser_s *parser, char *data,
 
 /** called when a protocol error occurred. */
 static int http1_on_error(http1_parser_s *parser) {
+  if (parser2http(parser)->close)
+    return -1;
   FIO_LOG_DEBUG("HTTP parser error.");
   fio_close(parser2http(parser)->p.uuid);
   return -1;
@@ -721,6 +723,7 @@ static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
 
 throttle:
   /* throttle busy clients (slowloris) */
+  p->stop |= 4;
   fio_suspend(uuid);
   FIO_LOG_DEBUG("(HTTP/1,1) throttling client at %.*s",
                 (int)fio_peer_addr(uuid).len, fio_peer_addr(uuid).data);
@@ -752,7 +755,11 @@ static void http1_on_close(intptr_t uuid, fio_protocol_s *protocol) {
 /** called when the connection was closed, but will not run concurrently */
 static void http1_on_ready(intptr_t uuid, fio_protocol_s *protocol) {
   /* resume slow clients from suspension */
-  fio_force_event(uuid, FIO_EVENT_ON_DATA);
+  http1pr_s *p = (http1pr_s *)protocol;
+  if (p->stop & 4) {
+    p->stop ^= 4; /* flip back the bit, so it's zero */
+    fio_force_event(uuid, FIO_EVENT_ON_DATA);
+  }
   (void)protocol;
 }
 

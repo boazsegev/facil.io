@@ -1,5 +1,9 @@
 # Change Log
 
+### v. 0.7.2
+
+**Fix**: (`http1`) fixes a race-condition between the `on_ready` and `on_data` events, that could result in the `on_data` event being called twice instead of once (only possible with some clients). On multi-threaded workers, this could result in the CPU spinning while the task lock remains busy. Credit to Néstor Coppi (@Shelvak) for exposing the issue and providing an example application with detailed reports. Issue #75.
+
 ### v. 0.7.1
 
 **Security**: a heap-overflow vulnerability was fixed in the WebSocket parser, which could have been triggered by a maliciously crafted message-header. Credit to Dane (4cad@silvertoque) for exposing this issue and providing a Python script demonstrating the attack. 
