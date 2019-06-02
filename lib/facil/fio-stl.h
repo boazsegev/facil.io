@@ -2225,7 +2225,7 @@ Strings to Numbers - API
 SFUNC int64_t fio_atol(char **pstr);
 
 /** A helper function that converts between String data to a signed double. */
-IFUNC double fio_atof(char **pstr);
+SFUNC double fio_atof(char **pstr);
 
 /* *****************************************************************************
 Numbers to Strings - API
@@ -2421,327 +2421,19 @@ is_base8:
   return n.val;
 }
 
-IFUNC double fio_atof(char **pstr) {
-  return strtod(*pstr, pstr);
+SFUNC double fio_atof(char **pstr) {
   if (!pstr || !(*pstr))
     return 0;
-  char *p = *pstr;
-  uint64_t base = 0;
-  double multiplier = 1.0;
-  int32_t expo = 0;
-  unsigned char invert_base = 0;
-  unsigned char invert_expo = 0;
-  unsigned char round_flag = 0;
-  unsigned char digits = 0;
-
+  if ((*pstr)[1] == 'b' || ((*pstr)[1] == '0' && (*pstr)[1] == 'b'))
+    goto binary_raw;
+  return strtod(*pstr, pstr);
+binary_raw:
+  /* binary representation is assumed to spell an exact double */
+  (void)0;
   union {
     uint64_t i;
     double d;
-  } punned = {.i = 0};
-
-  while (isspace((int)(unsigned char)*p))
-    ++p;
-
-  if (*p == '-') {
-    invert_base = 1;
-    ++p;
-  } else if (*p == '+') {
-    ++p;
-  }
-  switch (*p) {
-  case 'x': /* fallthrough */
-  case 'X':
-    goto hex_notation;
-  case 'i': /* fallthrough */
-  case 'I':
-    goto is_infinity;
-  case 'n': /* fallthrough */
-  case 'N':
-    goto is_nan;
-  case 'b':
-    goto is_binary;
-  case '0':
-    if ((p[1] | 32) == 'x') {
-      ++p;
-      goto hex_notation;
-    }
-    if ((p[1] | 32) == 'b') {
-      ++p;
-      goto is_binary;
-    }
-    break;
-  }
-
-  /******* decimal notation *******/
-
-  /* consume digits */
-  while (*p >= '0' && *p <= '9' && digits < 18) {
-    base *= 10;
-    base += *p - '0';
-    ++digits;
-    ++p;
-  }
-  if (*p == '.') {
-    ++p;
-    while (*p >= '0' && *p <= '9' && digits < 18) {
-      base *= 10;
-      base += *p - '0';
-      ++digits;
-      ++p;
-      --expo;
-    }
-    if (*p > '5' && *p <= '9')
-      ++base; /* decimal rounding */
-    while (*p >= '0' && *p <= '9') {
-      ++p;
-    }
-  } else {
-    if (*p > '5' && *p <= '9')
-      ++base; /* decimal rounding */
-    while (*p >= '0' && *p <= '9') {
-      ++expo;
-      ++p;
-    }
-    if (*p == '.') {
-      ++p;
-      while (*p >= '0' && *p <= '9') {
-        ++p;
-      }
-    }
-  }
-  /* fix sign (negative / positive) */
-  base *= 1 - (2 * invert_base);
-
-  /* consume exponent */
-  if ((*p | 32) == 'e') {
-    uint32_t e = 0;
-
-    ++p;
-    if (*p == '-') {
-      invert_expo = 1;
-      ++p;
-    } else if (*p == '+') {
-      ++p;
-    }
-    while (*p >= '0' && *p <= '9' && e < 2048) {
-      e *= 10;
-      e += *p - '0';
-      ++p;
-    }
-    while (*p >= '0' && *p <= '9') {
-      ++p;
-    }
-    if (invert_expo)
-      expo -= e;
-    else
-      expo += e;
-  }
-
-  // fprintf(stderr, "base %zd, expo: %d\n", (ssize_t)base, expo);
-
-  *pstr = p;
-  if (!base)
-    goto value_is_zero;
-  if (expo > 511)
-    goto value_is_infinity;
-  if (expo < -511)
-    goto value_is_zero;
-
-  const double b10expo_small[] = {1,   1e1, 1e2,  1e3,  1e4,  1e5,  1e6,  1e7,
-                                  1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15};
-
-  /*  compute multiplier for base 10 exponent */
-  if (expo) {
-    if (expo > 0) {
-      if (expo & 256) {
-        multiplier *= 1e256;
-      }
-      if (expo & 128) {
-        multiplier *= 1e128;
-      }
-      if (expo & 64) {
-        multiplier *= 1e64;
-      }
-      if (expo & 32) {
-        multiplier *= 1e32;
-      }
-      if (expo & 16) {
-        multiplier *= 1e16;
-      }
-      if ((expo & 15)) {
-        multiplier *= b10expo_small[(uint8_t)(expo & 15)];
-      }
-    } else {
-      expo = 0 - expo;
-      if (expo & 256) {
-        multiplier /= 1e256;
-      }
-      if (expo & 128) {
-        multiplier /= 1e128;
-      }
-      if (expo & 64) {
-        multiplier /= 1e64;
-      }
-      if (expo & 32) {
-        multiplier /= 1e32;
-      }
-      if (expo & 16) {
-        multiplier /= 1e16;
-      }
-      if ((expo & 15)) {
-        multiplier /= b10expo_small[(uint8_t)(expo & 15)];
-      }
-    }
-  }
-
-  punned.d = (int64_t)base * (multiplier);
-  return punned.d;
-
-  /******* hex notation *******/
-
-hex_notation:
-
-  ++p;
-  while (((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
-          (*p >= 'A' && *p <= 'F')) &&
-         base < ((uint64_t)1ULL << 53)) {
-    base <<= 4;
-    if (*p >= '0' && *p <= '9')
-      base += *p - '0';
-    else
-      base += (*p | 32) - ('a' - 10);
-    ++p;
-  }
-  if (*p == '.') {
-    ++p;
-    while (((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
-            (*p >= 'A' && *p <= 'F')) &&
-           base < ((uint64_t)1ULL << 53)) {
-      base <<= 4;
-      if (*p >= '0' && *p <= '9')
-        base += *p - '0';
-      else
-        base += (*p | 32) - ('a' - 10);
-      ++p;
-      expo -= 4;
-    }
-    while ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
-           (*p >= 'A' && *p <= 'F')) {
-      ++p;
-    }
-  } else { /* hex overflowed */
-    while ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
-           (*p >= 'A' && *p <= 'F')) {
-      ++p;
-    }
-    if (*p == '.') {
-      ++p;
-      while ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
-             (*p >= 'A' && *p <= 'F')) {
-        ++p;
-      }
-    }
-  }
-  if ((*p | 32) != 'p') {
-    return 0.0; /* don't advance pstr pointer, since this is an error */
-  } else {
-    uint32_t e = 0;
-    ++p;
-    if (*p == '-') {
-      invert_expo = 1;
-      ++p;
-    } else if (*p == '+') {
-      ++p;
-    }
-    while (*p >= '0' && *p <= '9' && e < 1024) {
-      e *= 10;
-      e += *p - '0';
-      ++p;
-    }
-    if (invert_expo)
-      expo -= (int32_t)e;
-    else
-      expo += (int32_t)e;
-  }
-  *pstr = p;
-  if (!base)
-    goto value_is_zero;
-
-  while ((base & ((~(uint64_t)0ULL) << 54))) {
-    round_flag |= (base & 1);
-    base >>= 1;
-    ++expo;
-  }
-  if ((base & ((~(uint64_t)0ULL) << 53))) {
-    if (round_flag) {
-      ++base;
-      base >>= 1;
-    } else {
-      base >>= 1;
-      base += (base & 1);
-    }
-  }
-  expo += 52;
-  while (!(base & ((uint64_t)1ULL << 52))) {
-    base <<= 1;
-    --expo;
-  }
-
-  if (expo >= 1024)
-    goto value_is_infinity;
-  if (expo <= -1024) {
-    base >>= 1; /* denormalize */
-    while (expo <= -1024 && !(base & 1)) {
-      base >>= 1;
-      ++expo;
-    }
-    if (expo <= -1024) {
-      goto value_is_zero;
-    }
-  }
-  expo += 1023;
-  base &= ((uint64_t)1ULL << 52) - 1;
-
-  punned.i = ((uint64_t)invert_base << 63) | ((uint64_t)expo << 52) | base;
-  return punned.d;
-
-is_infinity:
-  if ((p[1] | 32) == 'n' && (p[2] | 32) == 'f' &&
-      ((p[3] | 32) == 'i' || (p[3]) == '.')) {
-    p += 3;
-    if ((p[0] | 32) == 'i' && (p[1] | 32) == 'n' && (p[2] | 32) == 'i' &&
-        (p[3] | 32) == 't' && (p[4] | 32) == 'y')
-      p += 4;
-    ++p;
-    *pstr = p;
-    goto value_is_infinity;
-  }
-  return 0.0;
-is_nan:
-  if ((p[1] | 32) == 'a' && (p[2] | 32) == 'n') {
-    p += 3;
-    *pstr = p;
-    punned.i = invert_base;
-    punned.i <<= 11;
-    punned.i = ((((1ULL << 12) - 1) << 51) | ((invert_base * 1ULL)) << 63);
-    return punned.d;
-  }
-  return 0.0;
-
-  /******* binary notation *******/
-
-is_binary:
-  /* binary representation is assumed to spell an exact double */
-  *pstr = p;
-  punned.i = fio_atol(pstr);
-  return punned.d;
-
-value_is_zero:
-  punned.i = ((invert_base * 1ULL)) << 63;
-  return punned.d;
-
-value_is_infinity:
-  punned.i = ((((1ULL << 11) - 1) << 52) | ((invert_base * 1ULL)) << 63);
+  } punned = {.i = fio_atol(pstr)};
   return punned.d;
 }
 
@@ -10019,6 +9711,7 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
             9223372036854775807LL); /* INT64_MAX overflow protection */
 #undef TEST_ATOL
 
+#ifdef FIO_ATOF_ALT
 #define TEST_DOUBLE(s, d, stop)                                                \
   do {                                                                         \
     union {                                                                    \
@@ -10066,6 +9759,7 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
   TEST_DOUBLE("0x1.0p500", 0x1.0p500, 0);
   TEST_DOUBLE("0x1.0P-1074", 0x1.0P-1074, 0);
   TEST_DOUBLE("0x3a.0P-1074", 0x3a.0P-1074, 0);
+
   /* These numbers were copied from https://gist.github.com/mattn/1890186 */
   TEST_DOUBLE(".1", 0.1, 0);
   TEST_DOUBLE("  .", 0, 0);
@@ -10097,19 +9791,11 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
   TEST_DOUBLE("0.09e02", 9, 0);
   /* http://thread.gmane.org/gmane.editors.vim.devel/19268/ */
   TEST_DOUBLE("0.9999999999999999999999999999999999", 1, 0);
-  TEST_DOUBLE("2.2250738585072010e-308", 2.225073858507200889e-308, 0); // BUG
-  /* PHP (slashdot.jp):
-   * http://opensource.slashdot.jp/story/11/01/08/0527259/PHP%E3%81%AE%E6%B5%AE%E5%8B%95%E5%B0%8F%E6%95%B0%E7%82%B9%E5%87%A6%E7%90%86%E3%81%AB%E7%84%A1%E9%99%90%E3%83%AB%E3%83%BC%E3%83%97%E3%81%AE%E3%83%90%E3%82%B0
-   */
-  TEST_DOUBLE("2.2250738585072011e-308", 2.225073858507200889e-308, 0);
-  /* Gauche:
-   * http://blog.practical-scheme.net/gauche/20110203-bitten-by-floating-point-numbers-again
-   */
-  TEST_DOUBLE("2.2250738585072012e-308", 2.225073858507201383e-308, 0);
-  TEST_DOUBLE("2.2250738585072013e-308", 2.225073858507201383e-308, 0); // Hmm.
-  TEST_DOUBLE("2.2250738585072014e-308", 0, 0);                         // Hmm.
+  TEST_DOUBLE("2.2250738585072010e-308", 2.225073858507200889e-308, 0);
+  TEST_DOUBLE("2.2250738585072013e-308", 2.225073858507201383e-308, 0);
   TEST_DOUBLE("9214843084008499", 9214843084008499, 0);
   TEST_DOUBLE("30078505129381147446200", 3.007850512938114954e+22, 0);
+
   /* These numbers were copied from https://github.com/miloyip/rapidjson */
   TEST_DOUBLE("0.0", 0.0, 0);
   TEST_DOUBLE("-0.0", -0.0, 0);
@@ -10193,6 +9879,7 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
   TEST_DOUBLE("5708990770823839207320493820740630171355185152001e-3",
               5708990770823839524233143877797980545530986496.0, 0);
 #undef TEST_DOUBLE
+#endif /* FIO_ATOF_ALT */
 #if !DEBUG
   {
     clock_t start, stop;
