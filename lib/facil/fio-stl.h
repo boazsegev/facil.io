@@ -10607,7 +10607,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
                     (TEST_REPEAT >> 1),
                 "reserve should increase capacity.");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      set_____test_set(&m, HASHOFi(i), i + 1);
+      set_____test_set_if_missing(&m, HASHOFi(i), i + 1);
     }
     {
       uintptr_t pos_test = (TEST_REPEAT >> 1);
@@ -10631,7 +10631,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     }
 
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      set_____test_set(&m, HASHOFi(i), i + 1);
+      set_____test_set_if_missing(&m, HASHOFi(i), i + 1);
     }
     {
       size_t i = 0;
@@ -10652,7 +10652,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
 
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
       size_t old = 5;
-      set_____test_overwrite(&m, HASHOFi(i), i + 2, &old);
+      set_____test_set(&m, HASHOFi(i), i + 2, &old);
       TEST_ASSERT(old == 0,
                   "old pointer not initialized with old (or missing) data");
     }
@@ -10690,7 +10690,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     set2_____test_s m = FIO_MAP_INIT;
     fprintf(stderr, "* Testing set map without value comparison.\n");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      set2_____test_set(&m, HASHOFi(i), i + 1);
+      set2_____test_set_if_missing(&m, HASHOFi(i), i + 1);
     }
 
     TEST_ASSERT(set2_____test_count(&m) == TEST_REPEAT,
@@ -10702,7 +10702,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     }
 
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      set2_____test_set(&m, HASHOFi(i), i + 2);
+      set2_____test_set_if_missing(&m, HASHOFi(i), i + 2);
     }
     TEST_ASSERT(set2_____test_count(&m) == TEST_REPEAT,
                 "Inserting existing object should keep existing object.");
@@ -10713,7 +10713,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
 
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
       size_t old = 5;
-      set2_____test_overwrite(&m, HASHOFi(i), i + 2, &old);
+      set2_____test_set(&m, HASHOFi(i), i + 2, &old);
       TEST_ASSERT(old == i + 1,
                   "old pointer not initialized with old (or missing) data");
     }
@@ -10735,7 +10735,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
       for (size_t i = 1; i < TEST_REPEAT; i += 2) {
         TEST_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == 0,
                     "previous items should NOT be accessible after removal");
-        set2_____test_set(&m, HASHOFi(i), i + 2);
+        set2_____test_set_if_missing(&m, HASHOFi(i), i + 2);
       }
     }
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
@@ -10801,7 +10801,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     set_____test_s m = FIO_MAP_INIT;
     fprintf(stderr, "* Testing attack resistance.\n");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      set_____test_set(&m, 1, i + 1);
+      set_____test_set(&m, 1, i + 1, NULL);
     }
     TEST_ASSERT(set_____test_count(&m) != TEST_REPEAT,
                 "full collision protection failed?");
