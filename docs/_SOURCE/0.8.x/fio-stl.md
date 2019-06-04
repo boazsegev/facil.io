@@ -1300,6 +1300,8 @@ In addition, the `FIO_REF_METADATA` macro can be defined with any type, allowing
 metadata to be attached and accessed using the helper function
 `FIO_REF_metadata(object)`.
 
+If the `FIO_REF_CONSTRUCTOR_ONLY` macro is defined, the reference counter constructor (`TYPE_new`) will be the only constructor function.  When set, the reference counting functions will use `X_new` and `X_free`. Otherwise (assuming `X_new` and `X_free` are already defined), the reference counter will define `X_new2` and `X_free2` instead.
+
 Note: requires the atomic operations to be defined (`FIO_ATOMIC`).
 
 Reference counting adds the following functions:

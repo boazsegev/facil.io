@@ -7603,6 +7603,14 @@ Hash Map Cleanup
 #define FIO_REF_METADATA_DESTROY(meta)
 #endif
 
+/**
+ * FIO_REF_CONSTRUCTOR_ONLY allows the reference counter constructor (TYPE_new)
+ * to be the only constructor function.
+ *
+ * When set, the reference counting functions will use `X_new` and `X_free`.
+ * Otherwise (assuming `X_new` and `X_free` are already defined), the reference
+ * counter will define `X_new2` and `X_free2` instead.
+ */
 #ifdef FIO_REF_CONSTRUCTOR_ONLY
 #define FIO_REF_CONSTRUCTOR new
 #define FIO_REF_DESTRUCTOR free
