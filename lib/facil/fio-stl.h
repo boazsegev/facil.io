@@ -666,7 +666,7 @@ HFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_xchange(lock, 0); }
 ***************************************************************************** */
 
 #if (defined(FIO_BITWISE) || defined(FIO_RAND) || defined(FIO_NTOL)) &&        \
-    !defined(fio_lrot)
+    !defined(FIO_LROT)
 
 /* *****************************************************************************
 Swapping byte's order (`bswap` variations)
@@ -676,27 +676,32 @@ Swapping byte's order (`bswap` variations)
 #if __has_builtin(__builtin_bswap16)
 #define fio_bswap16(i) __builtin_bswap16((uint16_t)(i))
 #else
-#define fio_bswap16(i) ((((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8))
+HFUNC uint16_t fio_bswap16(uint16_t i) {
+  return ((((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8));
+}
 #endif
 
 /** Byte swap a 32 bit integer, inlined. */
 #if __has_builtin(__builtin_bswap32)
 #define fio_bswap32(i) __builtin_bswap32((uint32_t)(i))
 #else
-#define fio_bswap32(i)                                                         \
-  ((((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) | (((i)&0xFF0000UL) >> 8) |    \
-   (((i)&0xFF000000UL) >> 24))
+HFUNC uint32_t fio_bswap32(uint32_t i) {
+  return ((((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) |
+          (((i)&0xFF0000UL) >> 8) | (((i)&0xFF000000UL) >> 24));
+}
 #endif
 
 /** Byte swap a 64 bit integer, inlined. */
 #if __has_builtin(__builtin_bswap64)
 #define fio_bswap64(i) __builtin_bswap64((uint64_t)(i))
 #else
-#define fio_bswap64(i)                                                         \
-  ((((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                           \
-   (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |                    \
-   (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |            \
-   (((i)&0xFF000000000000ULL) >> 40) | (((i)&0xFF00000000000000ULL) >> 56))
+HFUNC uint64_t fio_bswap64(uint64_t i) {
+  return ((((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |
+          (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |
+          (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |
+          (((i)&0xFF000000000000ULL) >> 40) |
+          (((i)&0xFF00000000000000ULL) >> 56));
+}
 #endif
 
 /* *****************************************************************************
@@ -704,28 +709,36 @@ Bit rotation
 ***************************************************************************** */
 
 /** 32Bit left rotation, inlined. */
-#define fio_lrot32(i, bits)                                                    \
-  (((uint32_t)(i) << ((bits)&31UL)) | ((uint32_t)(i) >> ((-(bits)) & 31UL)))
+HFUNC uint32_t fio_lrot32(uint32_t i, uint8_t bits) {
+  return (((uint32_t)(i) << (bits & 31UL)) |
+          ((uint32_t)(i) >> ((-(bits)) & 31UL)));
+}
 
 /** 32Bit right rotation, inlined. */
-#define fio_rrot32(i, bits)                                                    \
-  (((uint32_t)(i) >> ((bits)&31UL)) | ((uint32_t)(i) << ((-(bits)) & 31UL)))
+HFUNC uint32_t fio_rrot32(uint32_t i, uint8_t bits) {
+  return (((uint32_t)(i) >> (bits & 31UL)) |
+          ((uint32_t)(i) << ((-(bits)) & 31UL)));
+}
 
 /** 64Bit left rotation, inlined. */
-#define fio_lrot64(i, bits)                                                    \
-  (((uint64_t)(i) << ((bits)&63UL)) | ((uint64_t)(i) >> ((-(bits)) & 63UL)))
+HFUNC uint64_t fio_lrot64(uint64_t i, uint8_t bits) {
+  return (((uint64_t)(i) << ((bits)&63UL)) |
+          ((uint64_t)(i) >> ((-(bits)) & 63UL)));
+}
 
 /** 64Bit right rotation, inlined. */
-#define fio_rrot64(i, bits)                                                    \
-  (((uint64_t)(i) >> ((bits)&63UL)) | ((uint64_t)(i) << ((-(bits)) & 63UL)))
+HFUNC uint64_t fio_rrot64(uint64_t i, uint8_t bits) {
+  return (((uint64_t)(i) >> ((bits)&63UL)) |
+          ((uint64_t)(i) << ((-(bits)) & 63UL)));
+}
 
 /** Left rotation for an unknown size element, inlined. */
-#define fio_lrot(i, bits)                                                      \
+#define FIO_LROT(i, bits)                                                      \
   (((i) << ((bits) & ((sizeof((i)) << 3) - 1))) |                              \
    ((i) >> ((-(bits)) & ((sizeof((i)) << 3) - 1))))
 
 /** Right rotation for an unknown size element, inlined. */
-#define fio_rrot(i, bits)                                                      \
+#define FIO_RROT(i, bits)                                                      \
   (((i) >> ((bits) & ((sizeof((i)) << 3) - 1))) |                              \
    ((i) << ((-(bits)) & ((sizeof((i)) << 3) - 1))))
 
@@ -734,55 +747,56 @@ Unaligned memory read / write operations
 ***************************************************************************** */
 
 /** Converts an unaligned network ordered byte stream to a 16 bit number. */
-#define fio_str2u16(c)                                                         \
-  ((uint16_t)(((uint16_t)(((uint8_t *)(c))[0]) << 8) |                         \
-              (uint16_t)(((uint8_t *)(c))[1])))
+HFUNC uint16_t fio_str2u16(const void *c) {
+  return ((uint16_t)(((uint16_t)(((const uint8_t *)(c))[0]) << 8) |
+                     (uint16_t)(((const uint8_t *)(c))[1])));
+}
 
 /** Converts an unaligned network ordered byte stream to a 32 bit number. */
-#define fio_str2u32(c)                                                         \
-  ((uint32_t)(((uint32_t)(((uint8_t *)(c))[0]) << 24) |                        \
-              ((uint32_t)(((uint8_t *)(c))[1]) << 16) |                        \
-              ((uint32_t)(((uint8_t *)(c))[2]) << 8) |                         \
-              (uint32_t)(((uint8_t *)(c))[3])))
+HFUNC uint32_t fio_str2u32(const void *c) {
+  return ((uint32_t)(((uint32_t)(((const uint8_t *)(c))[0]) << 24) |
+                     ((uint32_t)(((const uint8_t *)(c))[1]) << 16) |
+                     ((uint32_t)(((const uint8_t *)(c))[2]) << 8) |
+                     (uint32_t)(((const uint8_t *)(c))[3])));
+}
 
 /** Converts an unaligned network ordered byte stream to a 64 bit number. */
-#define fio_str2u64(c)                                                         \
-  ((uint64_t)((((uint64_t)((uint8_t *)(c))[0]) << 56) |                        \
-              (((uint64_t)((uint8_t *)(c))[1]) << 48) |                        \
-              (((uint64_t)((uint8_t *)(c))[2]) << 40) |                        \
-              (((uint64_t)((uint8_t *)(c))[3]) << 32) |                        \
-              (((uint64_t)((uint8_t *)(c))[4]) << 24) |                        \
-              (((uint64_t)((uint8_t *)(c))[5]) << 16) |                        \
-              (((uint64_t)((uint8_t *)(c))[6]) << 8) | (((uint8_t *)(c))[7])))
+HFUNC uint64_t fio_str2u64(const void *c) {
+  return ((uint64_t)((((uint64_t)((const uint8_t *)(c))[0]) << 56) |
+                     (((uint64_t)((const uint8_t *)(c))[1]) << 48) |
+                     (((uint64_t)((const uint8_t *)(c))[2]) << 40) |
+                     (((uint64_t)((const uint8_t *)(c))[3]) << 32) |
+                     (((uint64_t)((const uint8_t *)(c))[4]) << 24) |
+                     (((uint64_t)((const uint8_t *)(c))[5]) << 16) |
+                     (((uint64_t)((const uint8_t *)(c))[6]) << 8) |
+                     (((uint8_t *)(c))[7])));
+}
 
 /** Writes a local 16 bit number to an unaligned buffer in network order. */
-#define fio_u2str16(buffer, i)                                                 \
-  do {                                                                         \
-    ((uint8_t *)(buffer))[0] = ((uint16_t)(i) >> 8) & 0xFF;                    \
-    ((uint8_t *)(buffer))[1] = ((uint16_t)(i)) & 0xFF;                         \
-  } while (0);
+HFUNC void fio_u2str16(void *buffer, uint16_t i) {
+  ((uint8_t *)(buffer))[0] = (i >> 8) & 0xFF;
+  ((uint8_t *)(buffer))[1] = (i)&0xFF;
+}
 
 /** Writes a local 32 bit number to an unaligned buffer in network order. */
-#define fio_u2str32(buffer, i)                                                 \
-  do {                                                                         \
-    ((uint8_t *)(buffer))[0] = ((uint32_t)(i) >> 24) & 0xFF;                   \
-    ((uint8_t *)(buffer))[1] = ((uint32_t)(i) >> 16) & 0xFF;                   \
-    ((uint8_t *)(buffer))[2] = ((uint32_t)(i) >> 8) & 0xFF;                    \
-    ((uint8_t *)(buffer))[3] = ((uint32_t)(i)) & 0xFF;                         \
-  } while (0);
+HFUNC void fio_u2str32(void *buffer, uint32_t i) {
+  ((uint8_t *)(buffer))[0] = (i >> 24) & 0xFF;
+  ((uint8_t *)(buffer))[1] = (i >> 16) & 0xFF;
+  ((uint8_t *)(buffer))[2] = (i >> 8) & 0xFF;
+  ((uint8_t *)(buffer))[3] = (i)&0xFF;
+}
 
 /** Writes a local 64 bit number to an unaligned buffer in network order. */
-#define fio_u2str64(buffer, i)                                                 \
-  do {                                                                         \
-    ((uint8_t *)(buffer))[0] = (((uint64_t)(i) >> 56) & 0xFF);                 \
-    ((uint8_t *)(buffer))[1] = (((uint64_t)(i) >> 48) & 0xFF);                 \
-    ((uint8_t *)(buffer))[2] = (((uint64_t)(i) >> 40) & 0xFF);                 \
-    ((uint8_t *)(buffer))[3] = (((uint64_t)(i) >> 32) & 0xFF);                 \
-    ((uint8_t *)(buffer))[4] = (((uint64_t)(i) >> 24) & 0xFF);                 \
-    ((uint8_t *)(buffer))[5] = (((uint64_t)(i) >> 16) & 0xFF);                 \
-    ((uint8_t *)(buffer))[6] = (((uint64_t)(i) >> 8) & 0xFF);                  \
-    ((uint8_t *)(buffer))[7] = (((uint64_t)(i)) & 0xFF);                       \
-  } while (0);
+HFUNC void fio_u2str64(void *buffer, uint64_t i) {
+  ((uint8_t *)(buffer))[0] = ((i >> 56) & 0xFF);
+  ((uint8_t *)(buffer))[1] = ((i >> 48) & 0xFF);
+  ((uint8_t *)(buffer))[2] = ((i >> 40) & 0xFF);
+  ((uint8_t *)(buffer))[3] = ((i >> 32) & 0xFF);
+  ((uint8_t *)(buffer))[4] = ((i >> 24) & 0xFF);
+  ((uint8_t *)(buffer))[5] = ((i >> 16) & 0xFF);
+  ((uint8_t *)(buffer))[6] = ((i >> 8) & 0xFF);
+  ((uint8_t *)(buffer))[7] = ((i)&0xFF);
+}
 
 /* *****************************************************************************
 Constant-time selectors
@@ -2976,14 +2990,18 @@ Dynamic Arrays - API
   { 0 }
 #endif
 
-/* Destroys any objects stored in the array and frees the internal state. */
-IFUNC void FIO_NAME(FIO_ARY_NAME, destroy)(FIO_ARY_PTR ary);
+#ifndef FIO_REF_CONSTRUCTOR_ONLY
 
 /* Allocates a new array object on the heap and initializes it's memory. */
 IFUNC FIO_ARY_PTR FIO_NAME(FIO_ARY_NAME, new)(void);
 
 /* Frees an array's internal data AND it's container! */
 IFUNC void FIO_NAME(FIO_ARY_NAME, free)(FIO_ARY_PTR ary);
+
+#endif /* FIO_REF_CONSTRUCTOR_ONLY */
+
+/* Destroys any objects stored in the array and frees the internal state. */
+IFUNC void FIO_NAME(FIO_ARY_NAME, destroy)(FIO_ARY_PTR ary);
 
 /** Returns the number of elements in the Array. */
 IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, count)(FIO_ARY_PTR ary);
@@ -3169,19 +3187,7 @@ Dynamic Arrays - internal helpers
 Dynamic Arrays - implementation
 ***************************************************************************** */
 
-/* Destroys any objects stored in the array and frees the internal state. */
-IFUNC void FIO_NAME(FIO_ARY_NAME, destroy)(FIO_ARY_PTR ary_) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
-#if !FIO_ARY_TYPE_DESTROY_SIMPLE
-  for (uint32_t i = ary->start; i < ary->end; ++i) {
-    FIO_ARY_TYPE_DESTROY(ary->ary[i]);
-  }
-#endif
-  FIO_MEM_FREE_(ary->ary, ary->capa * sizeof(*ary->ary));
-  *ary = (FIO_NAME(FIO_ARY_NAME, s))FIO_ARY_INIT;
-}
-
+#ifndef FIO_REF_CONSTRUCTOR_ONLY
 /* Allocates a new array object on the heap and initializes it's memory. */
 IFUNC FIO_ARY_PTR FIO_NAME(FIO_ARY_NAME, new)(void) {
   FIO_NAME(FIO_ARY_NAME, s) *a =
@@ -3196,6 +3202,20 @@ IFUNC void FIO_NAME(FIO_ARY_NAME, free)(FIO_ARY_PTR ary_) {
       (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   FIO_NAME(FIO_ARY_NAME, destroy)(ary_);
   FIO_MEM_FREE_(ary, sizeof(*ary));
+}
+#endif /* FIO_REF_CONSTRUCTOR_ONLY */
+
+/* Destroys any objects stored in the array and frees the internal state. */
+IFUNC void FIO_NAME(FIO_ARY_NAME, destroy)(FIO_ARY_PTR ary_) {
+  FIO_NAME(FIO_ARY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+#if !FIO_ARY_TYPE_DESTROY_SIMPLE
+  for (uint32_t i = ary->start; i < ary->end; ++i) {
+    FIO_ARY_TYPE_DESTROY(ary->ary[i]);
+  }
+#endif
+  FIO_MEM_FREE_(ary->ary, ary->capa * sizeof(*ary->ary));
+  *ary = (FIO_NAME(FIO_ARY_NAME, s))FIO_ARY_INIT;
 }
 
 /** Returns the number of elements in the Array. */
@@ -3964,6 +3984,7 @@ Hash Map / Set - API (initialization)
 
 #endif
 
+#ifndef FIO_REF_CONSTRUCTOR_ONLY
 /**
  * Allocates a new map on the heap.
  */
@@ -3973,6 +3994,8 @@ IFUNC FIO_MAP_PTR FIO_NAME(FIO_MAP_NAME, new)(void);
  * Frees a map that was allocated on the heap.
  */
 IFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m);
+
+#endif /* FIO_REF_CONSTRUCTOR_ONLY */
 
 /**
  * Destroys the map's internal data and re-initializes it.
@@ -4389,6 +4412,7 @@ HFUNC int FIO_NAME(FIO_MAP_NAME, _remove)(FIO_NAME(FIO_MAP_NAME, s) * m,
 Hash Map / Set - API (initialization)
 ***************************************************************************** */
 
+#ifndef FIO_REF_CONSTRUCTOR_ONLY
 /**
  * Allocates a new map on the heap.
  */
@@ -4407,6 +4431,8 @@ IFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m_) {
   FIO_NAME(FIO_MAP_NAME, destroy)(m_);
   FIO_MEM_FREE_(m, sizeof(*m));
 }
+
+#endif /* FIO_REF_CONSTRUCTOR_ONLY */
 
 /**
  * Destroys the map's internal data and re-initializes it.
@@ -4893,13 +4919,7 @@ typedef struct {
 
 #endif /* FIO_STR_INIT */
 
-/**
- * Frees the String's resources and reinitializes the container.
- *
- * Note: if the container isn't allocated on the stack, it should be freed
- * separately using the appropriate `free` function.
- */
-IFUNC void FIO_NAME(FIO_STR_NAME, destroy)(FIO_STR_PTR s);
+#ifndef FIO_REF_CONSTRUCTOR_ONLY
 
 /** Allocates a new String object on the heap. */
 IFUNC FIO_STR_PTR FIO_NAME(FIO_STR_NAME, new)(void);
@@ -4909,6 +4929,16 @@ IFUNC FIO_STR_PTR FIO_NAME(FIO_STR_NAME, new)(void);
  * `FIO_STR_NAME_new`).
  */
 IFUNC void FIO_NAME(FIO_STR_NAME, free)(FIO_STR_PTR s);
+
+#endif /* FIO_REF_CONSTRUCTOR_ONLY */
+
+/**
+ * Frees the String's resources and reinitializes the container.
+ *
+ * Note: if the container isn't allocated on the stack, it should be freed
+ * separately using the appropriate `free` function.
+ */
+IFUNC void FIO_NAME(FIO_STR_NAME, destroy)(FIO_STR_PTR s);
 
 /**
  * Returns a C string with the existing data, re-initializing the String.
@@ -5204,21 +5234,7 @@ HSFUNC void FIO_NAME(FIO_STR_NAME, _default_dealloc)(void *ptr, size_t size) {
 String Implementation - initialization
 ***************************************************************************** */
 
-/**
- * Frees the String's resources and reinitializes the container.
- *
- * Note: if the container isn't allocated on the stack, it should be freed
- * separately using the appropriate `free` function.
- */
-IFUNC void FIO_NAME(FIO_STR_NAME, destroy)(FIO_STR_PTR s_) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  if (!s)
-    return;
-  if (!FIO_STR_IS_SMALL(s) && s->dealloc) {
-    s->dealloc(s->data, s->capa + 1);
-  }
-  *s = (FIO_NAME(FIO_STR_NAME, s))FIO_STR_INIT;
-}
+#ifndef FIO_REF_CONSTRUCTOR_ONLY
 
 /** Allocates a new String object on the heap. */
 IFUNC FIO_STR_PTR FIO_NAME(FIO_STR_NAME, new)(void) {
@@ -5236,6 +5252,24 @@ IFUNC void FIO_NAME(FIO_STR_NAME, free)(FIO_STR_PTR s_) {
   FIO_NAME(FIO_STR_NAME, destroy)(s_);
   FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
   FIO_MEM_FREE_(s, sizeof(*s));
+}
+
+#endif /* !FIO_REF_CONSTRUCTOR_ONLY */
+
+/**
+ * Frees the String's resources and reinitializes the container.
+ *
+ * Note: if the container isn't allocated on the stack, it should be freed
+ * separately using the appropriate `free` function.
+ */
+IFUNC void FIO_NAME(FIO_STR_NAME, destroy)(FIO_STR_PTR s_) {
+  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (!s)
+    return;
+  if (!FIO_STR_IS_SMALL(s) && s->dealloc) {
+    s->dealloc(s->data, s->capa + 1);
+  }
+  *s = (FIO_NAME(FIO_STR_NAME, s))FIO_STR_INIT;
 }
 
 /**
@@ -7569,6 +7603,14 @@ Hash Map Cleanup
 #define FIO_REF_METADATA_DESTROY(meta)
 #endif
 
+#ifdef FIO_REF_CONSTRUCTOR_ONLY
+#define FIO_REF_CONSTRUCTOR new
+#define FIO_REF_DESTRUCTOR free
+#else
+#define FIO_REF_CONSTRUCTOR new2
+#define FIO_REF_DESTRUCTOR free2
+#endif
+
 typedef struct {
   volatile uint32_t ref;
 #ifdef FIO_REF_METADATA
@@ -7588,7 +7630,7 @@ Reference Counter (Wrapper) API
 ***************************************************************************** */
 
 /** Allocates a reference counted object. */
-IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME, new2)(void);
+IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME, FIO_REF_CONSTRUCTOR)(void);
 
 /** Increases the reference count. */
 IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME, up_ref)(FIO_REF_TYPE_PTR wrapped);
@@ -7604,7 +7646,7 @@ IFUNC FIO_REF_METADATA *FIO_NAME(FIO_REF_NAME,
  *
  * Returns 1 if the object was actually freed, returns 0 otherwise.
  */
-IFUNC int FIO_NAME(FIO_REF_NAME, free2)(FIO_REF_TYPE_PTR wrapped);
+IFUNC int FIO_NAME(FIO_REF_NAME, FIO_REF_DESTRUCTOR)(FIO_REF_TYPE_PTR wrapped);
 
 /* *****************************************************************************
 Reference Counter (Wrapper) Implementation
@@ -7612,7 +7654,7 @@ Reference Counter (Wrapper) Implementation
 #ifdef FIO_EXTERN_COMPLETE
 
 /** Allocates a reference counted object. */
-IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME, new2)(void) {
+IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME, FIO_REF_CONSTRUCTOR)(void) {
   FIO_NAME(FIO_REF_NAME, _wrapper_s) *o =
       (FIO_NAME(FIO_REF_NAME, _wrapper_s) *)FIO_MEM_CALLOC_(sizeof(*o), 1);
   o->ref = 1;
@@ -7644,7 +7686,8 @@ IFUNC FIO_REF_METADATA *FIO_NAME(FIO_REF_NAME,
 #endif
 
 /** Frees a reference counted object (or decreases the reference count). */
-IFUNC int FIO_NAME(FIO_REF_NAME, free2)(FIO_REF_TYPE_PTR wrapped_) {
+IFUNC int FIO_NAME(FIO_REF_NAME,
+                   FIO_REF_DESTRUCTOR)(FIO_REF_TYPE_PTR wrapped_) {
   FIO_REF_TYPE *wrapped = (FIO_REF_TYPE *)(FIO_PTR_UNTAG(wrapped_));
   if (!wrapped)
     return -1;
@@ -7673,6 +7716,9 @@ Reference Counter (Wrapper) Cleanup
 #undef FIO_REF_METADATA_INIT
 #undef FIO_REF_METADATA_DESTROY
 #undef FIO_REF_TYPE_PTR
+#undef FIO_REF_CONSTRUCTOR_ONLY
+#undef FIO_REF_CONSTRUCTOR
+#undef FIO_REF_DESTRUCTOR
 #endif
 
 /* *****************************************************************************
@@ -8197,7 +8243,7 @@ integer is added when a virtual function table is missing. This doesn't effect
 memory consumption on 64 bit systems and uses 4 bytes on 32 bit systems.
 
 Note: this should be included after the STL file, since it leverages most of the
-SLT features.
+SLT features and could be affected by their inclusion (i.e., memory allocation).
 ***************************************************************************** */
 #if (defined(FIO_FIOBJ)) && !defined(H___FHIOBJ_H)
 #define H___FHIOBJ_H
@@ -8418,6 +8464,7 @@ FIOBJ_FUNC FIOBJ_class_vtable_s FIOBJ_OBJECT_CLASS_VTBL = {
     .type_id = 99, /* type IDs below 100 are reserved. */
 };
 
+#define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_NAME fiobj_object
 #define FIO_REF_TYPE void *
 #define FIO_REF_METADATA FIOBJ_class_vtable_s *
@@ -8483,6 +8530,7 @@ FIOBJ Strings
 
 #define FIO_STR_NAME fiobj_str
 #define FIO_REF_NAME fiobj_str
+#define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_DESTROY(s)                                                     \
   do {                                                                         \
     fiobj_str_destroy((FIOBJ)&s);                                              \
@@ -8498,8 +8546,32 @@ FIOBJ Strings
 #define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
 #define FIO_PTR_TAG_TYPE FIOBJ
 #include __FILE__
-#define fiobj_str_new fiobj_str_new2
-#define fiobj_str_free fiobj_str_free2
+
+/* Creates a new FIOBJ string object, copying the data to the new string. */
+FIOBJ_HIFUNC FIOBJ fiobj_str_new_cstr(const char *ptr, uint32_t len) {
+  FIOBJ s = fiobj_str_new();
+  FIO_ASSERT_ALLOC(s);
+  fiobj_str_write(s, ptr, len);
+  return s;
+}
+
+/* Creates a new FIOBJ string object with (at least) the requested capacity.
+ */
+FIOBJ_HIFUNC FIOBJ fiobj_str_new_buf(uint32_t capa) {
+  FIOBJ s = fiobj_str_new();
+  FIO_ASSERT_ALLOC(s);
+  fiobj_str_reserve(s, capa);
+  return s;
+}
+
+/* Creates a new FIOBJ string object, copying the origin (`fiobj2cstr`). */
+FIOBJ_HIFUNC FIOBJ fiobj_str_new_copy(FIOBJ original) {
+  FIOBJ s = fiobj_str_new();
+  FIO_ASSERT_ALLOC(s);
+  fio_str_info_s i = fiobj2cstr(original);
+  fiobj_str_write(s, i.data, i.len);
+  return s;
+}
 
 /* *****************************************************************************
 FIOBJ Arrays
@@ -8507,6 +8579,7 @@ FIOBJ Arrays
 
 #define FIO_ARY_NAME fiobj_array
 #define FIO_REF_NAME fiobj_array
+#define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_DESTROY(a)                                                     \
   do {                                                                         \
     fiobj_array_destroy((FIOBJ)&a);                                            \
@@ -8525,8 +8598,6 @@ FIOBJ Arrays
 #define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
 #define FIO_PTR_TAG_TYPE FIOBJ
 #include __FILE__
-#define fiobj_array_new fiobj_array_new2
-#define fiobj_array_free fiobj_array_free2
 
 /* *****************************************************************************
 FIOBJ Hash Maps
@@ -8534,6 +8605,7 @@ FIOBJ Hash Maps
 
 #define FIO_MAP_NAME fiobj_hash
 #define FIO_REF_NAME fiobj_hash
+#define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_DESTROY(a)                                                     \
   do {                                                                         \
     fiobj_hash_destroy((FIOBJ)&a);                                             \
@@ -8555,10 +8627,9 @@ FIOBJ Hash Maps
 #define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
 #define FIO_PTR_TAG_TYPE FIOBJ
 #include __FILE__
-#define fiobj_hash_new fiobj_hash_new2
-#define fiobj_hash_free fiobj_hash_free2
 
-/** Inserts a value to a hash map, automatically calculating the hash value. */
+/** Inserts a value to a hash map, automatically calculating the hash value.
+ */
 FIOBJ_HIFUNC FIOBJ fiobj_hash_set2(FIOBJ hash, FIOBJ key, FIOBJ value);
 
 /** Finds a value in a hash map, automatically calculating the hash value. */
@@ -8712,13 +8783,13 @@ FIOBJ_HIFUNC void fiobj_free(FIOBJ o) {
   case FIOBJ_T_FLOAT:
     return;
   case FIOBJ_T_STRING:
-    fiobj_str_free2(o);
+    fiobj_str_free(o);
     return;
   case FIOBJ_T_ARRAY:
-    fiobj_array_free2(o);
+    fiobj_array_free(o);
     return;
   case FIOBJ_T_HASH:
-    fiobj_hash_free2(o);
+    fiobj_hash_free(o);
     return;
   case FIOBJ_T_OTHER:
     (*fiobj_object_metadata(o))->free2(o);
@@ -8881,6 +8952,7 @@ FIOBJ Integers
 
 #define FIO_REF_NAME fiobj__bignum
 #define FIO_REF_TYPE intptr_t
+#define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_METADATA FIOBJ_class_vtable_s *
 #define FIO_REF_METADATA_INIT(m)                                               \
   do {                                                                         \
@@ -8907,7 +8979,7 @@ FIOBJ_HIFUNC FIOBJ fiobj_num_new(intptr_t i) {
   FIOBJ o = FIO_NUMBER_ENCODE(i);
   if (FIO_NUMBER_REVESE(o) == i)
     return o;
-  o = fiobj__bignum_new2();
+  o = fiobj__bignum_new();
   FIO_PTR_MATH_RMASK(intptr_t, o, 3)[0] = i;
   return o;
 }
@@ -8927,7 +8999,7 @@ FIOBJ_HIFUNC double fiobj_num_2f(FIOBJ i) { return (double)fiobj_num_2i(i); }
 FIOBJ_HIFUNC void fiobj_num_free(FIOBJ i) {
   if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_NUMBER)
     return;
-  fiobj__bignum_free2(i);
+  fiobj__bignum_free(i);
   return;
 }
 #undef FIO_NUMBER_ENCODE
@@ -8940,6 +9012,7 @@ FIOBJ Floats
 #define FIO_REF_NAME fiobj__bigfloat
 #define FIO_REF_TYPE double
 #define FIO_REF_METADATA FIOBJ_class_vtable_s *
+#define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_METADATA_INIT(m)                                               \
   do {                                                                         \
     m = &FIOBJ___FLOAT_CLASS_VTBL;                                             \
@@ -8968,7 +9041,7 @@ FIOBJ_HIFUNC FIOBJ fiobj_float_new(double i) {
       return (FIOBJ)(punned.i | FIOBJ_T_FLOAT);
     }
   }
-  ui = fiobj__bigfloat_new2();
+  ui = fiobj__bigfloat_new();
   FIO_PTR_MATH_RMASK(double, ui, 3)[0] = i;
   return ui;
 }
@@ -8998,7 +9071,7 @@ FIOBJ_HIFUNC double fiobj_float_2f(FIOBJ i) {
 FIOBJ_HIFUNC void fiobj_float_free(FIOBJ i) {
   if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_FLOAT)
     return;
-  fiobj__bignum_free2(i);
+  fiobj__bignum_free(i);
   return;
 }
 
@@ -9247,7 +9320,7 @@ FIOBJ_FUNC FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL = {
     /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
     .each1 = NULL,
     /** Deallocates the element (but NOT any of it's exposed elements). */
-    .free2 = fiobj__bignum_free2,
+    .free2 = fiobj__bignum_free,
 };
 
 /* *****************************************************************************
@@ -9284,7 +9357,7 @@ FIOBJ_FUNC FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL = {
     /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
     .each1 = NULL,
     /** Deallocates the element (but NOT any of it's exposed elements). */
-    .free2 = fiobj__bigfloat_free2,
+    .free2 = fiobj__bigfloat_free,
 };
 
 /* *****************************************************************************
@@ -9928,11 +10001,11 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
   fprintf(stderr, "* Testing fio_lrotX and fio_rrotX macros.\n");
   {
     uint64_t tmp = 1;
-    tmp = fio_rrot(tmp, 1);
+    tmp = FIO_RROT(tmp, 1);
     __asm__ volatile("" ::: "memory");
     TEST_ASSERT(tmp == ((uint64_t)1 << ((sizeof(uint64_t) << 3) - 1)),
                 "fio_rrot failed");
-    tmp = fio_lrot(tmp, 3);
+    tmp = FIO_LROT(tmp, 3);
     __asm__ volatile("" ::: "memory");
     TEST_ASSERT(tmp == ((uint64_t)1 << 2), "fio_lrot failed");
     tmp = 1;
