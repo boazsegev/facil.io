@@ -283,6 +283,11 @@ Miscellaneous helper macros
 #define FIO_ASSERT_DEBUG(...)
 #endif
 
+/** Marks a function as `static`, `inline` and possibly unused. */
+#define FIO_IFUNC static inline __attribute__((unused))
+/** Marks a function as `static` and possibly unused. */
+#define FIO_SFUNC static __attribute__((unused))
+
 /* *****************************************************************************
 End persistent segment (end include-once guard)
 ***************************************************************************** */
@@ -3706,7 +3711,7 @@ void main2(void) {
     size_t key_len = fio_ltoa(key_buf, i, 2);
     key_buf[key_len] = 0;
     val_buf[fio_ltoa(val_buf, i, 16)] = 0;
-    mstr_insert(&map, fio_risky_hash(key_buf, key_len, 0), key_buf, val_buf,
+    mstr_set(&map, fio_risky_hash(key_buf, key_len, 0), key_buf, val_buf,
                 NULL);
   }
   fprintf(stderr, "Mapping binary representation strings to hex:\n");
@@ -3719,7 +3724,7 @@ void main2(void) {
     char key_buf[48];
     size_t key_len = fio_ltoa(key_buf, i, 2);
     key_buf[key_len] = 0;
-    char *val = mstr_find(&map, fio_risky_hash(key_buf, key_len, 0), key_buf);
+    char *val = mstr_get(&map, fio_risky_hash(key_buf, key_len, 0), key_buf);
     fprintf(stderr, "found %s => %s\n", key_buf, val);
   }
   mstr_destroy(&map); // will automatically free strings
@@ -3980,19 +3985,18 @@ Hash Map / Set - API (hash map only)
 #ifdef FIO_MAP_KEY
 
 /** Returns the object in the hash map (if any) or FIO_MAP_TYPE_INVALID. */
-SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, find)(FIO_MAP_PTR m,
-                                                FIO_MAP_HASH hash,
-                                                FIO_MAP_KEY key);
+SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m, FIO_MAP_HASH hash,
+                                               FIO_MAP_KEY key);
 
 /**
  * Inserts an object to the hash map, returning the new object.
  *
  * If `old` is given, existing data will be copied to that location.
  */
-SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME,
-                            insert)(FIO_MAP_PTR m, FIO_MAP_HASH hash,
-                                    FIO_MAP_KEY key, FIO_MAP_TYPE obj,
-                                    FIO_MAP_TYPE *old);
+SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m, FIO_MAP_HASH hash,
+                                               FIO_MAP_KEY key,
+                                               FIO_MAP_TYPE obj,
+                                               FIO_MAP_TYPE *old);
 
 /**
  * Removes an object from the hash map.
@@ -4010,27 +4014,25 @@ Hash Map / Set - API (set only)
 #else /* !FIO_MAP_KEY */
 
 /** Returns the object in the hash map (if any) or FIO_MAP_TYPE_INVALID. */
-SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, find)(FIO_MAP_PTR m,
-                                                FIO_MAP_HASH hash,
-                                                FIO_MAP_TYPE obj);
+SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m, FIO_MAP_HASH hash,
+                                               FIO_MAP_TYPE obj);
 
 /**
  * Inserts an object to the hash map, returning the existing or new object.
  *
  * If `old` is given, existing data will be copied to that location.
  */
-SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, insert)(FIO_MAP_PTR m,
-                                                  FIO_MAP_HASH hash,
-                                                  FIO_MAP_TYPE obj);
+SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME,
+                            set_if_missing)(FIO_MAP_PTR m, FIO_MAP_HASH hash,
+                                            FIO_MAP_TYPE existing);
 
 /**
  * Inserts an object to the hash map, returning the new object.
  *
  * If `old` is given, existing data will be copied to that location.
  */
-SFUNC void FIO_NAME(FIO_MAP_NAME, overwrite)(FIO_MAP_PTR m, FIO_MAP_HASH hash,
-                                             FIO_MAP_TYPE obj,
-                                             FIO_MAP_TYPE *old);
+SFUNC void FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m, FIO_MAP_HASH hash,
+                                       FIO_MAP_TYPE obj, FIO_MAP_TYPE *old);
 
 /**
  * Removes an object from the hash map.
@@ -4454,9 +4456,9 @@ Hash Map / Set - API (hash map only)
 #ifdef FIO_MAP_KEY
 
 /** Returns the object in the hash map (if any) or FIO_MAP_TYPE_INVALID. */
-SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, find)(FIO_MAP_PTR m_,
-                                                FIO_MAP_HASH hash,
-                                                FIO_MAP_KEY key) {
+SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m_,
+                                               FIO_MAP_HASH hash,
+                                               FIO_MAP_KEY key) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   FIO_MAP_OBJ obj = {.key = key};
@@ -4474,9 +4476,9 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, find)(FIO_MAP_PTR m_,
  * If `old` is given, existing data will be copied to that location.
  */
 SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME,
-                            insert)(FIO_MAP_PTR m_, FIO_MAP_HASH hash,
-                                    FIO_MAP_KEY key, FIO_MAP_TYPE value,
-                                    FIO_MAP_TYPE *old) {
+                            set)(FIO_MAP_PTR m_, FIO_MAP_HASH hash,
+                                 FIO_MAP_KEY key, FIO_MAP_TYPE value,
+                                 FIO_MAP_TYPE *old) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   FIO_MAP_OBJ obj = {.key = key, .value = value};
@@ -4506,9 +4508,9 @@ Hash Map / Set - API (set only)
 #else /* !FIO_MAP_KEY */
 
 /** Returns the object in the hash map (if any) or FIO_MAP_TYPE_INVALID. */
-SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, find)(FIO_MAP_PTR m_,
-                                                FIO_MAP_HASH hash,
-                                                FIO_MAP_TYPE obj) {
+SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m_,
+                                               FIO_MAP_HASH hash,
+                                               FIO_MAP_TYPE obj) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   FIO_NAME(FIO_MAP_NAME, _map_s) *pos =
@@ -4524,9 +4526,9 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, find)(FIO_MAP_PTR m_,
  *
  * If `old` is given, existing data will be copied to that location.
  */
-SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, insert)(FIO_MAP_PTR m_,
-                                                  FIO_MAP_HASH hash,
-                                                  FIO_MAP_TYPE obj) {
+SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set_if_missing)(FIO_MAP_PTR m_,
+                                                          FIO_MAP_HASH hash,
+                                                          FIO_MAP_TYPE obj) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   FIO_NAME(FIO_MAP_NAME, _map_s) *pos =
@@ -4539,9 +4541,8 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, insert)(FIO_MAP_PTR m_,
  *
  * If `old` is given, existing data will be copied to that location.
  */
-SFUNC void FIO_NAME(FIO_MAP_NAME, overwrite)(FIO_MAP_PTR m_, FIO_MAP_HASH hash,
-                                             FIO_MAP_TYPE obj,
-                                             FIO_MAP_TYPE *old) {
+SFUNC void FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m_, FIO_MAP_HASH hash,
+                                       FIO_MAP_TYPE obj, FIO_MAP_TYPE *old) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   FIO_NAME(FIO_MAP_NAME, _insert_or_overwrite)(m, obj, hash, old, 1);
@@ -6822,8 +6823,8 @@ HSFUNC void fio_cli___map_line2alias(char const *line) {
       ++n.len;
     }
     const char *old = NULL;
-    fio_cli_hash_insert(&fio_cli__aliases, FIO_CLI_HASH_VAL(n), n, (void *)line,
-                        &old);
+    fio_cli_hash_set(&fio_cli__aliases, FIO_CLI_HASH_VAL(n), n, (void *)line,
+                     &old);
 #ifdef FIO_LOG_ERROR
     if (old) {
       FIO_LOG_ERROR("CLI argument name conflict detected\n"
@@ -6886,7 +6887,7 @@ HSFUNC void fio_cli___set_arg(fio_cli___cstr_s arg, char const *value,
       goto print_help;
     }
     fio_cli___cstr_s n = {.len = ++parser->unnamed_count};
-    fio_cli_hash_insert(&fio_cli__values, n.len, n, value, NULL);
+    fio_cli_hash_set(&fio_cli__values, n.len, n, value, NULL);
     if (parser->unnamed_max >= 0 &&
         parser->unnamed_count > parser->unnamed_max) {
       arg.len = 0;
@@ -6928,8 +6929,7 @@ HSFUNC void fio_cli___set_arg(fio_cli___cstr_s arg, char const *value,
       while (n.data[n.len] && n.data[n.len] != ' ' && n.data[n.len] != ',') {
         ++n.len;
       }
-      fio_cli_hash_insert(&fio_cli__values, FIO_CLI_HASH_VAL(n), n, value,
-                          NULL);
+      fio_cli_hash_set(&fio_cli__values, FIO_CLI_HASH_VAL(n), n, value, NULL);
       while (n.data[n.len] && (n.data[n.len] == ' ' || n.data[n.len] == ',')) {
         ++n.len;
       }
@@ -7117,8 +7117,8 @@ SFUNC void fio_cli_start FIO_NOOP(int argc, char const *argv[], int unnamed_min,
       value = argv[parser.pos + 1];
     }
     const char *l = NULL;
-    while (n.len && !(l = fio_cli_hash_find(&fio_cli__aliases,
-                                            FIO_CLI_HASH_VAL(n), n))) {
+    while (n.len &&
+           !(l = fio_cli_hash_get(&fio_cli__aliases, FIO_CLI_HASH_VAL(n), n))) {
       --n.len;
       value = n.data + n.len;
     }
@@ -7156,7 +7156,7 @@ SFUNC char const *fio_cli_get(char const *name) {
   if (!fio_cli_hash_count(&fio_cli__values)) {
     return NULL;
   }
-  char const *val = fio_cli_hash_find(&fio_cli__values, FIO_CLI_HASH_VAL(n), n);
+  char const *val = fio_cli_hash_get(&fio_cli__values, FIO_CLI_HASH_VAL(n), n);
   return val;
 }
 
@@ -7177,7 +7177,7 @@ SFUNC char const *fio_cli_unnamed(unsigned int index) {
     return NULL;
   }
   fio_cli___cstr_s n = {.data = NULL, .len = index + 1};
-  return fio_cli_hash_find(&fio_cli__values, index + 1, n);
+  return fio_cli_hash_get(&fio_cli__values, index + 1, n);
 }
 
 /**
@@ -7188,7 +7188,7 @@ SFUNC char const *fio_cli_unnamed(unsigned int index) {
  */
 SFUNC void fio_cli_set(char const *name, char const *value) {
   fio_cli___cstr_s n = (fio_cli___cstr_s){.data = name, .len = strlen(name)};
-  fio_cli_hash_insert(&fio_cli__values, FIO_CLI_HASH_VAL(n), n, value, NULL);
+  fio_cli_hash_set(&fio_cli__values, FIO_CLI_HASH_VAL(n), n, value, NULL);
 }
 
 /* *****************************************************************************
@@ -7389,9 +7389,9 @@ SFUNC int FIO_NAME(FIO_HMAP_NAME, rehash)(FIO_HMAP_PTR m_) {
   return 0;
 }
 
-SFUNC int FIO_NAME(FIO_HMAP_NAME, insert)(FIO_HMAP_PTR m_, uint64_t hash,
-                                          FIO_HMAP_KEY key, FIO_HMAP_TYPE value,
-                                          FIO_HMAP_TYPE *old) {
+SFUNC int FIO_NAME(FIO_HMAP_NAME, set)(FIO_HMAP_PTR m_, uint64_t hash,
+                                       FIO_HMAP_KEY key, FIO_HMAP_TYPE value,
+                                       FIO_HMAP_TYPE *old) {
   FIO_NAME(FIO_HMAP_NAME, s) *m =
       (FIO_NAME(FIO_HMAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   if (!hash)
@@ -7476,9 +7476,8 @@ not_found:
   return -1;
 }
 
-IFUNC FIO_HMAP_TYPE FIO_NAME(FIO_HMAP_NAME, find)(FIO_HMAP_PTR m_,
-                                                  uint64_t hash,
-                                                  FIO_HMAP_KEY key) {
+IFUNC FIO_HMAP_TYPE FIO_NAME(FIO_HMAP_NAME, get)(FIO_HMAP_PTR m_, uint64_t hash,
+                                                 FIO_HMAP_KEY key) {
   FIO_NAME(FIO_HMAP_NAME, s) *m =
       (FIO_NAME(FIO_HMAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   uint32_t pos = FIO_NAME(FIO_HMAP_NAME, __pos)(m_, hash, key);
@@ -8560,10 +8559,10 @@ FIOBJ Hash Maps
 #define fiobj_hash_free fiobj_hash_free2
 
 /** Inserts a value to a hash map, automatically calculating the hash value. */
-FIOBJ_HIFUNC FIOBJ fiobj_hash_insert2(FIOBJ hash, FIOBJ key, FIOBJ value);
+FIOBJ_HIFUNC FIOBJ fiobj_hash_set2(FIOBJ hash, FIOBJ key, FIOBJ value);
 
 /** Finds a value in a hash map, automatically calculating the hash value. */
-FIOBJ_HIFUNC FIOBJ fiobj_hash_find2(FIOBJ hash, FIOBJ key);
+FIOBJ_HIFUNC FIOBJ fiobj_hash_get2(FIOBJ hash, FIOBJ key);
 
 /** Calculates an object's hash value for a specific hash map object. */
 FIOBJ_HIFUNC uint64_t fiobj2hash(FIOBJ target_hash, FIOBJ object_key);
@@ -9082,13 +9081,13 @@ FIOBJ_HIFUNC uint64_t fiobj2hash(FIOBJ target_hash, FIOBJ o) {
 }
 
 /** Inserts a value to a hash map, automatically calculating the hash value. */
-FIOBJ_HIFUNC FIOBJ fiobj_hash_insert2(FIOBJ hash, FIOBJ key, FIOBJ value) {
-  return fiobj_hash_insert(hash, fiobj2hash(hash, key), key, value, NULL);
+FIOBJ_HIFUNC FIOBJ fiobj_hash_set2(FIOBJ hash, FIOBJ key, FIOBJ value) {
+  return fiobj_hash_set(hash, fiobj2hash(hash, key), key, value, NULL);
 }
 
 /** Finds a value in a hash map, automatically calculating the hash value. */
-FIOBJ_HIFUNC FIOBJ fiobj_hash_find2(FIOBJ hash, FIOBJ key) {
-  return fiobj_hash_find(hash, fiobj2hash(hash, key), key);
+FIOBJ_HIFUNC FIOBJ fiobj_hash_get2(FIOBJ hash, FIOBJ key) {
+  return fiobj_hash_get(hash, fiobj2hash(hash, key), key);
 }
 
 /* *****************************************************************************
@@ -9404,7 +9403,7 @@ static inline void fiobj_json_add2parser(fiobj_json_parser_s *p, FIOBJ o) {
   if (p->top) {
     if (FIOBJ_TYPE_CLASS(p->top) == FIOBJ_T_HASH) {
       if (p->key) {
-        fiobj_hash_insert2(p->top, p->key, o);
+        fiobj_hash_set2(p->top, p->key, o);
         fiobj_free(p->key);
         p->key = FIOBJ_INVALID;
       } else {
@@ -10608,7 +10607,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
                     (TEST_REPEAT >> 1),
                 "reserve should increase capacity.");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      set_____test_insert(&m, HASHOFi(i), i + 1);
+      set_____test_set(&m, HASHOFi(i), i + 1);
     }
     {
       uintptr_t pos_test = (TEST_REPEAT >> 1);
@@ -10623,16 +10622,16 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
                 "After inserting %zu items to set, got %zu items",
                 (size_t)TEST_REPEAT, (size_t)set_____test_count(&m));
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set_____test_find(&m, HASHOFi(i), i + 1) == i + 1,
+      TEST_ASSERT(set_____test_get(&m, HASHOFi(i), i + 1) == i + 1,
                   "item retrival error in set.");
     }
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set_____test_find(&m, HASHOFi(i), i + 2) == 0,
+      TEST_ASSERT(set_____test_get(&m, HASHOFi(i), i + 2) == 0,
                   "item retrival error in set - object comparisson error?");
     }
 
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      set_____test_insert(&m, HASHOFi(i), i + 1);
+      set_____test_set(&m, HASHOFi(i), i + 1);
     }
     {
       size_t i = 0;
@@ -10647,7 +10646,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     TEST_ASSERT(set_____test_count(&m) == TEST_REPEAT,
                 "Inserting existing object should keep existing object.");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set_____test_find(&m, HASHOFi(i), i + 1) == i + 1,
+      TEST_ASSERT(set_____test_get(&m, HASHOFi(i), i + 1) == i + 1,
                   "item retrival error in set - insert failed to update?");
     }
 
@@ -10661,11 +10660,11 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     TEST_ASSERT(set_____test_count(&m) == (TEST_REPEAT * 2),
                 "full hash collision shoudn't break map until attack limit.");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set_____test_find(&m, HASHOFi(i), i + 2) == i + 2,
+      TEST_ASSERT(set_____test_get(&m, HASHOFi(i), i + 2) == i + 2,
                   "item retrival error in set - overwrite failed to update?");
     }
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set_____test_find(&m, HASHOFi(i), i + 1) == i + 1,
+      TEST_ASSERT(set_____test_get(&m, HASHOFi(i), i + 1) == i + 1,
                   "item retrival error in set - collision resolution error?");
     }
 
@@ -10678,11 +10677,11 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     TEST_ASSERT(set_____test_count(&m) == TEST_REPEAT,
                 "removal should update object count.");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set_____test_find(&m, HASHOFi(i), i + 1) == 0,
+      TEST_ASSERT(set_____test_get(&m, HASHOFi(i), i + 1) == 0,
                   "removed items should be unavailable");
     }
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set_____test_find(&m, HASHOFi(i), i + 2) == i + 2,
+      TEST_ASSERT(set_____test_get(&m, HASHOFi(i), i + 2) == i + 2,
                   "previous items should be accessible after removal");
     }
     set_____test_destroy(&m);
@@ -10691,24 +10690,24 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     set2_____test_s m = FIO_MAP_INIT;
     fprintf(stderr, "* Testing set map without value comparison.\n");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      set2_____test_insert(&m, HASHOFi(i), i + 1);
+      set2_____test_set(&m, HASHOFi(i), i + 1);
     }
 
     TEST_ASSERT(set2_____test_count(&m) == TEST_REPEAT,
                 "After inserting %zu items to set, got %zu items",
                 (size_t)TEST_REPEAT, (size_t)set2_____test_count(&m));
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set2_____test_find(&m, HASHOFi(i), 0) == i + 1,
+      TEST_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == i + 1,
                   "item retrival error in set.");
     }
 
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      set2_____test_insert(&m, HASHOFi(i), i + 2);
+      set2_____test_set(&m, HASHOFi(i), i + 2);
     }
     TEST_ASSERT(set2_____test_count(&m) == TEST_REPEAT,
                 "Inserting existing object should keep existing object.");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set2_____test_find(&m, HASHOFi(i), 0) == i + 1,
+      TEST_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == i + 1,
                   "item retrival error in set - insert failed to update?");
     }
 
@@ -10720,7 +10719,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     }
 
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set2_____test_find(&m, HASHOFi(i), 0) == i + 2,
+      TEST_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == i + 2,
                   "item retrival error in set - overwrite failed to update?");
     }
     {
@@ -10734,9 +10733,9 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
                     old, i + 2);
       }
       for (size_t i = 1; i < TEST_REPEAT; i += 2) {
-        TEST_ASSERT(set2_____test_find(&m, HASHOFi(i), 0) == 0,
+        TEST_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == 0,
                     "previous items should NOT be accessible after removal");
-        set2_____test_insert(&m, HASHOFi(i), i + 2);
+        set2_____test_set(&m, HASHOFi(i), i + 2);
       }
     }
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
@@ -10750,7 +10749,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     TEST_ASSERT(set2_____test_count(&m) == 0,
                 "removal should update object count.");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set2_____test_find(&m, HASHOFi(i), 0) == 0,
+      TEST_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == 0,
                   "previous items should NOT be accessible after removal");
     }
     set2_____test_destroy(&m);
@@ -10767,7 +10766,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
       char buffer[64];
       int l = snprintf(buffer, 63, "%zu", i);
       buffer[l] = 0;
-      map_____test_insert(m, HASHOFs(buffer), buffer, i + 1, NULL);
+      map_____test_set(m, HASHOFs(buffer), buffer, i + 1, NULL);
     }
     TEST_ASSERT(map_____test_key_copy_counter == TEST_REPEAT,
                 "key copying error - was the key copied?");
@@ -10778,8 +10777,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
       char buffer[64];
       int l = snprintf(buffer + 1, 61, "%zu", i);
       buffer[l + 1] = 0;
-      TEST_ASSERT(map_____test_find(m, HASHOFs(buffer + 1), buffer + 1) ==
-                      i + 1,
+      TEST_ASSERT(map_____test_get(m, HASHOFs(buffer + 1), buffer + 1) == i + 1,
                   "item retrival error in map.");
     }
     {
@@ -10792,7 +10790,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
       char buffer[64];
       int l = snprintf(buffer + 1, 61, "%zu", (size_t)(TEST_REPEAT - 1));
       buffer[l + 1] = 0;
-      TEST_ASSERT(map_____test_find(m, HASHOFs(buffer + 1), buffer + 1) == 0,
+      TEST_ASSERT(map_____test_get(m, HASHOFs(buffer + 1), buffer + 1) == 0,
                   "popping an object should have removed it.");
     }
     map_____test_free(m);
@@ -10803,7 +10801,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     set_____test_s m = FIO_MAP_INIT;
     fprintf(stderr, "* Testing attack resistance.\n");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      set_____test_insert(&m, 1, i + 1);
+      set_____test_set(&m, 1, i + 1);
     }
     TEST_ASSERT(set_____test_count(&m) != TEST_REPEAT,
                 "full collision protection failed?");
@@ -10834,18 +10832,18 @@ TEST_FUNC void fio___dynamic_types_test___hmap_test(void) {
   fprintf(stderr, "* Testing dynamic hash map (2).\n");
   TEST_ASSERT(m.count == 0, "freshly initialized map should have no objects");
   for (size_t i = 0; i < TEST_REPEAT; ++i) {
-    hmap_____test_insert(&m, HASHOFi(i), i, i + 1, NULL);
+    hmap_____test_set(&m, HASHOFi(i), i, i + 1, NULL);
   }
 
   TEST_ASSERT(m.count == TEST_REPEAT,
               "After inserting %zu items to hash map, got %zu items",
               (size_t)TEST_REPEAT, (size_t)m.count);
   for (size_t i = 0; i < TEST_REPEAT; ++i) {
-    TEST_ASSERT(hmap_____test_find(&m, HASHOFi(i), i) == i + 1,
+    TEST_ASSERT(hmap_____test_get(&m, HASHOFi(i), i) == i + 1,
                 "item retrival error in hash map.");
   }
   for (size_t i = 0; i < TEST_REPEAT; ++i) {
-    TEST_ASSERT(hmap_____test_find(&m, HASHOFi(i), i + 1) == 0,
+    TEST_ASSERT(hmap_____test_get(&m, HASHOFi(i), i + 1) == 0,
                 "item retrival error in hash map - object comparison error?");
   }
   for (size_t i = 1; i < TEST_REPEAT; i += 2) {
@@ -10853,11 +10851,11 @@ TEST_FUNC void fio___dynamic_types_test___hmap_test(void) {
                 "item removal error in hash map - object wasn't found?");
   }
   for (size_t i = 1; i < TEST_REPEAT; i += 2) {
-    TEST_ASSERT(hmap_____test_find(&m, HASHOFi(i), i) == 0,
+    TEST_ASSERT(hmap_____test_get(&m, HASHOFi(i), i) == 0,
                 "item retrival error in hash map - destroyed object alive?");
   }
   for (size_t i = 0; i < TEST_REPEAT; i += 2) {
-    TEST_ASSERT(hmap_____test_find(&m, HASHOFi(i), i) == i + 1,
+    TEST_ASSERT(hmap_____test_get(&m, HASHOFi(i), i) == i + 1,
                 "item retrival error in hash map with holes.");
   }
   hmap_____test_destroy(&m);
@@ -11513,8 +11511,8 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
     FIOBJ h = fiobj_hash_new();
     FIOBJ key = fiobj_str_new();
     fiobj_str_write(key, "array", 5);
-    fiobj_hash_insert2(h, key, a);
-    TEST_ASSERT(fiobj_hash_find2(h, key) == a, "FIOBJ Hash retrival failed");
+    fiobj_hash_set2(h, key, a);
+    TEST_ASSERT(fiobj_hash_get2(h, key) == a, "FIOBJ Hash retrival failed");
     fiobj_array_push(a, key);
     if (0) {
       fiobj_array_push(a, fiobj_null());
