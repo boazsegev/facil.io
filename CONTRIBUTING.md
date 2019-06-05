@@ -57,13 +57,21 @@ No matter if discussing a PR (where we might find ourselves entering a heated di
 
 A few pointers about code styling (pun intended).
 
-* Use `clang-format` with the `LLVM` style.
+* Use `clang-format` with the `LLVM` style. It's not always the best, but it will offer uniformity.
 
 * Initialize all variables during declaration - even if it's redundant.
 
-* Use `goto` to move code branches to the end of a function's body.
+* Use `goto` to move less-likely code branches to the end of a function's body (i.e., error branches should go to a `goto` label).
 
     It makes the main body of the function more readable (IMHO) and should help with branch prediction (similar to how `unlikely` might help, but using a different approach)
+
+* Use the `fio___` prefix for internal helper functions.
+
+* Prefer verbose readable code.
+
+* Common practice abbreviations, context-specific abbreviations (when in context) and auto-complete optimizations are preferred **only when readability isn't significantly affected**.
+
+* Function names **should** be as succinct as possible.
 
 ## A quick run-down
 
