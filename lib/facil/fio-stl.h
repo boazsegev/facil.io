@@ -323,10 +323,11 @@ Common macros
 #ifndef FIO_NAME_FROM_MACRO_STEP2 /* don't redefine in recursive include */
 
 /* Used for naming functions and types, prefixing FIO_NAME to the name */
-#define FIO_NAME_FROM_MACRO_STEP2(prefix, postfix) prefix##_##postfix
-#define FIO_NAME_FROM_MACRO_STEP1(prefix, postfix)                             \
-  FIO_NAME_FROM_MACRO_STEP2(prefix, postfix)
-#define FIO_NAME(prefix, postfix) FIO_NAME_FROM_MACRO_STEP1(prefix, postfix)
+#define FIO_NAME_FROM_MACRO_STEP2(prefix, postfix, div) prefix##div##postfix
+#define FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, div)                        \
+  FIO_NAME_FROM_MACRO_STEP2(prefix, postfix, div)
+#define FIO_NAME(prefix, postfix) FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, _)
+#define FIO_NAME2(prefix, postfix) FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, 2)
 
 #if !FIO_EXTERN
 #define SFUNC_ static __attribute__((unused))
@@ -2904,7 +2905,7 @@ void example(void) {
   ary_s a = FIO_ARY_INIT;
   foo_s *p = ary_push(&a, (foo_s){.i = 42});
   FIO_ARY_EACH(&a, pos) { // pos will be a pointer to the element
-    fprintf(stderr, "* [%zu]: %p : %d\n", (size_t)(pos - ary_to_a(&a)), pos->i);
+    fprintf(stderr, "* [%zu]: %p : %d\n", (size_t)(pos - ary2ptr(&a)), pos->i);
   }
   ary_destroy(&a);
 }
@@ -3105,7 +3106,7 @@ IFUNC void FIO_NAME(FIO_ARY_NAME, compact)(FIO_ARY_PTR ary);
 /**
  * Returns a pointer to the C array containing the objects.
  */
-IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, to_a)(FIO_ARY_PTR ary);
+IFUNC FIO_ARY_TYPE *FIO_NAME2(FIO_ARY_NAME, ptr)(FIO_ARY_PTR ary);
 
 /**
  * Pushes an object to the end of the Array. Returns a pointer to the new object
@@ -3538,7 +3539,7 @@ finish:
 /**
  * Returns a pointer to the C array containing the objects.
  */
-IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, to_a)(FIO_ARY_PTR ary_) {
+IFUNC FIO_ARY_TYPE *FIO_NAME2(FIO_ARY_NAME, ptr)(FIO_ARY_PTR ary_) {
   FIO_NAME(FIO_ARY_NAME, s) *ary =
       (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   return ary->ary + ary->start;
@@ -4829,11 +4830,11 @@ Helper type
 #define H___FIO_STR_INFO_H
 
 /** An information type for reporting the string's state. */
-typedef struct fio_str_info_s {
+typedef struct fio_cstr_s {
   size_t capa; /* Buffer capacity, if the string is writable. */
   size_t len;  /* String length. */
   char *data;  /* String's first byte. */
-} fio_str_info_s;
+} fio_cstr_s;
 
 #undef FIO_STR_INFO
 #endif
@@ -4848,7 +4849,7 @@ String API - Initialization and Destruction
  * The `fio_str_s` type should be considered opaque.
  *
  * The type's attributes should be accessed ONLY through the accessor
- * functions: `fio_str_info`, `fio_str_len`, `fio_str_data`, `fio_str_capa`,
+ * functions: `fio_str2cstr`, `fio_str_len`, `fio_str2ptr`, `fio_str_capa`,
  * etc'.
  *
  * Note: when the `small` flag is present, the structure is ignored and used
@@ -4963,13 +4964,13 @@ String API - String state (data pointers, length, capacity, etc')
 ***************************************************************************** */
 
 /** Returns the String's complete state (capacity, length and pointer).  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, info)(const FIO_STR_PTR s);
+IFUNC fio_cstr_s FIO_NAME2(FIO_STR_NAME, cstr)(const FIO_STR_PTR s);
+
+/** Returns a pointer (`char *`) to the String's content. */
+IFUNC char *FIO_NAME2(FIO_STR_NAME, ptr)(FIO_STR_PTR s);
 
 /** Returns the String's length in bytes. */
 IFUNC size_t FIO_NAME(FIO_STR_NAME, len)(FIO_STR_PTR s);
-
-/** Returns a pointer (`char *`) to the String's content. */
-IFUNC char *FIO_NAME(FIO_STR_NAME, data)(FIO_STR_PTR s);
 
 /** Returns the String's existing capacity (total used & available memory). */
 IFUNC size_t FIO_NAME(FIO_STR_NAME, capa)(FIO_STR_PTR s);
@@ -5012,7 +5013,7 @@ String API - Memory management
  * Note: When shrinking, any existing data beyond the new size may be
  * corrupted.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, resize)(FIO_STR_PTR s, size_t size);
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, resize)(FIO_STR_PTR s, size_t size);
 
 /**
  * Performs a best attempt at minimizing memory consumption.
@@ -5028,8 +5029,7 @@ SFUNC void FIO_NAME(FIO_STR_NAME, compact)(FIO_STR_PTR s);
  *
  * Returns the current state of the String.
  */
-SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, reserve)(FIO_STR_PTR s,
-                                                     size_t amount);
+SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, reserve)(FIO_STR_PTR s, size_t amount);
 
 /* *****************************************************************************
 String API - UTF-8 State
@@ -5065,27 +5065,25 @@ String API - Content Manipulation and Review
 /**
  * Writes data at the end of the String.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s,
-                                                   const void *src,
-                                                   size_t src_len);
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s, const void *src,
+                                               size_t src_len);
 
 /**
  * Writes a number at the end of the String using normal base 10 notation.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s,
-                                                     int64_t num);
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s, int64_t num);
 
 /**
  * Appends the `src` String to the end of the `dest` String.
  *
  * If `dest` is empty, the resulting Strings will be equal.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, concat)(FIO_STR_PTR dest,
-                                                    FIO_STR_PTR const src);
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, concat)(FIO_STR_PTR dest,
+                                                FIO_STR_PTR const src);
 
 /** Alias for fio_str_concat */
-HFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, join)(FIO_STR_PTR dest,
-                                                  FIO_STR_PTR const src) {
+HFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, join)(FIO_STR_PTR dest,
+                                              FIO_STR_PTR const src) {
   return FIO_NAME(FIO_STR_NAME, concat)(dest, src);
 }
 
@@ -5101,27 +5099,27 @@ HFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, join)(FIO_STR_PTR dest,
  * If `src_len == 0` than `src` will be ignored and the data marked for
  * replacement will be erased.
  */
-SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
-                              replace)(FIO_STR_PTR s, intptr_t start_pos,
-                                       size_t old_len, const void *src,
-                                       size_t src_len);
+SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
+                          replace)(FIO_STR_PTR s, intptr_t start_pos,
+                                   size_t old_len, const void *src,
+                                   size_t src_len);
 
 /**
  * Writes to the String using a vprintf like interface.
  *
  * Data is written to the end of the String.
  */
-SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, vprintf)(FIO_STR_PTR s,
-                                                     const char *format,
-                                                     va_list argv);
+SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, vprintf)(FIO_STR_PTR s,
+                                                 const char *format,
+                                                 va_list argv);
 
 /**
  * Writes to the String using a printf like interface.
  *
  * Data is written to the end of the String.
  */
-SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, printf)(FIO_STR_PTR s,
-                                                    const char *format, ...);
+SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, printf)(FIO_STR_PTR s,
+                                                const char *format, ...);
 
 #if H___FIO_UNIX_TOOLS_H
 /**
@@ -5134,9 +5132,9 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, printf)(FIO_STR_PTR s,
  *
  * Works on POSIX only.
  */
-SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
-                              readfile)(FIO_STR_PTR s, const char *filename,
-                                        intptr_t start_at, intptr_t limit);
+SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
+                          readfile)(FIO_STR_PTR s, const char *filename,
+                                    intptr_t start_at, intptr_t limit);
 #endif
 
 /* *****************************************************************************
@@ -5149,16 +5147,16 @@ String API - C / JSON escaping
  * The JSON semantic are common to many programming languages, promising a UTF-8
  * String while making it easy to read and copy the string during debugging.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
-                                                          const void *data,
-                                                          size_t data_len);
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
+                                                      const void *data,
+                                                      size_t data_len);
 
 /**
  * Writes an escaped data into the string after unescaping the data.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_unescape)(FIO_STR_PTR s,
-                                                            const void *escaped,
-                                                            size_t len);
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_unescape)(FIO_STR_PTR s,
+                                                        const void *escaped,
+                                                        size_t len);
 
 /* *****************************************************************************
 String API - Base64 support
@@ -5168,17 +5166,16 @@ String API - Base64 support
  * Writes data at the end of the String, encoding the data as Base64 encoded
  * data.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_b64enc)(FIO_STR_PTR s,
-                                                          const void *data,
-                                                          size_t data_len,
-                                                          uint8_t url_encoded);
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
+                          write_b64enc)(FIO_STR_PTR s, const void *data,
+                                        size_t data_len, uint8_t url_encoded);
 
 /**
  * Writes decoded base64 data to the end of the String.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_b64dec)(FIO_STR_PTR s,
-                                                          const void *encoded,
-                                                          size_t encoded_len);
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_b64dec)(FIO_STR_PTR s,
+                                                      const void *encoded,
+                                                      size_t encoded_len);
 
 /* *****************************************************************************
 
@@ -5318,34 +5315,34 @@ String Implementation - String state (data pointers, length, capacity, etc')
 ***************************************************************************** */
 
 /** Returns the String's complete state (capacity, length and pointer).  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, info)(const FIO_STR_PTR s_) {
+IFUNC fio_cstr_s FIO_NAME2(FIO_STR_NAME, cstr)(const FIO_STR_PTR s_) {
   FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
   if (!s)
-    return (fio_str_info_s){.len = 0};
+    return (fio_cstr_s){.len = 0};
   if (FIO_STR_IS_SMALL(s))
-    return (fio_str_info_s){
+    return (fio_cstr_s){
         .capa = (FIO_STR_IS_FROZEN(s) ? 0 : FIO_STR_SMALL_CAPA(s)),
         .len = FIO_STR_SMALL_LEN(s),
         .data = FIO_STR_SMALL_DATA(s),
     };
 
-  return (fio_str_info_s){
+  return (fio_cstr_s){
       .capa = (FIO_STR_IS_FROZEN(s) ? 0 : s->capa),
       .len = s->len,
       .data = s->data,
   };
 }
 
+/** Returns a pointer (`char *`) to the String's content. */
+IFUNC char *FIO_NAME2(FIO_STR_NAME, ptr)(FIO_STR_PTR s_) {
+  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  return (char *)(FIO_STR_IS_SMALL(s) ? FIO_STR_SMALL_DATA(s) : s->data);
+}
+
 /** Returns the String's length in bytes. */
 IFUNC size_t FIO_NAME(FIO_STR_NAME, len)(FIO_STR_PTR s_) {
   FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
   return (size_t)(FIO_STR_IS_SMALL(s) ? FIO_STR_SMALL_LEN(s) : s->len);
-}
-
-/** Returns a pointer (`char *`) to the String's content. */
-IFUNC char *FIO_NAME(FIO_STR_NAME, data)(FIO_STR_PTR s_) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  return (char *)(FIO_STR_IS_SMALL(s) ? FIO_STR_SMALL_DATA(s) : s->data);
 }
 
 /** Returns the String's existing capacity (total used & available memory). */
@@ -5384,8 +5381,8 @@ IFUNC int FIO_NAME(FIO_STR_NAME, iseq)(const FIO_STR_PTR str1_,
     return 1;
   if (!str1 || !str2)
     return 0;
-  fio_str_info_s s1 = FIO_NAME(FIO_STR_NAME, info)(str1_);
-  fio_str_info_s s2 = FIO_NAME(FIO_STR_NAME, info)(str2_);
+  fio_cstr_s s1 = FIO_NAME2(FIO_STR_NAME, cstr)(str1_);
+  fio_cstr_s s2 = FIO_NAME2(FIO_STR_NAME, cstr)(str2_);
   return (s1.len == s2.len && !memcmp(s1.data, s2.data, s1.len));
 }
 
@@ -5417,19 +5414,18 @@ String Implementation - Memory management
  * Note: When shrinking, any existing data beyond the new size may be
  * corrupted.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, resize)(FIO_STR_PTR s_,
-                                                    size_t size) {
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, resize)(FIO_STR_PTR s_, size_t size) {
   FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
   if (!s || FIO_STR_IS_FROZEN(s)) {
-    return FIO_NAME(FIO_STR_NAME, info)(s_);
+    return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
   }
   if (FIO_STR_IS_SMALL(s)) {
     if (size <= FIO_STR_SMALL_CAPA(s)) {
       FIO_STR_SMALL_LEN_SET(s, size);
       FIO_STR_SMALL_DATA(s)[size] = 0;
-      return (fio_str_info_s){.capa = FIO_STR_SMALL_CAPA(s),
-                              .len = size,
-                              .data = FIO_STR_SMALL_DATA(s)};
+      return (fio_cstr_s){.capa = FIO_STR_SMALL_CAPA(s),
+                          .len = size,
+                          .data = FIO_STR_SMALL_DATA(s)};
     }
     FIO_STR_SMALL_LEN_SET(s, FIO_STR_SMALL_CAPA(s));
     FIO_NAME(FIO_STR_NAME, reserve)(s_, size);
@@ -5444,7 +5440,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, resize)(FIO_STR_PTR s_,
 big:
   s->len = size;
   s->data[size] = 0;
-  return (fio_str_info_s){.capa = s->capa, .len = size, .data = s->data};
+  return (fio_cstr_s){.capa = s->capa, .len = size, .data = s->data};
 }
 
 /**
@@ -5485,23 +5481,23 @@ shrink2small:
  *
  * Returns the current state of the String.
  */
-SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, reserve)(FIO_STR_PTR s_,
-                                                     size_t amount) {
+SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, reserve)(FIO_STR_PTR s_,
+                                                 size_t amount) {
   FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
   if (!s || FIO_STR_IS_FROZEN(s)) {
-    return FIO_NAME(FIO_STR_NAME, info)(s_);
+    return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
   }
   char *tmp;
   if (FIO_STR_IS_SMALL(s)) {
     if (amount <= FIO_STR_SMALL_CAPA(s)) {
-      return (fio_str_info_s){.capa = FIO_STR_SMALL_CAPA(s),
-                              .len = FIO_STR_SMALL_LEN(s),
-                              .data = FIO_STR_SMALL_DATA(s)};
+      return (fio_cstr_s){.capa = FIO_STR_SMALL_CAPA(s),
+                          .len = FIO_STR_SMALL_LEN(s),
+                          .data = FIO_STR_SMALL_DATA(s)};
     }
     goto is_small;
   }
   if (amount < s->capa) {
-    return (fio_str_info_s){.capa = s->capa, .len = s->len, .data = s->data};
+    return (fio_cstr_s){.capa = s->capa, .len = s->len, .data = s->data};
   }
   amount = FIO_STR_CAPA2WORDS(amount);
   if (s->dealloc == FIO_NAME(FIO_STR_NAME, _default_dealloc)) {
@@ -5523,7 +5519,7 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, reserve)(FIO_STR_PTR s_,
   s->capa = amount;
   s->data = tmp;
   s->data[amount] = 0;
-  return (fio_str_info_s){.capa = s->capa, .len = s->len, .data = s->data};
+  return (fio_cstr_s){.capa = s->capa, .len = s->len, .data = s->data};
 
 is_small:
   /* small string (string data is within the container) */
@@ -5542,10 +5538,10 @@ is_small:
       .dealloc = FIO_NAME(FIO_STR_NAME, _default_dealloc),
       .data = tmp,
   };
-  return (fio_str_info_s){
+  return (fio_cstr_s){
       .capa = amount, .len = FIO_STR_SMALL_LEN(s), .data = s->data};
 no_mem:
-  return FIO_NAME(FIO_STR_NAME, info)(s_);
+  return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
 }
 
 /* *****************************************************************************
@@ -5637,7 +5633,7 @@ SFUNC size_t FIO_NAME(FIO_STR_NAME, utf8_valid)(FIO_STR_PTR s_) {
   FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
   if (!s)
     return 0;
-  fio_str_info_s state = FIO_NAME(FIO_STR_NAME, info)(s_);
+  fio_cstr_s state = FIO_NAME2(FIO_STR_NAME, cstr)(s_);
   if (!state.len)
     return 1;
   char *const end = state.data + state.len;
@@ -5650,7 +5646,7 @@ SFUNC size_t FIO_NAME(FIO_STR_NAME, utf8_valid)(FIO_STR_PTR s_) {
 
 /** Returns the String's length in UTF-8 characters. */
 SFUNC size_t FIO_NAME(FIO_STR_NAME, utf8_len)(FIO_STR_PTR s_) {
-  fio_str_info_s state = FIO_NAME(FIO_STR_NAME, info)(s_);
+  fio_cstr_s state = FIO_NAME2(FIO_STR_NAME, cstr)(s_);
   if (!state.len)
     return 0;
   char *end = state.data + state.len;
@@ -5683,7 +5679,7 @@ SFUNC size_t FIO_NAME(FIO_STR_NAME, utf8_len)(FIO_STR_PTR s_) {
  */
 SFUNC int FIO_NAME(FIO_STR_NAME, utf8_select)(FIO_STR_PTR s_, intptr_t *pos,
                                               size_t *len) {
-  fio_str_info_s state = FIO_NAME(FIO_STR_NAME, info)(s_);
+  fio_cstr_s state = FIO_NAME2(FIO_STR_NAME, cstr)(s_);
   int32_t c = 0;
   char *p = state.data;
   char *const end = state.data + state.len;
@@ -5780,13 +5776,12 @@ String Implementation - Content Manipulation and Review
  * Writes data at the end of the String (similar to `fio_str_insert` with the
  * argument `pos == -1`).
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s_,
-                                                   const void *src,
-                                                   size_t src_len) {
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s_, const void *src,
+                                               size_t src_len) {
   FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
   if (!s || !src_len || !src || FIO_STR_IS_FROZEN(s))
-    return FIO_NAME(FIO_STR_NAME, info)(s_);
-  fio_str_info_s state = FIO_NAME(FIO_STR_NAME, resize)(
+    return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
+  fio_cstr_s state = FIO_NAME(FIO_STR_NAME, resize)(
       s_, src_len + FIO_NAME(FIO_STR_NAME, len)(s_));
   memcpy(state.data + (state.len - src_len), src, src_len);
   return state;
@@ -5795,12 +5790,11 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s_,
 /**
  * Writes a number at the end of the String using normal base 10 notation.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s_,
-                                                     int64_t num) {
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s_, int64_t num) {
   FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
   if (!s || FIO_STR_IS_FROZEN(s))
-    return FIO_NAME(FIO_STR_NAME, info)(s_);
-  fio_str_info_s i;
+    return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
+  fio_cstr_s i;
   if (!num) {
     i = FIO_NAME(FIO_STR_NAME, resize)(s_, FIO_NAME(FIO_STR_NAME, len)(s_) + 1);
     i.data[i.len - 1] = '0';
@@ -5837,20 +5831,20 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s_,
  *
  * If `dest` is empty, the resulting Strings will be equal.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, concat)(FIO_STR_PTR dest_,
-                                                    FIO_STR_PTR const src_) {
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, concat)(FIO_STR_PTR dest_,
+                                                FIO_STR_PTR const src_) {
   FIO_NAME(FIO_STR_NAME, s) *dest =
       (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(dest_);
   FIO_NAME(FIO_STR_NAME, s) *src =
       (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(src_);
   if (!dest || !src || FIO_STR_IS_FROZEN(dest)) {
-    return FIO_NAME(FIO_STR_NAME, info)(dest_);
+    return FIO_NAME2(FIO_STR_NAME, cstr)(dest_);
   }
-  fio_str_info_s src_state = FIO_NAME(FIO_STR_NAME, info)(src_);
+  fio_cstr_s src_state = FIO_NAME2(FIO_STR_NAME, cstr)(src_);
   if (!src_state.len)
-    return FIO_NAME(FIO_STR_NAME, info)(dest_);
+    return FIO_NAME2(FIO_STR_NAME, cstr)(dest_);
   const size_t old_len = FIO_NAME(FIO_STR_NAME, len)(dest_);
-  fio_str_info_s state =
+  fio_cstr_s state =
       FIO_NAME(FIO_STR_NAME, resize)(dest_, src_state.len + old_len);
   memcpy(state.data + old_len, src_state.data, src_state.len);
   return state;
@@ -5868,12 +5862,12 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, concat)(FIO_STR_PTR dest_,
  * If `src_len == 0` than `src` will be ignored and the data marked for
  * replacement will be erased.
  */
-SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
-                              replace)(FIO_STR_PTR s_, intptr_t start_pos,
-                                       size_t old_len, const void *src,
-                                       size_t src_len) {
+SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
+                          replace)(FIO_STR_PTR s_, intptr_t start_pos,
+                                   size_t old_len, const void *src,
+                                   size_t src_len) {
   FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  fio_str_info_s state = FIO_NAME(FIO_STR_NAME, info)(s_);
+  fio_cstr_s state = FIO_NAME2(FIO_STR_NAME, cstr)(s_);
   if (!s || FIO_STR_IS_FROZEN(s) || (!old_len && !src_len))
     return state;
 
@@ -5919,7 +5913,7 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
  *
  * Data is written to the end of the String.
  */
-SFUNC fio_str_info_s __attribute__((format(printf, 2, 0)))
+SFUNC fio_cstr_s __attribute__((format(printf, 2, 0)))
 FIO_NAME(FIO_STR_NAME, vprintf)(FIO_STR_PTR s_, const char *format,
                                 va_list argv) {
   va_list argv_cpy;
@@ -5927,8 +5921,8 @@ FIO_NAME(FIO_STR_NAME, vprintf)(FIO_STR_PTR s_, const char *format,
   int len = vsnprintf(NULL, 0, format, argv_cpy);
   va_end(argv_cpy);
   if (len <= 0)
-    return FIO_NAME(FIO_STR_NAME, info)(s_);
-  fio_str_info_s state =
+    return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
+  fio_cstr_s state =
       FIO_NAME(FIO_STR_NAME, resize)(s_, len + FIO_NAME(FIO_STR_NAME, len)(s_));
   vsnprintf(state.data + (state.len - len), len + 1, format, argv);
   return state;
@@ -5939,11 +5933,11 @@ FIO_NAME(FIO_STR_NAME, vprintf)(FIO_STR_PTR s_, const char *format,
  *
  * Data is written to the end of the String.
  */
-SFUNC fio_str_info_s __attribute__((format(printf, 2, 3)))
+SFUNC fio_cstr_s __attribute__((format(printf, 2, 3)))
 FIO_NAME(FIO_STR_NAME, printf)(FIO_STR_PTR s_, const char *format, ...) {
   va_list argv;
   va_start(argv, format);
-  fio_str_info_s state = FIO_NAME(FIO_STR_NAME, vprintf)(s_, format, argv);
+  fio_cstr_s state = FIO_NAME(FIO_STR_NAME, vprintf)(s_, format, argv);
   va_end(argv);
   return state;
 }
@@ -5964,9 +5958,9 @@ String API - C / JSON escaping
  * The JSON semantic are common to many programming languages, promising a UTF-8
  * String while making it easy to read and copy the string during debugging.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
-                                                          const void *src_,
-                                                          size_t len) {
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
+                                                      const void *src_,
+                                                      size_t len) {
   const char escape_hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
                                    '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
   const uint8_t *src = (const uint8_t *)src_;
@@ -6022,7 +6016,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
     return FIO_NAME(FIO_STR_NAME, write)(s, src, len);
   }
   /* reserve space and copy any valid "head" */
-  fio_str_info_s dest = FIO_NAME(FIO_STR_NAME, reserve)(
+  fio_cstr_s dest = FIO_NAME(FIO_STR_NAME, reserve)(
       s, FIO_NAME(FIO_STR_NAME, len)(s) + extra_len + len);
   dest.data += dest.len;
   --at;
@@ -6128,9 +6122,9 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
 /**
  * Writes an escaped data into the string after unescaping the data.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_unescape)(FIO_STR_PTR s,
-                                                            const void *src_,
-                                                            size_t len) {
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_unescape)(FIO_STR_PTR s,
+                                                        const void *src_,
+                                                        size_t len) {
   const uint8_t is_hex[] = {
       0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
       0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
@@ -6146,7 +6140,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_unescape)(FIO_STR_PTR s,
       0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
       0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0};
 
-  fio_str_info_s dest =
+  fio_cstr_s dest =
       FIO_NAME(FIO_STR_NAME, reserve)(s, FIO_NAME(FIO_STR_NAME, len)(s) + len);
   size_t at = 0;
   const uint8_t *src = (const uint8_t *)src_;
@@ -6297,11 +6291,11 @@ String - Base64 support
  * Writes data at the end of the String, encoding the data as Base64 encoded
  * data.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
-                              write_b64enc)(FIO_STR_PTR s_, const void *data,
-                                            size_t len, uint8_t url_encoded) {
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
+                          write_b64enc)(FIO_STR_PTR s_, const void *data,
+                                        size_t len, uint8_t url_encoded) {
   if (!FIO_PTR_UNTAG(s_) || !len)
-    return FIO_NAME(FIO_STR_NAME, info)(s_);
+    return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
 
   /* the base64 encoding array */
   const char *encoding;
@@ -6318,7 +6312,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
   const int mod = len - (groups * 3);
   const int target_size = (groups + (mod != 0)) * 4;
   const uint32_t org_len = FIO_NAME(FIO_STR_NAME, len)(s_);
-  fio_str_info_s i = FIO_NAME(FIO_STR_NAME, resize)(s_, org_len + target_size);
+  fio_cstr_s i = FIO_NAME(FIO_STR_NAME, resize)(s_, org_len + target_size);
   char *writer = i.data + org_len;
   const unsigned char *reader = (const unsigned char *)data;
 
@@ -6358,9 +6352,9 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
 /**
  * Writes decoded base64 data to the end of the String.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_b64dec)(FIO_STR_PTR s_,
-                                                          const void *encoded_,
-                                                          size_t len) {
+IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_b64dec)(FIO_STR_PTR s_,
+                                                      const void *encoded_,
+                                                      size_t len) {
   /*
   Base64 decoding array. Generation script (Ruby):
 
@@ -6395,7 +6389,7 @@ s.length.times {|i| a[s[i]] = (i << 1) | 1 }; a.map!{ |i| i.to_i }; a
 #define FIO_BASE64_BITVAL(x) ((base64_decodes[(x)] >> 1) & 63)
 
   if (!FIO_PTR_UNTAG(s_) || !len)
-    return FIO_NAME(FIO_STR_NAME, info)(s_);
+    return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
 
   const uint8_t *encoded = (const uint8_t *)encoded_;
 
@@ -6406,7 +6400,7 @@ s.length.times {|i| a[s[i]] = (i << 1) | 1 }; a.map!{ |i| i.to_i }; a
 
   /* reserve memory space */
   const uint32_t org_len = FIO_NAME(FIO_STR_NAME, len)(s_);
-  fio_str_info_s i =
+  fio_cstr_s i =
       FIO_NAME(FIO_STR_NAME, reserve)(s_, org_len + ((len >> 2) * 3) + 3);
   i.data += org_len;
 
@@ -6427,7 +6421,7 @@ s.length.times {|i| a[s[i]] = (i << 1) | 1 }; a.map!{ |i| i.to_i }; a
     tmp4 = *(encoded++);
     if (!base64_decodes[tmp1] || !base64_decodes[tmp2] ||
         !base64_decodes[tmp3] || !base64_decodes[tmp4]) {
-      return (fio_str_info_s){.data = NULL};
+      return (fio_cstr_s){.data = NULL};
     }
     *(i.data++) =
         (FIO_BASE64_BITVAL(tmp1) << 2) | (FIO_BASE64_BITVAL(tmp2) >> 4);
@@ -6453,7 +6447,7 @@ s.length.times {|i| a[s[i]] = (i << 1) | 1 }; a.map!{ |i| i.to_i }; a
   case 1:
     tmp1 = *(encoded++);
     if (!base64_decodes[tmp1]) {
-      return (fio_str_info_s){.data = NULL};
+      return (fio_cstr_s){.data = NULL};
     }
     *(i.data++) = FIO_BASE64_BITVAL(tmp1);
     written += 1;
@@ -6462,7 +6456,7 @@ s.length.times {|i| a[s[i]] = (i << 1) | 1 }; a.map!{ |i| i.to_i }; a
     tmp1 = *(encoded++);
     tmp2 = *(encoded++);
     if (!base64_decodes[tmp1] || !base64_decodes[tmp2]) {
-      return (fio_str_info_s){.data = NULL};
+      return (fio_cstr_s){.data = NULL};
     }
     *(i.data++) =
         (FIO_BASE64_BITVAL(tmp1) << 2) | (FIO_BASE64_BITVAL(tmp2) >> 6);
@@ -6475,7 +6469,7 @@ s.length.times {|i| a[s[i]] = (i << 1) | 1 }; a.map!{ |i| i.to_i }; a
     tmp3 = *(encoded++);
     if (!base64_decodes[tmp1] || !base64_decodes[tmp2] ||
         !base64_decodes[tmp3]) {
-      return (fio_str_info_s){.data = NULL};
+      return (fio_cstr_s){.data = NULL};
     }
     *(i.data++) =
         (FIO_BASE64_BITVAL(tmp1) << 2) | (FIO_BASE64_BITVAL(tmp2) >> 6);
@@ -6523,11 +6517,11 @@ String - read file
  *
  * Works on POSIX only.
  */
-SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
-                              readfile)(FIO_STR_PTR s_, const char *filename,
-                                        intptr_t start_at, intptr_t limit) {
+SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
+                          readfile)(FIO_STR_PTR s_, const char *filename,
+                                    intptr_t start_at, intptr_t limit) {
   FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  fio_str_info_s state = {.data = NULL};
+  fio_cstr_s state = {.data = NULL};
   /* POSIX implementations. */
   if (filename == NULL || !s)
     return state;
@@ -6563,7 +6557,7 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
   }
 
   if (f_data.st_size <= 0 || start_at >= f_data.st_size) {
-    state = FIO_NAME(FIO_STR_NAME, info)(s_);
+    state = FIO_NAME2(FIO_STR_NAME, cstr)(s_);
     goto finish;
   }
 
@@ -8391,7 +8385,7 @@ FIOBJ Data / Info
 FIOBJ_HIFUNC unsigned char fiobj_is_eq(FIOBJ a, FIOBJ b);
 
 /** Returns a temporary String representation for any FIOBJ object. */
-FIOBJ_HIFUNC fio_str_info_s fiobj2cstr(FIOBJ o);
+FIOBJ_HIFUNC fio_cstr_s fiobj2cstr(FIOBJ o);
 
 /** Returns an integer representation for any FIOBJ object. */
 FIOBJ_HIFUNC intptr_t fiobj2i(FIOBJ o);
@@ -8456,7 +8450,7 @@ typedef struct {
   /** Test for equality between two objects with the same `type_id` */
   unsigned char (*is_eq)(FIOBJ a, FIOBJ b);
   /** Converts an object to a String */
-  fio_str_info_s (*to_s)(FIOBJ o);
+  fio_cstr_s (*to_s)(FIOBJ o);
   /** Converts an object to an integer */
   intptr_t (*to_i)(FIOBJ o);
   /** Converts an object to a double */
@@ -8504,13 +8498,13 @@ FIOBJ Integers
 FIOBJ_HIFUNC FIOBJ fiobj_num_new(intptr_t i);
 
 /** Reads the number from a FIOBJ Number. */
-FIOBJ_HIFUNC intptr_t fiobj_num_2i(FIOBJ i);
+FIOBJ_HIFUNC intptr_t fiobj_num2i(FIOBJ i);
 
 /** Reads the number from a FIOBJ Number, fitting it in a double. */
-FIOBJ_HIFUNC double fiobj_num_2f(FIOBJ i);
+FIOBJ_HIFUNC double fiobj_num2f(FIOBJ i);
 
 /** Returns a String representation of the number (in base 10). */
-FIOBJ_FUNC fio_str_info_s fiobj_num_to_s(FIOBJ i);
+FIOBJ_FUNC fio_cstr_s fiobj_num2cstr(FIOBJ i);
 
 /** Frees a FIOBJ number. */
 FIOBJ_HIFUNC void fiobj_num_free(FIOBJ i);
@@ -8525,13 +8519,13 @@ FIOBJ Floats
 FIOBJ_HIFUNC FIOBJ fiobj_float_new(double i);
 
 /** Reads the number from a FIOBJ Float rounnding it to an interger. */
-FIOBJ_HIFUNC intptr_t fiobj_float_2i(FIOBJ i);
+FIOBJ_HIFUNC intptr_t fiobj_float2i(FIOBJ i);
 
 /** Reads the value from a FIOBJ Float, as a double. */
-FIOBJ_HIFUNC double fiobj_float_2f(FIOBJ i);
+FIOBJ_HIFUNC double fiobj_float2f(FIOBJ i);
 
 /** Returns a String representation of the float. */
-FIOBJ_FUNC fio_str_info_s fiobj_float_to_s(FIOBJ i);
+FIOBJ_FUNC fio_cstr_s fiobj_float2cstr(FIOBJ i);
 
 /** Frees a FIOBJ Float. */
 FIOBJ_HIFUNC void fiobj_float_free(FIOBJ i);
@@ -8582,7 +8576,7 @@ FIOBJ_HIFUNC FIOBJ fiobj_str_new_buf(uint32_t capa) {
 FIOBJ_HIFUNC FIOBJ fiobj_str_new_copy(FIOBJ original) {
   FIOBJ s = fiobj_str_new();
   FIO_ASSERT_ALLOC(s);
-  fio_str_info_s i = fiobj2cstr(original);
+  fio_cstr_s i = fiobj2cstr(original);
   fiobj_str_write(s, i.data, i.len);
   return s;
 }
@@ -8697,18 +8691,18 @@ FIOBJ_HIFUNC FIOBJ fiobj2json(FIOBJ dest, FIOBJ o, uint8_t beautify) {
  * Returns the number of bytes consumed. On Error, 0 is returned and no data is
  * consumed.
  */
-FIOBJ_FUNC size_t fiobj_hash_update_json(FIOBJ hash, fio_str_info_s str);
+FIOBJ_FUNC size_t fiobj_hash_update_json(FIOBJ hash, fio_cstr_s str);
 
 /** Helper macro, calls `fiobj_hash_update_json` with string information */
 #define fiobj_hash_update_json2(hash, data_, len_)                             \
-  fiobj_hash_update_json(hash, (fio_str_info_s){.data = data_, .len = len_})
+  fiobj_hash_update_json(hash, (fio_cstr_s){.data = data_, .len = len_})
 
 /** Returns a JSON valid FIOBJ String, representing the object. */
-FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_str_info_s str);
+FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_cstr_s str);
 
 /** Helper macro, calls `fiobj_json_parse` with string information */
 #define fiobj_json_parse2(data_, len_)                                         \
-  fiobj_json_parse((fio_str_info_s){.data = data_, .len = len_})
+  fiobj_json_parse((fio_cstr_s){.data = data_, .len = len_})
 
 /* *****************************************************************************
 
@@ -8845,50 +8839,50 @@ __thread char __attribute__((weak))
 fiobj2cstr___buffer__perthread[FIOBJ2CSTR_BUFFER_LIMIT];
 
 /** Returns a temporary String representation for any FIOBJ object. */
-FIOBJ_HIFUNC fio_str_info_s fiobj2cstr(FIOBJ o) {
+FIOBJ_HIFUNC fio_cstr_s fiobj2cstr(FIOBJ o) {
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
     switch (o) {
     case FIOBJ_T_NULL:
-      return (fio_str_info_s){.data = "null", .len = 4};
+      return (fio_cstr_s){.data = "null", .len = 4};
     case FIOBJ_T_TRUE:
-      return (fio_str_info_s){.data = "true", .len = 4};
+      return (fio_cstr_s){.data = "true", .len = 4};
     case FIOBJ_T_FALSE:
-      return (fio_str_info_s){.data = "false", .len = 5};
+      return (fio_cstr_s){.data = "false", .len = 5};
     };
-    return (fio_str_info_s){.data = ""};
+    return (fio_cstr_s){.data = ""};
   case FIOBJ_T_NUMBER:
-    return fiobj_num_to_s(o);
+    return fiobj_num2cstr(o);
   case FIOBJ_T_FLOAT:
-    return fiobj_float_to_s(o);
+    return fiobj_float2cstr(o);
   case FIOBJ_T_STRING:
-    return fiobj_str_info(o);
+    return fiobj_str2cstr(o);
   case FIOBJ_T_ARRAY: /* fallthrough */
   case FIOBJ_T_HASH: {
     FIOBJ j = fiobj2json(FIOBJ_INVALID, o, 0);
     if (!j || fiobj_str_len(j) >= FIOBJ2CSTR_BUFFER_LIMIT) {
-      return (fio_str_info_s){
+      return (fio_cstr_s){
           .data = (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_ARRAY ? "[...]" : "{...}"),
           .len = 5};
     }
-    fio_str_info_s i = fiobj_str_info(j);
+    fio_cstr_s i = fiobj_str2cstr(j);
     memcpy(fiobj2cstr___buffer__perthread, i.data, i.len + 1);
     fiobj_free(j);
     i.data = fiobj2cstr___buffer__perthread;
     return i;
   }
-    return (fio_str_info_s){.data = "<...>", .len = 5};
+    return (fio_cstr_s){.data = "<...>", .len = 5};
   case FIOBJ_T_OTHER:
     return (*fiobj_object_metadata(o))->to_s(o);
   }
   if (!o)
-    return (fio_str_info_s){.data = "null", .len = 4};
-  return (fio_str_info_s){.data = ""};
+    return (fio_cstr_s){.data = "null", .len = 4};
+  return (fio_cstr_s){.data = ""};
 }
 
 /** Returns an integer representation for any FIOBJ object. */
 FIOBJ_HIFUNC intptr_t fiobj2i(FIOBJ o) {
-  fio_str_info_s tmp;
+  fio_cstr_s tmp;
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
     switch (o) {
@@ -8901,12 +8895,12 @@ FIOBJ_HIFUNC intptr_t fiobj2i(FIOBJ o) {
     };
     return -1;
   case FIOBJ_T_NUMBER:
-    return fiobj_num_2i(o);
+    return fiobj_num2i(o);
   case FIOBJ_T_FLOAT:
     /* FIXME */
-    return fiobj_float_2i(o);
+    return fiobj_float2i(o);
   case FIOBJ_T_STRING:
-    tmp = fiobj_str_info(o);
+    tmp = fiobj_str2cstr(o);
     if (!tmp.len)
       return 0;
     return fio_atol(&tmp.data);
@@ -8926,7 +8920,7 @@ FIOBJ_HIFUNC intptr_t fiobj2i(FIOBJ o) {
 
 /** Returns a float (double) representation for any FIOBJ object. */
 FIOBJ_HIFUNC double fiobj2f(FIOBJ o) {
-  fio_str_info_s tmp;
+  fio_cstr_s tmp;
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
     switch (o) {
@@ -8938,11 +8932,11 @@ FIOBJ_HIFUNC double fiobj2f(FIOBJ o) {
     };
     return -1.0;
   case FIOBJ_T_NUMBER:
-    return fiobj_num_2f(o);
+    return fiobj_num2f(o);
   case FIOBJ_T_FLOAT:
-    return fiobj_float_2f(o);
+    return fiobj_float2f(o);
   case FIOBJ_T_STRING:
-    tmp = fiobj_str_info(o);
+    tmp = fiobj_str2cstr(o);
     if (!tmp.len)
       return 0;
     return (double)fio_atof(&tmp.data);
@@ -8999,7 +8993,7 @@ FIOBJ_HIFUNC FIOBJ fiobj_num_new(intptr_t i) {
 }
 
 /** Reads the number from a FIOBJ number. */
-FIOBJ_HIFUNC intptr_t fiobj_num_2i(FIOBJ i) {
+FIOBJ_HIFUNC intptr_t fiobj_num2i(FIOBJ i) {
   if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_NUMBER)
     return FIO_NUMBER_REVESE(i);
   /* FIXME */
@@ -9007,7 +9001,7 @@ FIOBJ_HIFUNC intptr_t fiobj_num_2i(FIOBJ i) {
 }
 
 /** Reads the number from a FIOBJ number, fitting it in a double. */
-FIOBJ_HIFUNC double fiobj_num_2f(FIOBJ i) { return (double)fiobj_num_2i(i); }
+FIOBJ_HIFUNC double fiobj_num2f(FIOBJ i) { return (double)fiobj_num2i(i); }
 
 /** Frees a FIOBJ number. */
 FIOBJ_HIFUNC void fiobj_num_free(FIOBJ i) {
@@ -9061,13 +9055,13 @@ FIOBJ_HIFUNC FIOBJ fiobj_float_new(double i) {
 }
 
 /** Reads the number from a FIOBJ number. */
-FIOBJ_HIFUNC intptr_t fiobj_float_2i(FIOBJ i) {
+FIOBJ_HIFUNC intptr_t fiobj_float2i(FIOBJ i) {
   /* FIXME */
-  return (intptr_t)fiobj_num_2f(i);
+  return (intptr_t)fiobj_num2f(i);
 }
 
 /** Reads the number from a FIOBJ number, fitting it in a double. */
-FIOBJ_HIFUNC double fiobj_float_2f(FIOBJ i) {
+FIOBJ_HIFUNC double fiobj_float2f(FIOBJ i) {
   if (sizeof(double) <= sizeof(FIOBJ) && FIOBJ_TYPE_CLASS(i) == FIOBJ_T_FLOAT) {
     union {
       double d;
@@ -9160,7 +9154,7 @@ FIOBJ_HIFUNC uint64_t fiobj2hash(FIOBJ target_hash, FIOBJ o) {
   }
   case FIOBJ_T_OTHER: {
     /* FIXME */
-    fio_str_info_s tmp = (*fiobj_object_metadata(o))->to_s(o);
+    fio_cstr_s tmp = (*fiobj_object_metadata(o))->to_s(o);
     return fio_risky_hash(tmp.data, tmp.len, target_hash);
   }
   }
@@ -9313,13 +9307,13 @@ FIOBJ Integers (bigger numbers)
 ***************************************************************************** */
 
 FIOBJ_FUNC unsigned char fiobj___num_is_eq(FIOBJ a, FIOBJ b) {
-  return fiobj_num_2i(a) == fiobj_num_2i(b);
+  return fiobj_num2i(a) == fiobj_num2i(b);
 }
 
-FIOBJ_FUNC fio_str_info_s fiobj_num_to_s(FIOBJ i) {
-  size_t len = fio_ltoa(fiobj___tmp_buffer, fiobj_num_2i(i), 10);
+FIOBJ_FUNC fio_cstr_s fiobj_num2cstr(FIOBJ i) {
+  size_t len = fio_ltoa(fiobj___tmp_buffer, fiobj_num2i(i), 10);
   fiobj___tmp_buffer[len] = 0;
-  return (fio_str_info_s){.data = fiobj___tmp_buffer, .len = len};
+  return (fio_cstr_s){.data = fiobj___tmp_buffer, .len = len};
 }
 
 FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___NUMBER_CLASS_VTBL = {
@@ -9332,11 +9326,11 @@ FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___NUMBER_CLASS_VTBL = {
     /** Test for equality between two objects with the same `type_id` */
     .is_eq = fiobj___num_is_eq,
     /** Converts an object to a String */
-    .to_s = fiobj_num_to_s,
+    .to_s = fiobj_num2cstr,
     /** Converts and object to an integer */
-    .to_i = fiobj_num_2i,
+    .to_i = fiobj_num2i,
     /** Converts and object to a float */
-    .to_f = fiobj_num_2f,
+    .to_f = fiobj_num2f,
     /** Returns the number of exposed elements held by the object, if any. */
     .count = fiobj___count_noop,
     /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
@@ -9350,13 +9344,13 @@ FIOBJ Floats (bigger / smaller doubles)
 ***************************************************************************** */
 
 FIOBJ_FUNC unsigned char fiobj___float_is_eq(FIOBJ a, FIOBJ b) {
-  return fiobj_float_2i(a) == fiobj_float_2i(b);
+  return fiobj_float2i(a) == fiobj_float2i(b);
 }
 
-FIOBJ_FUNC fio_str_info_s fiobj_float_to_s(FIOBJ i) {
-  size_t len = fio_ftoa(fiobj___tmp_buffer, fiobj_float_2f(i), 10);
+FIOBJ_FUNC fio_cstr_s fiobj_float2cstr(FIOBJ i) {
+  size_t len = fio_ftoa(fiobj___tmp_buffer, fiobj_float2f(i), 10);
   fiobj___tmp_buffer[len] = 0;
-  return (fio_str_info_s){.data = fiobj___tmp_buffer, .len = len};
+  return (fio_cstr_s){.data = fiobj___tmp_buffer, .len = len};
 }
 
 FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___FLOAT_CLASS_VTBL = {
@@ -9369,11 +9363,11 @@ FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___FLOAT_CLASS_VTBL = {
     /** Test for equality between two objects with the same `type_id` */
     .is_eq = fiobj___float_is_eq,
     /** Converts an object to a String */
-    .to_s = fiobj_float_to_s,
+    .to_s = fiobj_float2cstr,
     /** Converts and object to an integer */
-    .to_i = fiobj_float_2i,
+    .to_i = fiobj_float2i,
     /** Converts and object to a float */
-    .to_f = fiobj_float_2f,
+    .to_f = fiobj_float2f,
     /** Returns the number of exposed elements held by the object, if any. */
     .count = fiobj___count_noop,
     /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
@@ -9389,7 +9383,7 @@ FIOBJ JSON support - output
 FIOBJ_HIFUNC void fiobj___json_format_internal_beauty_pad(FIOBJ json,
                                                           uint8_t level) {
   uint32_t pos = fiobj_str_len(json);
-  fio_str_info_s tmp = fiobj_str_resize(json, level + pos + 2);
+  fio_cstr_s tmp = fiobj_str_resize(json, level + pos + 2);
   tmp.data[pos++] = '\r';
   tmp.data[pos++] = '\n';
   for (uint8_t i = 0; i < level; ++i)
@@ -9406,13 +9400,13 @@ FIOBJ_FUNC void fiobj___json_format_internal__(FIOBJ json, FIOBJ o,
   case FIOBJ_T_NUMBER: /* fallthrough */
   case FIOBJ_T_FLOAT:  /* fallthrough */
   {
-    fio_str_info_s info = fiobj2cstr(o);
+    fio_cstr_s info = fiobj2cstr(o);
     fiobj_str_write(json, info.data, info.len);
     return;
   }
   case FIOBJ_T_STRING: /* fallthrough */
   default: {
-    fio_str_info_s info = fiobj2cstr(o);
+    fio_cstr_s info = fiobj2cstr(o);
     fiobj_str_write(json, "\"", 1);
     fiobj_str_write_escape(json, info.data, info.len);
     fiobj_str_write(json, "\"", 1);
@@ -9457,7 +9451,7 @@ FIOBJ_FUNC void fiobj___json_format_internal__(FIOBJ json, FIOBJ o,
           if (beautify) {
             fiobj___json_format_internal_beauty_pad(json, level);
           }
-          fio_str_info_s info = fiobj2cstr(couplet->obj.key);
+          fio_cstr_s info = fiobj2cstr(couplet->obj.key);
           fiobj_str_write(json, "\"", 1);
           fiobj_str_write_escape(json, info.data, info.len);
           fiobj_str_write(json, "\":", 2);
@@ -9611,7 +9605,7 @@ static inline void fio_json_on_error(fio_json_parser_s *p) {
  * Returns the number of bytes consumed. On Error, 0 is returned and no data is
  * consumed.
  */
-FIOBJ_FUNC size_t fiobj_hash_update_json(FIOBJ hash, fio_str_info_s str) {
+FIOBJ_FUNC size_t fiobj_hash_update_json(FIOBJ hash, fio_cstr_s str) {
   if (!hash)
     return 0;
   fiobj_json_parser_s p = {.top = FIOBJ_INVALID, .target = hash};
@@ -9623,7 +9617,7 @@ FIOBJ_FUNC size_t fiobj_hash_update_json(FIOBJ hash, fio_str_info_s str) {
 }
 
 /** Returns a JSON valid FIOBJ String, representing the object. */
-FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_str_info_s str) {
+FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_cstr_s str) {
   fiobj_json_parser_s p = {.top = FIOBJ_INVALID};
   size_t consumed = fio_json_parse(&p.p, str.data, str.len);
   if (!consumed || p.p.depth) {
@@ -10520,7 +10514,7 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   TEST_ASSERT(ary____test_count(pa) == 100,
               "set with 100 elements should force create elements.");
   // FIO_ARY_EACH(pa, pos) {
-  //   fprintf(stderr, "[%zu]  %d\n", (size_t)(pos - ary____test_to_a(pa)),
+  //   fprintf(stderr, "[%zu]  %d\n", (size_t)(pos - ary____test2ptr(pa)),
   //   *pos);
   // }
   TEST_ASSERT(ary____test_get(pa, 99) == 1,
@@ -10553,7 +10547,7 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
               "Destroyed array should have zero capacity");
   TEST_ASSERT(ary____test_count(pa) == 0,
               "Destroyed array should have zero elements");
-  TEST_ASSERT(ary____test_to_a(pa) == NULL,
+  TEST_ASSERT(ary____test2ptr(pa) == NULL,
               "Destroyed array shouldn't have memory allocated");
   ary____test_unshift(pa, 1);
   ary____test_unshift(pa, 2);
@@ -10572,18 +10566,18 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   ary2____test_s a2 = FIO_ARY_INIT;
   ary2____test_set(&a2, 99, 1, NULL);
   FIO_ARY_EACH(&a2, pos) {
-    TEST_ASSERT((*pos == 0xFF || (pos - ary2____test_to_a(&a2)) == 99),
+    TEST_ASSERT((*pos == 0xFF || (pos - ary2____test2ptr(&a2)) == 99),
                 "uninitialized elements should be initialized as "
                 "FIO_ARY_TYPE_INVALID");
   }
   ary2____test_set(&a2, -200, 1, NULL);
   TEST_ASSERT(ary2____test_count(&a2) == 200, "array should have 100 items.");
   FIO_ARY_EACH(&a2, pos) {
-    TEST_ASSERT((*pos == 0xFF || (pos - ary2____test_to_a(&a2)) == 0 ||
-                 (pos - ary2____test_to_a(&a2)) == 199),
+    TEST_ASSERT((*pos == 0xFF || (pos - ary2____test2ptr(&a2)) == 0 ||
+                 (pos - ary2____test2ptr(&a2)) == 199),
                 "uninitialized elements should be initialized as "
                 "FIO_ARY_TYPE_INVALID (index %zd)",
-                (pos - ary2____test_to_a(&a2)));
+                (pos - ary2____test2ptr(&a2)));
   }
   ary2____test_destroy(&a2);
 
@@ -11000,9 +10994,9 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
               fio__str_____test_capa(&str));
   TEST_ASSERT(fio__str_____test_len(&str) == 0,
               "small string length reporting error!");
-  TEST_ASSERT(fio__str_____test_data(&str) == ((char *)(&str) + 1),
+  TEST_ASSERT(fio__str_____test2ptr(&str) == ((char *)(&str) + 1),
               "small string pointer reporting error (%zd offset)!",
-              (ssize_t)(((char *)(&str) + 1) - fio__str_____test_data(&str)));
+              (ssize_t)(((char *)(&str) + 1) - fio__str_____test2ptr(&str)));
   fio__str_____test_write(&str, "World", 4);
   TEST_ASSERT(str.special,
               "small string writing error - not small on small write!");
@@ -11010,17 +11004,17 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
               "Small string capacity reporting error after write!");
   TEST_ASSERT(fio__str_____test_len(&str) == 4,
               "small string length reporting error after write!");
-  TEST_ASSERT(fio__str_____test_data(&str) == (char *)&str + 1,
+  TEST_ASSERT(fio__str_____test2ptr(&str) == (char *)&str + 1,
               "small string pointer reporting error after write!");
-  TEST_ASSERT(strlen(fio__str_____test_data(&str)) == 4,
+  TEST_ASSERT(strlen(fio__str_____test2ptr(&str)) == 4,
               "small string NUL missing after write (%zu)!",
-              strlen(fio__str_____test_data(&str)));
-  TEST_ASSERT(!strcmp(fio__str_____test_data(&str), "Worl"),
-              "small string write error (%s)!", fio__str_____test_data(&str));
-  TEST_ASSERT(fio__str_____test_data(&str) == fio__str_____test_info(&str).data,
+              strlen(fio__str_____test2ptr(&str)));
+  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Worl"),
+              "small string write error (%s)!", fio__str_____test2ptr(&str));
+  TEST_ASSERT(fio__str_____test2ptr(&str) == fio__str_____test2cstr(&str).data,
               "small string `data` != `info.data` (%p != %p)",
-              (void *)fio__str_____test_data(&str),
-              (void *)fio__str_____test_info(&str).data);
+              (void *)fio__str_____test2ptr(&str),
+              (void *)fio__str_____test2cstr(&str).data);
 
   fio__str_____test_reserve(&str, sizeof(fio__str_____test_s));
   TEST_ASSERT(!str.special,
@@ -11028,48 +11022,48 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   TEST_ASSERT(fio__str_____test_capa(&str) >= sizeof(fio__str_____test_s) - 1,
               "Long String capacity update error (%zu != %zu)!",
               fio__str_____test_capa(&str), sizeof(fio__str_____test_s));
-  TEST_ASSERT(fio__str_____test_data(&str) == fio__str_____test_info(&str).data,
-              "Long String `fio__str_____test_data` !>= "
-              "`fio__str_____test_info(s).data` (%p != %p)",
-              (void *)fio__str_____test_data(&str),
-              (void *)fio__str_____test_info(&str).data);
+  TEST_ASSERT(fio__str_____test2ptr(&str) == fio__str_____test2cstr(&str).data,
+              "Long String `fio__str_____test2ptr` !>= "
+              "`fio__str_____test2cstr(s).data` (%p != %p)",
+              (void *)fio__str_____test2ptr(&str),
+              (void *)fio__str_____test2cstr(&str).data);
 
   TEST_ASSERT(
       fio__str_____test_len(&str) == 4,
       "Long String length changed during conversion from small string (%zu)!",
       fio__str_____test_len(&str));
-  TEST_ASSERT(fio__str_____test_data(&str) == str.data,
+  TEST_ASSERT(fio__str_____test2ptr(&str) == str.data,
               "Long String pointer reporting error after capacity update!");
-  TEST_ASSERT(strlen(fio__str_____test_data(&str)) == 4,
+  TEST_ASSERT(strlen(fio__str_____test2ptr(&str)) == 4,
               "Long String NUL missing after capacity update (%zu)!",
-              strlen(fio__str_____test_data(&str)));
-  TEST_ASSERT(!strcmp(fio__str_____test_data(&str), "Worl"),
+              strlen(fio__str_____test2ptr(&str)));
+  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Worl"),
               "Long String value changed after capacity update (%s)!",
-              fio__str_____test_data(&str));
+              fio__str_____test2ptr(&str));
 
   fio__str_____test_write(&str, "d!", 2);
-  TEST_ASSERT(!strcmp(fio__str_____test_data(&str), "World!"),
-              "Long String `write` error (%s)!", fio__str_____test_data(&str));
+  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "World!"),
+              "Long String `write` error (%s)!", fio__str_____test2ptr(&str));
 
   fio__str_____test_replace(&str, 0, 0, "Hello ", 6);
-  TEST_ASSERT(!strcmp(fio__str_____test_data(&str), "Hello World!"),
-              "Long String `insert` error (%s)!", fio__str_____test_data(&str));
+  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Hello World!"),
+              "Long String `insert` error (%s)!", fio__str_____test2ptr(&str));
 
   fio__str_____test_resize(&str, 6);
-  TEST_ASSERT(!strcmp(fio__str_____test_data(&str), "Hello "),
+  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Hello "),
               "Long String `resize` clipping error (%s)!",
-              fio__str_____test_data(&str));
+              fio__str_____test2ptr(&str));
 
   fio__str_____test_replace(&str, 6, 0, "My World!", 9);
-  TEST_ASSERT(!strcmp(fio__str_____test_data(&str), "Hello My World!"),
+  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Hello My World!"),
               "Long String `replace` error when testing overflow (%s)!",
-              fio__str_____test_data(&str));
+              fio__str_____test2ptr(&str));
 
   str.capa = str.len;
   fio__str_____test_replace(&str, -10, 2, "Big", 3);
-  TEST_ASSERT(!strcmp(fio__str_____test_data(&str), "Hello Big World!"),
+  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Hello Big World!"),
               "Long String `replace` error when testing splicing (%s)!",
-              fio__str_____test_data(&str));
+              fio__str_____test2ptr(&str));
 
   TEST_ASSERT(fio__str_____test_capa(&str) ==
                   ROUND_UP_CAPA_2WORDS(strlen("Hello Big World!")),
@@ -11084,8 +11078,8 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     TEST_ASSERT(fio__str_____test_len(&str) == strlen("Hello Big World!"),
                 "Compacting altered String length! (%zu != %zu)!",
                 fio__str_____test_len(&str), strlen("Hello Big World!"));
-    TEST_ASSERT(!strcmp(fio__str_____test_data(&str), "Hello Big World!"),
-                "Compact data error (%s)!", fio__str_____test_data(&str));
+    TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Hello Big World!"),
+                "Compact data error (%s)!", fio__str_____test2ptr(&str));
     TEST_ASSERT(fio__str_____test_capa(&str) == sizeof(str) - 2,
                 "Compacted String capacity reporting error!");
   } else {
@@ -11096,10 +11090,10 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     fio__str_____test_freeze(&str);
     TEST_ASSERT(fio__str_____test_is_frozen(&str),
                 "Frozen String not flagged as frozen.");
-    fio_str_info_s old_state = fio__str_____test_info(&str);
+    fio_cstr_s old_state = fio__str_____test2cstr(&str);
     fio__str_____test_write(&str, "more data to be written here", 28);
     fio__str_____test_replace(&str, 2, 1, "more data to be written here", 28);
-    fio_str_info_s new_state = fio__str_____test_info(&str);
+    fio_cstr_s new_state = fio__str_____test2cstr(&str);
     TEST_ASSERT(old_state.len == new_state.len,
                 "Frozen String length changed!");
     TEST_ASSERT(old_state.data == new_state.data,
@@ -11110,9 +11104,9 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     str.special &= (uint8_t)(~(2U));
   }
   fio__str_____test_printf(&str, " %u", 42);
-  TEST_ASSERT(!strcmp(fio__str_____test_data(&str), "Hello Big World! 42"),
+  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Hello Big World! 42"),
               "`fio__str_____test_printf` data error (%s)!",
-              fio__str_____test_data(&str));
+              fio__str_____test2ptr(&str));
 
   {
     fio__str_____test_s str2 = FIO_STR_INIT;
@@ -11120,13 +11114,13 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     TEST_ASSERT(
         fio__str_____test_iseq(&str, &str2),
         "`fio__str_____test_concat` error, strings not equal (%s != %s)!",
-        fio__str_____test_data(&str), fio__str_____test_data(&str2));
+        fio__str_____test2ptr(&str), fio__str_____test2ptr(&str2));
     fio__str_____test_write(&str2, ":extra data", 11);
     TEST_ASSERT(!fio__str_____test_iseq(&str, &str2),
                 "`fio__str_____test_write` error after copy, strings equal "
                 "((%zu)%s == (%zu)%s)!",
-                fio__str_____test_len(&str), fio__str_____test_data(&str),
-                fio__str_____test_len(&str2), fio__str_____test_data(&str2));
+                fio__str_____test_len(&str), fio__str_____test2ptr(&str),
+                fio__str_____test_len(&str2), fio__str_____test2ptr(&str2));
 
     fio__str_____test_destroy(&str2);
   }
@@ -11135,9 +11129,9 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
 
   fio__str_____test_write_i(&str, -42);
   TEST_ASSERT(fio__str_____test_len(&str) == 3 &&
-                  !memcmp("-42", fio__str_____test_data(&str), 3),
+                  !memcmp("-42", fio__str_____test2ptr(&str), 3),
               "fio__str_____test_write_i output error ((%zu) %s != -42)",
-              fio__str_____test_len(&str), fio__str_____test_data(&str));
+              fio__str_____test_len(&str), fio__str_____test2ptr(&str));
   fio__str_____test_destroy(&str);
 
   {
@@ -11145,7 +11139,7 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     fio__str_____test_s *s = fio__str_____test_new();
     TEST_ASSERT(s && ((fio__str_____test_s *)((uintptr_t)s & ~15ULL))->special,
                 "error, string not initialized (%p)!", (void *)s);
-    fio_str_info_s state = fio__str_____test_readfile(s, __FILE__, 0, 0);
+    fio_cstr_s state = fio__str_____test_readfile(s, __FILE__, 0, 0);
 
     TEST_ASSERT(state.data, "error, no data was read for file %s!", __FILE__);
 
@@ -11262,7 +11256,7 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
                 "Static string deallocation function should be NULL.");
     fio__str_____test_destroy(&str);
     str = (fio__str_____test_s)FIO_STR_INIT_STATIC("Welcome");
-    fio_str_info_s state = fio__str_____test_write(&str, " Home", 5);
+    fio_cstr_s state = fio__str_____test_write(&str, " Home", 5);
     TEST_ASSERT(state.capa > 0, "Static string not converted to non-static.");
     TEST_ASSERT(str.dealloc, "Missing static string deallocation function"
                              " after `fio__str_____test_write`.");
@@ -11281,18 +11275,18 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     fio__str_____test_destroy(&str); /* does nothing, but what the heck... */
 
     fio__str_____test_s b64message = FIO_STR_INIT;
-    fio_str_info_s b64i = fio__str_____test_write(
+    fio_cstr_s b64i = fio__str_____test_write(
         &b64message, "Hello World, this is the voice of peace:)", 41);
     for (int i = 0; i < 256; ++i) {
       uint8_t c = i;
       b64i = fio__str_____test_write(&b64message, &c, 1);
     }
-    fio_str_info_s encoded =
+    fio_cstr_s encoded =
         fio__str_____test_write_b64enc(&str, b64i.data, b64i.len, 1);
     /* prevent encoded data from being deallocated during unencoding */
     encoded = fio__str_____test_reserve(&str, encoded.len +
                                                   ((encoded.len >> 2) * 3) + 8);
-    fio_str_info_s decoded =
+    fio_cstr_s decoded =
         fio__str_____test_write_b64dec(&str, encoded.data, encoded.len);
     TEST_ASSERT(encoded.len, "Base64 encoding failed");
     TEST_ASSERT(decoded.len > encoded.len, "Base64 decoding failed:\n%s",
@@ -11310,7 +11304,7 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   {
     fprintf(stderr, "* Testing JSON style character escaping / unescaping.\n");
     fio__str_____test_s unescaped = FIO_STR_INIT;
-    fio_str_info_s ue;
+    fio_cstr_s ue;
     const char *utf8_sample = /* three hearts, small-big-small*/
         "\xf0\x9f\x92\x95\xe2\x9d\xa4\xef\xb8\x8f\xf0\x9f\x92\x95";
     fio__str_____test_write(&unescaped, utf8_sample, strlen(utf8_sample));
@@ -11318,12 +11312,11 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
       uint8_t c = i;
       ue = fio__str_____test_write(&unescaped, &c, 1);
     }
-    fio_str_info_s encoded =
-        fio__str_____test_write_escape(&str, ue.data, ue.len);
+    fio_cstr_s encoded = fio__str_____test_write_escape(&str, ue.data, ue.len);
     /* prevent encoded data from being deallocated during unencoding */
     encoded = fio__str_____test_reserve(&str, encoded.len << 1);
     // fprintf(stderr, "* %s\n", encoded.data);
-    fio_str_info_s decoded =
+    fio_cstr_s decoded =
         fio__str_____test_write_unescape(&str, encoded.data, encoded.len);
     TEST_ASSERT(!memcmp(encoded.data, utf8_sample, strlen(utf8_sample)),
                 "valid UTF-8 data shouldn't be escaped");
@@ -11595,7 +11588,7 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
 #endif
     TEST_ASSERT(fiobj_str_len(j) == strlen(json + 20),
                 "JSON roundtrip failed (length error).");
-    TEST_ASSERT(!memcmp(json + 20, fiobj_str_data(j), strlen(json + 20)),
+    TEST_ASSERT(!memcmp(json + 20, fiobj_str2ptr(j), strlen(json + 20)),
                 "JSON roundtrip failed (data error).");
     fiobj_free(o);
     fiobj_free(j);
@@ -11626,7 +11619,7 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
       fiobj_str_write(json, "\n", 1);
       fiobj_str_reserve(json, fiobj_str_len(json)
                                   << 1); /* prevent memory realloc */
-      fiobj_str_write_escape(json, fiobj_str_data(json),
+      fiobj_str_write_escape(json, fiobj_str2ptr(json),
                              fiobj_str_len(json) - 1);
       fprintf(stderr, "%s\n", fiobj2cstr(json).data);
       fiobj_free(json);
