@@ -8425,13 +8425,13 @@ FIOBJ Primitives (NULL, True, False)
 ***************************************************************************** */
 
 /** Returns the `nil` / `null` primitive. */
-FIOBJ_IFUNC FIOBJ fiobj_null(void) { return (FIOBJ)(FIOBJ_T_NULL); }
+FIOBJ_HIFUNC FIOBJ fiobj_null(void) { return (FIOBJ)(FIOBJ_T_NULL); }
 
 /** Returns the `true` primitive. */
-FIOBJ_IFUNC FIOBJ fiobj_false(void) { return (FIOBJ)(FIOBJ_T_FALSE); }
+FIOBJ_HIFUNC FIOBJ fiobj_false(void) { return (FIOBJ)(FIOBJ_T_FALSE); }
 
 /** Returns the `false` primitive. */
-FIOBJ_IFUNC FIOBJ fiobj_true(void) { return (FIOBJ)(FIOBJ_T_TRUE); }
+FIOBJ_HIFUNC FIOBJ fiobj_true(void) { return (FIOBJ)(FIOBJ_T_TRUE); }
 
 /* *****************************************************************************
 FIOBJ Type - Extendability (FIOBJ_T_OTHER)
@@ -8468,9 +8468,7 @@ typedef struct {
   int (*free2)(FIOBJ o);
 } FIOBJ_class_vtable_s;
 
-FIOBJ_FUNC FIOBJ_class_vtable_s FIOBJ_OBJECT_CLASS_VTBL = {
-    .type_id = 99, /* type IDs below 100 are reserved. */
-};
+extern FIOBJ_class_vtable_s FIOBJ_OBJECT_CLASS_VTBL;
 
 #define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_NAME fiobj_object
@@ -8509,7 +8507,7 @@ FIOBJ_FUNC fio_str_info_s fiobj_num_to_s(FIOBJ i);
 /** Frees a FIOBJ number. */
 FIOBJ_HIFUNC void fiobj_num_free(FIOBJ i);
 
-FIOBJ_FUNC FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL;
+extern FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL;
 
 /* *****************************************************************************
 FIOBJ Floats
@@ -8530,7 +8528,7 @@ FIOBJ_FUNC fio_str_info_s fiobj_float_to_s(FIOBJ i);
 /** Frees a FIOBJ Float. */
 FIOBJ_HIFUNC void fiobj_float_free(FIOBJ i);
 
-FIOBJ_FUNC FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL;
+extern FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL;
 
 /* *****************************************************************************
 FIOBJ Strings
@@ -9177,6 +9175,14 @@ FIOBJ - Implementation
 #if FIOBJ_EXTERN_COMPLETE
 
 /* *****************************************************************************
+FIOBJ Basic Object vtable
+***************************************************************************** */
+
+FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ_OBJECT_CLASS_VTBL = {
+    .type_id = 99, /* type IDs below 100 are reserved. */
+};
+
+/* *****************************************************************************
 FIOBJ Complex Iteration
 ***************************************************************************** */
 
@@ -9308,7 +9314,7 @@ FIOBJ_FUNC fio_str_info_s fiobj_num_to_s(FIOBJ i) {
   return (fio_str_info_s){.data = fiobj__tmp_buffer, .len = len};
 }
 
-FIOBJ_FUNC FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL = {
+FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___NUMBER_CLASS_VTBL = {
     /**
      * MUST return a unique number to identify object type.
      *
@@ -9345,7 +9351,7 @@ FIOBJ_FUNC fio_str_info_s fiobj_float_to_s(FIOBJ i) {
   return (fio_str_info_s){.data = fiobj__tmp_buffer, .len = len};
 }
 
-FIOBJ_FUNC FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL = {
+FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___FLOAT_CLASS_VTBL = {
     /**
      * MUST return a unique number to identify object type.
      *
