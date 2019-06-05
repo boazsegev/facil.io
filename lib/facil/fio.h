@@ -2614,7 +2614,7 @@ FIO_FUNC inline int fio_ls_any(fio_ls_s *list) { return list->next != list; }
 /** test for a pre-defined hash to integer conversion */
 #ifndef FIO_SET_HASH2UINTPTR
 #define FIO_SET_HASH2UINTPTR(hash, bits_used)                                  \
-  (fio_rrot(hash, bits_used) ^ fio_ct_if2(bits_used, hash, 0))
+  (FIO_RROT(hash, bits_used) ^ fio_ct_if2(bits_used, hash, 0))
 #endif
 
 /** test for a pre-defined hash to integer conversion */
