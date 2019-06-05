@@ -10091,12 +10091,19 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
                 "other bits shouldn't be effected by set.");
     TEST_ASSERT(!fio_bitmap_get(bitmap, 98),
                 "other bits shouldn't be effected by set.");
-    fio_bitmap_set(bitmap, 96);
-    fio_bitmap_unset(bitmap, 97);
+    fio_bitmap_flip(bitmap, 96);
+    fio_bitmap_flip(bitmap, 97);
     TEST_ASSERT(!fio_bitmap_get(bitmap, 97),
-                "fio_bitmap_get should be 0 after unset.");
+                "fio_bitmap_get should be 0 after flip.");
     TEST_ASSERT(fio_bitmap_get(bitmap, 96) == 1,
+                "other bits shouldn't be effected by flip");
+    fio_bitmap_unset(bitmap, 96);
+    fio_bitmap_flip(bitmap, 97);
+    TEST_ASSERT(!fio_bitmap_get(bitmap, 96),
+                "fio_bitmap_get should be 0 after unset.");
+    TEST_ASSERT(fio_bitmap_get(bitmap, 97) == 1,
                 "other bits shouldn't be effected by unset");
+    fio_bitmap_unset(bitmap, 96);
   }
   {
     fprintf(stderr, "* Testing popcount and hemming distance calculation.\n");
