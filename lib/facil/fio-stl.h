@@ -880,17 +880,25 @@ Bitewise helpers cleanup
 Bitmap access / manipulation
 ***************************************************************************** */
 
+/** Gets the state of a bit in a bitmap. */
 HFUNC uint8_t fio_bitmap_get(void *map, size_t bit) {
   return ((((uint8_t *)(map))[(bit) >> 3] >> ((bit)&7)) & 1);
 }
 
+/** Sets the a bit in a bitmap (sets to 1). */
 HFUNC void fio_bitmap_set(void *map, size_t bit) {
   fio_atomic_or((uint8_t *)(map) + ((bit) >> 3), (1UL << ((bit)&7)));
 }
 
+/** Unsets the a bit in a bitmap (sets to 0). */
 HFUNC void fio_bitmap_unset(void *map, size_t bit) {
   fio_atomic_and((uint8_t *)(map) + ((bit) >> 3),
                  (uint8_t)(~(1UL << ((bit)&7))));
+}
+
+/** Flips the a bit in a bitmap (sets to 0 if 1, sets to 1 if 0). */
+HFUNC void fio_bitmap_flip(void *map, size_t bit) {
+  fio_atomic_xor((uint8_t *)(map) + ((bit) >> 3), (1UL << ((bit)&7)));
 }
 
 #endif
