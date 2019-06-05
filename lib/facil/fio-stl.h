@@ -1345,7 +1345,7 @@ Allocator default
 
 /* must be divisable by 16 bytes, bigger than min(sizeof(FIO_MEM_BLOCK), 16) */
 #define FIO_MEMORY_BLOCK_HEADER_SIZE                                           \
-  ((sizeof(fio_mem___block_s) + 15UL) & (~15UL))
+  ((sizeof(fio___mem_block_s) + 15UL) & (~15UL))
 
 /* allocation counter position (start) */
 #define FIO_MEMORY_BLOCK_START_POS (FIO_MEMORY_BLOCK_HEADER_SIZE >> 4)
@@ -1354,16 +1354,16 @@ Allocator default
   (FIO_MEMORY_BLOCK_SLICES - FIO_MEMORY_BLOCK_START_POS)
 
 /* The basic block header. Starts a 32Kib memory block */
-typedef struct fio_mem___block_s fio_mem___block_s;
+typedef struct fio___mem_block_s fio___mem_block_s;
 /* A memory caching "arena"  */
-typedef struct fio_mem___arena_s fio_mem___arena_s;
+typedef struct fio___mem_arena_s fio___mem_arena_s;
 
 /* *****************************************************************************
 Memory state machine
 ***************************************************************************** */
 
-struct fio_mem___arena_s {
-  fio_mem___block_s *block;
+struct fio___mem_arena_s {
+  fio___mem_block_s *block;
   fio_lock_i lock;
 };
 
@@ -1373,14 +1373,14 @@ typedef struct {
   size_t cores;    /* the number of detected CPU cores*/
   fio_lock_i lock; /* a global lock */
   uint8_t forked;  /* a forked collection indicator. */
-  fio_mem___arena_s arenas[];
-} fio_mem___state_s;
+  fio___mem_arena_s arenas[];
+} fio___mem_state_s;
 /* The memory allocators persistent state */
-static fio_mem___state_s *fio_mem___state = NULL;
+static fio___mem_state_s *fio___mem_state = NULL;
 
-/* see destructor at: fio_mem___destroy */
-HSFUNC void __attribute__((constructor)) fio_mem___state_allocate(void) {
-  if (fio_mem___state)
+/* see destructor at: fio___mem_destroy */
+HSFUNC void __attribute__((constructor)) fio___mem_state_allocate(void) {
+  if (fio___mem_state)
     return;
 #ifdef _SC_NPROCESSORS_ONLN
   size_t cores = sysconf(_SC_NPROCESSORS_ONLN);
@@ -1390,14 +1390,14 @@ HSFUNC void __attribute__((constructor)) fio_mem___state_allocate(void) {
 #endif
   if (cores <= 0)
     cores = 8;
-  const size_t pages = FIO_MEM_BYTES2PAGES(sizeof(*fio_mem___state) +
-                                           (cores * sizeof(fio_mem___arena_s)));
-  fio_mem___state = FIO_MEM_PAGE_ALLOC(pages, 1);
-  FIO_ASSERT_ALLOC(fio_mem___state);
-  *fio_mem___state = (fio_mem___state_s){
+  const size_t pages = FIO_MEM_BYTES2PAGES(sizeof(*fio___mem_state) +
+                                           (cores * sizeof(fio___mem_arena_s)));
+  fio___mem_state = FIO_MEM_PAGE_ALLOC(pages, 1);
+  FIO_ASSERT_ALLOC(fio___mem_state);
+  *fio___mem_state = (fio___mem_state_s){
       .cores = cores,
       .lock = FIO_LOCK_INIT,
-      .available = FIO_LIST_INIT(fio_mem___state->available),
+      .available = FIO_LIST_INIT(fio___mem_state->available),
   };
 #if DEBUG && defined(FIO_LOG_INFO)
   FIO_LOG_INFO(
@@ -1406,14 +1406,14 @@ HSFUNC void __attribute__((constructor)) fio_mem___state_allocate(void) {
 #endif
 }
 
-HSFUNC void fio_mem___state_deallocate(void) {
-  if (!fio_mem___state)
+HSFUNC void fio___mem_state_deallocate(void) {
+  if (!fio___mem_state)
     return;
   const size_t pages =
-      FIO_MEM_BYTES2PAGES(sizeof(*fio_mem___state) +
-                          (fio_mem___state->cores * sizeof(fio_mem___arena_s)));
-  FIO_MEM_PAGE_FREE(fio_mem___state, pages);
-  fio_mem___state = NULL;
+      FIO_MEM_BYTES2PAGES(sizeof(*fio___mem_state) +
+                          (fio___mem_state->cores * sizeof(fio___mem_arena_s)));
+  FIO_MEM_PAGE_FREE(fio___mem_state, pages);
+  fio___mem_state = NULL;
 }
 
 /* *****************************************************************************
@@ -1421,21 +1421,21 @@ Memory arena management and selection
 ***************************************************************************** */
 
 /* Last available arena for thread. */
-static __thread volatile fio_mem___arena_s *fio_mem___arena = NULL;
+static __thread volatile fio___mem_arena_s *fio___mem_arena = NULL;
 
-HSFUNC void fio_mem___arena_aquire(void) {
-  if (!fio_mem___state) {
-    fio_mem___state_allocate();
+HSFUNC void fio___mem_arena_aquire(void) {
+  if (!fio___mem_state) {
+    fio___mem_state_allocate();
   }
-  if (fio_mem___arena)
-    if (!fio_trylock(&fio_mem___arena->lock))
+  if (fio___mem_arena)
+    if (!fio_trylock(&fio___mem_arena->lock))
       return;
   for (;;) {
     struct timespec tm = {.tv_nsec = 1};
-    const size_t cores = fio_mem___state->cores;
+    const size_t cores = fio___mem_state->cores;
     for (size_t i = 0; i < cores; ++i) {
-      if (!fio_trylock(&fio_mem___state->arenas[i].lock)) {
-        fio_mem___arena = fio_mem___state->arenas + i;
+      if (!fio_trylock(&fio___mem_state->arenas[i].lock)) {
+        fio___mem_arena = fio___mem_state->arenas + i;
         return;
       }
     }
@@ -1443,13 +1443,13 @@ HSFUNC void fio_mem___arena_aquire(void) {
   }
 }
 
-HFUNC void fio_mem___arena_release() { fio_unlock(&fio_mem___arena->lock); }
+HFUNC void fio___mem_arena_release() { fio_unlock(&fio___mem_arena->lock); }
 
 /* *****************************************************************************
 Slices and Blocks - types
 ***************************************************************************** */
 
-struct fio_mem___block_s {
+struct fio___mem_block_s {
   size_t reserved;            /* should always be zero, or page sized */
   uint16_t root;              /* REQUIRED, root == 0 => is root to self */
   volatile uint16_t root_ref; /* root reference memory padding */
@@ -1457,15 +1457,15 @@ struct fio_mem___block_s {
   uint16_t pos;               /* position into the block */
 };
 
-typedef struct fio_mem___block_node_s fio_mem___block_node_s;
-struct fio_mem___block_node_s {
-  fio_mem___block_s
+typedef struct fio___mem_block_node_s fio___mem_block_node_s;
+struct fio___mem_block_node_s {
+  fio___mem_block_s
       dont_touch;     /* prevent block internal data from being corrupted */
   FIO_LIST_NODE node; /* next block */
 };
 
-#define FIO_LIST_NAME fio_mem___available_blocks
-#define FIO_LIST_TYPE fio_mem___block_node_s
+#define FIO_LIST_NAME fio___mem_available_blocks
+#define FIO_LIST_TYPE fio___mem_block_node_s
 #ifndef FIO_STL_KEEP__
 #define FIO_STL_KEEP__ 1
 #endif
@@ -1474,11 +1474,11 @@ struct fio_mem___block_node_s {
 #undef FIO_STL_KEEP__
 #endif
 /* Address returned when allocating 0 bytes ( fio_malloc(0) ) */
-static long double fio_mem___on_malloc_zero;
+static long double fio___mem_on_malloc_zero;
 
 /* retrieve root block */
-HSFUNC fio_mem___block_s *fio_mem___block_root(fio_mem___block_s *b) {
-  return FIO_PTR_MATH_SUB(fio_mem___block_s, b,
+HSFUNC fio___mem_block_s *fio___mem_block_root(fio___mem_block_s *b) {
+  return FIO_PTR_MATH_SUB(fio___mem_block_s, b,
                           b->root * FIO_MEMORY_BLOCK_SIZE);
 }
 
@@ -1488,9 +1488,9 @@ Allocator debugging helpers
 
 #if DEBUG
 /* maximum block allocation count. */
-static size_t fio_mem___block_count_max;
+static size_t fio___mem_block_count_max;
 /* current block allocation count. */
-static size_t fio_mem___block_count;
+static size_t fio___mem_block_count;
 
 // void fio_memory_dump_missing(void) {
 //   fprintf(stderr, "\n ==== Attempting Memory Dump (will crash) ====\n");
@@ -1518,25 +1518,25 @@ static size_t fio_mem___block_count;
 
 #define FIO_MEMORY_ON_BLOCK_ALLOC()                                            \
   do {                                                                         \
-    fio_atomic_add(&fio_mem___block_count, 1);                                 \
-    if (fio_mem___block_count > fio_mem___block_count_max)                     \
-      fio_mem___block_count_max = fio_mem___block_count;                       \
+    fio_atomic_add(&fio___mem_block_count, 1);                                 \
+    if (fio___mem_block_count > fio___mem_block_count_max)                     \
+      fio___mem_block_count_max = fio___mem_block_count;                       \
   } while (0)
 #define FIO_MEMORY_ON_BLOCK_FREE()                                             \
   do {                                                                         \
-    fio_atomic_sub(&fio_mem___block_count, 1);                                 \
+    fio_atomic_sub(&fio___mem_block_count, 1);                                 \
   } while (0)
 #ifdef FIO_LOG_INFO
 #define FIO_MEMORY_PRINT_BLOCK_STAT()                                          \
   FIO_LOG_INFO(                                                                \
       "(fio) Total memory blocks allocated before cleanup %zu\n"               \
       "       Maximum memory blocks allocated at a single time %zu\n",         \
-      fio_mem___block_count, fio_mem___block_count_max)
+      fio___mem_block_count, fio___mem_block_count_max)
 #define FIO_MEMORY_PRINT_BLOCK_STAT_END()                                      \
   FIO_LOG_INFO("(fio) Total memory blocks allocated "                          \
                "after cleanup%s %zu\n",                                        \
-               (fio_mem___block_count ? "(possible leak):" : ":"),             \
-               fio_mem___block_count)
+               (fio___mem_block_count ? "(possible leak):" : ":"),             \
+               fio___mem_block_count)
 #else /* FIO_LOG_INFO */
 #define FIO_MEMORY_PRINT_BLOCK_STAT()
 #define FIO_MEMORY_PRINT_BLOCK_STAT_END()
@@ -1552,8 +1552,8 @@ static size_t fio_mem___block_count;
 Block allocation and rotation
 ***************************************************************************** */
 
-HSFUNC fio_mem___block_s *fio_mem___block_alloc(void) {
-  fio_mem___block_s *b =
+HSFUNC fio___mem_block_s *fio___mem_block_alloc(void) {
+  fio___mem_block_s *b =
       FIO_MEM_PAGE_ALLOC(FIO_MEM_BYTES2PAGES(FIO_MEMORY_BLOCKS_PER_ALLOCATION *
                                              FIO_MEMORY_BLOCK_SIZE),
                          FIO_MEMORY_BLOCK_SIZE_LOG);
@@ -1566,15 +1566,15 @@ HSFUNC fio_mem___block_s *fio_mem___block_alloc(void) {
 #endif
   /* initialize and push all block slices into memory pool */
   for (uint16_t i = 0; i < (FIO_MEMORY_BLOCKS_PER_ALLOCATION - 1); ++i) {
-    fio_mem___block_s *tmp =
-        FIO_PTR_MATH_ADD(fio_mem___block_s, b, (FIO_MEMORY_BLOCK_SIZE * i));
-    *tmp = (fio_mem___block_s){.root = i, .ref = 0};
-    fio_mem___available_blocks_push(&fio_mem___state->available,
-                                    (fio_mem___block_node_s *)tmp);
+    fio___mem_block_s *tmp =
+        FIO_PTR_MATH_ADD(fio___mem_block_s, b, (FIO_MEMORY_BLOCK_SIZE * i));
+    *tmp = (fio___mem_block_s){.root = i, .ref = 0};
+    fio___mem_available_blocks_push(&fio___mem_state->available,
+                                    (fio___mem_block_node_s *)tmp);
   }
   /* initialize and return last slice (it's in the cache) */
   b = FIO_PTR_MATH_ADD(
-      fio_mem___block_s, b,
+      fio___mem_block_s, b,
       (FIO_MEMORY_BLOCK_SIZE * (FIO_MEMORY_BLOCKS_PER_ALLOCATION - 1)));
   b->root = (FIO_MEMORY_BLOCKS_PER_ALLOCATION - 1);
   /* debug counter */
@@ -1582,29 +1582,29 @@ HSFUNC fio_mem___block_s *fio_mem___block_alloc(void) {
   return b;
 }
 
-HSFUNC void fio_mem___block_free(fio_mem___block_s *b) {
-  b = FIO_PTR_MATH_RMASK(fio_mem___block_s, b, FIO_MEMORY_BLOCK_SIZE_LOG);
+HSFUNC void fio___mem_block_free(fio___mem_block_s *b) {
+  b = FIO_PTR_MATH_RMASK(fio___mem_block_s, b, FIO_MEMORY_BLOCK_SIZE_LOG);
   if (!b || fio_atomic_sub(&b->ref, 1)) {
     /* block slice still in use */
     return;
   }
   memset(b + 1, 0, (FIO_MEMORY_BLOCK_SIZE - sizeof(*b)));
-  fio_lock(&fio_mem___state->lock);
-  fio_mem___available_blocks_push(&fio_mem___state->available,
-                                  (fio_mem___block_node_s *)b);
-  b = fio_mem___block_root(b);
+  fio_lock(&fio___mem_state->lock);
+  fio___mem_available_blocks_push(&fio___mem_state->available,
+                                  (fio___mem_block_node_s *)b);
+  b = fio___mem_block_root(b);
   if (fio_atomic_sub(&b->root_ref, 1)) {
     /* block still has at least one used slice */
-    fio_unlock(&fio_mem___state->lock);
+    fio_unlock(&fio___mem_state->lock);
     return;
   }
   /* remove all block slices from memory pool */
   for (uint16_t i = 0; i < (FIO_MEMORY_BLOCKS_PER_ALLOCATION); ++i) {
-    fio_mem___block_node_s *tmp = FIO_PTR_MATH_ADD(fio_mem___block_node_s, b,
+    fio___mem_block_node_s *tmp = FIO_PTR_MATH_ADD(fio___mem_block_node_s, b,
                                                    (FIO_MEMORY_BLOCK_SIZE * i));
-    fio_mem___available_blocks_remove(tmp);
+    fio___mem_available_blocks_remove(tmp);
   }
-  fio_unlock(&fio_mem___state->lock);
+  fio_unlock(&fio___mem_state->lock);
   /* return memory to system */
   FIO_MEM_PAGE_FREE(b, FIO_MEM_BYTES2PAGES(FIO_MEMORY_BLOCKS_PER_ALLOCATION *
                                            FIO_MEMORY_BLOCK_SIZE));
@@ -1616,40 +1616,40 @@ HSFUNC void fio_mem___block_free(fio_mem___block_s *b) {
 }
 
 /* rotates block in arena */
-HSFUNC void fio_mem___block_rotate(void) {
-  fio_mem___block_s *to_free = fio_mem___arena->block; /* keep memory pool */
-  fio_mem___arena->block = NULL;
-  fio_lock(&fio_mem___state->lock);
-  fio_mem___arena->block = (fio_mem___block_s *)fio_mem___available_blocks_pop(
-      &fio_mem___state->available);
-  if (!fio_mem___arena->block) {
+HSFUNC void fio___mem_block_rotate(void) {
+  fio___mem_block_s *to_free = fio___mem_arena->block; /* keep memory pool */
+  fio___mem_arena->block = NULL;
+  fio_lock(&fio___mem_state->lock);
+  fio___mem_arena->block = (fio___mem_block_s *)fio___mem_available_blocks_pop(
+      &fio___mem_state->available);
+  if (!fio___mem_arena->block) {
     /* allocate block */
-    fio_mem___arena->block = fio_mem___block_alloc();
+    fio___mem_arena->block = fio___mem_block_alloc();
   } else {
-    FIO_ASSERT(!fio_mem___arena->block->reserved,
+    FIO_ASSERT(!fio___mem_arena->block->reserved,
                "memory header corruption, overflowed right?");
   }
   /* update the root reference count before releasing the lock */
-  fio_atomic_add(&fio_mem___block_root(fio_mem___arena->block)->root_ref, 1);
-  fio_unlock(&fio_mem___state->lock);
+  fio_atomic_add(&fio___mem_block_root(fio___mem_arena->block)->root_ref, 1);
+  fio_unlock(&fio___mem_state->lock);
   /* zero out memory used for available block linked list, keep root data */
-  fio_mem___arena->block->ref = 1;
-  fio_mem___arena->block->pos = 0;
-  ((fio_mem___block_node_s *)fio_mem___arena->block)->node =
+  fio___mem_arena->block->ref = 1;
+  fio___mem_arena->block->pos = 0;
+  ((fio___mem_block_node_s *)fio___mem_arena->block)->node =
       (FIO_LIST_NODE){.next = NULL};
-  fio_mem___block_free(to_free);
+  fio___mem_block_free(to_free);
 }
 
-HSFUNC void *fio_mem___block_slice(size_t bytes) {
+HSFUNC void *fio___mem_block_slice(size_t bytes) {
   const uint16_t max =
       ((FIO_MEMORY_BLOCK_SIZE - FIO_MEMORY_BLOCK_HEADER_SIZE) >> 4);
   void *r = NULL;
   bytes = (bytes + 15) >> 4; /* convert to 16 byte units */
-  fio_mem___arena_aquire();
-  fio_mem___block_s *b = fio_mem___arena->block;
+  fio___mem_arena_aquire();
+  fio___mem_block_s *b = fio___mem_arena->block;
   if (!b || (b->pos + bytes) >= max) {
-    fio_mem___block_rotate();
-    b = fio_mem___arena->block;
+    fio___mem_block_rotate();
+    b = fio___mem_arena->block;
   }
   if (!b)
     goto finish;
@@ -1658,7 +1658,7 @@ HSFUNC void *fio_mem___block_slice(size_t bytes) {
                        FIO_MEMORY_BLOCK_HEADER_SIZE + ((size_t)b->pos << 4));
   fio_atomic_add(&b->pos, bytes);
 finish:
-  fio_mem___arena_release();
+  fio___mem_arena_release();
   return r;
 }
 
@@ -1666,20 +1666,20 @@ finish:
 Allocator Destruction
 ***************************************************************************** */
 
-HSFUNC void __attribute__((destructor)) fio_mem___destroy(void) {
-  if (!fio_mem___state)
+HSFUNC void __attribute__((destructor)) fio___mem_destroy(void) {
+  if (!fio___mem_state)
     return;
   FIO_MEMORY_PRINT_BLOCK_STAT();
-  for (size_t i = 0; i < fio_mem___state->cores; ++i) {
+  for (size_t i = 0; i < fio___mem_state->cores; ++i) {
     /* free all blocks in the arean memory pools */
     /* this should return memory to system unless a memory leak occurred */
-    fio_mem___block_s *b = fio_mem___state->arenas[i].block;
-    fio_mem___state->arenas[i].block = NULL;
-    fio_mem___state->arenas[i].lock = FIO_LOCK_INIT;
-    fio_mem___block_free(b);
+    fio___mem_block_s *b = fio___mem_state->arenas[i].block;
+    fio___mem_state->arenas[i].block = NULL;
+    fio___mem_state->arenas[i].lock = FIO_LOCK_INIT;
+    fio___mem_block_free(b);
   }
-  fio_mem___arena = NULL;
-  fio_mem___state_deallocate();
+  fio___mem_arena = NULL;
+  fio___mem_state_deallocate();
   FIO_MEMORY_PRINT_BLOCK_STAT_END();
 #if DEBUG && defined(FIO_LOG_INFO)
   FIO_LOG_INFO("facil.io memory allocation cleanup complete.");
@@ -1692,15 +1692,15 @@ API implementation
 
 /** Frees memory that was allocated using this library. */
 SFUNC void fio_free(void *ptr) {
-  if (ptr == &fio_mem___on_malloc_zero)
+  if (ptr == &fio___mem_on_malloc_zero)
     return;
-  fio_mem___block_s *b =
-      FIO_PTR_MATH_RMASK(fio_mem___block_s, ptr, FIO_MEMORY_BLOCK_SIZE_LOG);
+  fio___mem_block_s *b =
+      FIO_PTR_MATH_RMASK(fio___mem_block_s, ptr, FIO_MEMORY_BLOCK_SIZE_LOG);
   if (!b)
     return;
   if (b->reserved)
     goto test_reserved;
-  fio_mem___block_free(b);
+  fio___mem_block_free(b);
   return;
 test_reserved:
   FIO_ASSERT(!(b->reserved & ((1UL << FIO_MEM_PAGE_SIZE_LOG) - 1)),
@@ -1717,9 +1717,9 @@ test_reserved:
  */
 SFUNC void *FIO_ALIGN_NEW fio_malloc(size_t size) {
   if (!size)
-    return &fio_mem___on_malloc_zero;
+    return &fio___mem_on_malloc_zero;
   if (size <= FIO_MEMORY_BLOCK_ALLOC_LIMIT) {
-    return fio_mem___block_slice(size);
+    return fio___mem_block_slice(size);
   }
   return fio_mmap(size);
 }
@@ -1750,14 +1750,14 @@ SFUNC void *FIO_ALIGN fio_realloc(void *ptr, size_t new_size) {
  */
 SFUNC void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size,
                                    size_t copy_length) {
-  if (!ptr || ptr == &fio_mem___on_malloc_zero)
+  if (!ptr || ptr == &fio___mem_on_malloc_zero)
     return fio_malloc(new_size);
   const size_t max_len = ((0 - (uintptr_t)FIO_PTR_MATH_LMASK(
                                    void, ptr, FIO_MEMORY_BLOCK_SIZE_LOG)) +
                           FIO_MEMORY_BLOCK_SIZE);
 
-  fio_mem___block_s *b =
-      FIO_PTR_MATH_RMASK(fio_mem___block_s, ptr, FIO_MEMORY_BLOCK_SIZE_LOG);
+  fio___mem_block_s *b =
+      FIO_PTR_MATH_RMASK(fio___mem_block_s, ptr, FIO_MEMORY_BLOCK_SIZE_LOG);
   void *mem = NULL;
 
   if (copy_length > new_size)
@@ -1772,7 +1772,7 @@ SFUNC void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size,
     return NULL;
   }
   fio____memcpy_16byte(mem, ptr, ((copy_length + 15) >> 4));
-  fio_mem___block_free(b);
+  fio___mem_block_free(b);
   return mem;
 
 big_realloc:
@@ -1790,7 +1790,7 @@ big_realloc:
     FIO_MEM_PAGE_FREE(b, b->reserved);
     return mem;
   }
-  fio_mem___block_s *tmp =
+  fio___mem_block_s *tmp =
       FIO_MEM_PAGE_REALLOC(b, b->reserved >> FIO_MEM_PAGE_SIZE_LOG,
                            new_page_len, FIO_MEMORY_BLOCK_SIZE_LOG);
   if (!tmp)
@@ -1810,9 +1810,9 @@ big_realloc:
  */
 SFUNC void *FIO_ALIGN_NEW fio_mmap(size_t size) {
   if (!size)
-    return &fio_mem___on_malloc_zero;
+    return &fio___mem_on_malloc_zero;
   size_t pages = FIO_MEM_BYTES2PAGES(size + FIO_MEMORY_BLOCK_HEADER_SIZE);
-  fio_mem___block_s *b = FIO_MEM_PAGE_ALLOC(pages, FIO_MEMORY_BLOCK_SIZE_LOG);
+  fio___mem_block_s *b = FIO_MEM_PAGE_ALLOC(pages, FIO_MEMORY_BLOCK_SIZE_LOG);
   if (!b)
     return NULL;
   b->reserved = pages << FIO_MEM_PAGE_SIZE_LOG;
@@ -1824,12 +1824,12 @@ SFUNC void *FIO_ALIGN_NEW fio_mmap(size_t size) {
  * memory allocator's locks.
  */
 void fio_malloc_after_fork(void) {
-  if (!fio_mem___state)
+  if (!fio___mem_state)
     return;
-  for (size_t i = 0; i < fio_mem___state->cores; ++i) {
-    fio_mem___state->arenas[i].lock = FIO_LOCK_INIT;
+  for (size_t i = 0; i < fio___mem_state->cores; ++i) {
+    fio___mem_state->arenas[i].lock = FIO_LOCK_INIT;
   }
-  fio_mem___state->lock = FIO_LOCK_INIT;
+  fio___mem_state->lock = FIO_LOCK_INIT;
 }
 
 /* *****************************************************************************
@@ -6811,11 +6811,11 @@ CLI Data Stores
 typedef struct {
   size_t len;
   const char *data;
-} fio_cli___cstr_s;
+} fio___cli_cstr_s;
 
 #define FIO_RISKY_HASH
 #define FIO_MAP_TYPE const char *
-#define FIO_MAP_KEY fio_cli___cstr_s
+#define FIO_MAP_KEY fio___cli_cstr_s
 #define FIO_MAP_KEY_CMP(o1, o2)                                                \
   (o1.len == o2.len &&                                                         \
    (o1.data == o2.data || !memcmp(o1.data, o2.data, o1.len)))
@@ -6850,8 +6850,8 @@ typedef struct {
 CLI Parsing
 ***************************************************************************** */
 
-HSFUNC void fio_cli___map_line2alias(char const *line) {
-  fio_cli___cstr_s n = {.data = line};
+HSFUNC void fio___cli_map_line2alias(char const *line) {
+  fio___cli_cstr_s n = {.data = line};
   while (n.data[0] == '-') {
     while (n.data[n.len] && n.data[n.len] != ' ' && n.data[n.len] != ',') {
       ++n.len;
@@ -6875,7 +6875,7 @@ HSFUNC void fio_cli___map_line2alias(char const *line) {
   }
 }
 
-HSFUNC char const *fio_cli___get_line_type(fio_cli_parser_data_s *parser,
+HSFUNC char const *fio___cli_get_line_type(fio_cli_parser_data_s *parser,
                                            const char *line) {
   if (!line) {
     return NULL;
@@ -6909,7 +6909,7 @@ found:
   return NULL;
 }
 
-HSFUNC void fio_cli___set_arg(fio_cli___cstr_s arg, char const *value,
+HSFUNC void fio___cli_set_arg(fio___cli_cstr_s arg, char const *value,
                               char const *line, fio_cli_parser_data_s *parser) {
   /* handle unnamed argument */
   if (!line || !arg.len) {
@@ -6920,7 +6920,7 @@ HSFUNC void fio_cli___set_arg(fio_cli___cstr_s arg, char const *value,
         !strcasecmp(value, "-help") || !strcasecmp(value, "--help")) {
       goto print_help;
     }
-    fio_cli___cstr_s n = {.len = ++parser->unnamed_count};
+    fio___cli_cstr_s n = {.len = ++parser->unnamed_count};
     fio_cli_hash_set(&fio_cli__values, n.len, n, value, NULL);
     if (parser->unnamed_max >= 0 &&
         parser->unnamed_count > parser->unnamed_max) {
@@ -6931,7 +6931,7 @@ HSFUNC void fio_cli___set_arg(fio_cli___cstr_s arg, char const *value,
   }
 
   /* validate data types */
-  char const *type = fio_cli___get_line_type(parser, line);
+  char const *type = fio___cli_get_line_type(parser, line);
   switch ((size_t)type) {
   case FIO_CLI_BOOL__TYPE_I:
     if (value && value != parser->argv[parser->pos + 1]) {
@@ -6958,7 +6958,7 @@ HSFUNC void fio_cli___set_arg(fio_cli___cstr_s arg, char const *value,
 
   /* add values using all aliases possible */
   {
-    fio_cli___cstr_s n = {.data = line};
+    fio___cli_cstr_s n = {.data = line};
     while (n.data[0] == '-') {
       while (n.data[n.len] && n.data[n.len] != ' ' && n.data[n.len] != ',') {
         ++n.len;
@@ -7137,7 +7137,7 @@ SFUNC void fio_cli_start FIO_NOOP(int argc, char const *argv[], int unnamed_min,
     }
     if (line[1] != (char *)FIO_CLI_PRINT__TYPE_I &&
         line[1] != (char *)FIO_CLI_PRINT_HEADER__TYPE_I)
-      fio_cli___map_line2alias(*line);
+      fio___cli_map_line2alias(*line);
     ++line;
   }
 
@@ -7145,7 +7145,7 @@ SFUNC void fio_cli_start FIO_NOOP(int argc, char const *argv[], int unnamed_min,
 
   while ((++parser.pos) < argc) {
     char const *value = NULL;
-    fio_cli___cstr_s n = {.data = argv[parser.pos],
+    fio___cli_cstr_s n = {.data = argv[parser.pos],
                           .len = strlen(argv[parser.pos])};
     if (parser.pos + 1 < argc) {
       value = argv[parser.pos + 1];
@@ -7160,7 +7160,7 @@ SFUNC void fio_cli_start FIO_NOOP(int argc, char const *argv[], int unnamed_min,
       ++value;
     }
     // fprintf(stderr, "Setting %.*s to %s\n", (int)n.len, n.data, value);
-    fio_cli___set_arg(n, value, l, &parser);
+    fio___cli_set_arg(n, value, l, &parser);
   }
 
   /* Cleanup and save state for API */
@@ -7168,7 +7168,7 @@ SFUNC void fio_cli_start FIO_NOOP(int argc, char const *argv[], int unnamed_min,
   fio_cli__unnamed_count = parser.unnamed_count;
   /* test for required unnamed arguments */
   if (parser.unnamed_count < parser.unnamed_min)
-    fio_cli___set_arg((fio_cli___cstr_s){.len = 0}, NULL, NULL, &parser);
+    fio___cli_set_arg((fio___cli_cstr_s){.len = 0}, NULL, NULL, &parser);
 }
 
 /* *****************************************************************************
@@ -7186,7 +7186,7 @@ CLI Data Access API
 
 /** Returns the argument's value as a NUL terminated C String. */
 SFUNC char const *fio_cli_get(char const *name) {
-  fio_cli___cstr_s n = {.data = name, .len = strlen(name)};
+  fio___cli_cstr_s n = {.data = name, .len = strlen(name)};
   if (!fio_cli_hash_count(&fio_cli__values)) {
     return NULL;
   }
@@ -7210,7 +7210,7 @@ SFUNC char const *fio_cli_unnamed(unsigned int index) {
   if (!fio_cli_hash_count(&fio_cli__values) || !fio_cli__unnamed_count) {
     return NULL;
   }
-  fio_cli___cstr_s n = {.data = NULL, .len = index + 1};
+  fio___cli_cstr_s n = {.data = NULL, .len = index + 1};
   return fio_cli_hash_get(&fio_cli__values, index + 1, n);
 }
 
@@ -7221,7 +7221,7 @@ SFUNC char const *fio_cli_unnamed(unsigned int index) {
  * alive until `fio_cli_end` is called.
  */
 SFUNC void fio_cli_set(char const *name, char const *value) {
-  fio_cli___cstr_s n = (fio_cli___cstr_s){.data = name, .len = strlen(name)};
+  fio___cli_cstr_s n = (fio___cli_cstr_s){.data = name, .len = strlen(name)};
   fio_cli_hash_set(&fio_cli__values, FIO_CLI_HASH_VAL(n), n, value, NULL);
 }
 
@@ -7825,8 +7825,8 @@ JSON Parsing - Implementation - Parser
 Note: static Callacks must be implemented in the C file that uses the parser
 ***************************************************************************** */
 
-HFUNC const char *fio_json_____skip_comments(const char *buffer,
-                                             const char *stop) {
+HFUNC const char *fio___json_skip_comments(const char *buffer,
+                                           const char *stop) {
   if (*buffer == '#' ||
       ((stop - buffer) > 2 && buffer[0] == '/' && buffer[1] == '/')) {
     /* EOL style comment, C style or Bash/Ruby style*/
@@ -7842,9 +7842,9 @@ HFUNC const char *fio_json_____skip_comments(const char *buffer,
   return NULL;
 }
 
-HFUNC const char *fio_json_____consume_string(fio_json_parser_s *p,
-                                              const char *buffer,
-                                              const char *stop) {
+HFUNC const char *fio___json_consume_string(fio_json_parser_s *p,
+                                            const char *buffer,
+                                            const char *stop) {
   const char *start = ++buffer;
   for (;;) {
     buffer = memchr(buffer, '\"', stop - buffer);
@@ -7861,9 +7861,9 @@ HFUNC const char *fio_json_____consume_string(fio_json_parser_s *p,
   return buffer + 1;
 }
 
-HFUNC const char *fio_json_____consume_number(fio_json_parser_s *p,
-                                              const char *buffer,
-                                              const char *stop) {
+HFUNC const char *fio___json_consume_number(fio_json_parser_s *p,
+                                            const char *buffer,
+                                            const char *stop) {
 
   const char *const was = buffer;
   long long i = fio_atol((char **)&buffer);
@@ -7879,8 +7879,8 @@ HFUNC const char *fio_json_____consume_number(fio_json_parser_s *p,
   return buffer;
 }
 
-HFUNC const char *fio_json_____identify(fio_json_parser_s *p,
-                                        const char *buffer, const char *stop) {
+HFUNC const char *fio___json_identify(fio_json_parser_s *p, const char *buffer,
+                                      const char *stop) {
   /* Use `break` to change separator requirement status.
    * Use `continue` to keep separator requirement the same.
    */
@@ -7939,7 +7939,7 @@ HFUNC const char *fio_json_____identify(fio_json_parser_s *p,
   case '"':
     if (p->depth && (p->expect & ((uint8_t)5)))
       goto missing_separator;
-    buffer = fio_json_____consume_string(p, buffer, stop);
+    buffer = fio___json_consume_string(p, buffer, stop);
     if (!buffer)
       goto unterminated_string;
     break;
@@ -8054,7 +8054,7 @@ HFUNC const char *fio_json_____identify(fio_json_parser_s *p,
   case 'I':
     if (p->depth && !(p->expect & 2))
       goto missing_separator;
-    buffer = fio_json_____consume_number(p, buffer, stop);
+    buffer = fio___json_consume_number(p, buffer, stop);
     if (!buffer)
       goto bad_number_format;
     break;
@@ -8065,7 +8065,7 @@ HFUNC const char *fio_json_____identify(fio_json_parser_s *p,
      */
   case '#': /* fallthrough */
   case '/': /* fallthrough */
-    return fio_json_____skip_comments(buffer, stop);
+    return fio___json_skip_comments(buffer, stop);
     /*
      *
      * Unrecognized Data Handling
@@ -8129,13 +8129,13 @@ SFUNC size_t fio_json_parse(fio_json_parser_s *p, const char *buffer,
   const char *last;
   do {
     last = buffer;
-    buffer = fio_json_____identify(p, buffer, stop);
+    buffer = fio___json_identify(p, buffer, stop);
     if (!buffer)
       goto failed;
   } while (!p->expect && buffer < stop);
   while (p->depth && buffer < stop) {
     last = buffer;
-    buffer = fio_json_____identify(p, buffer, stop);
+    buffer = fio___json_identify(p, buffer, stop);
     if (!buffer)
       goto failed;
   }
@@ -8468,7 +8468,7 @@ typedef struct {
   int (*free2)(FIOBJ o);
 } FIOBJ_class_vtable_s;
 
-extern FIOBJ_class_vtable_s FIOBJ_OBJECT_CLASS_VTBL;
+extern FIOBJ_class_vtable_s FIOBJ___OBJECT_CLASS_VTBL;
 
 #define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_NAME fiobj_object
@@ -8476,7 +8476,7 @@ extern FIOBJ_class_vtable_s FIOBJ_OBJECT_CLASS_VTBL;
 #define FIO_REF_METADATA FIOBJ_class_vtable_s *
 #define FIO_REF_METADATA_INIT(m)                                               \
   do {                                                                         \
-    m = &FIOBJ_OBJECT_CLASS_VTBL;                                              \
+    m = &FIOBJ___OBJECT_CLASS_VTBL;                                            \
     FIOBJ_MARK_MEMORY_ALLOC();                                                 \
   } while (0)
 #define FIO_REF_METADATA_DESTROY(m)                                            \
@@ -8956,7 +8956,7 @@ FIOBJ_HIFUNC double fiobj2f(FIOBJ o) {
 FIOBJ Integers
 ***************************************************************************** */
 
-#define FIO_REF_NAME fiobj__bignum
+#define FIO_REF_NAME fiobj___bignum
 #define FIO_REF_TYPE intptr_t
 #define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_METADATA FIOBJ_class_vtable_s *
@@ -8985,7 +8985,7 @@ FIOBJ_HIFUNC FIOBJ fiobj_num_new(intptr_t i) {
   FIOBJ o = FIO_NUMBER_ENCODE(i);
   if (FIO_NUMBER_REVESE(o) == i)
     return o;
-  o = fiobj__bignum_new();
+  o = fiobj___bignum_new();
   FIO_PTR_MATH_RMASK(intptr_t, o, 3)[0] = i;
   return o;
 }
@@ -9005,7 +9005,7 @@ FIOBJ_HIFUNC double fiobj_num_2f(FIOBJ i) { return (double)fiobj_num_2i(i); }
 FIOBJ_HIFUNC void fiobj_num_free(FIOBJ i) {
   if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_NUMBER)
     return;
-  fiobj__bignum_free(i);
+  fiobj___bignum_free(i);
   return;
 }
 #undef FIO_NUMBER_ENCODE
@@ -9015,7 +9015,7 @@ FIOBJ_HIFUNC void fiobj_num_free(FIOBJ i) {
 FIOBJ Floats
 ***************************************************************************** */
 
-#define FIO_REF_NAME fiobj__bigfloat
+#define FIO_REF_NAME fiobj___bigfloat
 #define FIO_REF_TYPE double
 #define FIO_REF_METADATA FIOBJ_class_vtable_s *
 #define FIO_REF_CONSTRUCTOR_ONLY 1
@@ -9047,7 +9047,7 @@ FIOBJ_HIFUNC FIOBJ fiobj_float_new(double i) {
       return (FIOBJ)(punned.i | FIOBJ_T_FLOAT);
     }
   }
-  ui = fiobj__bigfloat_new();
+  ui = fiobj___bigfloat_new();
   FIO_PTR_MATH_RMASK(double, ui, 3)[0] = i;
   return ui;
 }
@@ -9077,7 +9077,7 @@ FIOBJ_HIFUNC double fiobj_float_2f(FIOBJ i) {
 FIOBJ_HIFUNC void fiobj_float_free(FIOBJ i) {
   if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_FLOAT)
     return;
-  fiobj__bignum_free(i);
+  fiobj___bignum_free(i);
   return;
 }
 
@@ -9178,7 +9178,7 @@ FIOBJ - Implementation
 FIOBJ Basic Object vtable
 ***************************************************************************** */
 
-FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ_OBJECT_CLASS_VTBL = {
+FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___OBJECT_CLASS_VTBL = {
     .type_id = 99, /* type IDs below 100 are reserved. */
 };
 
@@ -9293,9 +9293,9 @@ FIOBJ_FUNC uint32_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ child, void *arg),
 /* *****************************************************************************
 FIOBJ general helpers
 ***************************************************************************** */
-FIOBJ_HFUNC __thread char fiobj__tmp_buffer[256];
+FIOBJ_HFUNC __thread char fiobj___tmp_buffer[256];
 
-FIOBJ_HFUNC uint32_t fiobj__count_noop(FIOBJ o) {
+FIOBJ_HFUNC uint32_t fiobj___count_noop(FIOBJ o) {
   return 0;
   (void)o;
 }
@@ -9304,14 +9304,14 @@ FIOBJ_HFUNC uint32_t fiobj__count_noop(FIOBJ o) {
 FIOBJ Integers (bigger numbers)
 ***************************************************************************** */
 
-FIOBJ_FUNC unsigned char fiobj_num__is_eq(FIOBJ a, FIOBJ b) {
+FIOBJ_FUNC unsigned char fiobj___num_is_eq(FIOBJ a, FIOBJ b) {
   return fiobj_num_2i(a) == fiobj_num_2i(b);
 }
 
 FIOBJ_FUNC fio_str_info_s fiobj_num_to_s(FIOBJ i) {
-  size_t len = fio_ltoa(fiobj__tmp_buffer, fiobj_num_2i(i), 10);
-  fiobj__tmp_buffer[len] = 0;
-  return (fio_str_info_s){.data = fiobj__tmp_buffer, .len = len};
+  size_t len = fio_ltoa(fiobj___tmp_buffer, fiobj_num_2i(i), 10);
+  fiobj___tmp_buffer[len] = 0;
+  return (fio_str_info_s){.data = fiobj___tmp_buffer, .len = len};
 }
 
 FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___NUMBER_CLASS_VTBL = {
@@ -9322,7 +9322,7 @@ FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___NUMBER_CLASS_VTBL = {
      */
     .type_id = FIOBJ_T_NUMBER,
     /** Test for equality between two objects with the same `type_id` */
-    .is_eq = fiobj_num__is_eq,
+    .is_eq = fiobj___num_is_eq,
     /** Converts an object to a String */
     .to_s = fiobj_num_to_s,
     /** Converts and object to an integer */
@@ -9330,25 +9330,25 @@ FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___NUMBER_CLASS_VTBL = {
     /** Converts and object to a float */
     .to_f = fiobj_num_2f,
     /** Returns the number of exposed elements held by the object, if any. */
-    .count = fiobj__count_noop,
+    .count = fiobj___count_noop,
     /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
     .each1 = NULL,
     /** Deallocates the element (but NOT any of it's exposed elements). */
-    .free2 = fiobj__bignum_free,
+    .free2 = fiobj___bignum_free,
 };
 
 /* *****************************************************************************
 FIOBJ Floats (bigger / smaller doubles)
 ***************************************************************************** */
 
-FIOBJ_FUNC unsigned char fiobj_float__is_eq(FIOBJ a, FIOBJ b) {
+FIOBJ_FUNC unsigned char fiobj___float_is_eq(FIOBJ a, FIOBJ b) {
   return fiobj_float_2i(a) == fiobj_float_2i(b);
 }
 
 FIOBJ_FUNC fio_str_info_s fiobj_float_to_s(FIOBJ i) {
-  size_t len = fio_ftoa(fiobj__tmp_buffer, fiobj_float_2f(i), 10);
-  fiobj__tmp_buffer[len] = 0;
-  return (fio_str_info_s){.data = fiobj__tmp_buffer, .len = len};
+  size_t len = fio_ftoa(fiobj___tmp_buffer, fiobj_float_2f(i), 10);
+  fiobj___tmp_buffer[len] = 0;
+  return (fio_str_info_s){.data = fiobj___tmp_buffer, .len = len};
 }
 
 FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___FLOAT_CLASS_VTBL = {
@@ -9359,7 +9359,7 @@ FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___FLOAT_CLASS_VTBL = {
      */
     .type_id = FIOBJ_T_FLOAT,
     /** Test for equality between two objects with the same `type_id` */
-    .is_eq = fiobj_float__is_eq,
+    .is_eq = fiobj___float_is_eq,
     /** Converts an object to a String */
     .to_s = fiobj_float_to_s,
     /** Converts and object to an integer */
@@ -9367,11 +9367,11 @@ FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___FLOAT_CLASS_VTBL = {
     /** Converts and object to a float */
     .to_f = fiobj_float_2f,
     /** Returns the number of exposed elements held by the object, if any. */
-    .count = fiobj__count_noop,
+    .count = fiobj___count_noop,
     /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
     .each1 = NULL,
     /** Deallocates the element (but NOT any of it's exposed elements). */
-    .free2 = fiobj__bigfloat_free,
+    .free2 = fiobj___bigfloat_free,
 };
 
 /* *****************************************************************************
@@ -11400,8 +11400,8 @@ TEST_FUNC void fio___dynamic_types_test___mem(void) {
     fio_free(ary);
   }
 #if DEBUG && FIO_EXTERN_COMPLETE
-  fio_mem___destroy();
-  TEST_ASSERT(fio_mem___block_count <= 1, "memory leaks?");
+  fio___mem_destroy();
+  TEST_ASSERT(fio___mem_block_count <= 1, "memory leaks?");
 #endif
 }
 
