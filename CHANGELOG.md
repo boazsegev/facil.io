@@ -2,9 +2,23 @@
 
 ### v.0.8.0.beta1
 
-Major API changes.
+I believe C is a beautiful language and many more developers would enjoy it if a few more basic tools were made available to help beginners work with the language.
+
+I know facil.io has these tools and could be used to make developers happy, not just when writing network applications, but when coding any application.
+
+My vision for 0.8.0 was to make these tools available to more developers, which meant it was time to separate the IO core library (`fio.h` and `fio.c`) from the "generic" core library, unify the API and remove some code duplication - introducing: `fio-stl.h`.
+
+It came about because I kept copying pieces from facil.io for non-network projects.
+
+I think one of the pieces I kept reusing most was the CLI (command line interface) API, but the simple types (linked lists, arrays, hash maps and strings) and the memory allocator were also high on the list. Sometimes I also needed JSON support, which meant I would sometimes copy most of the FIOBJ type system into one of my projects.
+
+This made me think "I should really separate the non-IO library from the IO library", which would also make it easier for other developers to enjoy facil.io.
+
+I though about it as a small STL, much like C++ has, only for C, and moved the best non-network features facil.io offers into a single library, the facil.io Simple Type Library, `fio-stl.h`.
 
 **Overview**:
+
+- Major API changes!
 
 - Core types and common helpers have been re-written and moved to a separate, stand alone, header-library: `fio-stl.h`
 
