@@ -13,11 +13,11 @@ This file contains macros that create generic / common core types, such as:
 
 * Linked Lists - defined by `FIO_LIST_NAME`
 
-* Dynamic Arrays - defined by `FIO_ARY_NAME`
+* Dynamic Arrays - defined by `FIO_ARRAY_NAME`
 
 * Hash Maps / Sets - defined by `FIO_MAP_NAME`
 
-* Binary Safe Dynamic Strings - defined by `FIO_STR_NAME`
+* Binary Safe Dynamic Strings - defined by `FIO_STRING_NAME`
 
 * Reference counting / Type wrapper - defined by `FIO_REF_NAME` (adds atomic)
 
@@ -223,6 +223,17 @@ Memory allocation macros
 #endif /* FIO_MEM_CALLOC */
 
 /* *****************************************************************************
+String Information Helper Type
+***************************************************************************** */
+
+/** An information type for reporting the string's state. */
+typedef struct fio_cstr_s {
+  size_t capa; /* Buffer capacity, if the string is writable. */
+  size_t len;  /* String length. */
+  char *data;  /* String's first byte. */
+} fio_cstr_s;
+
+/* *****************************************************************************
 Linked Lists Persistent Macros and Types
 ***************************************************************************** */
 
@@ -240,6 +251,22 @@ typedef struct fio___list_node_s {
 /** Allows initialization of FIO_LIST_HEAD objects. */
 #define FIO_LIST_INIT(obj)                                                     \
   { .next = &(obj), .prev = &(obj) }
+
+/* *****************************************************************************
+Naming macros
+***************************************************************************** */
+
+/* Used for naming functions and types */
+#define FIO_NAME_FROM_MACRO_STEP2(prefix, postfix, div) prefix##div##postfix
+#define FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, div)                        \
+  FIO_NAME_FROM_MACRO_STEP2(prefix, postfix, div)
+/** Used for naming functions and variables resulting in: prefix_postfix */
+#define FIO_NAME(prefix, postfix) FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, _)
+/** Used for naming conversion functions, i.e.: foo2bar */
+#define FIO_NAME2(prefix, postfix) FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, 2)
+/** Used for naming boolean testing functions, i.e.: foo_is_true */
+#define FIO_NAME_BL(prefix, postfix)                                           \
+  FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, _is_)
 
 /* *****************************************************************************
 Miscellaneous helper macros
@@ -320,14 +347,7 @@ End persistent segment (end include-once guard)
 /* *****************************************************************************
 Common macros
 ***************************************************************************** */
-#ifndef FIO_NAME_FROM_MACRO_STEP2 /* don't redefine in recursive include */
-
-/* Used for naming functions and types, prefixing FIO_NAME to the name */
-#define FIO_NAME_FROM_MACRO_STEP2(prefix, postfix, div) prefix##div##postfix
-#define FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, div)                        \
-  FIO_NAME_FROM_MACRO_STEP2(prefix, postfix, div)
-#define FIO_NAME(prefix, postfix) FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, _)
-#define FIO_NAME2(prefix, postfix) FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, 2)
+#ifndef SFUNC_ /* if we aren't in a recursive #include statement */
 
 #if !FIO_EXTERN
 #define SFUNC_ static __attribute__((unused))
@@ -372,12 +392,12 @@ Common macros
 #ifndef FIO_PTR_TAG_TYPE
 #endif
 
-#else /* FIO_NAME_FROM_MACRO_STEP2 - internal helper types are `static` */
+#else /* SFUNC_ - internal helper types are `static` */
 #undef SFUNC
 #undef IFUNC
 #define SFUNC HSFUNC
 #define IFUNC HFUNC
-#endif /* FIO_NAME_FROM_MACRO_STEP2 vs FIO_STL_KEEP__*/
+#endif /* SFUNC_ vs FIO_STL_KEEP__*/
 /* *****************************************************************************
 C++ extern start
 ***************************************************************************** */
@@ -634,7 +654,7 @@ HFUNC void fio_lock(fio_lock_i *lock) {
 }
 
 /** Returns 1 if the lock is locked, 0 otherwise. */
-HFUNC uint8_t fio_is_locked(fio_lock_i *lock) { return *lock; }
+HFUNC uint8_t FIO_NAME_BL(fio, locked)(fio_lock_i *lock) { return *lock; }
 
 /** Unlocks the lock, no matter which thread owns the lock. */
 HFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_xchange(lock, 0); }
@@ -748,13 +768,13 @@ Unaligned memory read / write operations
 ***************************************************************************** */
 
 /** Converts an unaligned network ordered byte stream to a 16 bit number. */
-HFUNC uint16_t fio_str2u16(const void *c) {
+HFUNC uint16_t FIO_NAME2(fio_buf, u16)(const void *c) {
   return ((uint16_t)(((uint16_t)(((const uint8_t *)(c))[0]) << 8) |
                      (uint16_t)(((const uint8_t *)(c))[1])));
 }
 
 /** Converts an unaligned network ordered byte stream to a 32 bit number. */
-HFUNC uint32_t fio_str2u32(const void *c) {
+HFUNC uint32_t FIO_NAME2(fio_buf, u32)(const void *c) {
   return ((uint32_t)(((uint32_t)(((const uint8_t *)(c))[0]) << 24) |
                      ((uint32_t)(((const uint8_t *)(c))[1]) << 16) |
                      ((uint32_t)(((const uint8_t *)(c))[2]) << 8) |
@@ -762,7 +782,7 @@ HFUNC uint32_t fio_str2u32(const void *c) {
 }
 
 /** Converts an unaligned network ordered byte stream to a 64 bit number. */
-HFUNC uint64_t fio_str2u64(const void *c) {
+HFUNC uint64_t FIO_NAME2(fio_buf, u64)(const void *c) {
   return ((uint64_t)((((uint64_t)((const uint8_t *)(c))[0]) << 56) |
                      (((uint64_t)((const uint8_t *)(c))[1]) << 48) |
                      (((uint64_t)((const uint8_t *)(c))[2]) << 40) |
@@ -774,29 +794,29 @@ HFUNC uint64_t fio_str2u64(const void *c) {
 }
 
 /** Writes a local 16 bit number to an unaligned buffer in network order. */
-HFUNC void fio_u2str16(void *buffer, uint16_t i) {
-  ((uint8_t *)(buffer))[0] = (i >> 8) & 0xFF;
-  ((uint8_t *)(buffer))[1] = (i)&0xFF;
+HFUNC void FIO_NAME2(fio_u, buf16)(void *buf, uint16_t i) {
+  ((uint8_t *)(buf))[0] = (i >> 8) & 0xFF;
+  ((uint8_t *)(buf))[1] = (i)&0xFF;
 }
 
 /** Writes a local 32 bit number to an unaligned buffer in network order. */
-HFUNC void fio_u2str32(void *buffer, uint32_t i) {
-  ((uint8_t *)(buffer))[0] = (i >> 24) & 0xFF;
-  ((uint8_t *)(buffer))[1] = (i >> 16) & 0xFF;
-  ((uint8_t *)(buffer))[2] = (i >> 8) & 0xFF;
-  ((uint8_t *)(buffer))[3] = (i)&0xFF;
+HFUNC void FIO_NAME2(fio_u, buf32)(void *buf, uint32_t i) {
+  ((uint8_t *)(buf))[0] = (i >> 24) & 0xFF;
+  ((uint8_t *)(buf))[1] = (i >> 16) & 0xFF;
+  ((uint8_t *)(buf))[2] = (i >> 8) & 0xFF;
+  ((uint8_t *)(buf))[3] = (i)&0xFF;
 }
 
 /** Writes a local 64 bit number to an unaligned buffer in network order. */
-HFUNC void fio_u2str64(void *buffer, uint64_t i) {
-  ((uint8_t *)(buffer))[0] = ((i >> 56) & 0xFF);
-  ((uint8_t *)(buffer))[1] = ((i >> 48) & 0xFF);
-  ((uint8_t *)(buffer))[2] = ((i >> 40) & 0xFF);
-  ((uint8_t *)(buffer))[3] = ((i >> 32) & 0xFF);
-  ((uint8_t *)(buffer))[4] = ((i >> 24) & 0xFF);
-  ((uint8_t *)(buffer))[5] = ((i >> 16) & 0xFF);
-  ((uint8_t *)(buffer))[6] = ((i >> 8) & 0xFF);
-  ((uint8_t *)(buffer))[7] = ((i)&0xFF);
+HFUNC void FIO_NAME2(fio_u, buf64)(void *buf, uint64_t i) {
+  ((uint8_t *)(buf))[0] = ((i >> 56) & 0xFF);
+  ((uint8_t *)(buf))[1] = ((i >> 48) & 0xFF);
+  ((uint8_t *)(buf))[2] = ((i >> 40) & 0xFF);
+  ((uint8_t *)(buf))[3] = ((i >> 32) & 0xFF);
+  ((uint8_t *)(buf))[4] = ((i >> 24) & 0xFF);
+  ((uint8_t *)(buf))[5] = ((i >> 16) & 0xFF);
+  ((uint8_t *)(buf))[6] = ((i >> 8) & 0xFF);
+  ((uint8_t *)(buf))[7] = ((i)&0xFF);
 }
 
 /* *****************************************************************************
@@ -1054,8 +1074,7 @@ SFUNC void *FIO_ALIGN fio_realloc(void *ptr, size_t new_size);
  *
  * This variation is slightly faster as it might copy less data.
  */
-SFUNC void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size,
-                                   size_t copy_length);
+SFUNC void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size, size_t copy_len);
 
 /**
  * Allocates memory directly using `mmap`, this is preferred for objects that
@@ -1758,7 +1777,7 @@ SFUNC void *FIO_ALIGN fio_realloc(void *ptr, size_t new_size) {
  * This variation is slightly faster as it might copy less data.
  */
 SFUNC void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size,
-                                   size_t copy_length) {
+                                   size_t copy_len) {
   if (!ptr || ptr == &fio___mem_on_malloc_zero)
     return fio_malloc(new_size);
   const size_t max_len = ((0 - (uintptr_t)FIO_PTR_MATH_LMASK(
@@ -1769,18 +1788,18 @@ SFUNC void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size,
       FIO_PTR_MATH_RMASK(fio___mem_block_s, ptr, FIO_MEMORY_BLOCK_SIZE_LOG);
   void *mem = NULL;
 
-  if (copy_length > new_size)
-    copy_length = new_size;
+  if (copy_len > new_size)
+    copy_len = new_size;
   if (b->reserved)
     goto big_realloc;
-  if (copy_length > max_len)
-    copy_length = max_len;
+  if (copy_len > max_len)
+    copy_len = max_len;
 
   mem = fio_malloc(new_size);
   if (!mem) {
     return NULL;
   }
-  fio____memcpy_16byte(mem, ptr, ((copy_length + 15) >> 4));
+  fio____memcpy_16byte(mem, ptr, ((copy_len + 15) >> 4));
   fio___mem_block_free(b);
   return mem;
 
@@ -1795,7 +1814,7 @@ big_realloc:
     if (!mem) {
       return NULL;
     }
-    fio____memcpy_16byte(mem, ptr, (copy_length >> 4));
+    fio____memcpy_16byte(mem, ptr, (copy_len >> 4));
     FIO_MEM_PAGE_FREE(b, b->reserved);
     return mem;
   }
@@ -1924,7 +1943,8 @@ Memory management macros
 
 ***************************************************************************** */
 
-#if (defined(FIO_RISKY_HASH) || defined(FIO_STR_NAME) || defined(FIO_RAND)) && \
+#if (defined(FIO_RISKY_HASH) || defined(FIO_STRING_NAME) ||                    \
+     defined(FIO_RAND)) &&                                                     \
     !defined(H___FIO_RISKY_HASH_H)
 #define H___FIO_RISKY_HASH_H
 
@@ -2106,8 +2126,8 @@ Random - API
 /** Returns 64 psedo-random bits. Probably not cryptographically safe. */
 SFUNC uint64_t fio_rand64(void);
 
-/** Writes `length` bytes of psedo-random bits to the target buffer. */
-SFUNC void fio_rand_bytes(void *target, size_t length);
+/** Writes `len` bytes of psedo-random bits to the target buffer. */
+SFUNC void fio_rand_bytes(void *target, size_t len);
 
 /* *****************************************************************************
 Random - Implementation
@@ -2167,14 +2187,14 @@ SFUNC void fio_rand_bytes(void *data_, size_t len) {
   for (size_t i = (len >> 4); i; --i) {
     uint64_t t0 = fio_rand64();
     uint64_t t1 = fio_rand64();
-    fio_u2str64(data, t0);
-    fio_u2str64(data + 8, t1);
+    FIO_NAME2(fio_u, buf64)(data, t0);
+    FIO_NAME2(fio_u, buf64)(data + 8, t1);
     data += 16;
   }
   /* 64 random bits at tail */
   if ((len & 8)) {
     uint64_t t0 = fio_rand64();
-    fio_u2str64(data, t0);
+    FIO_NAME2(fio_u, buf64)(data, t0);
   }
 
 small_random:
@@ -2752,7 +2772,7 @@ Linked Lists (embeded) - API
 IFUNC int FIO_NAME(FIO_LIST_NAME, any)(FIO_LIST_HEAD *head);
 
 /** Returns a non-zero value if the list is empty. */
-IFUNC int FIO_NAME(FIO_LIST_NAME, is_empty)(FIO_LIST_HEAD *head);
+IFUNC int FIO_NAME_BL(FIO_LIST_NAME, empty)(FIO_LIST_HEAD *head);
 
 /** Removes a node from the list, Returns NULL if node isn't linked. */
 IFUNC FIO_LIST_TYPE_PTR FIO_NAME(FIO_LIST_NAME, remove)(FIO_LIST_TYPE_PTR node);
@@ -2799,7 +2819,7 @@ IFUNC int FIO_NAME(FIO_LIST_NAME, any)(FIO_LIST_HEAD *head) {
 }
 
 /** Returns a non-zero value if the list is empty. */
-IFUNC int FIO_NAME(FIO_LIST_NAME, is_empty)(FIO_LIST_HEAD *head) {
+IFUNC int FIO_NAME_BL(FIO_LIST_NAME, empty)(FIO_LIST_HEAD *head) {
   head = (FIO_LIST_HEAD *)(FIO_PTR_UNTAG(head));
   return head->next == head;
 }
@@ -2896,15 +2916,15 @@ typedef struct {
   float f;
 } foo_s;
 
-#define FIO_ARY_NAME ary
-#define FIO_ARY_TYPE foo_s
-#define FIO_ARY_TYPE_CMP(a,b) (a.i == b.i && a.f == b.f)
+#define FIO_ARRAY_NAME ary
+#define FIO_ARRAY_TYPE foo_s
+#define FIO_ARRAY_TYPE_CMP(a,b) (a.i == b.i && a.f == b.f)
 #include "fio_cstl.h"
 
 void example(void) {
-  ary_s a = FIO_ARY_INIT;
+  ary_s a = FIO_ARRAY_INIT;
   foo_s *p = ary_push(&a, (foo_s){.i = 42});
-  FIO_ARY_EACH(&a, pos) { // pos will be a pointer to the element
+  FIO_ARRAY_EACH(&a, pos) { // pos will be a pointer to the element
     fprintf(stderr, "* [%zu]: %p : %d\n", (size_t)(pos - ary2ptr(&a)), pos->i);
   }
   ary_destroy(&a);
@@ -2913,110 +2933,110 @@ void example(void) {
 
 ***************************************************************************** */
 
-#ifdef FIO_ARY_NAME
+#ifdef FIO_ARRAY_NAME
 
-#ifndef FIO_ARY_TYPE
-/** The type for array elements (an array of FIO_ARY_TYPE) */
-#define FIO_ARY_TYPE void *
+#ifndef FIO_ARRAY_TYPE
+/** The type for array elements (an array of FIO_ARRAY_TYPE) */
+#define FIO_ARRAY_TYPE void *
 /** An invalid value for that type (if any). */
-#define FIO_ARY_TYPE_INVALID NULL
-#define FIO_ARY_TYPE_INVALID_SIMPLE 1
+#define FIO_ARRAY_TYPE_INVALID NULL
+#define FIO_ARRAY_TYPE_INVALID_SIMPLE 1
 #else
-#ifndef FIO_ARY_TYPE_INVALID
+#ifndef FIO_ARRAY_TYPE_INVALID
 /** An invalid value for that type (if any). */
-#define FIO_ARY_TYPE_INVALID ((FIO_ARY_TYPE){0})
+#define FIO_ARRAY_TYPE_INVALID ((FIO_ARRAY_TYPE){0})
 /* internal flag - don not set */
-#define FIO_ARY_TYPE_INVALID_SIMPLE 1
+#define FIO_ARRAY_TYPE_INVALID_SIMPLE 1
 #endif
 #endif
 
-#ifndef FIO_ARY_TYPE_COPY
+#ifndef FIO_ARRAY_TYPE_COPY
 /** Handles a copy operation for an array's element. */
-#define FIO_ARY_TYPE_COPY(dest, src) (dest) = (src)
+#define FIO_ARRAY_TYPE_COPY(dest, src) (dest) = (src)
 /* internal flag - don not set */
-#define FIO_ARY_TYPE_COPY_SIMPLE 1
+#define FIO_ARRAY_TYPE_COPY_SIMPLE 1
 #endif
 
-#ifndef FIO_ARY_TYPE_DESTROY
+#ifndef FIO_ARRAY_TYPE_DESTROY
 /** Handles a destroy / free operation for an array's element. */
-#define FIO_ARY_TYPE_DESTROY(obj)
+#define FIO_ARRAY_TYPE_DESTROY(obj)
 /* internal flag - don not set */
-#define FIO_ARY_TYPE_DESTROY_SIMPLE 1
+#define FIO_ARRAY_TYPE_DESTROY_SIMPLE 1
 #endif
 
-#ifndef FIO_ARY_TYPE_CMP
+#ifndef FIO_ARRAY_TYPE_CMP
 /** Handles a comparison operation for an array's element. */
-#define FIO_ARY_TYPE_CMP(a, b) (a) == (b)
+#define FIO_ARRAY_TYPE_CMP(a, b) (a) == (b)
 /* internal flag - don not set */
-#define FIO_ARY_TYPE_CMP_SIMPLE 1
+#define FIO_ARRAY_TYPE_CMP_SIMPLE 1
 #endif
 
 /* Extra empty slots when allocating memory. */
-#ifndef FIO_ARY_PADDING
-#define FIO_ARY_PADDING 4
+#ifndef FIO_ARRAY_PADDING
+#define FIO_ARRAY_PADDING 4
 #endif
 
 /* Sets memory growth to exponentially increase. Consumes more memory. */
-#ifndef FIO_ARY_EXPONENTIAL
-#define FIO_ARY_EXPONENTIAL 0
+#ifndef FIO_ARRAY_EXPONENTIAL
+#define FIO_ARRAY_EXPONENTIAL 0
 #endif
 
-#undef FIO_ARY_SIZE2WORDS
-#define FIO_ARY_SIZE2WORDS(size)                                               \
-  ((sizeof(FIO_ARY_TYPE) & 1)                                                  \
+#undef FIO_ARRAY_SIZE2WORDS
+#define FIO_ARRAY_SIZE2WORDS(size)                                             \
+  ((sizeof(FIO_ARRAY_TYPE) & 1)                                                \
        ? (((size) & (~15)) + 16)                                               \
-       : (sizeof(FIO_ARY_TYPE) & 2)                                            \
+       : (sizeof(FIO_ARRAY_TYPE) & 2)                                          \
              ? (((size) & (~7)) + 8)                                           \
-             : (sizeof(FIO_ARY_TYPE) & 4)                                      \
+             : (sizeof(FIO_ARRAY_TYPE) & 4)                                    \
                    ? (((size) & (~3)) + 4)                                     \
-                   : (sizeof(FIO_ARY_TYPE) & 8) ? (((size) & (~1)) + 2)        \
-                                                : (size))
+                   : (sizeof(FIO_ARRAY_TYPE) & 8) ? (((size) & (~1)) + 2)      \
+                                                  : (size))
 
 /* *****************************************************************************
 Dynamic Arrays - type
 ***************************************************************************** */
 
 typedef struct {
-  FIO_ARY_TYPE *ary;
+  FIO_ARRAY_TYPE *ary;
   uint32_t capa;
   uint32_t start;
   uint32_t end;
-} FIO_NAME(FIO_ARY_NAME, s);
+} FIO_NAME(FIO_ARRAY_NAME, s);
 
 #ifdef FIO_PTR_TAG_TYPE
-#define FIO_ARY_PTR FIO_PTR_TAG_TYPE
+#define FIO_ARRAY_PTR FIO_PTR_TAG_TYPE
 #else
-#define FIO_ARY_PTR FIO_NAME(FIO_ARY_NAME, s) *
+#define FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, s) *
 #endif
 
 /* *****************************************************************************
 Dynamic Arrays - API
 ***************************************************************************** */
 
-#ifndef FIO_ARY_INIT
+#ifndef FIO_ARRAY_INIT
 /* Initialization macro. */
-#define FIO_ARY_INIT                                                           \
+#define FIO_ARRAY_INIT                                                         \
   { 0 }
 #endif
 
 #ifndef FIO_REF_CONSTRUCTOR_ONLY
 
 /* Allocates a new array object on the heap and initializes it's memory. */
-IFUNC FIO_ARY_PTR FIO_NAME(FIO_ARY_NAME, new)(void);
+IFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, new)(void);
 
 /* Frees an array's internal data AND it's container! */
-IFUNC void FIO_NAME(FIO_ARY_NAME, free)(FIO_ARY_PTR ary);
+IFUNC void FIO_NAME(FIO_ARRAY_NAME, free)(FIO_ARRAY_PTR ary);
 
 #endif /* FIO_REF_CONSTRUCTOR_ONLY */
 
 /* Destroys any objects stored in the array and frees the internal state. */
-IFUNC void FIO_NAME(FIO_ARY_NAME, destroy)(FIO_ARY_PTR ary);
+IFUNC void FIO_NAME(FIO_ARRAY_NAME, destroy)(FIO_ARRAY_PTR ary);
 
 /** Returns the number of elements in the Array. */
-IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, count)(FIO_ARY_PTR ary);
+IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, count)(FIO_ARRAY_PTR ary);
 
 /** Returns the current, temporary, array capacity (it's dynamic). */
-IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, capa)(FIO_ARY_PTR ary);
+IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, capa)(FIO_ARRAY_PTR ary);
 
 /**
  * Reserves a minimal capacity for the array.
@@ -3029,7 +3049,8 @@ IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, capa)(FIO_ARY_PTR ary);
  * Note: the reserved capacity includes existing data. If the requested reserved
  * capacity is equal (or less) then the existing capacity, nothing will be done.
  */
-IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, reserve)(FIO_ARY_PTR ary, int32_t capa);
+IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, reserve)(FIO_ARRAY_PTR ary,
+                                                 int32_t capa);
 
 /**
  * Adds all the items in the `src` Array to the end of the `dest` Array.
@@ -3038,8 +3059,8 @@ IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, reserve)(FIO_ARY_PTR ary, int32_t capa);
  *
  * Always returns the destination array (`dest`).
  */
-SFUNC FIO_ARY_PTR FIO_NAME(FIO_ARY_NAME, concat)(FIO_ARY_PTR dest,
-                                                 FIO_ARY_PTR src);
+SFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, concat)(FIO_ARRAY_PTR dest,
+                                                     FIO_ARRAY_PTR src);
 
 /**
  * Sets `index` to the value in `data`.
@@ -3052,9 +3073,9 @@ SFUNC FIO_ARY_PTR FIO_NAME(FIO_ARY_NAME, concat)(FIO_ARY_PTR dest,
  *
  * Returns a pointer to the new object, or NULL on error.
  */
-IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary, int32_t index,
-                                                FIO_ARY_TYPE data,
-                                                FIO_ARY_TYPE *old);
+IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME,
+                               set)(FIO_ARRAY_PTR ary, int32_t index,
+                                    FIO_ARRAY_TYPE data, FIO_ARRAY_TYPE *old);
 
 /**
  * Returns the value located at `index` (no copying is performed).
@@ -3062,7 +3083,8 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary, int32_t index,
  * If `index` is negative, it will be counted from the end of the Array (-1 ==
  * last element).
  */
-IFUNC FIO_ARY_TYPE FIO_NAME(FIO_ARY_NAME, get)(FIO_ARY_PTR ary, int32_t index);
+IFUNC FIO_ARRAY_TYPE FIO_NAME(FIO_ARRAY_NAME, get)(FIO_ARRAY_PTR ary,
+                                                   int32_t index);
 
 /**
  * Returns the index of the object or -1 if the object wasn't found.
@@ -3070,8 +3092,9 @@ IFUNC FIO_ARY_TYPE FIO_NAME(FIO_ARY_NAME, get)(FIO_ARY_PTR ary, int32_t index);
  * If `start_at` is negative (i.e., -1), than seeking will be performed in
  * reverse, where -1 == last index (-2 == second to last, etc').
  */
-IFUNC int32_t FIO_NAME(FIO_ARY_NAME, find)(FIO_ARY_PTR ary, FIO_ARY_TYPE data,
-                                           int32_t start_at);
+IFUNC int32_t FIO_NAME(FIO_ARRAY_NAME, find)(FIO_ARRAY_PTR ary,
+                                             FIO_ARRAY_TYPE data,
+                                             int32_t start_at);
 
 /**
  * Removes an object from the array, MOVING all the other objects to prevent
@@ -3085,8 +3108,8 @@ IFUNC int32_t FIO_NAME(FIO_ARY_NAME, find)(FIO_ARY_PTR ary, FIO_ARY_TYPE data,
  * This action is O(n) where n in the length of the array.
  * It could get expensive.
  */
-IFUNC int FIO_NAME(FIO_ARY_NAME, remove)(FIO_ARY_PTR ary, int32_t index,
-                                         FIO_ARY_TYPE *old);
+IFUNC int FIO_NAME(FIO_ARRAY_NAME, remove)(FIO_ARRAY_PTR ary, int32_t index,
+                                           FIO_ARRAY_TYPE *old);
 
 /**
  * Removes all occurrences of an object from the array (if any), MOVING all the
@@ -3097,23 +3120,23 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, remove)(FIO_ARY_PTR ary, int32_t index,
  * This action is O(n) where n in the length of the array.
  * It could get expensive.
  */
-IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, remove2)(FIO_ARY_PTR ary,
-                                               FIO_ARY_TYPE data);
+IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, remove2)(FIO_ARRAY_PTR ary,
+                                                 FIO_ARRAY_TYPE data);
 
 /** Attempts to lower the array's memory consumption. */
-IFUNC void FIO_NAME(FIO_ARY_NAME, compact)(FIO_ARY_PTR ary);
+IFUNC void FIO_NAME(FIO_ARRAY_NAME, compact)(FIO_ARRAY_PTR ary);
 
 /**
  * Returns a pointer to the C array containing the objects.
  */
-IFUNC FIO_ARY_TYPE *FIO_NAME2(FIO_ARY_NAME, ptr)(FIO_ARY_PTR ary);
+IFUNC FIO_ARRAY_TYPE *FIO_NAME2(FIO_ARRAY_NAME, ptr)(FIO_ARRAY_PTR ary);
 
 /**
  * Pushes an object to the end of the Array. Returns a pointer to the new object
  * or NULL on error.
  */
-IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, push)(FIO_ARY_PTR ary,
-                                                 FIO_ARY_TYPE data);
+IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, push)(FIO_ARRAY_PTR ary,
+                                                     FIO_ARRAY_TYPE data);
 
 /**
  * Removes an object from the end of the Array.
@@ -3123,7 +3146,7 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, push)(FIO_ARY_PTR ary,
  *
  * Returns -1 on error (Array is empty) and 0 on success.
  */
-IFUNC int FIO_NAME(FIO_ARY_NAME, pop)(FIO_ARY_PTR ary, FIO_ARY_TYPE *old);
+IFUNC int FIO_NAME(FIO_ARRAY_NAME, pop)(FIO_ARRAY_PTR ary, FIO_ARRAY_TYPE *old);
 
 /**
  * Unshifts an object to the beginning of the Array. Returns a pointer to the
@@ -3131,8 +3154,8 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, pop)(FIO_ARY_PTR ary, FIO_ARY_TYPE *old);
  *
  * This could be expensive, causing `memmove`.
  */
-IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, unshift)(FIO_ARY_PTR ary,
-                                                    FIO_ARY_TYPE data);
+IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, unshift)(FIO_ARRAY_PTR ary,
+                                                        FIO_ARRAY_TYPE data);
 
 /**
  * Removes an object from the beginning of the Array.
@@ -3142,7 +3165,8 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, unshift)(FIO_ARY_PTR ary,
  *
  * Returns -1 on error (Array is empty) and 0 on success.
  */
-IFUNC int FIO_NAME(FIO_ARY_NAME, shift)(FIO_ARY_PTR ary, FIO_ARY_TYPE *old);
+IFUNC int FIO_NAME(FIO_ARRAY_NAME, shift)(FIO_ARRAY_PTR ary,
+                                          FIO_ARRAY_TYPE *old);
 
 /**
  * Iteration using a callback for each entry in the array.
@@ -3155,12 +3179,12 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, shift)(FIO_ARY_PTR ary, FIO_ARY_TYPE *old);
  * Returns the relative "stop" position, i.e., the number of items processed +
  * the starting point.
  */
-IFUNC uint32_t FIO_NAME(FIO_ARY_NAME,
-                        each)(FIO_ARY_PTR ary, int32_t start_at,
-                              int (*task)(FIO_ARY_TYPE obj, void *arg),
+IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME,
+                        each)(FIO_ARRAY_PTR ary, int32_t start_at,
+                              int (*task)(FIO_ARRAY_TYPE obj, void *arg),
                               void *arg);
 
-#ifndef FIO_ARY_EACH
+#ifndef FIO_ARRAY_EACH
 /**
  * Iterates through the list using a `for` loop.
  *
@@ -3172,7 +3196,7 @@ IFUNC uint32_t FIO_NAME(FIO_ARY_NAME,
  *
  * **Note**: doesn't support automatic pointer tagging / untagging.
  */
-#define FIO_ARY_EACH(array, pos)                                               \
+#define FIO_ARRAY_EACH(array, pos)                                             \
   if ((array)->ary)                                                            \
     for (__typeof__((array)->ary) start__tmp__ = (array)->ary,                 \
                                   pos = ((array)->ary + (array)->start);       \
@@ -3187,10 +3211,10 @@ IFUNC uint32_t FIO_NAME(FIO_ARY_NAME,
 Dynamic Arrays - internal helpers
 ***************************************************************************** */
 
-#define FIO_ARY_POS2ABS(ary, pos)                                              \
+#define FIO_ARRAY_POS2ABS(ary, pos)                                            \
   (pos > 0 ? (ary->start + pos) : (ary->end - pos))
 
-#define FIO_ARY_AB_CT(cond, a, b) ((b) ^ ((0 - ((cond)&1)) & ((a) ^ (b))))
+#define FIO_ARRAY_AB_CT(cond, a, b) ((b) ^ ((0 - ((cond)&1)) & ((a) ^ (b))))
 
 /* *****************************************************************************
 Dynamic Arrays - implementation
@@ -3198,52 +3222,55 @@ Dynamic Arrays - implementation
 
 #ifndef FIO_REF_CONSTRUCTOR_ONLY
 /* Allocates a new array object on the heap and initializes it's memory. */
-IFUNC FIO_ARY_PTR FIO_NAME(FIO_ARY_NAME, new)(void) {
-  FIO_NAME(FIO_ARY_NAME, s) *a =
-      (FIO_NAME(FIO_ARY_NAME, s) *)FIO_MEM_CALLOC_(sizeof(*a), 1);
-  *a = (FIO_NAME(FIO_ARY_NAME, s))FIO_ARY_INIT;
-  return (FIO_ARY_PTR)FIO_PTR_TAG(a);
+IFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, new)(void) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *a =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)FIO_MEM_CALLOC_(sizeof(*a), 1);
+  *a = (FIO_NAME(FIO_ARRAY_NAME, s))FIO_ARRAY_INIT;
+  return (FIO_ARRAY_PTR)FIO_PTR_TAG(a);
 }
 
 /* Frees an array's internal data AND it's container! */
-IFUNC void FIO_NAME(FIO_ARY_NAME, free)(FIO_ARY_PTR ary_) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
-  FIO_NAME(FIO_ARY_NAME, destroy)(ary_);
+IFUNC void FIO_NAME(FIO_ARRAY_NAME, free)(FIO_ARRAY_PTR ary_) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+  FIO_NAME(FIO_ARRAY_NAME, destroy)(ary_);
   FIO_MEM_FREE_(ary, sizeof(*ary));
 }
 #endif /* FIO_REF_CONSTRUCTOR_ONLY */
 
 /* Destroys any objects stored in the array and frees the internal state. */
-IFUNC void FIO_NAME(FIO_ARY_NAME, destroy)(FIO_ARY_PTR ary_) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
-#if !FIO_ARY_TYPE_DESTROY_SIMPLE
-  for (uint32_t i = ary->start; i < ary->end; ++i) {
-    FIO_ARY_TYPE_DESTROY(ary->ary[i]);
+IFUNC void FIO_NAME(FIO_ARRAY_NAME, destroy)(FIO_ARRAY_PTR ary_) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+  /* move array data to a temp var., protecting against recursive nesting */
+  FIO_NAME(FIO_ARRAY_NAME, s) tmp = *ary;
+  *ary = (FIO_NAME(FIO_ARRAY_NAME, s))FIO_ARRAY_INIT;
+#if !FIO_ARRAY_TYPE_DESTROY_SIMPLE
+  for (uint32_t i = tmp.start; i < tmp.end; ++i) {
+    FIO_ARRAY_TYPE_DESTROY(tmp.ary[i]);
   }
 #endif
-  FIO_MEM_FREE_(ary->ary, ary->capa * sizeof(*ary->ary));
-  *ary = (FIO_NAME(FIO_ARY_NAME, s))FIO_ARY_INIT;
+  FIO_MEM_FREE_(tmp.ary, tmp.capa * sizeof(*tmp.ary));
 }
 
 /** Returns the number of elements in the Array. */
-IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, count)(FIO_ARY_PTR ary_) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, count)(FIO_ARRAY_PTR ary_) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   return (ary->end - ary->start);
 }
 
 /** Returns the current, temporary, array capacity (it's dynamic). */
-IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, capa)(FIO_ARY_PTR ary_) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, capa)(FIO_ARRAY_PTR ary_) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   return ary->capa;
 }
 /** Reserves a minimal capacity for the array. */
-IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, reserve)(FIO_ARY_PTR ary_, int32_t capa) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, reserve)(FIO_ARRAY_PTR ary_,
+                                                 int32_t capa) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   if (!ary)
     return 0;
   const uint32_t s = ary->start;
@@ -3251,12 +3278,12 @@ IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, reserve)(FIO_ARY_PTR ary_, int32_t capa) {
   if (capa > 0) {
     if (ary->capa >= (uint32_t)capa)
       return ary->capa;
-    FIO_NAME(FIO_ARY_NAME, set)(ary_, capa - 1, FIO_ARY_TYPE_INVALID, NULL);
+    FIO_NAME(FIO_ARRAY_NAME, set)(ary_, capa - 1, FIO_ARRAY_TYPE_INVALID, NULL);
     ary->end = ary->start + (e - s);
   } else {
     if (ary->capa >= (uint32_t)(0 - capa))
       return ary->capa;
-    FIO_NAME(FIO_ARY_NAME, set)(ary_, capa, FIO_ARY_TYPE_INVALID, NULL);
+    FIO_NAME(FIO_ARRAY_NAME, set)(ary_, capa, FIO_ARRAY_TYPE_INVALID, NULL);
     ary->start = ary->end - (e - s);
   }
   return ary->capa;
@@ -3269,32 +3296,32 @@ IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, reserve)(FIO_ARY_PTR ary_, int32_t capa) {
  *
  * Returns `dest` on success or NULL on error (i.e., no memory).
  */
-SFUNC FIO_ARY_PTR FIO_NAME(FIO_ARY_NAME, concat)(FIO_ARY_PTR dest_,
-                                                 FIO_ARY_PTR src_) {
-  FIO_NAME(FIO_ARY_NAME, s) *dest =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(dest_));
-  FIO_NAME(FIO_ARY_NAME, s) *src =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(src_));
+SFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, concat)(FIO_ARRAY_PTR dest_,
+                                                     FIO_ARRAY_PTR src_) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *dest =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(dest_));
+  FIO_NAME(FIO_ARRAY_NAME, s) *src =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(src_));
   if (!dest || !src || !src->end || src->end - src->start == 0)
     return dest_;
   if (dest->capa + src->start > src->end + dest->end) {
     /* insufficiant memory, (re)allocate */
     uint32_t new_capa = dest->end + (src->end - src->start);
-    FIO_ARY_TYPE *tmp = (FIO_ARY_TYPE *)FIO_MEM_REALLOC_(
+    FIO_ARRAY_TYPE *tmp = (FIO_ARRAY_TYPE *)FIO_MEM_REALLOC_(
         dest->ary, dest->capa * sizeof(*tmp), new_capa * sizeof(*tmp),
         dest->end * sizeof(*tmp));
     if (!tmp)
-      return (FIO_ARY_PTR)(NULL);
+      return (FIO_ARRAY_PTR)(NULL);
     dest->ary = tmp;
     dest->capa = new_capa;
   }
   /* copy data */
-#if FIO_ARY_TYPE_COPY_SIMPLE
+#if FIO_ARRAY_TYPE_COPY_SIMPLE
   memcpy(dest->ary + dest->end, src->ary + src->start, src->end - src->start);
 #else
   for (uint32_t i = 0; i + src->start < src->end; ++i) {
-    FIO_ARY_TYPE_COPY((dest->ary + dest->end + i)[0],
-                      (src->ary + i + src->start)[0]);
+    FIO_ARRAY_TYPE_COPY((dest->ary + dest->end + i)[0],
+                        (src->ary + i + src->start)[0]);
   }
 #endif
   /* update dest */
@@ -3313,17 +3340,17 @@ SFUNC FIO_ARY_PTR FIO_NAME(FIO_ARY_NAME, concat)(FIO_ARY_PTR dest_,
  *
  * Returns a pointer to the new object, or NULL on error.
  */
-IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary_, int32_t index,
-                                                FIO_ARY_TYPE data,
-                                                FIO_ARY_TYPE *old) {
-#if FIO_ARY_EXPONENTIAL
-#define FIO_ARY_ADD2CAPA ary->capa + FIO_ARY_PADDING
+IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME,
+                               set)(FIO_ARRAY_PTR ary_, int32_t index,
+                                    FIO_ARRAY_TYPE data, FIO_ARRAY_TYPE *old) {
+#if FIO_ARRAY_EXPONENTIAL
+#define FIO_ARRAY_ADD2CAPA ary->capa + FIO_ARRAY_PADDING
 #else
-#define FIO_ARY_ADD2CAPA FIO_ARY_PADDING
+#define FIO_ARRAY_ADD2CAPA FIO_ARRAY_PADDING
 #endif
 
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   uint8_t pre_existing = 1;
   if (index >= 0) {
     /* zero based (look forward) */
@@ -3331,8 +3358,8 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary_, int32_t index,
     if ((uint32_t)index >= ary->capa) {
       /* we need more memory */
       uint32_t new_capa =
-          FIO_ARY_SIZE2WORDS(((uint32_t)index + FIO_ARY_ADD2CAPA));
-      FIO_ARY_TYPE *tmp = (FIO_ARY_TYPE *)FIO_MEM_REALLOC_(
+          FIO_ARRAY_SIZE2WORDS(((uint32_t)index + FIO_ARRAY_ADD2CAPA));
+      FIO_ARRAY_TYPE *tmp = (FIO_ARRAY_TYPE *)FIO_MEM_REALLOC_(
           ary->ary, ary->capa * sizeof(*tmp), new_capa * sizeof(*tmp),
           ary->end * sizeof(*tmp));
       if (!tmp)
@@ -3340,15 +3367,15 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary_, int32_t index,
       ary->ary = tmp;
       ary->capa = new_capa;
     }
-    ary->ary[ary->end++] = FIO_ARY_TYPE_INVALID;
+    ary->ary[ary->end++] = FIO_ARRAY_TYPE_INVALID;
     if ((uint32_t)index >= ary->end) {
       /* we to initialize memory between ary->end and index + ary->start */
       pre_existing = 0;
-#if FIO_ARY_TYPE_INVALID_SIMPLE
+#if FIO_ARRAY_TYPE_INVALID_SIMPLE
       memset(ary->ary + ary->end, 0, (index - ary->end) * sizeof(*ary->ary));
 #else
       for (uint32_t i = ary->end; i <= (uint32_t)index; ++i) {
-        FIO_ARY_TYPE_COPY(ary->ary[i], FIO_ARY_TYPE_INVALID);
+        FIO_ARRAY_TYPE_COPY(ary->ary[i], FIO_ARRAY_TYPE_INVALID);
       }
 #endif
       ary->end = index + 1;
@@ -3358,12 +3385,12 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary_, int32_t index,
     index += ary->end;
     if (index < 0) {
       /* TODO: we need more memory at the HEAD (requires copying...) */
-      const uint32_t new_capa = FIO_ARY_SIZE2WORDS(
-          ((uint32_t)ary->capa + FIO_ARY_ADD2CAPA + ((uint32_t)0 - index)));
+      const uint32_t new_capa = FIO_ARRAY_SIZE2WORDS(
+          ((uint32_t)ary->capa + FIO_ARRAY_ADD2CAPA + ((uint32_t)0 - index)));
       const uint32_t valid_data = ary->end - ary->start;
       index -= ary->end; /* return to previous state */
-      FIO_ARY_TYPE *tmp =
-          (FIO_ARY_TYPE *)FIO_MEM_CALLOC_(new_capa, sizeof(*tmp));
+      FIO_ARRAY_TYPE *tmp =
+          (FIO_ARRAY_TYPE *)FIO_MEM_CALLOC_(new_capa, sizeof(*tmp));
       if (!tmp)
         return NULL;
       if (valid_data)
@@ -3373,7 +3400,7 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary_, int32_t index,
       ary->end = ary->capa = new_capa;
       index += new_capa;
       ary->ary = tmp;
-#if FIO_ARY_TYPE_INVALID_SIMPLE
+#if FIO_ARRAY_TYPE_INVALID_SIMPLE
       ary->start = index;
 #else
       ary->start = new_capa - valid_data;
@@ -3382,42 +3409,42 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, set)(FIO_ARY_PTR ary_, int32_t index,
     if ((uint32_t)index < ary->start) {
       /* initialize memory between `index` and `ary->start-1` */
       pre_existing = 0;
-#if FIO_ARY_TYPE_INVALID_SIMPLE
+#if FIO_ARRAY_TYPE_INVALID_SIMPLE
       memset(ary->ary + index, 0, (ary->start - index) * sizeof(*ary->ary));
       ary->start = index;
 #else
       while ((uint32_t)index < ary->start) {
         --ary->start;
-        ary->ary[ary->start] = FIO_ARY_TYPE_INVALID;
-        // FIO_ARY_TYPE_COPY(ary->ary[ary->start], FIO_ARY_TYPE_INVALID);
+        ary->ary[ary->start] = FIO_ARRAY_TYPE_INVALID;
+        // FIO_ARRAY_TYPE_COPY(ary->ary[ary->start], FIO_ARRAY_TYPE_INVALID);
       }
 #endif
     }
   }
   /* copy object */
   if (old)
-    FIO_ARY_TYPE_COPY((*old), ary->ary[index]);
+    FIO_ARRAY_TYPE_COPY((*old), ary->ary[index]);
   if (pre_existing) {
-    FIO_ARY_TYPE_DESTROY(ary->ary[index]);
+    FIO_ARRAY_TYPE_DESTROY(ary->ary[index]);
   }
-  ary->ary[index] = FIO_ARY_TYPE_INVALID;
-  FIO_ARY_TYPE_COPY(ary->ary[index], data);
+  ary->ary[index] = FIO_ARRAY_TYPE_INVALID;
+  FIO_ARRAY_TYPE_COPY(ary->ary[index], data);
   return ary->ary + index;
 }
-#undef FIO_ARY_ADD2CAPA
+#undef FIO_ARRAY_ADD2CAPA
 /**
  * Returns the value located at `index` (no copying is performed).
  *
  * If `index` is negative, it will be counted from the end of the Array (-1 ==
  * last element).
  */
-IFUNC FIO_ARY_TYPE FIO_NAME(FIO_ARY_NAME, get)(FIO_ARY_PTR ary_,
-                                               int32_t index) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
-  index += FIO_ARY_AB_CT(index >= 0, ary->start, ary->end);
+IFUNC FIO_ARRAY_TYPE FIO_NAME(FIO_ARRAY_NAME, get)(FIO_ARRAY_PTR ary_,
+                                                   int32_t index) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+  index += FIO_ARRAY_AB_CT(index >= 0, ary->start, ary->end);
   if (index < 0 || (uint32_t)index >= ary->end)
-    return FIO_ARY_TYPE_INVALID;
+    return FIO_ARRAY_TYPE_INVALID;
   return ary->ary[index];
 }
 
@@ -3427,14 +3454,15 @@ IFUNC FIO_ARY_TYPE FIO_NAME(FIO_ARY_NAME, get)(FIO_ARY_PTR ary_,
  * If `start_at` is negative (i.e., -1), than seeking will be performed in
  * reverse, where -1 == last index (-2 == second to last, etc').
  */
-IFUNC int32_t FIO_NAME(FIO_ARY_NAME, find)(FIO_ARY_PTR ary_, FIO_ARY_TYPE data,
-                                           int32_t start_at) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+IFUNC int32_t FIO_NAME(FIO_ARRAY_NAME, find)(FIO_ARRAY_PTR ary_,
+                                             FIO_ARRAY_TYPE data,
+                                             int32_t start_at) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   if (start_at >= 0) {
     /* seek forwards */
     while ((uint32_t)start_at < ary->end) {
-      if (FIO_ARY_TYPE_CMP(ary->ary[start_at], data))
+      if (FIO_ARRAY_TYPE_CMP(ary->ary[start_at], data))
         return start_at;
       ++start_at;
     }
@@ -3444,7 +3472,7 @@ IFUNC int32_t FIO_NAME(FIO_ARY_NAME, find)(FIO_ARY_PTR ary_, FIO_ARY_TYPE data,
     if (start_at >= (int32_t)ary->end)
       start_at = ary->end - 1;
     while (start_at > (int32_t)ary->start) {
-      if (FIO_ARY_TYPE_CMP(ary->ary[start_at], data))
+      if (FIO_ARRAY_TYPE_CMP(ary->ary[start_at], data))
         return start_at;
       --start_at;
     }
@@ -3461,18 +3489,18 @@ IFUNC int32_t FIO_NAME(FIO_ARY_NAME, find)(FIO_ARY_PTR ary_, FIO_ARY_TYPE data,
  *
  * Returns 0 on success and -1 on error.
  */
-IFUNC int FIO_NAME(FIO_ARY_NAME, remove)(FIO_ARY_PTR ary_, int32_t index,
-                                         FIO_ARY_TYPE *old) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
-  index += FIO_ARY_AB_CT(index >= 0, ary->start, ary->end);
+IFUNC int FIO_NAME(FIO_ARRAY_NAME, remove)(FIO_ARRAY_PTR ary_, int32_t index,
+                                           FIO_ARRAY_TYPE *old) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+  index += FIO_ARRAY_AB_CT(index >= 0, ary->start, ary->end);
   if (!ary || (uint32_t)index >= ary->end || index < (int32_t)ary->start) {
-    FIO_ARY_TYPE_COPY(*old, FIO_ARY_TYPE_INVALID);
+    FIO_ARRAY_TYPE_COPY(*old, FIO_ARRAY_TYPE_INVALID);
     return -1;
   }
   if (old)
-    FIO_ARY_TYPE_COPY(*old, ary->ary[index]);
-  FIO_ARY_TYPE_DESTROY(ary->ary[index]);
+    FIO_ARRAY_TYPE_COPY(*old, ary->ary[index]);
+  FIO_ARRAY_TYPE_DESTROY(ary->ary[index]);
   if ((uint32_t)index == ary->start) {
     /* unshift */
     ++ary->start;
@@ -3493,19 +3521,19 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, remove)(FIO_ARY_PTR ary_, int32_t index,
  *
  * Returns the number of items removed.
  */
-IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, remove2)(FIO_ARY_PTR ary_,
-                                               FIO_ARY_TYPE data) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, remove2)(FIO_ARRAY_PTR ary_,
+                                                 FIO_ARRAY_TYPE data) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   uint32_t c = 0;
   uint32_t i = ary->start;
   while (i < ary->end) {
-    if (!(FIO_ARY_TYPE_CMP(ary->ary[i + c], data))) {
+    if (!(FIO_ARRAY_TYPE_CMP(ary->ary[i + c], data))) {
       ary->ary[i] = ary->ary[i + c];
       ++i;
       continue;
     }
-    FIO_ARY_TYPE_DESTROY(ary->ary[i + c]);
+    FIO_ARRAY_TYPE_DESTROY(ary->ary[i + c]);
     --ary->end;
     ++c;
   }
@@ -3513,13 +3541,13 @@ IFUNC uint32_t FIO_NAME(FIO_ARY_NAME, remove2)(FIO_ARY_PTR ary_,
 }
 
 /** Attempts to lower the array's memory consumption. */
-IFUNC void FIO_NAME(FIO_ARY_NAME, compact)(FIO_ARY_PTR ary_) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
-  FIO_ARY_TYPE *tmp = NULL;
+IFUNC void FIO_NAME(FIO_ARRAY_NAME, compact)(FIO_ARRAY_PTR ary_) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+  FIO_ARRAY_TYPE *tmp = NULL;
   if (!(ary->end - ary->start))
     goto finish;
-  tmp = (FIO_ARY_TYPE *)FIO_MEM_CALLOC((ary->end - ary->start), sizeof(*tmp));
+  tmp = (FIO_ARRAY_TYPE *)FIO_MEM_CALLOC((ary->end - ary->start), sizeof(*tmp));
   if (!tmp)
     return;
   memcpy(tmp, ary->ary + ary->start,
@@ -3528,7 +3556,7 @@ finish:
   if (ary->ary) {
     FIO_MEM_FREE_(ary->ary, ary->capa * sizeof(*ary->ary));
   }
-  *ary = (FIO_NAME(FIO_ARY_NAME, s)){
+  *ary = (FIO_NAME(FIO_ARRAY_NAME, s)){
       .start = 0,
       .end = (ary->end - ary->start),
       .ary = tmp,
@@ -3539,29 +3567,29 @@ finish:
 /**
  * Returns a pointer to the C array containing the objects.
  */
-IFUNC FIO_ARY_TYPE *FIO_NAME2(FIO_ARY_NAME, ptr)(FIO_ARY_PTR ary_) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+IFUNC FIO_ARRAY_TYPE *FIO_NAME2(FIO_ARRAY_NAME, ptr)(FIO_ARRAY_PTR ary_) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   return ary->ary + ary->start;
 }
 
 /**
  * Pushes an object to the end of the Array. Returns -1 on error.
  */
-IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, push)(FIO_ARY_PTR ary_,
-                                                 FIO_ARY_TYPE data) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
-  FIO_ARY_TYPE *pos;
+IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, push)(FIO_ARRAY_PTR ary_,
+                                                     FIO_ARRAY_TYPE data) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+  FIO_ARRAY_TYPE *pos;
   if (ary->end >= ary->capa)
     goto needs_memory;
   pos = ary->ary + ary->end;
-  *pos = FIO_ARY_TYPE_INVALID;
+  *pos = FIO_ARRAY_TYPE_INVALID;
   ++ary->end;
-  FIO_ARY_TYPE_COPY(*pos, data);
+  FIO_ARRAY_TYPE_COPY(*pos, data);
   return pos;
 needs_memory:
-  return FIO_NAME(FIO_ARY_NAME, set)(ary_, ary->end, data, NULL);
+  return FIO_NAME(FIO_ARRAY_NAME, set)(ary_, ary->end, data, NULL);
 }
 
 /**
@@ -3572,17 +3600,18 @@ needs_memory:
  *
  * Returns -1 on error (Array is empty) and 0 on success.
  */
-IFUNC int FIO_NAME(FIO_ARY_NAME, pop)(FIO_ARY_PTR ary_, FIO_ARY_TYPE *old) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+IFUNC int FIO_NAME(FIO_ARRAY_NAME, pop)(FIO_ARRAY_PTR ary_,
+                                        FIO_ARRAY_TYPE *old) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   if (!ary || ary->start == ary->end) {
-    FIO_ARY_TYPE_COPY(*old, FIO_ARY_TYPE_INVALID);
+    FIO_ARRAY_TYPE_COPY(*old, FIO_ARRAY_TYPE_INVALID);
     return -1;
   }
   --ary->end;
   if (old)
-    FIO_ARY_TYPE_COPY(*old, ary->ary[ary->end]);
-  FIO_ARY_TYPE_DESTROY(ary->ary[ary->end]);
+    FIO_ARRAY_TYPE_COPY(*old, ary->ary[ary->end]);
+  FIO_ARRAY_TYPE_DESTROY(ary->ary[ary->end]);
   return 0;
 }
 
@@ -3591,18 +3620,18 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, pop)(FIO_ARY_PTR ary_, FIO_ARY_TYPE *old) {
  *
  * This could be expensive, causing `memmove`.
  */
-IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, unshift)(FIO_ARY_PTR ary_,
-                                                    FIO_ARY_TYPE data) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, unshift)(FIO_ARRAY_PTR ary_,
+                                                        FIO_ARRAY_TYPE data) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   if (ary->start) {
     --ary->start;
-    FIO_ARY_TYPE *pos = ary->ary + ary->start;
-    *pos = FIO_ARY_TYPE_INVALID;
-    FIO_ARY_TYPE_COPY(*pos, data);
+    FIO_ARRAY_TYPE *pos = ary->ary + ary->start;
+    *pos = FIO_ARRAY_TYPE_INVALID;
+    FIO_ARRAY_TYPE_COPY(*pos, data);
     return pos;
   }
-  return FIO_NAME(FIO_ARY_NAME, set)(ary_, -1 - ary->end, data, NULL);
+  return FIO_NAME(FIO_ARRAY_NAME, set)(ary_, -1 - ary->end, data, NULL);
 }
 
 /**
@@ -3613,16 +3642,17 @@ IFUNC FIO_ARY_TYPE *FIO_NAME(FIO_ARY_NAME, unshift)(FIO_ARY_PTR ary_,
  *
  * Returns -1 on error (Array is empty) and 0 on success.
  */
-IFUNC int FIO_NAME(FIO_ARY_NAME, shift)(FIO_ARY_PTR ary_, FIO_ARY_TYPE *old) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+IFUNC int FIO_NAME(FIO_ARRAY_NAME, shift)(FIO_ARRAY_PTR ary_,
+                                          FIO_ARRAY_TYPE *old) {
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   if (!ary || ary->start == ary->end) {
-    FIO_ARY_TYPE_COPY(*old, FIO_ARY_TYPE_INVALID);
+    FIO_ARRAY_TYPE_COPY(*old, FIO_ARRAY_TYPE_INVALID);
     return -1;
   }
   if (old)
-    FIO_ARY_TYPE_COPY(*old, ary->ary[ary->start]);
-  FIO_ARY_TYPE_DESTROY(ary->ary[ary->start]);
+    FIO_ARRAY_TYPE_COPY(*old, ary->ary[ary->start]);
+  FIO_ARRAY_TYPE_DESTROY(ary->ary[ary->start]);
   ++ary->start;
   return 0;
 }
@@ -3638,12 +3668,12 @@ IFUNC int FIO_NAME(FIO_ARY_NAME, shift)(FIO_ARY_PTR ary_, FIO_ARY_TYPE *old) {
  * Returns the relative "stop" position, i.e., the number of items processed +
  * the starting point.
  */
-IFUNC uint32_t FIO_NAME(FIO_ARY_NAME,
-                        each)(FIO_ARY_PTR ary_, int32_t start_at,
-                              int (*task)(FIO_ARY_TYPE obj, void *arg),
+IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME,
+                        each)(FIO_ARRAY_PTR ary_, int32_t start_at,
+                              int (*task)(FIO_ARRAY_TYPE obj, void *arg),
                               void *arg) {
-  FIO_NAME(FIO_ARY_NAME, s) *ary =
-      (FIO_NAME(FIO_ARY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
+  FIO_NAME(FIO_ARRAY_NAME, s) *ary =
+      (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   if (!ary || !task)
     return start_at;
   if (start_at < 0)
@@ -3663,23 +3693,23 @@ Dynamic Arrays - cleanup
 ***************************************************************************** */
 #endif /* FIO_EXTERN_COMPLETE */
 
-#undef FIO_ARY_NAME
-#undef FIO_ARY_TYPE
-#undef FIO_ARY_TYPE_INVALID
-#undef FIO_ARY_TYPE_INVALID_SIMPLE
-#undef FIO_ARY_TYPE_COPY
-#undef FIO_ARY_TYPE_COPY_SIMPLE
-#undef FIO_ARY_TYPE_DESTROY
-#undef FIO_ARY_TYPE_DESTROY_SIMPLE
-#undef FIO_ARY_TYPE_CMP
-#undef FIO_ARY_TYPE_CMP_SIMPLE
-#undef FIO_ARY_PADDING
-#undef FIO_ARY_SIZE2WORDS
-#undef FIO_ARY_POS2ABS
-#undef FIO_ARY_AB_CT
-#undef FIO_ARY_PTR
-#undef FIO_ARY_EXPONENTIAL
-#endif /* FIO_ARY_NAME */
+#undef FIO_ARRAY_NAME
+#undef FIO_ARRAY_TYPE
+#undef FIO_ARRAY_TYPE_INVALID
+#undef FIO_ARRAY_TYPE_INVALID_SIMPLE
+#undef FIO_ARRAY_TYPE_COPY
+#undef FIO_ARRAY_TYPE_COPY_SIMPLE
+#undef FIO_ARRAY_TYPE_DESTROY
+#undef FIO_ARRAY_TYPE_DESTROY_SIMPLE
+#undef FIO_ARRAY_TYPE_CMP
+#undef FIO_ARRAY_TYPE_CMP_SIMPLE
+#undef FIO_ARRAY_PADDING
+#undef FIO_ARRAY_SIZE2WORDS
+#undef FIO_ARRAY_POS2ABS
+#undef FIO_ARRAY_AB_CT
+#undef FIO_ARRAY_PTR
+#undef FIO_ARRAY_EXPONENTIAL
+#endif /* FIO_ARRAY_NAME */
 
 /* *****************************************************************************
 
@@ -4449,17 +4479,20 @@ IFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m_) {
 IFUNC void FIO_NAME(FIO_MAP_NAME, destroy)(FIO_MAP_PTR m_) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
-  if (m->map && m->count) {
+  /* move array data to a temp var., protecting against recursive nesting */
+  FIO_NAME(FIO_MAP_NAME, s) tmp = *m;
+  *m = (FIO_NAME(FIO_MAP_NAME, s))FIO_MAP_INIT;
+  if (tmp.map && tmp.count) {
 #if !FIO_MAP_TYPE_DESTROY_SIMPLE ||                                            \
     (defined(FIO_MAP_KEY) && !FIO_MAP_KEY_DESTROY_SIMPLE)
-    for (uint32_t c = 0, i = m->head; (!c || i != m->head) && i != (uint32_t)-1;
-         ++c, i = (m->map + i)->next) {
-      FIO_MAP_OBJ_DESTROY(m->map[i].obj);
+    for (uint32_t c = 0, i = tmp.head;
+         (!c || i != tmp.head) && i != (uint32_t)-1;
+         ++c, i = (tmp.map + i)->next) {
+      FIO_MAP_OBJ_DESTROY(tmp.map[i].obj);
     }
 #endif
   }
-  FIO_MEM_FREE_(m->map, 1UL << m->used_bits);
-  *m = (FIO_NAME(FIO_MAP_NAME, s))FIO_MAP_INIT;
+  FIO_MEM_FREE_(tmp.map, 1UL << tmp.used_bits);
 }
 
 /* *****************************************************************************
@@ -4822,24 +4855,7 @@ Hash Map / Set - cleanup
 
 ***************************************************************************** */
 
-/* *****************************************************************************
-Helper type
-***************************************************************************** */
-#if (defined(FIO_STR_INFO) || defined(FIO_STR_NAME)) &&                        \
-    !defined(H___FIO_STR_INFO_H)
-#define H___FIO_STR_INFO_H
-
-/** An information type for reporting the string's state. */
-typedef struct fio_cstr_s {
-  size_t capa; /* Buffer capacity, if the string is writable. */
-  size_t len;  /* String length. */
-  char *data;  /* String's first byte. */
-} fio_cstr_s;
-
-#undef FIO_STR_INFO
-#endif
-
-#if defined(FIO_STR_NAME)
+#if defined(FIO_STRING_NAME)
 
 /* *****************************************************************************
 String API - Initialization and Destruction
@@ -4859,7 +4875,7 @@ String API - Initialization and Destruction
  */
 typedef struct {
   uint8_t special; /* Flags and small string data */
-#if !FIO_STR_NO_ALIGN
+#if !FIO_STRING_NO_ALIGN
   uint8_t reserved[(sizeof(void *) * 2) - 1]; /* Align to allocator boundary */
 #else
   uint8_t reserved[(sizeof(void *) * 1) - 1]; /* normal padding length */
@@ -4869,24 +4885,24 @@ typedef struct {
   char *data;  /* Data for longer Strings */
   void (*dealloc)(void *,
                   size_t len); /* Deallocation function (NULL for static) */
-} FIO_NAME(FIO_STR_NAME, s);
+} FIO_NAME(FIO_STRING_NAME, s);
 
 #ifdef FIO_PTR_TAG_TYPE
-#define FIO_STR_PTR FIO_PTR_TAG_TYPE
+#define FIO_STRING_PTR FIO_PTR_TAG_TYPE
 #else
-#define FIO_STR_PTR FIO_NAME(FIO_STR_NAME, s) *
+#define FIO_STRING_PTR FIO_NAME(FIO_STRING_NAME, s) *
 #endif
 
-#ifndef FIO_STR_INIT
+#ifndef FIO_STRING_INIT
 /**
  * This value should be used for initialization. For example:
  *
  *      // on the stack
- *      fio_str_s str = FIO_STR_INIT;
+ *      fio_str_s str = FIO_STRING_INIT;
  *
  *      // or on the heap
  *      fio_str_s *str = malloc(sizeof(*str));
- *      *str = FIO_STR_INIT;
+ *      *str = FIO_STRING_INIT;
  *
  * Remember to cleanup:
  *
@@ -4897,7 +4913,7 @@ typedef struct {
  *      fio_str_free(str);
  *      free(str);
  */
-#define FIO_STR_INIT                                                           \
+#define FIO_STRING_INIT                                                        \
   { .special = 1 }
 
 /**
@@ -4906,7 +4922,7 @@ typedef struct {
  *
  * The `capacity` value should exclude the NUL character (if exists).
  */
-#define FIO_STR_INIT_EXISTING(buffer, length, capacity, dealloc_)              \
+#define FIO_STRING_INIT_EXISTING(buffer, length, capacity, dealloc_)           \
   {                                                                            \
     .data = (buffer), .len = (length), .capa = (capacity),                     \
     .dealloc = (dealloc_)                                                      \
@@ -4916,28 +4932,28 @@ typedef struct {
  * This macro allows the container to be initialized with existing static data,
  * that shouldn't be freed.
  */
-#define FIO_STR_INIT_STATIC(buffer)                                            \
+#define FIO_STRING_INIT_STATIC(buffer)                                         \
   { .data = (char *)(buffer), .len = strlen((buffer)), .dealloc = NULL }
 
 /**
  * This macro allows the container to be initialized with existing static data,
  * that shouldn't be freed.
  */
-#define FIO_STR_INIT_STATIC2(buffer, length)                                   \
+#define FIO_STRING_INIT_STATIC2(buffer, length)                                \
   { .data = (char *)(buffer), .len = (length), .dealloc = NULL }
 
-#endif /* FIO_STR_INIT */
+#endif /* FIO_STRING_INIT */
 
 #ifndef FIO_REF_CONSTRUCTOR_ONLY
 
 /** Allocates a new String object on the heap. */
-IFUNC FIO_STR_PTR FIO_NAME(FIO_STR_NAME, new)(void);
+IFUNC FIO_STRING_PTR FIO_NAME(FIO_STRING_NAME, new)(void);
 
 /**
  * Destroys the string and frees the container (if allocated with
- * `FIO_STR_NAME_new`).
+ * `FIO_STRING_NAME_new`).
  */
-IFUNC void FIO_NAME(FIO_STR_NAME, free)(FIO_STR_PTR s);
+IFUNC void FIO_NAME(FIO_STRING_NAME, free)(FIO_STRING_PTR s);
 
 #endif /* FIO_REF_CONSTRUCTOR_ONLY */
 
@@ -4947,7 +4963,7 @@ IFUNC void FIO_NAME(FIO_STR_NAME, free)(FIO_STR_PTR s);
  * Note: if the container isn't allocated on the stack, it should be freed
  * separately using the appropriate `free` function.
  */
-IFUNC void FIO_NAME(FIO_STR_NAME, destroy)(FIO_STR_PTR s);
+IFUNC void FIO_NAME(FIO_STRING_NAME, destroy)(FIO_STRING_PTR s);
 
 /**
  * Returns a C string with the existing data, re-initializing the String.
@@ -4957,39 +4973,39 @@ IFUNC void FIO_NAME(FIO_STR_NAME, destroy)(FIO_STR_PTR s);
  *
  * Returns NULL if there's no String data.
  */
-SFUNC char *FIO_NAME(FIO_STR_NAME, detach)(FIO_STR_PTR s);
+SFUNC char *FIO_NAME(FIO_STRING_NAME, detach)(FIO_STRING_PTR s);
 
 /* *****************************************************************************
 String API - String state (data pointers, length, capacity, etc')
 ***************************************************************************** */
 
 /** Returns the String's complete state (capacity, length and pointer).  */
-IFUNC fio_cstr_s FIO_NAME2(FIO_STR_NAME, cstr)(const FIO_STR_PTR s);
+IFUNC fio_cstr_s FIO_NAME2(FIO_STRING_NAME, cstr)(const FIO_STRING_PTR s);
 
 /** Returns a pointer (`char *`) to the String's content. */
-IFUNC char *FIO_NAME2(FIO_STR_NAME, ptr)(FIO_STR_PTR s);
+IFUNC char *FIO_NAME2(FIO_STRING_NAME, ptr)(FIO_STRING_PTR s);
 
 /** Returns the String's length in bytes. */
-IFUNC size_t FIO_NAME(FIO_STR_NAME, len)(FIO_STR_PTR s);
+IFUNC size_t FIO_NAME(FIO_STRING_NAME, len)(FIO_STRING_PTR s);
 
 /** Returns the String's existing capacity (total used & available memory). */
-IFUNC size_t FIO_NAME(FIO_STR_NAME, capa)(FIO_STR_PTR s);
+IFUNC size_t FIO_NAME(FIO_STRING_NAME, capa)(FIO_STRING_PTR s);
 
 /**
  * Prevents further manipulations to the String's content.
  */
-IFUNC void FIO_NAME(FIO_STR_NAME, freeze)(FIO_STR_PTR s);
+IFUNC void FIO_NAME(FIO_STRING_NAME, freeze)(FIO_STRING_PTR s);
 
 /**
  * Returns true if the string is frozen.
  */
-IFUNC uint8_t FIO_NAME(FIO_STR_NAME, is_frozen)(FIO_STR_PTR s);
+IFUNC uint8_t FIO_NAME_BL(FIO_STRING_NAME, frozen)(FIO_STRING_PTR s);
 
 /**
  * Binary comparison returns `1` if both strings are equal and `0` if not.
  */
-IFUNC int FIO_NAME(FIO_STR_NAME, iseq)(const FIO_STR_PTR str1,
-                                       const FIO_STR_PTR str2);
+IFUNC int FIO_NAME_BL(FIO_STRING_NAME, eq)(const FIO_STRING_PTR str1,
+                                           const FIO_STRING_PTR str2);
 
 #ifdef H___FIO_RISKY_HASH_H
 /**
@@ -4997,7 +5013,8 @@ IFUNC int FIO_NAME(FIO_STR_NAME, iseq)(const FIO_STR_PTR str1,
  *
  * Note: Hash algorithm might change without notice.
  */
-SFUNC uint64_t FIO_NAME(FIO_STR_NAME, hash)(const FIO_STR_PTR s, uint64_t seed);
+SFUNC uint64_t FIO_NAME(FIO_STRING_NAME, hash)(const FIO_STRING_PTR s,
+                                               uint64_t seed);
 #endif
 
 /* *****************************************************************************
@@ -5013,7 +5030,8 @@ String API - Memory management
  * Note: When shrinking, any existing data beyond the new size may be
  * corrupted.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, resize)(FIO_STR_PTR s, size_t size);
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, resize)(FIO_STRING_PTR s,
+                                                   size_t size);
 
 /**
  * Performs a best attempt at minimizing memory consumption.
@@ -5021,7 +5039,7 @@ IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, resize)(FIO_STR_PTR s, size_t size);
  * Actual effects depend on the underlying memory allocator and it's
  * implementation. Not all allocators will free any memory.
  */
-SFUNC void FIO_NAME(FIO_STR_NAME, compact)(FIO_STR_PTR s);
+SFUNC void FIO_NAME(FIO_STRING_NAME, compact)(FIO_STRING_PTR s);
 
 /**
  * Reserves at least `amount` of bytes for the string's data (reserved count
@@ -5029,17 +5047,18 @@ SFUNC void FIO_NAME(FIO_STR_NAME, compact)(FIO_STR_PTR s);
  *
  * Returns the current state of the String.
  */
-SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, reserve)(FIO_STR_PTR s, size_t amount);
+SFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, reserve)(FIO_STRING_PTR s,
+                                                    size_t amount);
 
 /* *****************************************************************************
 String API - UTF-8 State
 ***************************************************************************** */
 
 /** Returns 1 if the String is UTF-8 valid and 0 if not. */
-SFUNC size_t FIO_NAME(FIO_STR_NAME, utf8_valid)(FIO_STR_PTR s);
+SFUNC size_t FIO_NAME(FIO_STRING_NAME, utf8_valid)(FIO_STRING_PTR s);
 
 /** Returns the String's length in UTF-8 characters. */
-SFUNC size_t FIO_NAME(FIO_STR_NAME, utf8_len)(FIO_STR_PTR s);
+SFUNC size_t FIO_NAME(FIO_STRING_NAME, utf8_len)(FIO_STRING_PTR s);
 
 /**
  * Takes a UTF-8 character selection information (UTF-8 position and length)
@@ -5055,8 +5074,8 @@ SFUNC size_t FIO_NAME(FIO_STR_NAME, utf8_len)(FIO_STR_PTR s);
  *
  * Returns -1 on error and 0 on success.
  */
-SFUNC int FIO_NAME(FIO_STR_NAME, utf8_select)(FIO_STR_PTR s, intptr_t *pos,
-                                              size_t *len);
+SFUNC int FIO_NAME(FIO_STRING_NAME, utf8_select)(FIO_STRING_PTR s,
+                                                 intptr_t *pos, size_t *len);
 
 /* *****************************************************************************
 String API - Content Manipulation and Review
@@ -5065,26 +5084,28 @@ String API - Content Manipulation and Review
 /**
  * Writes data at the end of the String.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s, const void *src,
-                                               size_t src_len);
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, write)(FIO_STRING_PTR s,
+                                                  const void *src,
+                                                  size_t src_len);
 
 /**
  * Writes a number at the end of the String using normal base 10 notation.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s, int64_t num);
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, write_i)(FIO_STRING_PTR s,
+                                                    int64_t num);
 
 /**
  * Appends the `src` String to the end of the `dest` String.
  *
  * If `dest` is empty, the resulting Strings will be equal.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, concat)(FIO_STR_PTR dest,
-                                                FIO_STR_PTR const src);
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, concat)(FIO_STRING_PTR dest,
+                                                   FIO_STRING_PTR const src);
 
 /** Alias for fio_str_concat */
-HFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, join)(FIO_STR_PTR dest,
-                                              FIO_STR_PTR const src) {
-  return FIO_NAME(FIO_STR_NAME, concat)(dest, src);
+HFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, join)(FIO_STRING_PTR dest,
+                                                 FIO_STRING_PTR const src) {
+  return FIO_NAME(FIO_STRING_NAME, concat)(dest, src);
 }
 
 /**
@@ -5099,8 +5120,8 @@ HFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, join)(FIO_STR_PTR dest,
  * If `src_len == 0` than `src` will be ignored and the data marked for
  * replacement will be erased.
  */
-SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
-                          replace)(FIO_STR_PTR s, intptr_t start_pos,
+SFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME,
+                          replace)(FIO_STRING_PTR s, intptr_t start_pos,
                                    size_t old_len, const void *src,
                                    size_t src_len);
 
@@ -5109,17 +5130,17 @@ SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
  *
  * Data is written to the end of the String.
  */
-SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, vprintf)(FIO_STR_PTR s,
-                                                 const char *format,
-                                                 va_list argv);
+SFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, vprintf)(FIO_STRING_PTR s,
+                                                    const char *format,
+                                                    va_list argv);
 
 /**
  * Writes to the String using a printf like interface.
  *
  * Data is written to the end of the String.
  */
-SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, printf)(FIO_STR_PTR s,
-                                                const char *format, ...);
+SFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, printf)(FIO_STRING_PTR s,
+                                                   const char *format, ...);
 
 #if H___FIO_UNIX_TOOLS_H
 /**
@@ -5132,8 +5153,8 @@ SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, printf)(FIO_STR_PTR s,
  *
  * Works on POSIX only.
  */
-SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
-                          readfile)(FIO_STR_PTR s, const char *filename,
+SFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME,
+                          readfile)(FIO_STRING_PTR s, const char *filename,
                                     intptr_t start_at, intptr_t limit);
 #endif
 
@@ -5147,16 +5168,16 @@ String API - C / JSON escaping
  * The JSON semantic are common to many programming languages, promising a UTF-8
  * String while making it easy to read and copy the string during debugging.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
-                                                      const void *data,
-                                                      size_t data_len);
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, write_escape)(FIO_STRING_PTR s,
+                                                         const void *data,
+                                                         size_t data_len);
 
 /**
  * Writes an escaped data into the string after unescaping the data.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_unescape)(FIO_STR_PTR s,
-                                                        const void *escaped,
-                                                        size_t len);
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, write_unescape)(FIO_STRING_PTR s,
+                                                           const void *escaped,
+                                                           size_t len);
 
 /* *****************************************************************************
 String API - Base64 support
@@ -5166,16 +5187,16 @@ String API - Base64 support
  * Writes data at the end of the String, encoding the data as Base64 encoded
  * data.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
-                          write_b64enc)(FIO_STR_PTR s, const void *data,
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME,
+                          write_b64enc)(FIO_STRING_PTR s, const void *data,
                                         size_t data_len, uint8_t url_encoded);
 
 /**
  * Writes decoded base64 data to the end of the String.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_b64dec)(FIO_STR_PTR s,
-                                                      const void *encoded,
-                                                      size_t encoded_len);
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, write_b64dec)(FIO_STRING_PTR s,
+                                                         const void *encoded,
+                                                         size_t encoded_len);
 
 /* *****************************************************************************
 
@@ -5192,16 +5213,17 @@ IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_b64dec)(FIO_STR_PTR s,
 String Helpers
 ***************************************************************************** */
 
-#define FIO_STR_SMALL_DATA(s) ((char *)((&(s)->special) + 1))
-#define FIO_STR_IS_SMALL(s) (((s)->special & 1) || !s->data)
+#define FIO_STRING_SMALL_DATA(s) ((char *)((&(s)->special) + 1))
+#define FIO_STRING_IS_SMALL(s) (((s)->special & 1) || !s->data)
 
-#define FIO_STR_SMALL_LEN(s) ((size_t)((s)->special >> 2))
-#define FIO_STR_SMALL_LEN_SET(s, l)                                            \
+#define FIO_STRING_SMALL_LEN(s) ((size_t)((s)->special >> 2))
+#define FIO_STRING_SMALL_LEN_SET(s, l)                                         \
   ((s)->special = (((s)->special & 2) | ((uint8_t)(l) << 2) | 1) & 0xFF)
-#define FIO_STR_SMALL_CAPA(s) (sizeof(*s) - 2)
+#define FIO_STRING_SMALL_CAPA(s) (sizeof(*s) - 2)
 
-#define FIO_STR_IS_FROZEN(s) ((s)->special & 2)
-#define FIO_STR_FREEZE_(s) ((s)->special |= 2)
+#define FIO_STRING_IS_FROZEN(s) ((s)->special & 2)
+#define FIO_STRING_FREEZE_(s) ((s)->special |= 2)
+#define FIO_STRING_THAW_(s) ((s)->special &= (^(uint8_t)2))
 
 /**
  * Rounds up allocated capacity to the closest 2 words byte boundary (leaving 1
@@ -5227,10 +5249,11 @@ String Helpers
  * since it uses 16 byte alignment right up until allocations are routed
  * directly to `mmap` (due to their size, usually over 12KB).
  */
-#define FIO_STR_CAPA2WORDS(num) (((num) + 1) | (sizeof(long double) - 1))
+#define FIO_STRING_CAPA2WORDS(num) (((num) + 1) | (sizeof(long double) - 1))
 
-/* Note: FIO_MEM_FREE_ might be different for each FIO_STR_NAME */
-HSFUNC void FIO_NAME(FIO_STR_NAME, _default_dealloc)(void *ptr, size_t size) {
+/* Note: FIO_MEM_FREE_ might be different for each FIO_STRING_NAME */
+HSFUNC void FIO_NAME(FIO_STRING_NAME, __default_dealloc)(void *ptr,
+                                                         size_t size) {
   FIO_MEM_FREE_(ptr, size);
   (void)ptr;  /* in case macro ignores value */
   (void)size; /* in case macro ignores value */
@@ -5242,20 +5265,21 @@ String Implementation - initialization
 #ifndef FIO_REF_CONSTRUCTOR_ONLY
 
 /** Allocates a new String object on the heap. */
-IFUNC FIO_STR_PTR FIO_NAME(FIO_STR_NAME, new)(void) {
-  FIO_NAME(FIO_STR_NAME, s) *s =
-      (FIO_NAME(FIO_STR_NAME, s) *)FIO_MEM_CALLOC_(sizeof(*s), 1);
-  *s = (FIO_NAME(FIO_STR_NAME, s))FIO_STR_INIT;
-  return (FIO_STR_PTR)FIO_PTR_TAG(s);
+IFUNC FIO_STRING_PTR FIO_NAME(FIO_STRING_NAME, new)(void) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_MEM_CALLOC_(sizeof(*s), 1);
+  *s = (FIO_NAME(FIO_STRING_NAME, s))FIO_STRING_INIT;
+  return (FIO_STRING_PTR)FIO_PTR_TAG(s);
 }
 
 /**
  * Destroys the string and frees the container (if allocated with
- * `FIO_STR_NAME_new`).
+ * `FIO_STRING_NAME_new`).
  */
-IFUNC void FIO_NAME(FIO_STR_NAME, free)(FIO_STR_PTR s_) {
-  FIO_NAME(FIO_STR_NAME, destroy)(s_);
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+IFUNC void FIO_NAME(FIO_STRING_NAME, free)(FIO_STRING_PTR s_) {
+  FIO_NAME(FIO_STRING_NAME, destroy)(s_);
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
   FIO_MEM_FREE_(s, sizeof(*s));
 }
 
@@ -5267,14 +5291,15 @@ IFUNC void FIO_NAME(FIO_STR_NAME, free)(FIO_STR_PTR s_) {
  * Note: if the container isn't allocated on the stack, it should be freed
  * separately using the appropriate `free` function.
  */
-IFUNC void FIO_NAME(FIO_STR_NAME, destroy)(FIO_STR_PTR s_) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+IFUNC void FIO_NAME(FIO_STRING_NAME, destroy)(FIO_STRING_PTR s_) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
   if (!s)
     return;
-  if (!FIO_STR_IS_SMALL(s) && s->dealloc) {
+  if (!FIO_STRING_IS_SMALL(s) && s->dealloc) {
     s->dealloc(s->data, s->capa + 1);
   }
-  *s = (FIO_NAME(FIO_STR_NAME, s))FIO_STR_INIT;
+  *s = (FIO_NAME(FIO_STRING_NAME, s))FIO_STRING_INIT;
 }
 
 /**
@@ -5285,18 +5310,20 @@ IFUNC void FIO_NAME(FIO_STR_NAME, destroy)(FIO_STR_PTR s_) {
  *
  * Returns NULL if there's no String data or no memory was available.
  */
-SFUNC char *FIO_NAME(FIO_STR_NAME, detach)(FIO_STR_PTR s_) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+SFUNC char *FIO_NAME(FIO_STRING_NAME, detach)(FIO_STRING_PTR s_) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
   char *data = NULL;
-  if (FIO_STR_IS_SMALL(s)) {
-    if (FIO_STR_SMALL_LEN(s)) {
-      data = (char *)FIO_MEM_CALLOC_(sizeof(*data), (FIO_STR_SMALL_LEN(s) + 1));
+  if (FIO_STRING_IS_SMALL(s)) {
+    if (FIO_STRING_SMALL_LEN(s)) {
+      data =
+          (char *)FIO_MEM_CALLOC_(sizeof(*data), (FIO_STRING_SMALL_LEN(s) + 1));
       if (!data)
         return NULL;
-      memcpy(data, FIO_STR_SMALL_DATA(s), (FIO_STR_SMALL_LEN(s) + 1));
+      memcpy(data, FIO_STRING_SMALL_DATA(s), (FIO_STRING_SMALL_LEN(s) + 1));
     }
   } else {
-    if (s->dealloc == FIO_NAME(FIO_STR_NAME, _default_dealloc)) {
+    if (s->dealloc == FIO_NAME(FIO_STRING_NAME, __default_dealloc)) {
       data = s->data;
       s->data = NULL;
     } else if (s->len) {
@@ -5306,7 +5333,7 @@ SFUNC char *FIO_NAME(FIO_STR_NAME, detach)(FIO_STR_PTR s_) {
       memcpy(data, s->data, (s->len + 1));
     }
   }
-  FIO_NAME(FIO_STR_NAME, destroy)(s_);
+  FIO_NAME(FIO_STRING_NAME, destroy)(s_);
   return data;
 }
 
@@ -5315,74 +5342,80 @@ String Implementation - String state (data pointers, length, capacity, etc')
 ***************************************************************************** */
 
 /** Returns the String's complete state (capacity, length and pointer).  */
-IFUNC fio_cstr_s FIO_NAME2(FIO_STR_NAME, cstr)(const FIO_STR_PTR s_) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+IFUNC fio_cstr_s FIO_NAME2(FIO_STRING_NAME, cstr)(const FIO_STRING_PTR s_) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
   if (!s)
     return (fio_cstr_s){.len = 0};
-  if (FIO_STR_IS_SMALL(s))
+  if (FIO_STRING_IS_SMALL(s))
     return (fio_cstr_s){
-        .capa = (FIO_STR_IS_FROZEN(s) ? 0 : FIO_STR_SMALL_CAPA(s)),
-        .len = FIO_STR_SMALL_LEN(s),
-        .data = FIO_STR_SMALL_DATA(s),
+        .capa = (FIO_STRING_IS_FROZEN(s) ? 0 : FIO_STRING_SMALL_CAPA(s)),
+        .len = FIO_STRING_SMALL_LEN(s),
+        .data = FIO_STRING_SMALL_DATA(s),
     };
 
   return (fio_cstr_s){
-      .capa = (FIO_STR_IS_FROZEN(s) ? 0 : s->capa),
+      .capa = (FIO_STRING_IS_FROZEN(s) ? 0 : s->capa),
       .len = s->len,
       .data = s->data,
   };
 }
 
 /** Returns a pointer (`char *`) to the String's content. */
-IFUNC char *FIO_NAME2(FIO_STR_NAME, ptr)(FIO_STR_PTR s_) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  return (char *)(FIO_STR_IS_SMALL(s) ? FIO_STR_SMALL_DATA(s) : s->data);
+IFUNC char *FIO_NAME2(FIO_STRING_NAME, ptr)(FIO_STRING_PTR s_) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
+  return (char *)(FIO_STRING_IS_SMALL(s) ? FIO_STRING_SMALL_DATA(s) : s->data);
 }
 
 /** Returns the String's length in bytes. */
-IFUNC size_t FIO_NAME(FIO_STR_NAME, len)(FIO_STR_PTR s_) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  return (size_t)(FIO_STR_IS_SMALL(s) ? FIO_STR_SMALL_LEN(s) : s->len);
+IFUNC size_t FIO_NAME(FIO_STRING_NAME, len)(FIO_STRING_PTR s_) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
+  return (size_t)(FIO_STRING_IS_SMALL(s) ? FIO_STRING_SMALL_LEN(s) : s->len);
 }
 
 /** Returns the String's existing capacity (total used & available memory). */
-IFUNC size_t FIO_NAME(FIO_STR_NAME, capa)(FIO_STR_PTR s_) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  if (FIO_STR_IS_FROZEN(s))
+IFUNC size_t FIO_NAME(FIO_STRING_NAME, capa)(FIO_STRING_PTR s_) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (FIO_STRING_IS_FROZEN(s))
     return 0;
-  return (size_t)(FIO_STR_IS_SMALL(s) ? FIO_STR_SMALL_CAPA(s) : s->capa);
+  return (size_t)(FIO_STRING_IS_SMALL(s) ? FIO_STRING_SMALL_CAPA(s) : s->capa);
 }
 
 /**
  * Prevents further manipulations to the String's content.
  */
-IFUNC void FIO_NAME(FIO_STR_NAME, freeze)(FIO_STR_PTR s_) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  FIO_STR_FREEZE_(s);
+IFUNC void FIO_NAME(FIO_STRING_NAME, freeze)(FIO_STRING_PTR s_) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
+  FIO_STRING_FREEZE_(s);
 }
 /**
  * Returns true if the string is frozen.
  */
-IFUNC uint8_t FIO_NAME(FIO_STR_NAME, is_frozen)(FIO_STR_PTR s_) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  return FIO_STR_IS_FROZEN(s);
+IFUNC uint8_t FIO_NAME_BL(FIO_STRING_NAME, frozen)(FIO_STRING_PTR s_) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
+  return FIO_STRING_IS_FROZEN(s);
 }
 
 /**
  * Binary comparison returns `1` if both strings are equal and `0` if not.
  */
-IFUNC int FIO_NAME(FIO_STR_NAME, iseq)(const FIO_STR_PTR str1_,
-                                       const FIO_STR_PTR str2_) {
-  FIO_NAME(FIO_STR_NAME, s) *str1 =
-      (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(str1_);
-  FIO_NAME(FIO_STR_NAME, s) *str2 =
-      (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(str2_);
+IFUNC int FIO_NAME_BL(FIO_STRING_NAME, eq)(const FIO_STRING_PTR str1_,
+                                           const FIO_STRING_PTR str2_) {
+  FIO_NAME(FIO_STRING_NAME, s) *str1 =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(str1_);
+  FIO_NAME(FIO_STRING_NAME, s) *str2 =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(str2_);
   if (str1 == str2)
     return 1;
   if (!str1 || !str2)
     return 0;
-  fio_cstr_s s1 = FIO_NAME2(FIO_STR_NAME, cstr)(str1_);
-  fio_cstr_s s2 = FIO_NAME2(FIO_STR_NAME, cstr)(str2_);
+  fio_cstr_s s1 = FIO_NAME2(FIO_STRING_NAME, cstr)(str1_);
+  fio_cstr_s s2 = FIO_NAME2(FIO_STRING_NAME, cstr)(str2_);
   return (s1.len == s2.len && !memcmp(s1.data, s2.data, s1.len));
 }
 
@@ -5392,12 +5425,13 @@ IFUNC int FIO_NAME(FIO_STR_NAME, iseq)(const FIO_STR_PTR str1_,
  *
  * Note: Hash algorithm might change without notice.
  */
-SFUNC uint64_t FIO_NAME(FIO_STR_NAME, hash)(const FIO_STR_PTR s_,
-                                            uint64_t seed) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  if (FIO_STR_IS_SMALL(s))
-    return fio_risky_hash((void *)FIO_STR_SMALL_DATA(s), FIO_STR_SMALL_LEN(s),
-                          0);
+SFUNC uint64_t FIO_NAME(FIO_STRING_NAME, hash)(const FIO_STRING_PTR s_,
+                                               uint64_t seed) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (FIO_STRING_IS_SMALL(s))
+    return fio_risky_hash((void *)FIO_STRING_SMALL_DATA(s),
+                          FIO_STRING_SMALL_LEN(s), 0);
   return fio_risky_hash((void *)s->data, s->len, seed);
 }
 #endif
@@ -5414,27 +5448,29 @@ String Implementation - Memory management
  * Note: When shrinking, any existing data beyond the new size may be
  * corrupted.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, resize)(FIO_STR_PTR s_, size_t size) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  if (!s || FIO_STR_IS_FROZEN(s)) {
-    return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, resize)(FIO_STRING_PTR s_,
+                                                   size_t size) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (!s || FIO_STRING_IS_FROZEN(s)) {
+    return FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
   }
-  if (FIO_STR_IS_SMALL(s)) {
-    if (size <= FIO_STR_SMALL_CAPA(s)) {
-      FIO_STR_SMALL_LEN_SET(s, size);
-      FIO_STR_SMALL_DATA(s)[size] = 0;
-      return (fio_cstr_s){.capa = FIO_STR_SMALL_CAPA(s),
+  if (FIO_STRING_IS_SMALL(s)) {
+    if (size <= FIO_STRING_SMALL_CAPA(s)) {
+      FIO_STRING_SMALL_LEN_SET(s, size);
+      FIO_STRING_SMALL_DATA(s)[size] = 0;
+      return (fio_cstr_s){.capa = FIO_STRING_SMALL_CAPA(s),
                           .len = size,
-                          .data = FIO_STR_SMALL_DATA(s)};
+                          .data = FIO_STRING_SMALL_DATA(s)};
     }
-    FIO_STR_SMALL_LEN_SET(s, FIO_STR_SMALL_CAPA(s));
-    FIO_NAME(FIO_STR_NAME, reserve)(s_, size);
+    FIO_STRING_SMALL_LEN_SET(s, FIO_STRING_SMALL_CAPA(s));
+    FIO_NAME(FIO_STRING_NAME, reserve)(s_, size);
     goto big;
   }
   if (size >= s->capa) {
     if (s->dealloc && s->capa)
       s->len = s->capa;
-    FIO_NAME(FIO_STR_NAME, reserve)(s_, size);
+    FIO_NAME(FIO_STRING_NAME, reserve)(s_, size);
   }
 
 big:
@@ -5449,12 +5485,13 @@ big:
  * Actual effects depend on the underlying memory allocator and it's
  * implementation. Not all allocators will free any memory.
  */
-SFUNC void FIO_NAME(FIO_STR_NAME, compact)(FIO_STR_PTR s_) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  if (!s || FIO_STR_IS_SMALL(s))
+SFUNC void FIO_NAME(FIO_STRING_NAME, compact)(FIO_STRING_PTR s_) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (!s || FIO_STRING_IS_SMALL(s))
     return;
-  FIO_NAME(FIO_STR_NAME, s) tmp = FIO_STR_INIT;
-  if (s->len <= FIO_STR_SMALL_CAPA(s))
+  FIO_NAME(FIO_STRING_NAME, s) tmp = FIO_STRING_INIT;
+  if (s->len <= FIO_STRING_SMALL_CAPA(s))
     goto shrink2small;
   tmp.data =
       (char *)FIO_MEM_REALLOC_(s->data, s->capa + 1, s->len + 1, s->len + 1);
@@ -5467,9 +5504,9 @@ SFUNC void FIO_NAME(FIO_STR_NAME, compact)(FIO_STR_PTR s_) {
 shrink2small:
   /* move the string into the container */
   tmp = *s;
-  FIO_STR_SMALL_LEN_SET(s, tmp.len);
+  FIO_STRING_SMALL_LEN_SET(s, tmp.len);
   if (tmp.len) {
-    memcpy(FIO_STR_SMALL_DATA(s), tmp.data, tmp.len + 1);
+    memcpy(FIO_STRING_SMALL_DATA(s), tmp.data, tmp.len + 1);
   }
   if (tmp.dealloc)
     tmp.dealloc(tmp.data, tmp.capa + 1);
@@ -5481,26 +5518,27 @@ shrink2small:
  *
  * Returns the current state of the String.
  */
-SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, reserve)(FIO_STR_PTR s_,
-                                                 size_t amount) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  if (!s || FIO_STR_IS_FROZEN(s)) {
-    return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
+SFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, reserve)(FIO_STRING_PTR s_,
+                                                    size_t amount) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (!s || FIO_STRING_IS_FROZEN(s)) {
+    return FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
   }
   char *tmp;
-  if (FIO_STR_IS_SMALL(s)) {
-    if (amount <= FIO_STR_SMALL_CAPA(s)) {
-      return (fio_cstr_s){.capa = FIO_STR_SMALL_CAPA(s),
-                          .len = FIO_STR_SMALL_LEN(s),
-                          .data = FIO_STR_SMALL_DATA(s)};
+  if (FIO_STRING_IS_SMALL(s)) {
+    if (amount <= FIO_STRING_SMALL_CAPA(s)) {
+      return (fio_cstr_s){.capa = FIO_STRING_SMALL_CAPA(s),
+                          .len = FIO_STRING_SMALL_LEN(s),
+                          .data = FIO_STRING_SMALL_DATA(s)};
     }
     goto is_small;
   }
   if (amount < s->capa) {
     return (fio_cstr_s){.capa = s->capa, .len = s->len, .data = s->data};
   }
-  amount = FIO_STR_CAPA2WORDS(amount);
-  if (s->dealloc == FIO_NAME(FIO_STR_NAME, _default_dealloc)) {
+  amount = FIO_STRING_CAPA2WORDS(amount);
+  if (s->dealloc == FIO_NAME(FIO_STRING_NAME, __default_dealloc)) {
     tmp =
         (char *)FIO_MEM_REALLOC_(s->data, s->capa + 1, amount + 1, s->len + 1);
     if (!tmp)
@@ -5514,7 +5552,7 @@ SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, reserve)(FIO_STR_PTR s_,
       if (s->dealloc)
         s->dealloc(s->data, s->capa + 1);
     }
-    s->dealloc = FIO_NAME(FIO_STR_NAME, _default_dealloc);
+    s->dealloc = FIO_NAME(FIO_STRING_NAME, __default_dealloc);
   }
   s->capa = amount;
   s->data = tmp;
@@ -5523,32 +5561,32 @@ SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, reserve)(FIO_STR_PTR s_,
 
 is_small:
   /* small string (string data is within the container) */
-  amount = FIO_STR_CAPA2WORDS(amount);
+  amount = FIO_STRING_CAPA2WORDS(amount);
   tmp = (char *)FIO_MEM_CALLOC_(sizeof(*tmp), amount + 1);
   if (!tmp)
     goto no_mem;
-  if (FIO_STR_SMALL_LEN(s)) {
-    memcpy(tmp, FIO_STR_SMALL_DATA(s), FIO_STR_SMALL_LEN(s) + 1);
+  if (FIO_STRING_SMALL_LEN(s)) {
+    memcpy(tmp, FIO_STRING_SMALL_DATA(s), FIO_STRING_SMALL_LEN(s) + 1);
   } else {
     tmp[0] = 0;
   }
-  *s = (FIO_NAME(FIO_STR_NAME, s)){
+  *s = (FIO_NAME(FIO_STRING_NAME, s)){
       .capa = amount,
-      .len = FIO_STR_SMALL_LEN(s),
-      .dealloc = FIO_NAME(FIO_STR_NAME, _default_dealloc),
+      .len = FIO_STRING_SMALL_LEN(s),
+      .dealloc = FIO_NAME(FIO_STRING_NAME, __default_dealloc),
       .data = tmp,
   };
   return (fio_cstr_s){
-      .capa = amount, .len = FIO_STR_SMALL_LEN(s), .data = s->data};
+      .capa = amount, .len = FIO_STRING_SMALL_LEN(s), .data = s->data};
 no_mem:
-  return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
+  return FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
 }
 
 /* *****************************************************************************
 String Implementation - UTF-8 State
 ***************************************************************************** */
 
-#ifndef FIO_STR_UTF8_CODE_POINT
+#ifndef FIO_STRING_UTF8_CODE_POINT
 /**
  * Maps the first 5 bits in a byte (0b11111xxx) to a UTF-8 codepoint length.
  *
@@ -5578,7 +5616,7 @@ uint8_t fio__str_utf8_map[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
  *
  * The `end` value is only used for overflow protection.
  */
-#define FIO_STR_UTF8_CODE_POINT(ptr, end, i32)                                 \
+#define FIO_STRING_UTF8_CODE_POINT(ptr, end, i32)                              \
   do {                                                                         \
     switch (fio__str_utf8_map[((uint8_t *)(ptr))[0] >> 3]) {                   \
     case 1:                                                                    \
@@ -5629,24 +5667,25 @@ uint8_t fio__str_utf8_map[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 #endif
 
 /** Returns 1 if the String is UTF-8 valid and 0 if not. */
-SFUNC size_t FIO_NAME(FIO_STR_NAME, utf8_valid)(FIO_STR_PTR s_) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+SFUNC size_t FIO_NAME(FIO_STRING_NAME, utf8_valid)(FIO_STRING_PTR s_) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
   if (!s)
     return 0;
-  fio_cstr_s state = FIO_NAME2(FIO_STR_NAME, cstr)(s_);
+  fio_cstr_s state = FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
   if (!state.len)
     return 1;
   char *const end = state.data + state.len;
   int32_t c = 0;
   do {
-    FIO_STR_UTF8_CODE_POINT(state.data, end, c);
+    FIO_STRING_UTF8_CODE_POINT(state.data, end, c);
   } while (c > 0 && state.data < end);
   return state.data == end && c >= 0;
 }
 
 /** Returns the String's length in UTF-8 characters. */
-SFUNC size_t FIO_NAME(FIO_STR_NAME, utf8_len)(FIO_STR_PTR s_) {
-  fio_cstr_s state = FIO_NAME2(FIO_STR_NAME, cstr)(s_);
+SFUNC size_t FIO_NAME(FIO_STRING_NAME, utf8_len)(FIO_STRING_PTR s_) {
+  fio_cstr_s state = FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
   if (!state.len)
     return 0;
   char *end = state.data + state.len;
@@ -5654,7 +5693,7 @@ SFUNC size_t FIO_NAME(FIO_STR_NAME, utf8_len)(FIO_STR_PTR s_) {
   int32_t c = 0;
   do {
     ++utf8len;
-    FIO_STR_UTF8_CODE_POINT(state.data, end, c);
+    FIO_STRING_UTF8_CODE_POINT(state.data, end, c);
   } while (c > 0 && state.data < end);
   if (state.data != end || c == -1) {
     /* invalid */
@@ -5677,9 +5716,9 @@ SFUNC size_t FIO_NAME(FIO_STR_NAME, utf8_len)(FIO_STR_PTR s_) {
  *
  * Returns -1 on error and 0 on success.
  */
-SFUNC int FIO_NAME(FIO_STR_NAME, utf8_select)(FIO_STR_PTR s_, intptr_t *pos,
-                                              size_t *len) {
-  fio_cstr_s state = FIO_NAME2(FIO_STR_NAME, cstr)(s_);
+SFUNC int FIO_NAME(FIO_STRING_NAME, utf8_select)(FIO_STRING_PTR s_,
+                                                 intptr_t *pos, size_t *len) {
+  fio_cstr_s state = FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
   int32_t c = 0;
   char *p = state.data;
   char *const end = state.data + state.len;
@@ -5694,7 +5733,7 @@ SFUNC int FIO_NAME(FIO_STR_NAME, utf8_select)(FIO_STR_PTR s_, intptr_t *pos,
     if ((*pos) > 0) {
       start = *pos;
       while (start && p < end && c >= 0) {
-        FIO_STR_UTF8_CODE_POINT(p, end, c);
+        FIO_STRING_UTF8_CODE_POINT(p, end, c);
         --start;
       }
       if (c == -1)
@@ -5750,7 +5789,7 @@ SFUNC int FIO_NAME(FIO_STR_NAME, utf8_select)(FIO_STR_PTR s_, intptr_t *pos,
   /* find end */
   start = *len;
   while (start && p < end && c >= 0) {
-    FIO_STR_UTF8_CODE_POINT(p, end, c);
+    FIO_STRING_UTF8_CODE_POINT(p, end, c);
     --start;
   }
   if (c == -1 || p > end)
@@ -5776,13 +5815,15 @@ String Implementation - Content Manipulation and Review
  * Writes data at the end of the String (similar to `fio_str_insert` with the
  * argument `pos == -1`).
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s_, const void *src,
-                                               size_t src_len) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  if (!s || !src_len || !src || FIO_STR_IS_FROZEN(s))
-    return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
-  fio_cstr_s state = FIO_NAME(FIO_STR_NAME, resize)(
-      s_, src_len + FIO_NAME(FIO_STR_NAME, len)(s_));
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, write)(FIO_STRING_PTR s_,
+                                                  const void *src,
+                                                  size_t src_len) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (!s || !src_len || !src || FIO_STRING_IS_FROZEN(s))
+    return FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
+  fio_cstr_s state = FIO_NAME(FIO_STRING_NAME, resize)(
+      s_, src_len + FIO_NAME(FIO_STRING_NAME, len)(s_));
   memcpy(state.data + (state.len - src_len), src, src_len);
   return state;
 }
@@ -5790,13 +5831,16 @@ IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s_, const void *src,
 /**
  * Writes a number at the end of the String using normal base 10 notation.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s_, int64_t num) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  if (!s || FIO_STR_IS_FROZEN(s))
-    return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, write_i)(FIO_STRING_PTR s_,
+                                                    int64_t num) {
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (!s || FIO_STRING_IS_FROZEN(s))
+    return FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
   fio_cstr_s i;
   if (!num) {
-    i = FIO_NAME(FIO_STR_NAME, resize)(s_, FIO_NAME(FIO_STR_NAME, len)(s_) + 1);
+    i = FIO_NAME(FIO_STRING_NAME,
+                 resize)(s_, FIO_NAME(FIO_STRING_NAME, len)(s_) + 1);
     i.data[i.len - 1] = '0';
     return i;
   }
@@ -5817,7 +5861,8 @@ IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s_, int64_t num) {
   if (neg) {
     buf[l++] = '-';
   }
-  i = FIO_NAME(FIO_STR_NAME, resize)(s_, FIO_NAME(FIO_STR_NAME, len)(s_) + l);
+  i = FIO_NAME(FIO_STRING_NAME, resize)(s_,
+                                        FIO_NAME(FIO_STRING_NAME, len)(s_) + l);
 
   while (l) {
     --l;
@@ -5831,21 +5876,21 @@ IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_i)(FIO_STR_PTR s_, int64_t num) {
  *
  * If `dest` is empty, the resulting Strings will be equal.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, concat)(FIO_STR_PTR dest_,
-                                                FIO_STR_PTR const src_) {
-  FIO_NAME(FIO_STR_NAME, s) *dest =
-      (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(dest_);
-  FIO_NAME(FIO_STR_NAME, s) *src =
-      (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(src_);
-  if (!dest || !src || FIO_STR_IS_FROZEN(dest)) {
-    return FIO_NAME2(FIO_STR_NAME, cstr)(dest_);
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, concat)(FIO_STRING_PTR dest_,
+                                                   FIO_STRING_PTR const src_) {
+  FIO_NAME(FIO_STRING_NAME, s) *dest =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(dest_);
+  FIO_NAME(FIO_STRING_NAME, s) *src =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(src_);
+  if (!dest || !src || FIO_STRING_IS_FROZEN(dest)) {
+    return FIO_NAME2(FIO_STRING_NAME, cstr)(dest_);
   }
-  fio_cstr_s src_state = FIO_NAME2(FIO_STR_NAME, cstr)(src_);
+  fio_cstr_s src_state = FIO_NAME2(FIO_STRING_NAME, cstr)(src_);
   if (!src_state.len)
-    return FIO_NAME2(FIO_STR_NAME, cstr)(dest_);
-  const size_t old_len = FIO_NAME(FIO_STR_NAME, len)(dest_);
+    return FIO_NAME2(FIO_STRING_NAME, cstr)(dest_);
+  const size_t old_len = FIO_NAME(FIO_STRING_NAME, len)(dest_);
   fio_cstr_s state =
-      FIO_NAME(FIO_STR_NAME, resize)(dest_, src_state.len + old_len);
+      FIO_NAME(FIO_STRING_NAME, resize)(dest_, src_state.len + old_len);
   memcpy(state.data + old_len, src_state.data, src_state.len);
   return state;
 }
@@ -5862,13 +5907,14 @@ IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, concat)(FIO_STR_PTR dest_,
  * If `src_len == 0` than `src` will be ignored and the data marked for
  * replacement will be erased.
  */
-SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
-                          replace)(FIO_STR_PTR s_, intptr_t start_pos,
+SFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME,
+                          replace)(FIO_STRING_PTR s_, intptr_t start_pos,
                                    size_t old_len, const void *src,
                                    size_t src_len) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  fio_cstr_s state = FIO_NAME2(FIO_STR_NAME, cstr)(s_);
-  if (!s || FIO_STR_IS_FROZEN(s) || (!old_len && !src_len))
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
+  fio_cstr_s state = FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
+  if (!s || FIO_STRING_IS_FROZEN(s) || (!old_len && !src_len))
     return state;
 
   if (start_pos < 0) {
@@ -5880,12 +5926,12 @@ SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
 
   if (start_pos + old_len >= state.len) {
     /* old_len overflows the end of the String */
-    if (FIO_STR_IS_SMALL(s)) {
-      FIO_STR_SMALL_LEN_SET(s, start_pos);
+    if (FIO_STRING_IS_SMALL(s)) {
+      FIO_STRING_SMALL_LEN_SET(s, start_pos);
     } else {
       s->len = start_pos;
     }
-    return FIO_NAME(FIO_STR_NAME, write)(s_, src, src_len);
+    return FIO_NAME(FIO_STRING_NAME, write)(s_, src, src_len);
   }
 
   /* data replacement is now always in the middle (or start) of the String */
@@ -5896,7 +5942,7 @@ SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
     if (old_len < src_len) {
       /* make room for new data */
       const size_t offset = src_len - old_len;
-      state = FIO_NAME(FIO_STR_NAME, resize)(s_, state.len + offset);
+      state = FIO_NAME(FIO_STRING_NAME, resize)(s_, state.len + offset);
     }
     memmove(state.data + start_pos + src_len, state.data + start_pos + old_len,
             (state.len - start_pos) - old_len);
@@ -5905,7 +5951,7 @@ SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
     memcpy(state.data + start_pos, src, src_len);
   }
 
-  return FIO_NAME(FIO_STR_NAME, resize)(s_, new_size);
+  return FIO_NAME(FIO_STRING_NAME, resize)(s_, new_size);
 }
 
 /**
@@ -5914,16 +5960,16 @@ SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
  * Data is written to the end of the String.
  */
 SFUNC fio_cstr_s __attribute__((format(printf, 2, 0)))
-FIO_NAME(FIO_STR_NAME, vprintf)(FIO_STR_PTR s_, const char *format,
-                                va_list argv) {
+FIO_NAME(FIO_STRING_NAME, vprintf)(FIO_STRING_PTR s_, const char *format,
+                                   va_list argv) {
   va_list argv_cpy;
   va_copy(argv_cpy, argv);
   int len = vsnprintf(NULL, 0, format, argv_cpy);
   va_end(argv_cpy);
   if (len <= 0)
-    return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
-  fio_cstr_s state =
-      FIO_NAME(FIO_STR_NAME, resize)(s_, len + FIO_NAME(FIO_STR_NAME, len)(s_));
+    return FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
+  fio_cstr_s state = FIO_NAME(FIO_STRING_NAME, resize)(
+      s_, len + FIO_NAME(FIO_STRING_NAME, len)(s_));
   vsnprintf(state.data + (state.len - len), len + 1, format, argv);
   return state;
 }
@@ -5934,10 +5980,10 @@ FIO_NAME(FIO_STR_NAME, vprintf)(FIO_STR_PTR s_, const char *format,
  * Data is written to the end of the String.
  */
 SFUNC fio_cstr_s __attribute__((format(printf, 2, 3)))
-FIO_NAME(FIO_STR_NAME, printf)(FIO_STR_PTR s_, const char *format, ...) {
+FIO_NAME(FIO_STRING_NAME, printf)(FIO_STRING_PTR s_, const char *format, ...) {
   va_list argv;
   va_start(argv, format);
-  fio_cstr_s state = FIO_NAME(FIO_STR_NAME, vprintf)(s_, format, argv);
+  fio_cstr_s state = FIO_NAME(FIO_STRING_NAME, vprintf)(s_, format, argv);
   va_end(argv);
   return state;
 }
@@ -5947,7 +5993,7 @@ String API - C / JSON escaping
 ***************************************************************************** */
 
 /* constant time (non-branching) if statement used in a loop as a helper */
-#define FIO_STR_WRITE_EXCAPED_CT_OR(cond, a, b)                                \
+#define FIO_STRING_WRITE_EXCAPED_CT_OR(cond, a, b)                             \
   ((b) ^                                                                       \
    ((0 - ((((cond) | (0 - (cond))) >> ((sizeof((cond)) << 3) - 1)) & 1)) &     \
     ((a) ^ (b))))
@@ -5958,9 +6004,9 @@ String API - C / JSON escaping
  * The JSON semantic are common to many programming languages, promising a UTF-8
  * String while making it easy to read and copy the string during debugging.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
-                                                      const void *src_,
-                                                      size_t len) {
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, write_escape)(FIO_STRING_PTR s,
+                                                         const void *src_,
+                                                         size_t len) {
   const char escape_hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
                                    '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
   const uint8_t *src = (const uint8_t *)src_;
@@ -5992,7 +6038,7 @@ IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
       i += fio__str_utf8_map[src[i] >> 3] - 1;
       continue;
     }
-    at = FIO_STR_WRITE_EXCAPED_CT_OR(at, at, i + 1);
+    at = FIO_STRING_WRITE_EXCAPED_CT_OR(at, at, i + 1);
 
     /* count extra bytes */
     switch (src[i]) {
@@ -6013,11 +6059,11 @@ IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
   }
   /* is escaping required? */
   if (!extra_len) {
-    return FIO_NAME(FIO_STR_NAME, write)(s, src, len);
+    return FIO_NAME(FIO_STRING_NAME, write)(s, src, len);
   }
   /* reserve space and copy any valid "head" */
-  fio_cstr_s dest = FIO_NAME(FIO_STR_NAME, reserve)(
-      s, FIO_NAME(FIO_STR_NAME, len)(s) + extra_len + len);
+  fio_cstr_s dest = FIO_NAME(FIO_STRING_NAME, reserve)(
+      s, FIO_NAME(FIO_STRING_NAME, len)(s) + extra_len + len);
   dest.data += dest.len;
   --at;
   if (at >= 8) {
@@ -6116,15 +6162,15 @@ IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
       }
     }
   }
-  return FIO_NAME(FIO_STR_NAME, resize)(s, dest.len + at);
+  return FIO_NAME(FIO_STRING_NAME, resize)(s, dest.len + at);
 }
 
 /**
  * Writes an escaped data into the string after unescaping the data.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_unescape)(FIO_STR_PTR s,
-                                                        const void *src_,
-                                                        size_t len) {
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, write_unescape)(FIO_STRING_PTR s,
+                                                           const void *src_,
+                                                           size_t len) {
   const uint8_t is_hex[] = {
       0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
       0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
@@ -6140,8 +6186,8 @@ IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_unescape)(FIO_STR_PTR s,
       0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
       0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0};
 
-  fio_cstr_s dest =
-      FIO_NAME(FIO_STR_NAME, reserve)(s, FIO_NAME(FIO_STR_NAME, len)(s) + len);
+  fio_cstr_s dest = FIO_NAME(FIO_STRING_NAME, reserve)(
+      s, FIO_NAME(FIO_STRING_NAME, len)(s) + len);
   size_t at = 0;
   const uint8_t *src = (const uint8_t *)src_;
   const uint8_t *end = src + len;
@@ -6278,10 +6324,10 @@ IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_unescape)(FIO_STR_PTR s,
       dest.data[at++] = *(src++);
     }
   }
-  return FIO_NAME(FIO_STR_NAME, resize)(s, dest.len + at);
+  return FIO_NAME(FIO_STRING_NAME, resize)(s, dest.len + at);
 }
 
-#undef FIO_STR_WRITE_EXCAPED_CT_OR
+#undef FIO_STRING_WRITE_EXCAPED_CT_OR
 
 /* *****************************************************************************
 String - Base64 support
@@ -6291,11 +6337,11 @@ String - Base64 support
  * Writes data at the end of the String, encoding the data as Base64 encoded
  * data.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
-                          write_b64enc)(FIO_STR_PTR s_, const void *data,
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME,
+                          write_b64enc)(FIO_STRING_PTR s_, const void *data,
                                         size_t len, uint8_t url_encoded) {
   if (!FIO_PTR_UNTAG(s_) || !len)
-    return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
+    return FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
 
   /* the base64 encoding array */
   const char *encoding;
@@ -6311,8 +6357,8 @@ IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
   int groups = len / 3;
   const int mod = len - (groups * 3);
   const int target_size = (groups + (mod != 0)) * 4;
-  const uint32_t org_len = FIO_NAME(FIO_STR_NAME, len)(s_);
-  fio_cstr_s i = FIO_NAME(FIO_STR_NAME, resize)(s_, org_len + target_size);
+  const uint32_t org_len = FIO_NAME(FIO_STRING_NAME, len)(s_);
+  fio_cstr_s i = FIO_NAME(FIO_STRING_NAME, resize)(s_, org_len + target_size);
   char *writer = i.data + org_len;
   const unsigned char *reader = (const unsigned char *)data;
 
@@ -6352,9 +6398,9 @@ IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
 /**
  * Writes decoded base64 data to the end of the String.
  */
-IFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME, write_b64dec)(FIO_STR_PTR s_,
-                                                      const void *encoded_,
-                                                      size_t len) {
+IFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, write_b64dec)(FIO_STRING_PTR s_,
+                                                         const void *encoded_,
+                                                         size_t len) {
   /*
   Base64 decoding array. Generation script (Ruby):
 
@@ -6389,7 +6435,7 @@ s.length.times {|i| a[s[i]] = (i << 1) | 1 }; a.map!{ |i| i.to_i }; a
 #define FIO_BASE64_BITVAL(x) ((base64_decodes[(x)] >> 1) & 63)
 
   if (!FIO_PTR_UNTAG(s_) || !len)
-    return FIO_NAME2(FIO_STR_NAME, cstr)(s_);
+    return FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
 
   const uint8_t *encoded = (const uint8_t *)encoded_;
 
@@ -6399,9 +6445,9 @@ s.length.times {|i| a[s[i]] = (i << 1) | 1 }; a.map!{ |i| i.to_i }; a
   }
 
   /* reserve memory space */
-  const uint32_t org_len = FIO_NAME(FIO_STR_NAME, len)(s_);
+  const uint32_t org_len = FIO_NAME(FIO_STRING_NAME, len)(s_);
   fio_cstr_s i =
-      FIO_NAME(FIO_STR_NAME, reserve)(s_, org_len + ((len >> 2) * 3) + 3);
+      FIO_NAME(FIO_STRING_NAME, reserve)(s_, org_len + ((len >> 2) * 3) + 3);
   i.data += org_len;
 
   /* decoded and count actual length */
@@ -6492,7 +6538,7 @@ s.length.times {|i| a[s[i]] = (i << 1) | 1 }; a.map!{ |i| i.to_i }; a
       written = 0;
   }
 
-  return FIO_NAME(FIO_STR_NAME, resize)(s_, org_len + written);
+  return FIO_NAME(FIO_STRING_NAME, resize)(s_, org_len + written);
 }
 
 /* *****************************************************************************
@@ -6517,10 +6563,11 @@ String - read file
  *
  * Works on POSIX only.
  */
-SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
-                          readfile)(FIO_STR_PTR s_, const char *filename,
+SFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME,
+                          readfile)(FIO_STRING_PTR s_, const char *filename,
                                     intptr_t start_at, intptr_t limit) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  FIO_NAME(FIO_STRING_NAME, s) *s =
+      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
   fio_cstr_s state = {.data = NULL};
   /* POSIX implementations. */
   if (filename == NULL || !s)
@@ -6557,7 +6604,7 @@ SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
   }
 
   if (f_data.st_size <= 0 || start_at >= f_data.st_size) {
-    state = FIO_NAME2(FIO_STR_NAME, cstr)(s_);
+    state = FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
     goto finish;
   }
 
@@ -6576,16 +6623,16 @@ SFUNC fio_cstr_s FIO_NAME(FIO_STR_NAME,
     limit = f_data.st_size - start_at;
 
   {
-    const size_t org_len = FIO_NAME(FIO_STR_NAME, len)(s_);
+    const size_t org_len = FIO_NAME(FIO_STRING_NAME, len)(s_);
     size_t write_pos = org_len;
-    state = FIO_NAME(FIO_STR_NAME, resize)(s_, org_len + limit);
+    state = FIO_NAME(FIO_STRING_NAME, resize)(s_, org_len + limit);
     while (limit) {
       /* copy up to 128Mb at a time... why? because pread might fail */
       const size_t to_read =
           (limit & (((size_t)1 << 27) - 1)) | ((!!(limit >> 27)) << 27);
       if (pread(file, state.data + write_pos, to_read, start_at) !=
           (ssize_t)to_read) {
-        FIO_NAME(FIO_STR_NAME, resize)(s_, org_len);
+        FIO_NAME(FIO_STRING_NAME, resize)(s_, org_len);
         state.data = NULL;
         state.len = state.capa = 0;
         close(file);
@@ -6611,18 +6658,18 @@ String Cleanup
 ***************************************************************************** */
 #endif /* FIO_EXTERN_COMPLETE */
 
-#undef FIO_STR_NAME
-#undef FIO_STR_SMALL_DATA
-#undef FIO_STR_IS_SMALL
-#undef FIO_STR_SMALL_LEN
-#undef FIO_STR_SMALL_LEN_SET
-#undef FIO_STR_SMALL_CAPA
-#undef FIO_STR_IS_FROZEN
-#undef FIO_STR_FREEZE_
-#undef FIO_STR_CAPA2WORDS
-#undef FIO_STR_PTR
-#undef FIO_STR_NO_ALIGN
-#endif /* FIO_STR_NAME */
+#undef FIO_STRING_NAME
+#undef FIO_STRING_SMALL_DATA
+#undef FIO_STRING_IS_SMALL
+#undef FIO_STRING_SMALL_LEN
+#undef FIO_STRING_SMALL_LEN_SET
+#undef FIO_STRING_SMALL_CAPA
+#undef FIO_STRING_IS_FROZEN
+#undef FIO_STRING_FREEZE_
+#undef FIO_STRING_CAPA2WORDS
+#undef FIO_STRING_PTR
+#undef FIO_STRING_NO_ALIGN
+#endif /* FIO_STRING_NAME */
 
 /* *****************************************************************************
 
@@ -7780,7 +7827,7 @@ typedef struct {
  * of the buffer or once an object parsing was completed.
  */
 SFUNC size_t fio_json_parse(fio_json_parser_s *parser, const char *buffer,
-                            const size_t length);
+                            const size_t len);
 
 /* *****************************************************************************
 JSON Parsing - Implementation - Callbacks
@@ -7806,7 +7853,7 @@ FIO_JSON_CB void fio_json_on_number(fio_json_parser_s *p, long long i);
 FIO_JSON_CB void fio_json_on_float(fio_json_parser_s *p, double f);
 /** a String was detected (int / float). update `pos` to point at ending */
 FIO_JSON_CB void fio_json_on_string(fio_json_parser_s *p, const void *start,
-                                    size_t length);
+                                    size_t len);
 /** a dictionary object was detected, should return 0 unless error occurred. */
 FIO_JSON_CB int fio_json_on_start_object(fio_json_parser_s *p);
 /** a dictionary object closure detected */
@@ -8125,15 +8172,15 @@ too_deep:
  * of the buffer or once an object parsing was completed.
  */
 SFUNC size_t fio_json_parse(fio_json_parser_s *p, const char *buffer,
-                            const size_t length) {
+                            const size_t len) {
   const char *start = buffer;
-  const char *stop = buffer + length;
+  const char *stop = buffer + len;
   const char *last;
   /* skip BOM, if exists */
-  if (length >= 3 && buffer[0] == 0xEF && buffer[1] == 0xBB &&
-      buffer[2] == 0xBF) {
+  if (len >= 3 && buffer[0] == (char)0xEF && buffer[1] == (char)0xBB &&
+      buffer[2] == (char)0xBF) {
     buffer += 3;
-    if (length == 3)
+    if (len == 3)
       goto finish;
   }
   /* loop until the first JSON data was read */
@@ -8195,9 +8242,6 @@ Common cleanup
 ***************************************************************************** */
 #ifndef FIO_STL_KEEP__
 
-#undef FIO_NAME_FROM_MACRO_STEP2
-#undef FIO_NAME_FROM_MACRO_STEP1
-#undef FIO_NAME
 #undef FIO_EXTERN
 #undef SFUNC
 #undef IFUNC
@@ -8265,14 +8309,34 @@ memory consumption on 64 bit systems and uses 4 bytes on 32 bit systems.
 Note: this should be included after the STL file, since it leverages most of the
 SLT features and could be affected by their inclusion (i.e., memory allocation).
 ***************************************************************************** */
-#if (defined(FIO_FIOBJ)) && !defined(H___FHIOBJ_H)
-#define H___FHIOBJ_H
+#if defined(FIO_FIOBJ) && !defined(H___FIOBJ_H)
+#define H___FIOBJ_H
+
+/* *****************************************************************************
+Type Naming Macros for FIOBJ types. By default, results in:
+- fiobj_true()
+- fiobj_false()
+- fiobj_null()
+- fiobj_num_new() ... (etc')
+- fiobj_float_new() ... (etc')
+- fiobj_str_new() ... (etc')
+- fiobj_array_new() ... (etc')
+- fiobj_hash_new() ... (etc')
+***************************************************************************** */
+
+#define FIOBJ___NAME_TRUE true
+#define FIOBJ___NAME_FALSE false
+#define FIOBJ___NAME_NULL null
+#define FIOBJ___NAME_NUMBER num
+#define FIOBJ___NAME_FLOAT float
+#define FIOBJ___NAME_STRING string
+#define FIOBJ___NAME_ARRAY array
+#define FIOBJ___NAME_HASH hash
 
 /* *****************************************************************************
 General Requirements / Macros
 ***************************************************************************** */
 
-#define FIO_STR_INFO 1
 #define FIO_ATOL 1
 #define FIO_ATOMIC 1
 #include __FILE__
@@ -8293,16 +8357,8 @@ General Requirements / Macros
 #define FIOBJ_HIFUNC static inline __attribute__((unused))
 
 #ifdef FIO_LOG_DEBUG
-#define FIOBJ_LOG_DEBUG(...) FIO_LOG_DEBUG(__VA_ARGS__)
-#define FIOBJ_LOG_ERROR(...) FIO_LOG_ERROR(__VA_ARGS__)
-#define FIOBJ_LOG_WARNING(...) FIO_LOG_WARNING(__VA_ARGS__)
-#define FIOBJ_LOG_INFO(...) FIO_LOG_INFO(__VA_ARGS__)
 #define FIOBJ_LOG_PRINT__(...) FIO_LOG_PRINT__(__VA_ARGS__)
 #else
-#define FIOBJ_LOG_DEBUG(...)
-#define FIOBJ_LOG_ERROR(...)
-#define FIOBJ_LOG_WARNING(...)
-#define FIOBJ_LOG_INFO(...)
 #define FIOBJ_LOG_PRINT__(...)
 #endif
 
@@ -8392,16 +8448,16 @@ FIOBJ Data / Info
 ***************************************************************************** */
 
 /** Compares two objects. */
-FIOBJ_HIFUNC unsigned char fiobj_is_eq(FIOBJ a, FIOBJ b);
+FIOBJ_HIFUNC unsigned char FIO_NAME_BL(fiobj, eq)(FIOBJ a, FIOBJ b);
 
 /** Returns a temporary String representation for any FIOBJ object. */
-FIOBJ_HIFUNC fio_cstr_s fiobj2cstr(FIOBJ o);
+FIOBJ_HIFUNC fio_cstr_s FIO_NAME2(fiobj, cstr)(FIOBJ o);
 
 /** Returns an integer representation for any FIOBJ object. */
-FIOBJ_HIFUNC intptr_t fiobj2i(FIOBJ o);
+FIOBJ_HIFUNC intptr_t FIO_NAME2(fiobj, i)(FIOBJ o);
 
 /** Returns a float (double) representation for any FIOBJ object. */
-FIOBJ_HIFUNC double fiobj2f(FIOBJ o);
+FIOBJ_HIFUNC double FIO_NAME2(fiobj, f)(FIOBJ o);
 
 /* *****************************************************************************
 FIOBJ Containers (iteration)
@@ -8436,14 +8492,20 @@ FIOBJ_FUNC uint32_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ child, void *arg),
 FIOBJ Primitives (NULL, True, False)
 ***************************************************************************** */
 
-/** Returns the `nil` / `null` primitive. */
-FIOBJ_HIFUNC FIOBJ fiobj_null(void) { return (FIOBJ)(FIOBJ_T_NULL); }
-
 /** Returns the `true` primitive. */
-FIOBJ_HIFUNC FIOBJ fiobj_false(void) { return (FIOBJ)(FIOBJ_T_FALSE); }
+FIOBJ_HIFUNC FIOBJ FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(void) {
+  return (FIOBJ)(FIOBJ_T_TRUE);
+}
 
 /** Returns the `false` primitive. */
-FIOBJ_HIFUNC FIOBJ fiobj_true(void) { return (FIOBJ)(FIOBJ_T_TRUE); }
+FIOBJ_HIFUNC FIOBJ FIO_NAME(fiobj, FIOBJ___NAME_FALSE)(void) {
+  return (FIOBJ)(FIOBJ_T_FALSE);
+}
+
+/** Returns the `nil` / `null` primitive. */
+FIOBJ_HIFUNC FIOBJ FIO_NAME(fiobj, FIOBJ___NAME_NULL)(void) {
+  return (FIOBJ)(FIOBJ_T_NULL);
+}
 
 /* *****************************************************************************
 FIOBJ Type - Extendability (FIOBJ_T_OTHER)
@@ -8505,19 +8567,22 @@ FIOBJ Integers
 ***************************************************************************** */
 
 /** Creates a new Number object. */
-FIOBJ_HIFUNC FIOBJ fiobj_num_new(intptr_t i);
+FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
+                            new)(intptr_t i);
 
 /** Reads the number from a FIOBJ Number. */
-FIOBJ_HIFUNC intptr_t fiobj_num2i(FIOBJ i);
+FIOBJ_HIFUNC intptr_t FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
+                                i)(FIOBJ i);
 
 /** Reads the number from a FIOBJ Number, fitting it in a double. */
-FIOBJ_HIFUNC double fiobj_num2f(FIOBJ i);
+FIOBJ_HIFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), f)(FIOBJ i);
 
 /** Returns a String representation of the number (in base 10). */
-FIOBJ_FUNC fio_cstr_s fiobj_num2cstr(FIOBJ i);
+FIOBJ_FUNC fio_cstr_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
+                                cstr)(FIOBJ i);
 
 /** Frees a FIOBJ number. */
-FIOBJ_HIFUNC void fiobj_num_free(FIOBJ i);
+FIOBJ_HIFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), free)(FIOBJ i);
 
 extern FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL;
 
@@ -8526,19 +8591,21 @@ FIOBJ Floats
 ***************************************************************************** */
 
 /** Creates a new Float (double) object. */
-FIOBJ_HIFUNC FIOBJ fiobj_float_new(double i);
+FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), new)(double i);
 
 /** Reads the number from a FIOBJ Float rounnding it to an interger. */
-FIOBJ_HIFUNC intptr_t fiobj_float2i(FIOBJ i);
+FIOBJ_HIFUNC intptr_t FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT),
+                                i)(FIOBJ i);
 
 /** Reads the value from a FIOBJ Float, as a double. */
-FIOBJ_HIFUNC double fiobj_float2f(FIOBJ i);
+FIOBJ_HIFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), f)(FIOBJ i);
 
 /** Returns a String representation of the float. */
-FIOBJ_FUNC fio_cstr_s fiobj_float2cstr(FIOBJ i);
+FIOBJ_FUNC fio_cstr_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT),
+                                cstr)(FIOBJ i);
 
 /** Frees a FIOBJ Float. */
-FIOBJ_HIFUNC void fiobj_float_free(FIOBJ i);
+FIOBJ_HIFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), free)(FIOBJ i);
 
 extern FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL;
 
@@ -8546,17 +8613,17 @@ extern FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL;
 FIOBJ Strings
 ***************************************************************************** */
 
-#define FIO_STR_NAME fiobj_str
-#define FIO_REF_NAME fiobj_str
+#define FIO_STRING_NAME FIO_NAME(fiobj, FIOBJ___NAME_STRING)
+#define FIO_REF_NAME FIO_NAME(fiobj, FIOBJ___NAME_STRING)
 #define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_DESTROY(s)                                                     \
   do {                                                                         \
-    fiobj_str_destroy((FIOBJ)&s);                                              \
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), destroy)((FIOBJ)&s);        \
     FIOBJ_MARK_MEMORY_FREE();                                                  \
   } while (0)
-#define FIO_REF_INIT(s)                                                        \
+#define FIO_REF_INIT(s_)                                                       \
   do {                                                                         \
-    s = (fiobj_str_s)FIO_STR_INIT;                                             \
+    s_ = (FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), s))FIO_STRING_INIT;   \
     FIOBJ_MARK_MEMORY_ALLOC();                                                 \
   } while (0)
 #define FIO_REF_METADATA uint32_t /* for 32bit system padding */
@@ -8566,52 +8633,69 @@ FIOBJ Strings
 #include __FILE__
 
 /* Creates a new FIOBJ string object, copying the data to the new string. */
-FIOBJ_HIFUNC FIOBJ fiobj_str_new_cstr(const char *ptr, uint32_t len) {
-  FIOBJ s = fiobj_str_new();
+FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
+                            new_cstr)(const char *ptr, uint32_t len) {
+  FIOBJ s = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
   FIO_ASSERT_ALLOC(s);
-  fiobj_str_write(s, ptr, len);
+  FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(s, ptr, len);
   return s;
 }
 
-/* Creates a new FIOBJ string object with (at least) the requested capacity.
- */
-FIOBJ_HIFUNC FIOBJ fiobj_str_new_buf(uint32_t capa) {
-  FIOBJ s = fiobj_str_new();
+/* Creates a new FIOBJ string object with (at least) the requested capacity. */
+FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
+                            new_buf)(uint32_t capa) {
+  FIOBJ s = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
   FIO_ASSERT_ALLOC(s);
-  fiobj_str_reserve(s, capa);
+  FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), reserve)(s, capa);
   return s;
 }
 
 /* Creates a new FIOBJ string object, copying the origin (`fiobj2cstr`). */
-FIOBJ_HIFUNC FIOBJ fiobj_str_new_copy(FIOBJ original) {
-  FIOBJ s = fiobj_str_new();
+FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
+                            new_copy)(FIOBJ original) {
+  FIOBJ s = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
   FIO_ASSERT_ALLOC(s);
-  fio_cstr_s i = fiobj2cstr(original);
-  fiobj_str_write(s, i.data, i.len);
+  fio_cstr_s i = FIO_NAME2(fiobj, cstr)(original);
+  FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(s, i.data, i.len);
   return s;
 }
+
+/**
+ * Creates a temporary FIOBJ String object on the stack.
+ *
+ * String data might be allocated dynamically.
+ */
+#define FIOBJ_TEMP_STRING_VAR(str_name)                                        \
+  FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), s)                            \
+  FIO_NAME(str_name, __tmp) = FIO_STRING_INIT;                                 \
+  FIOBJ str_name =                                                             \
+      (FIOBJ)(((uintptr_t)&FIO_NAME(str_name, ____tmp)) | FIOBJ_T_STRING);
+
+/** Resets a temporary FIOBJ String, freeing and any resources allocated. */
+#define FIOBJ_TEMP_STRING_DESTROY(str_name)                                    \
+  FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), destroy)(str_name);
 
 /* *****************************************************************************
 FIOBJ Arrays
 ***************************************************************************** */
 
-#define FIO_ARY_NAME fiobj_array
-#define FIO_REF_NAME fiobj_array
+#define FIO_ARRAY_NAME FIO_NAME(fiobj, FIOBJ___NAME_ARRAY)
+#define FIO_REF_NAME FIO_NAME(fiobj, FIOBJ___NAME_ARRAY)
 #define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_DESTROY(a)                                                     \
   do {                                                                         \
-    fiobj_array_destroy((FIOBJ)&a);                                            \
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), destroy)((FIOBJ)&a);         \
     FIOBJ_MARK_MEMORY_FREE();                                                  \
   } while (0)
 #define FIO_REF_INIT(a)                                                        \
   do {                                                                         \
-    a = (fiobj_array_s)FIO_ARY_INIT;                                           \
+    a = (FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), s))FIO_ARRAY_INIT;      \
     FIOBJ_MARK_MEMORY_ALLOC();                                                 \
   } while (0)
 #define FIO_REF_METADATA uint32_t /* for 32bit system padding */
-#define FIO_ARY_TYPE FIOBJ
-#define FIO_ARY_TYPE_CMP(a, b) fiobj_is_eq((a), (b))
-#define FIO_ARY_TYPE_DESTROY(o) fiobj_free(o)
+#define FIO_ARRAY_TYPE FIOBJ
+#define FIO_ARRAY_TYPE_CMP(a, b) FIO_NAME_BL(fiobj, eq)((a), (b))
+#define FIO_ARRAY_TYPE_DESTROY(o) fiobj_free(o)
 #define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_ARRAY)
 #define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
 #define FIO_PTR_TAG_TYPE FIOBJ
@@ -8621,24 +8705,24 @@ FIOBJ Arrays
 FIOBJ Hash Maps
 ***************************************************************************** */
 
-#define FIO_MAP_NAME fiobj_hash
-#define FIO_REF_NAME fiobj_hash
+#define FIO_MAP_NAME FIO_NAME(fiobj, FIOBJ___NAME_HASH)
+#define FIO_REF_NAME FIO_NAME(fiobj, FIOBJ___NAME_HASH)
 #define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_DESTROY(a)                                                     \
   do {                                                                         \
-    fiobj_hash_destroy((FIOBJ)&a);                                             \
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), destroy)((FIOBJ)&a);          \
     FIOBJ_MARK_MEMORY_FREE();                                                  \
   } while (0)
 #define FIO_REF_INIT(a)                                                        \
   do {                                                                         \
-    a = (fiobj_hash_s)FIO_MAP_INIT;                                            \
+    a = (FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), s))FIO_MAP_INIT;         \
     FIOBJ_MARK_MEMORY_ALLOC();                                                 \
   } while (0)
 #define FIO_REF_METADATA uint32_t /* for 32bit system padding */
 #define FIO_MAP_TYPE FIOBJ
 #define FIO_MAP_TYPE_DESTROY(o) fiobj_free(o)
 #define FIO_MAP_KEY FIOBJ
-#define FIO_MAP_KEY_CMP(a, b) fiobj_is_eq((a), (b))
+#define FIO_MAP_KEY_CMP(a, b) FIO_NAME_BL(fiobj, eq)((a), (b))
 #define FIO_MAP_KEY_COPY(dest, o) (dest = fiobj_dup(o))
 #define FIO_MAP_KEY_DESTROY(o) fiobj_free(o)
 #define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_HASH)
@@ -8648,13 +8732,16 @@ FIOBJ Hash Maps
 
 /** Inserts a value to a hash map, automatically calculating the hash value.
  */
-FIOBJ_HIFUNC FIOBJ fiobj_hash_set2(FIOBJ hash, FIOBJ key, FIOBJ value);
+FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                            set2)(FIOBJ hash, FIOBJ key, FIOBJ value);
 
 /** Finds a value in a hash map, automatically calculating the hash value. */
-FIOBJ_HIFUNC FIOBJ fiobj_hash_get2(FIOBJ hash, FIOBJ key);
+FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                            get2)(FIOBJ hash, FIOBJ key);
 
 /** Calculates an object's hash value for a specific hash map object. */
-FIOBJ_HIFUNC uint64_t fiobj2hash(FIOBJ target_hash, FIOBJ object_key);
+FIOBJ_HIFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash,
+                                             FIOBJ object_key);
 
 /* *****************************************************************************
 FIOBJ JSON support
@@ -8663,6 +8750,7 @@ FIOBJ JSON support
 #ifndef FIOBJ_JSON_MAX_NESTING
 /** Limits the JSON output nesting level. Can be any value between 0 and 255. */
 #define FIOBJ_JSON_MAX_NESTING 28
+#define JSON_MAX_DEPTH FIOBJ_JSON_MAX_NESTING
 #endif
 
 /**
@@ -8671,7 +8759,8 @@ FIOBJ JSON support
  * If `dest` is an existing String, the formatted JSON data will be appended to
  * the existing string.
  */
-FIOBJ_HIFUNC FIOBJ fiobj2json(FIOBJ dest, FIOBJ o, uint8_t beautify);
+FIOBJ_HIFUNC FIOBJ FIO_NAME2(fiobj, json)(FIOBJ dest, FIOBJ o,
+                                          uint8_t beautify);
 
 /* internal helper funnction for recursive JSON formatting. */
 FIOBJ_FUNC void fiobj___json_format_internal__(FIOBJ, FIOBJ, uint8_t, uint8_t);
@@ -8682,9 +8771,10 @@ FIOBJ_FUNC void fiobj___json_format_internal__(FIOBJ, FIOBJ, uint8_t, uint8_t);
  * If `dest` is an existing String, the formatted JSON data will be appended to
  * the existing string.
  */
-FIOBJ_HIFUNC FIOBJ fiobj2json(FIOBJ dest, FIOBJ o, uint8_t beautify) {
+FIOBJ_HIFUNC FIOBJ FIO_NAME2(fiobj, json)(FIOBJ dest, FIOBJ o,
+                                          uint8_t beautify) {
   if (FIOBJ_TYPE_CLASS(dest) != FIOBJ_T_STRING)
-    dest = fiobj_str_new();
+    dest = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
   fiobj___json_format_internal__(dest, o, 0, beautify);
   return dest;
 }
@@ -8701,11 +8791,15 @@ FIOBJ_HIFUNC FIOBJ fiobj2json(FIOBJ dest, FIOBJ o, uint8_t beautify) {
  * Returns the number of bytes consumed. On Error, 0 is returned and no data is
  * consumed.
  */
-FIOBJ_FUNC size_t fiobj_hash_update_json(FIOBJ hash, fio_cstr_s str);
+FIOBJ_FUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                           update_json)(FIOBJ hash, fio_cstr_s str);
 
-/** Helper macro, calls `fiobj_hash_update_json` with string information */
-#define fiobj_hash_update_json2(hash, data_, len_)                             \
-  fiobj_hash_update_json(hash, (fio_cstr_s){.data = data_, .len = len_})
+/** Helper function, calls `fiobj_hash_update_json` with string information */
+FIOBJ_HIFUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                             update_json2)(FIOBJ hash, char *ptr, size_t len) {
+  return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                  update_json)(hash, (fio_cstr_s){.data = ptr, .len = len});
+}
 
 /** Returns a JSON valid FIOBJ String, representing the object. */
 FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_cstr_s str);
@@ -8779,13 +8873,13 @@ FIOBJ_HIFUNC FIOBJ fiobj_dup(FIOBJ o) {
   case FIOBJ_T_FLOAT:     /* fallthrough */
     return o;
   case FIOBJ_T_STRING: /* fallthrough */
-    fiobj_str_up_ref(o);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), up_ref)(o);
     break;
   case FIOBJ_T_ARRAY: /* fallthrough */
-    fiobj_array_up_ref(o);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), up_ref)(o);
     break;
   case FIOBJ_T_HASH: /* fallthrough */
-    fiobj_hash_up_ref(o);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), up_ref)(o);
     break;
   case FIOBJ_T_OTHER: /* fallthrough */
     fiobj_object_up_ref(o);
@@ -8801,13 +8895,13 @@ FIOBJ_HIFUNC void fiobj_free(FIOBJ o) {
   case FIOBJ_T_FLOAT:
     return;
   case FIOBJ_T_STRING:
-    fiobj_str_free(o);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), free)(o);
     return;
   case FIOBJ_T_ARRAY:
-    fiobj_array_free(o);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), free)(o);
     return;
   case FIOBJ_T_HASH:
-    fiobj_hash_free(o);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), free)(o);
     return;
   case FIOBJ_T_OTHER:
     (*fiobj_object_metadata(o))->free2(o);
@@ -8820,7 +8914,7 @@ FIOBJ Data / Info
 ***************************************************************************** */
 
 /** Compares two objects. */
-FIOBJ_HIFUNC unsigned char fiobj_is_eq(FIOBJ a, FIOBJ b) {
+FIOBJ_HIFUNC unsigned char FIO_NAME_BL(fiobj, eq)(FIOBJ a, FIOBJ b) {
   if (a == b)
     return 1;
   if (FIOBJ_TYPE_CLASS(a) != FIOBJ_TYPE_CLASS(b))
@@ -8831,7 +8925,7 @@ FIOBJ_HIFUNC unsigned char fiobj_is_eq(FIOBJ a, FIOBJ b) {
   case FIOBJ_T_FLOAT:  /* fallthrough */
     return a == b;
   case FIOBJ_T_STRING:
-    return fiobj_str_iseq(a, b);
+    return FIO_NAME_BL(FIO_NAME(fiobj, FIOBJ___NAME_STRING), eq)(a, b);
   case FIOBJ_T_ARRAY:
     return 0;
   case FIOBJ_T_HASH:
@@ -8846,10 +8940,10 @@ FIOBJ_HIFUNC unsigned char fiobj_is_eq(FIOBJ a, FIOBJ b) {
 
 #define FIOBJ2CSTR_BUFFER_LIMIT 4096
 __thread char __attribute__((weak))
-fiobj2cstr___buffer__perthread[FIOBJ2CSTR_BUFFER_LIMIT];
+fiobj___2cstr___buffer__perthread[FIOBJ2CSTR_BUFFER_LIMIT];
 
 /** Returns a temporary String representation for any FIOBJ object. */
-FIOBJ_HIFUNC fio_cstr_s fiobj2cstr(FIOBJ o) {
+FIOBJ_HIFUNC fio_cstr_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
     switch (o) {
@@ -8862,23 +8956,24 @@ FIOBJ_HIFUNC fio_cstr_s fiobj2cstr(FIOBJ o) {
     };
     return (fio_cstr_s){.data = ""};
   case FIOBJ_T_NUMBER:
-    return fiobj_num2cstr(o);
+    return FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), cstr)(o);
   case FIOBJ_T_FLOAT:
-    return fiobj_float2cstr(o);
+    return FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), cstr)(o);
   case FIOBJ_T_STRING:
-    return fiobj_str2cstr(o);
+    return FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), cstr)(o);
   case FIOBJ_T_ARRAY: /* fallthrough */
   case FIOBJ_T_HASH: {
-    FIOBJ j = fiobj2json(FIOBJ_INVALID, o, 0);
-    if (!j || fiobj_str_len(j) >= FIOBJ2CSTR_BUFFER_LIMIT) {
+    FIOBJ j = FIO_NAME2(fiobj, json)(FIOBJ_INVALID, o, 0);
+    if (!j || FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(j) >=
+                  FIOBJ2CSTR_BUFFER_LIMIT) {
       return (fio_cstr_s){
           .data = (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_ARRAY ? "[...]" : "{...}"),
           .len = 5};
     }
-    fio_cstr_s i = fiobj_str2cstr(j);
-    memcpy(fiobj2cstr___buffer__perthread, i.data, i.len + 1);
+    fio_cstr_s i = FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), cstr)(j);
+    memcpy(fiobj___2cstr___buffer__perthread, i.data, i.len + 1);
     fiobj_free(j);
-    i.data = fiobj2cstr___buffer__perthread;
+    i.data = fiobj___2cstr___buffer__perthread;
     return i;
   }
     return (fio_cstr_s){.data = "<...>", .len = 5};
@@ -8891,7 +8986,7 @@ FIOBJ_HIFUNC fio_cstr_s fiobj2cstr(FIOBJ o) {
 }
 
 /** Returns an integer representation for any FIOBJ object. */
-FIOBJ_HIFUNC intptr_t fiobj2i(FIOBJ o) {
+FIOBJ_HIFUNC intptr_t FIO_NAME2(fiobj, i)(FIOBJ o) {
   fio_cstr_s tmp;
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
@@ -8905,21 +9000,21 @@ FIOBJ_HIFUNC intptr_t fiobj2i(FIOBJ o) {
     };
     return -1;
   case FIOBJ_T_NUMBER:
-    return fiobj_num2i(o);
+    return FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), i)(o);
   case FIOBJ_T_FLOAT:
     /* FIXME */
-    return fiobj_float2i(o);
+    return FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), i)(o);
   case FIOBJ_T_STRING:
-    tmp = fiobj_str2cstr(o);
+    tmp = FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), cstr)(o);
     if (!tmp.len)
       return 0;
     return fio_atol(&tmp.data);
   case FIOBJ_T_ARRAY:
     /* FIXME */
-    return fiobj_array_count(o);
+    return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), count)(o);
   case FIOBJ_T_HASH:
     /* FIXME */
-    return fiobj_hash_count(o);
+    return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), count)(o);
   case FIOBJ_T_OTHER:
     return (*fiobj_object_metadata(o))->to_i(o);
   }
@@ -8929,7 +9024,7 @@ FIOBJ_HIFUNC intptr_t fiobj2i(FIOBJ o) {
 }
 
 /** Returns a float (double) representation for any FIOBJ object. */
-FIOBJ_HIFUNC double fiobj2f(FIOBJ o) {
+FIOBJ_HIFUNC double FIO_NAME2(fiobj, f)(FIOBJ o) {
   fio_cstr_s tmp;
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
@@ -8942,20 +9037,20 @@ FIOBJ_HIFUNC double fiobj2f(FIOBJ o) {
     };
     return -1.0;
   case FIOBJ_T_NUMBER:
-    return fiobj_num2f(o);
+    return FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), f)(o);
   case FIOBJ_T_FLOAT:
-    return fiobj_float2f(o);
+    return FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), f)(o);
   case FIOBJ_T_STRING:
-    tmp = fiobj_str2cstr(o);
+    tmp = FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), cstr)(o);
     if (!tmp.len)
       return 0;
     return (double)fio_atof(&tmp.data);
   case FIOBJ_T_ARRAY:
     /* FIXME */
-    return (double)fiobj_array_count(o);
+    return (double)FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), count)(o);
   case FIOBJ_T_HASH:
     /* FIXME */
-    return (double)fiobj_hash_count(o);
+    return (double)FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), count)(o);
   case FIOBJ_T_OTHER:
     return (*fiobj_object_metadata(o))->to_f(o);
   }
@@ -8993,7 +9088,8 @@ FIOBJ Integers
                 ((uintptr_t)3 << ((sizeof(uintptr_t) * 8) - 3))))))
 
 /** Creates a new Number object. */
-FIOBJ_HIFUNC FIOBJ fiobj_num_new(intptr_t i) {
+FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
+                            new)(intptr_t i) {
   FIOBJ o = FIO_NUMBER_ENCODE(i);
   if (FIO_NUMBER_REVESE(o) == i)
     return o;
@@ -9003,7 +9099,8 @@ FIOBJ_HIFUNC FIOBJ fiobj_num_new(intptr_t i) {
 }
 
 /** Reads the number from a FIOBJ number. */
-FIOBJ_HIFUNC intptr_t fiobj_num2i(FIOBJ i) {
+FIOBJ_HIFUNC intptr_t FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
+                                i)(FIOBJ i) {
   if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_NUMBER)
     return FIO_NUMBER_REVESE(i);
   /* FIXME */
@@ -9011,10 +9108,14 @@ FIOBJ_HIFUNC intptr_t fiobj_num2i(FIOBJ i) {
 }
 
 /** Reads the number from a FIOBJ number, fitting it in a double. */
-FIOBJ_HIFUNC double fiobj_num2f(FIOBJ i) { return (double)fiobj_num2i(i); }
+FIOBJ_HIFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
+                              f)(FIOBJ i) {
+  return (double)FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), i)(i);
+}
 
 /** Frees a FIOBJ number. */
-FIOBJ_HIFUNC void fiobj_num_free(FIOBJ i) {
+FIOBJ_HIFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
+                           free)(FIOBJ i) {
   if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_NUMBER)
     return;
   fiobj___bignum_free(i);
@@ -9045,8 +9146,9 @@ FIOBJ Floats
 #define FIO_PTR_TAG_TYPE FIOBJ
 #include __FILE__
 
-/** Creates a new Number object. */
-FIOBJ_HIFUNC FIOBJ fiobj_float_new(double i) {
+/** Creates a new Float object. */
+FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT),
+                            new)(double i) {
   FIOBJ ui;
   if (sizeof(double) <= sizeof(FIOBJ)) {
     union {
@@ -9064,14 +9166,14 @@ FIOBJ_HIFUNC FIOBJ fiobj_float_new(double i) {
   return ui;
 }
 
-/** Reads the number from a FIOBJ number. */
-FIOBJ_HIFUNC intptr_t fiobj_float2i(FIOBJ i) {
-  /* FIXME */
-  return (intptr_t)fiobj_num2f(i);
+/** Reads the integer part from a FIOBJ Float. */
+FIOBJ_HIFUNC intptr_t FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT),
+                                i)(FIOBJ i) {
+  return (intptr_t)floor(FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), f)(i));
 }
 
 /** Reads the number from a FIOBJ number, fitting it in a double. */
-FIOBJ_HIFUNC double fiobj_float2f(FIOBJ i) {
+FIOBJ_HIFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), f)(FIOBJ i) {
   if (sizeof(double) <= sizeof(FIOBJ) && FIOBJ_TYPE_CLASS(i) == FIOBJ_T_FLOAT) {
     union {
       double d;
@@ -9086,7 +9188,7 @@ FIOBJ_HIFUNC double fiobj_float2f(FIOBJ i) {
 }
 
 /** Frees a FIOBJ number. */
-FIOBJ_HIFUNC void fiobj_float_free(FIOBJ i) {
+FIOBJ_HIFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), free)(FIOBJ i) {
   if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_FLOAT)
     return;
   fiobj___bignum_free(i);
@@ -9114,9 +9216,11 @@ FIOBJ_HFUNC uint32_t fiobj_each1(FIOBJ o, int32_t start_at,
   case FIOBJ_T_FLOAT:
     return 0;
   case FIOBJ_T_ARRAY:
-    return fiobj_array_each(o, start_at, task, arg);
+    return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), each)(o, start_at,
+                                                               task, arg);
   case FIOBJ_T_HASH: /* fallthrough */
-    return fiobj_hash_each(o, start_at, task, arg);
+    return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), each)(o, start_at, task,
+                                                              arg);
   /* FIXME */
   case FIOBJ_T_OTHER: /* fallthrough */
     return (*fiobj_object_metadata(o))->each1(o, start_at, task, arg);
@@ -9129,36 +9233,42 @@ FIOBJ Hash Maps
 ***************************************************************************** */
 
 /** Calculates an object's hash value for a specific hash map object. */
-FIOBJ_HIFUNC uint64_t fiobj2hash(FIOBJ target_hash, FIOBJ o) {
+FIOBJ_HIFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ o) {
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
     return fio_risky_hash(&o, sizeof(o), target_hash + o);
   case FIOBJ_T_NUMBER: {
-    uintptr_t tmp = fiobj2i(o);
+    uintptr_t tmp = FIO_NAME2(fiobj, i)(o);
     return fio_risky_hash(&tmp, sizeof(tmp), target_hash);
   }
   case FIOBJ_T_FLOAT: {
-    double tmp = fiobj2f(o);
+    double tmp = FIO_NAME2(fiobj, f)(o);
     return fio_risky_hash(&tmp, sizeof(tmp), target_hash);
   }
   case FIOBJ_T_STRING: /* fallthrough */
-    return fiobj_str_hash(o, target_hash);
+    return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), hash)(o, target_hash);
   case FIOBJ_T_ARRAY: {
-    uint64_t h = fiobj_array_count(o);
+    uint64_t h = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), count)(o);
     size_t c = 0;
     h += fio_risky_hash(&h, sizeof(h), target_hash + FIOBJ_T_ARRAY);
-    FIO_ARY_EACH(((fiobj_array_s *)(o & (~(uintptr_t)7))), pos) {
-      h += fiobj2hash(target_hash + FIOBJ_T_ARRAY + (c++), *pos);
+    FIO_ARRAY_EACH(((FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY),
+                              s) *)(o & (~(uintptr_t)7))),
+                   pos) {
+      h += FIO_NAME2(fiobj, hash)(target_hash + FIOBJ_T_ARRAY + (c++), *pos);
     }
     return h;
   }
   case FIOBJ_T_HASH: {
-    uint64_t h = fiobj_hash_count(o);
+    uint64_t h = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), count)(o);
     size_t c = 0;
     h += fio_risky_hash(&h, sizeof(h), target_hash + FIOBJ_T_HASH);
-    FIO_MAP_EACH(((fiobj_hash_s *)(o & (~(uintptr_t)7))), pos) {
-      h += fiobj2hash(target_hash + FIOBJ_T_HASH + (c++), pos->obj.key);
-      h += fiobj2hash(target_hash + FIOBJ_T_HASH + (c++), pos->obj.value);
+    FIO_MAP_EACH(((FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                            s) *)(o & (~(uintptr_t)7))),
+                 pos) {
+      h += FIO_NAME2(fiobj, hash)(target_hash + FIOBJ_T_HASH + (c++),
+                                  pos->obj.key);
+      h += FIO_NAME2(fiobj, hash)(target_hash + FIOBJ_T_HASH + (c++),
+                                  pos->obj.value);
     }
     return h;
   }
@@ -9172,13 +9282,17 @@ FIOBJ_HIFUNC uint64_t fiobj2hash(FIOBJ target_hash, FIOBJ o) {
 }
 
 /** Inserts a value to a hash map, automatically calculating the hash value. */
-FIOBJ_HIFUNC FIOBJ fiobj_hash_set2(FIOBJ hash, FIOBJ key, FIOBJ value) {
-  return fiobj_hash_set(hash, fiobj2hash(hash, key), key, value, NULL);
+FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                            set2)(FIOBJ hash, FIOBJ key, FIOBJ value) {
+  return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), set)(
+      hash, FIO_NAME2(fiobj, hash)(hash, key), key, value, NULL);
 }
 
 /** Finds a value in a hash map, automatically calculating the hash value. */
-FIOBJ_HIFUNC FIOBJ fiobj_hash_get2(FIOBJ hash, FIOBJ key) {
-  return fiobj_hash_get(hash, fiobj2hash(hash, key), key);
+FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                            get2)(FIOBJ hash, FIOBJ key) {
+  return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                  get)(hash, FIO_NAME2(fiobj, hash)(hash, key), key);
 }
 
 /* *****************************************************************************
@@ -9203,19 +9317,19 @@ typedef struct {
   uint32_t pos;
 } fiobj____stack_element_s;
 
-#define FIO_ARY_NAME fiobj____active_stack
-#define FIO_ARY_TYPE fiobj____stack_element_s
-#define FIO_ARY_COPY(dest, src)                                                \
+#define FIO_ARRAY_NAME fiobj____active_stack
+#define FIO_ARRAY_TYPE fiobj____stack_element_s
+#define FIO_ARRAY_COPY(dest, src)                                              \
   do {                                                                         \
     (dest).obj = fiobj_dup((src).obj);                                         \
     (dest).pos = (src).pos;                                                    \
   } while (0)
-#define FIO_ARY_TYPE_CMP(a, b) (a).obj == (b).obj
-#define FIO_ARY_DESTROY(o) fiobj_free(o)
+#define FIO_ARRAY_TYPE_CMP(a, b) (a).obj == (b).obj
+#define FIO_ARRAY_DESTROY(o) fiobj_free(o)
 #include __FILE__
-#define FIO_ARY_TYPE_CMP(a, b) (a).obj == (b).obj
-#define FIO_ARY_NAME fiobj____stack
-#define FIO_ARY_TYPE fiobj____stack_element_s
+#define FIO_ARRAY_TYPE_CMP(a, b) (a).obj == (b).obj
+#define FIO_ARRAY_NAME fiobj____stack
+#define FIO_ARRAY_TYPE fiobj____stack_element_s
 #include __FILE__
 
 typedef struct {
@@ -9236,9 +9350,9 @@ FIOBJ_HFUNC uint32_t fiobj____each2_element_count(FIOBJ o) {
   case FIOBJ_T_FLOAT:
     return 0;
   case FIOBJ_T_ARRAY:
-    return fiobj_array_count(o);
+    return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), count)(o);
   case FIOBJ_T_HASH:
-    return fiobj_hash_count(o);
+    return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), count)(o);
   case FIOBJ_T_OTHER: /* fallthrough */
     return (*fiobj_object_metadata(o))->count(o);
   }
@@ -9273,7 +9387,7 @@ FIOBJ_HFUNC int fiobj____each2_wrapper_task(FIOBJ child, void *arg) {
 FIOBJ_FUNC uint32_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ child, void *arg),
                                 void *arg) {
   fiobj_____each2_data_s d = {
-      .stack = FIO_ARY_INIT,
+      .stack = FIO_ARRAY_INIT,
       .task = task,
       .arg = arg,
       .next = FIOBJ_INVALID,
@@ -9316,12 +9430,16 @@ FIOBJ_HFUNC uint32_t fiobj___count_noop(FIOBJ o) {
 FIOBJ Integers (bigger numbers)
 ***************************************************************************** */
 
-FIOBJ_FUNC unsigned char fiobj___num_is_eq(FIOBJ a, FIOBJ b) {
-  return fiobj_num2i(a) == fiobj_num2i(b);
+FIOBJ_FUNC unsigned char FIO_NAME_BL(fiobj___num, eq)(FIOBJ a, FIOBJ b) {
+  return FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), i)(a) ==
+         FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), i)(b);
 }
 
-FIOBJ_FUNC fio_cstr_s fiobj_num2cstr(FIOBJ i) {
-  size_t len = fio_ltoa(fiobj___tmp_buffer, fiobj_num2i(i), 10);
+FIOBJ_FUNC fio_cstr_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
+                                cstr)(FIOBJ i) {
+  size_t len =
+      fio_ltoa(fiobj___tmp_buffer,
+               FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), i)(i), 10);
   fiobj___tmp_buffer[len] = 0;
   return (fio_cstr_s){.data = fiobj___tmp_buffer, .len = len};
 }
@@ -9334,13 +9452,13 @@ FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___NUMBER_CLASS_VTBL = {
      */
     .type_id = FIOBJ_T_NUMBER,
     /** Test for equality between two objects with the same `type_id` */
-    .is_eq = fiobj___num_is_eq,
+    .is_eq = FIO_NAME_BL(fiobj___num, eq),
     /** Converts an object to a String */
-    .to_s = fiobj_num2cstr,
+    .to_s = FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), cstr),
     /** Converts and object to an integer */
-    .to_i = fiobj_num2i,
+    .to_i = FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), i),
     /** Converts and object to a float */
-    .to_f = fiobj_num2f,
+    .to_f = FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), f),
     /** Returns the number of exposed elements held by the object, if any. */
     .count = fiobj___count_noop,
     /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
@@ -9353,12 +9471,16 @@ FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___NUMBER_CLASS_VTBL = {
 FIOBJ Floats (bigger / smaller doubles)
 ***************************************************************************** */
 
-FIOBJ_FUNC unsigned char fiobj___float_is_eq(FIOBJ a, FIOBJ b) {
-  return fiobj_float2i(a) == fiobj_float2i(b);
+FIOBJ_FUNC unsigned char FIO_NAME_BL(fiobj___float, eq)(FIOBJ a, FIOBJ b) {
+  return FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), i)(a) ==
+         FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), i)(b);
 }
 
-FIOBJ_FUNC fio_cstr_s fiobj_float2cstr(FIOBJ i) {
-  size_t len = fio_ftoa(fiobj___tmp_buffer, fiobj_float2f(i), 10);
+FIOBJ_FUNC fio_cstr_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT),
+                                cstr)(FIOBJ i) {
+  size_t len =
+      fio_ftoa(fiobj___tmp_buffer,
+               FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), f)(i), 10);
   fiobj___tmp_buffer[len] = 0;
   return (fio_cstr_s){.data = fiobj___tmp_buffer, .len = len};
 }
@@ -9371,13 +9493,13 @@ FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___FLOAT_CLASS_VTBL = {
      */
     .type_id = FIOBJ_T_FLOAT,
     /** Test for equality between two objects with the same `type_id` */
-    .is_eq = fiobj___float_is_eq,
+    .is_eq = FIO_NAME_BL(fiobj___float, eq),
     /** Converts an object to a String */
-    .to_s = fiobj_float2cstr,
+    .to_s = FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), cstr),
     /** Converts and object to an integer */
-    .to_i = fiobj_float2i,
+    .to_i = FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), i),
     /** Converts and object to a float */
-    .to_f = fiobj_float2f,
+    .to_f = FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), f),
     /** Returns the number of exposed elements held by the object, if any. */
     .count = fiobj___count_noop,
     /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
@@ -9392,8 +9514,9 @@ FIOBJ JSON support - output
 
 FIOBJ_HIFUNC void fiobj___json_format_internal_beauty_pad(FIOBJ json,
                                                           uint8_t level) {
-  uint32_t pos = fiobj_str_len(json);
-  fio_cstr_s tmp = fiobj_str_resize(json, level + pos + 2);
+  uint32_t pos = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(json);
+  fio_cstr_s tmp = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
+                            resize)(json, level + pos + 2);
   tmp.data[pos++] = '\r';
   tmp.data[pos++] = '\n';
   for (uint8_t i = 0; i < level; ++i)
@@ -9410,72 +9533,80 @@ FIOBJ_FUNC void fiobj___json_format_internal__(FIOBJ json, FIOBJ o,
   case FIOBJ_T_NUMBER: /* fallthrough */
   case FIOBJ_T_FLOAT:  /* fallthrough */
   {
-    fio_cstr_s info = fiobj2cstr(o);
-    fiobj_str_write(json, info.data, info.len);
+    fio_cstr_s info = FIO_NAME2(fiobj, cstr)(o);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)
+    (json, info.data, info.len);
     return;
   }
   case FIOBJ_T_STRING: /* fallthrough */
   default: {
-    fio_cstr_s info = fiobj2cstr(o);
-    fiobj_str_write(json, "\"", 1);
-    fiobj_str_write_escape(json, info.data, info.len);
-    fiobj_str_write(json, "\"", 1);
+    fio_cstr_s info = FIO_NAME2(fiobj, cstr)(o);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "\"", 1);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write_escape)
+    (json, info.data, info.len);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "\"", 1);
     return;
   }
   case FIOBJ_T_ARRAY:
     if (level == FIOBJ_JSON_MAX_NESTING) {
-      fiobj_str_write(json, "[ ]", 3);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "[ ]", 3);
       return;
     }
     {
       ++level;
-      fiobj_str_write(json, "[", 1);
-      const uint32_t len = fiobj_array_count(o);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "[", 1);
+      const uint32_t len =
+          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), count)(o);
       for (uint32_t i = 0; i < len; ++i) {
         if (beautify) {
           fiobj___json_format_internal_beauty_pad(json, level);
         }
-        FIOBJ child = fiobj_array_get(o, i);
+        FIOBJ child = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), get)(o, i);
         fiobj___json_format_internal__(json, child, level, beautify);
         if (i + 1 < len)
-          fiobj_str_write(json, ",", 1);
+          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, ",", 1);
       }
       --level;
       if (beautify) {
         fiobj___json_format_internal_beauty_pad(json, level);
       }
-      fiobj_str_write(json, "]", 1);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "]", 1);
     }
     return;
   case FIOBJ_T_HASH:
     if (level == FIOBJ_JSON_MAX_NESTING) {
-      fiobj_str_write(json, "{ }", 3);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "{ }", 3);
       return;
     }
     {
       ++level;
-      fiobj_str_write(json, "{", 1);
-      uint32_t i = fiobj_hash_count(o);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "{", 1);
+      uint32_t i = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), count)(o);
       if (i) {
-        FIO_MAP_EACH(((fiobj_hash_s *)(o & (~(FIOBJ)7))), couplet) {
+        FIO_MAP_EACH(((FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                                s) *)(o & (~(FIOBJ)7))),
+                     couplet) {
           if (beautify) {
             fiobj___json_format_internal_beauty_pad(json, level);
           }
-          fio_cstr_s info = fiobj2cstr(couplet->obj.key);
-          fiobj_str_write(json, "\"", 1);
-          fiobj_str_write_escape(json, info.data, info.len);
-          fiobj_str_write(json, "\":", 2);
+          fio_cstr_s info = FIO_NAME2(fiobj, cstr)(couplet->obj.key);
+          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "\"", 1);
+          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write_escape)
+          (json, info.data, info.len);
+          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)
+          (json, "\":", 2);
           fiobj___json_format_internal__(json, couplet->obj.value, level,
                                          beautify);
           if (--i)
-            fiobj_str_write(json, ",", 1);
+            FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)
+          (json, ",", 1);
         }
       }
       --level;
       if (beautify) {
         fiobj___json_format_internal_beauty_pad(json, level);
       }
-      fiobj_str_write(json, "}", 1);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "}", 1);
     }
     return;
   }
@@ -9502,14 +9633,14 @@ static inline void fiobj_json_add2parser(fiobj_json_parser_s *p, FIOBJ o) {
   if (p->top) {
     if (FIOBJ_TYPE_CLASS(p->top) == FIOBJ_T_HASH) {
       if (p->key) {
-        fiobj_hash_set2(p->top, p->key, o);
+        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), set2)(p->top, p->key, o);
         fiobj_free(p->key);
         p->key = FIOBJ_INVALID;
       } else {
         p->key = o;
       }
     } else {
-      fiobj_array_push(p->top, o);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(p->top, o);
     }
   } else {
     p->top = o;
@@ -9518,29 +9649,35 @@ static inline void fiobj_json_add2parser(fiobj_json_parser_s *p, FIOBJ o) {
 
 /** a NULL object was detected */
 static inline void fio_json_on_null(fio_json_parser_s *p) {
-  fiobj_json_add2parser((fiobj_json_parser_s *)p, fiobj_null());
+  fiobj_json_add2parser((fiobj_json_parser_s *)p,
+                        FIO_NAME(fiobj, FIOBJ___NAME_NULL)());
 }
 /** a TRUE object was detected */
 static inline void fio_json_on_true(fio_json_parser_s *p) {
-  fiobj_json_add2parser((fiobj_json_parser_s *)p, fiobj_true());
+  fiobj_json_add2parser((fiobj_json_parser_s *)p,
+                        FIO_NAME(fiobj, FIOBJ___NAME_TRUE)());
 }
 /** a FALSE object was detected */
 static inline void fio_json_on_false(fio_json_parser_s *p) {
-  fiobj_json_add2parser((fiobj_json_parser_s *)p, fiobj_false());
+  fiobj_json_add2parser((fiobj_json_parser_s *)p,
+                        FIO_NAME(fiobj, FIOBJ___NAME_FALSE)());
 }
 /** a Numberl was detected (long long). */
 static inline void fio_json_on_number(fio_json_parser_s *p, long long i) {
-  fiobj_json_add2parser((fiobj_json_parser_s *)p, fiobj_num_new(i));
+  fiobj_json_add2parser((fiobj_json_parser_s *)p,
+                        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), new)(i));
 }
 /** a Float was detected (double). */
 static inline void fio_json_on_float(fio_json_parser_s *p, double f) {
-  fiobj_json_add2parser((fiobj_json_parser_s *)p, fiobj_float_new(f));
+  fiobj_json_add2parser((fiobj_json_parser_s *)p,
+                        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), new)(f));
 }
 /** a String was detected (int / float). update `pos` to point at ending */
 static inline void fio_json_on_string(fio_json_parser_s *p, const void *start,
-                                      size_t length) {
-  FIOBJ str = fiobj_str_new();
-  fiobj_str_write_unescape(str, start, length);
+                                      size_t len) {
+  FIOBJ str = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
+  FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write_unescape)
+  (str, start, len);
   fiobj_json_add2parser((fiobj_json_parser_s *)p, str);
 }
 /** a dictionary object was detected */
@@ -9552,7 +9689,7 @@ static inline int fio_json_on_start_object(fio_json_parser_s *p) {
     pr->top = pr->target;
     pr->target = FIOBJ_INVALID;
   } else {
-    FIOBJ hash = fiobj_hash_new();
+    FIOBJ hash = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), new)();
     fiobj_json_add2parser(pr, hash);
     pr->stack[pr->so++] = pr->top;
     pr->top = hash;
@@ -9563,8 +9700,8 @@ static inline int fio_json_on_start_object(fio_json_parser_s *p) {
 static inline void fio_json_on_end_object(fio_json_parser_s *p) {
   fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
   if (pr->key) {
-    FIOBJ_LOG_WARNING("(JSON parsing) malformed JSON, "
-                      "ignoring dangling Hash key.");
+    FIO_LOG_WARNING("(JSON parsing) malformed JSON, "
+                    "ignoring dangling Hash key.");
     fiobj_free(pr->key);
     pr->key = FIOBJ_INVALID;
   }
@@ -9577,7 +9714,7 @@ static int fio_json_on_start_array(fio_json_parser_s *p) {
   fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
   if (pr->target)
     return -1;
-  FIOBJ ary = fiobj_array_new();
+  FIOBJ ary = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
   fiobj_json_add2parser(pr, ary);
   pr->stack[pr->so++] = pr->top;
   pr->top = ary;
@@ -9600,7 +9737,7 @@ static inline void fio_json_on_error(fio_json_parser_s *p) {
   fiobj_free(pr->stack[0]);
   fiobj_free(pr->key);
   *pr = (fiobj_json_parser_s){.top = FIOBJ_INVALID};
-  FIOBJ_LOG_DEBUG("JSON on_error callback called.");
+  FIO_LOG_DEBUG("JSON on_error callback called.");
 }
 
 /**
@@ -9615,7 +9752,8 @@ static inline void fio_json_on_error(fio_json_parser_s *p) {
  * Returns the number of bytes consumed. On Error, 0 is returned and no data is
  * consumed.
  */
-FIOBJ_FUNC size_t fiobj_hash_update_json(FIOBJ hash, fio_cstr_s str) {
+FIOBJ_FUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                           update_json)(FIOBJ hash, fio_cstr_s str) {
   if (!hash)
     return 0;
   fiobj_json_parser_s p = {.top = FIOBJ_INVALID, .target = hash};
@@ -9632,13 +9770,13 @@ FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_cstr_s str) {
   size_t consumed = fio_json_parse(&p.p, str.data, str.len);
   if (!consumed || p.p.depth) {
     if (p.top) {
-      FIOBJ_LOG_DEBUG(
-          "WARNING - JSON failed secondary validation, no on_error");
+      FIO_LOG_DEBUG("WARNING - JSON failed secondary validation, no on_error");
     }
     fiobj_free(p.stack[0]);
 #if DEBUG
-    FIOBJ s = fiobj2json(FIOBJ_INVALID, p.top, 0);
-    FIOBJ_LOG_DEBUG("JSON data being deleted:\n%s", fiobj2cstr(s).data);
+    FIOBJ s = FIO_NAME2(fiobj, json)(FIOBJ_INVALID, p.top, 0);
+    FIO_LOG_DEBUG("JSON data being deleted:\n%s",
+                  FIO_NAME2(fiobj, cstr)(s).data);
     fiobj_free(s);
 #endif
     p.top = FIOBJ_INVALID;
@@ -9657,10 +9795,6 @@ FIOBJ cleanup
 #undef FIOBJ_HFUNC
 #undef FIOBJ_HIFUNC
 #undef FIO_FIOBJ
-#undef FIOBJ_LOG_DEBUG
-#undef FIOBJ_LOG_ERROR
-#undef FIOBJ_LOG_WARNING
-#undef FIOBJ_LOG_INFO
 #endif /* FIO_FIOBJ */
 
 /* *****************************************************************************
@@ -9735,7 +9869,7 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
   char buffer[1024];
   for (int i = 0 - TEST_REPEAT; i < TEST_REPEAT; ++i) {
     size_t tmp = fio_ltoa(buffer, i, 0);
-    TEST_ASSERT(tmp > 0, "fio_ltoa return slength error");
+    TEST_ASSERT(tmp > 0, "fio_ltoa returned length error");
     buffer[tmp++] = 0;
     char *tmp2 = buffer;
     int i2 = fio_atol(&tmp2);
@@ -9746,7 +9880,7 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
   for (uint8_t bit = 0; bit < sizeof(int64_t) * 8; ++bit) {
     uint64_t i = (uint64_t)1 << bit;
     size_t tmp = fio_ltoa(buffer, (int64_t)i, 0);
-    TEST_ASSERT(tmp > 0, "fio_ltoa return slength error");
+    TEST_ASSERT(tmp > 0, "fio_ltoa return length error");
     buffer[tmp] = 0;
     char *tmp2 = buffer;
     int64_t i2 = fio_atol(&tmp2);
@@ -10050,28 +10184,28 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
     TEST_ASSERT(tmp == ((uint64_t)1 << 2), "fio_lrot64 failed");
   }
 
-  fprintf(stderr, "* Testing fio_u2strX and fio_u2strX macros.\n");
+  fprintf(stderr, "* Testing fio_buf2uX and fio_u2bufX helpers.\n");
   char buffer[32];
   for (int64_t i = -TEST_REPEAT; i < TEST_REPEAT; ++i) {
-    fio_u2str64(buffer, i);
+    FIO_NAME2(fio_u, buf64)(buffer, i);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT((int64_t)fio_str2u64(buffer) == i,
-                "fio_u2str64 / fio_str2u64  mismatch %zd != %zd",
-                (ssize_t)fio_str2u64(buffer), (ssize_t)i);
+    TEST_ASSERT((int64_t)FIO_NAME2(fio_buf, u64)(buffer) == i,
+                "fio_u2buf64 / fio_buf2u64  mismatch %zd != %zd",
+                (ssize_t)FIO_NAME2(fio_buf, u64)(buffer), (ssize_t)i);
   }
   for (int32_t i = -TEST_REPEAT; i < TEST_REPEAT; ++i) {
-    fio_u2str32(buffer, i);
+    FIO_NAME2(fio_u, buf32)(buffer, i);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT((int32_t)fio_str2u32(buffer) == i,
-                "fio_u2str32 / fio_str2u32  mismatch %zd != %zd",
-                (ssize_t)(fio_str2u32(buffer)), (ssize_t)i);
+    TEST_ASSERT((int32_t)FIO_NAME2(fio_buf, u32)(buffer) == i,
+                "fio_u2buf32 / fio_buf2u32  mismatch %zd != %zd",
+                (ssize_t)(FIO_NAME2(fio_buf, u32)(buffer)), (ssize_t)i);
   }
   for (int16_t i = -TEST_REPEAT; i < TEST_REPEAT; ++i) {
-    fio_u2str16(buffer, i);
+    FIO_NAME2(fio_u, buf16)(buffer, i);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT((int16_t)fio_str2u16(buffer) == i,
-                "fio_u2str16 / fio_str2u16  mismatch %zd != %zd",
-                (ssize_t)(fio_str2u16(buffer)), (ssize_t)i);
+    TEST_ASSERT((int16_t)FIO_NAME2(fio_buf, u16)(buffer) == i,
+                "fio_u2buf16 / fio_buf2u16  mismatch %zd != %zd",
+                (ssize_t)(FIO_NAME2(fio_buf, u16)(buffer)), (ssize_t)i);
   }
 
   fprintf(stderr, "* Testing constant-time helpers.\n");
@@ -10153,15 +10287,15 @@ Psedo Random Generator - test
 #include "math.h"
 
 TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
-                                                        size_t length,
+                                                        size_t len,
                                                         const char *name,
                                                         size_t clk) {
   size_t totals[2] = {0};
   size_t freq[256] = {0};
-  const size_t total_bits = (length * sizeof(*stream) * 8);
+  const size_t total_bits = (len * sizeof(*stream) * 8);
   uint64_t hemming = 0;
   /* collect data */
-  for (size_t i = 1; i < length; i += 2) {
+  for (size_t i = 1; i < len; i += 2) {
     hemming += fio_hemming_dist(stream[i], stream[i - 1]);
     for (size_t byte = 0; byte < (sizeof(*stream) << 1); ++byte) {
       uint8_t val = ((uint8_t *)(stream + (i - 1)))[byte];
@@ -10171,7 +10305,7 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
       }
     }
   }
-  hemming /= length;
+  hemming /= len;
   fprintf(stderr, "\n");
 #if DEBUG
   fprintf(stderr, "\t- \x1B[1m%s\x1B[0m:\n", name);
@@ -10189,8 +10323,8 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
   TEST_ASSERT(hemming >= 14 && hemming <= 18,
               "randomness isn't random (hemming)?");
   /* test chi-square ... I think */
-  if (length * sizeof(*stream) > 2560) {
-    double n_r = (double)1.0 * ((length * sizeof(*stream)) / 256);
+  if (len * sizeof(*stream) > 2560) {
+    double n_r = (double)1.0 * ((len * sizeof(*stream)) / 256);
     double chi_square = 0;
     for (unsigned int i = 0; i < 256; ++i) {
       double f = freq[i] - n_r;
@@ -10213,33 +10347,33 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
 TEST_FUNC void fio___dynamic_types_test___random(void) {
   fprintf(stderr, "* Testing randomness "
                   "- bit frequency / hemming distance / chi-square.\n");
-  const size_t test_length = (TEST_REPEAT << 7);
-  uint64_t *rs = FIO_MEM_CALLOC(sizeof(*rs), test_length);
+  const size_t test_len = (TEST_REPEAT << 7);
+  uint64_t *rs = FIO_MEM_CALLOC(sizeof(*rs), test_len);
   clock_t start, end;
   FIO_ASSERT_ALLOC(rs);
   start = clock();
-  for (size_t i = 0; i < test_length; ++i) {
+  for (size_t i = 0; i < test_len; ++i) {
     rs[i] = ((uint64_t)rand() << 32) | rand();
   }
   end = clock();
-  fio___dynamic_types_test___random_buffer(rs, test_length, "rand (system)",
+  fio___dynamic_types_test___random_buffer(rs, test_len, "rand (system)",
                                            end - start);
 
-  memset(rs, 0, sizeof(*rs) * test_length);
+  memset(rs, 0, sizeof(*rs) * test_len);
   start = clock();
-  for (size_t i = 0; i < test_length; ++i) {
+  for (size_t i = 0; i < test_len; ++i) {
     rs[i] = fio_rand64();
   }
   end = clock();
-  fio___dynamic_types_test___random_buffer(rs, test_length, "fio_rand64",
+  fio___dynamic_types_test___random_buffer(rs, test_len, "fio_rand64",
                                            end - start);
-  memset(rs, 0, sizeof(*rs) * test_length);
+  memset(rs, 0, sizeof(*rs) * test_len);
   start = clock();
-  fio_rand_bytes(rs, test_length * sizeof(*rs));
+  fio_rand_bytes(rs, test_len * sizeof(*rs));
   end = clock();
-  fio___dynamic_types_test___random_buffer(rs, test_length, "fio_rand_bytes",
+  fio___dynamic_types_test___random_buffer(rs, test_len, "fio_rand_bytes",
                                            end - start);
-  FIO_MEM_FREE(rs, sizeof(*rs) * test_length);
+  FIO_MEM_FREE(rs, sizeof(*rs) * test_len);
   fprintf(stderr, "\n");
 #if DEBUG
   fprintf(stderr,
@@ -10350,7 +10484,7 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
     TEST_ASSERT(node->data == --tester, "Linked list ordering error for shift");
     FIO_MEM_FREE(node, sizeof(*node));
   }
-  TEST_ASSERT(ls____test_is_empty(&ls),
+  TEST_ASSERT(FIO_NAME_BL(ls____test, empty)(&ls),
               "Linked list empty should have been true");
   for (int i = 0; i < TEST_REPEAT; ++i) {
     ls____test_s *node = ls____test_push(&ls, FIO_MEM_CALLOC(sizeof(*node), 1));
@@ -10361,7 +10495,7 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
     fio___dynamic_types_test_untag((uintptr_t *)&(pos));
     FIO_MEM_FREE(pos, sizeof(*pos));
   }
-  TEST_ASSERT(ls____test_is_empty(&ls),
+  TEST_ASSERT(FIO_NAME_BL(ls____test, empty)(&ls),
               "Linked list empty should have been true");
 }
 
@@ -10370,10 +10504,10 @@ Dynamic Array - Test
 ***************************************************************************** */
 
 static int ary____test_was_destroyed = 0;
-#define FIO_ARY_NAME ary____test
-#define FIO_ARY_TYPE int
+#define FIO_ARRAY_NAME ary____test
+#define FIO_ARRAY_TYPE int
 #define FIO_REF_NAME ary____test
-#define FIO_REF_INIT(obj) obj = (ary____test_s)FIO_ARY_INIT
+#define FIO_REF_INIT(obj) obj = (ary____test_s)FIO_ARRAY_INIT
 #define FIO_REF_DESTROY(obj)                                                   \
   do {                                                                         \
     ary____test_destroy(&obj);                                                 \
@@ -10384,12 +10518,12 @@ static int ary____test_was_destroyed = 0;
 #define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag((uintptr_t *)&(p))
 #include __FILE__
 
-#define FIO_ARY_NAME ary2____test
-#define FIO_ARY_TYPE uint8_t
-#define FIO_ARY_TYPE_INVALID 0xFF
-#define FIO_ARY_TYPE_COPY(dest, src) (dest) = (src)
-#define FIO_ARY_TYPE_DESTROY(obj) (obj = FIO_ARY_TYPE_INVALID)
-#define FIO_ARY_TYPE_CMP(a, b) (a) == (b)
+#define FIO_ARRAY_NAME ary2____test
+#define FIO_ARRAY_TYPE uint8_t
+#define FIO_ARRAY_TYPE_INVALID 0xFF
+#define FIO_ARRAY_TYPE_COPY(dest, src) (dest) = (src)
+#define FIO_ARRAY_TYPE_DESTROY(obj) (obj = FIO_ARRAY_TYPE_INVALID)
+#define FIO_ARRAY_TYPE_CMP(a, b) (a) == (b)
 #define FIO_PTR_TAG(p) fio___dynamic_types_test_tag((uintptr_t *)&(p))
 #define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag((uintptr_t *)&(p))
 #include __FILE__
@@ -10403,7 +10537,7 @@ static int fio_____dynamic_test_array_task(int o, void *c_) {
 
 TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   int tmp = 0;
-  ary____test_s a = FIO_ARY_INIT;
+  ary____test_s a = FIO_ARRAY_INIT;
   fprintf(stderr, "* Testing dynamic arrays.\n");
 
   fprintf(stderr, "* Testing on stack, push/pop.\n");
@@ -10413,7 +10547,7 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   TEST_ASSERT(ary____test_count(&a) == 0,
               "Freshly initialized array should have zero elements");
   memset(&a, 1, sizeof(a));
-  a = (ary____test_s)FIO_ARY_INIT;
+  a = (ary____test_s)FIO_ARRAY_INIT;
   TEST_ASSERT(ary____test_capa(&a) == 0,
               "Reinitialized array should have zero capacity");
   TEST_ASSERT(ary____test_count(&a) == 0,
@@ -10523,9 +10657,9 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   ary____test_set(pa, -100, 1, NULL);
   TEST_ASSERT(ary____test_count(pa) == 100,
               "set with 100 elements should force create elements.");
-  // FIO_ARY_EACH(pa, pos) {
-  //   fprintf(stderr, "[%zu]  %d\n", (size_t)(pos - ary____test2ptr(pa)),
-  //   *pos);
+  // FIO_ARRAY_EACH(pa, pos) {
+  //   fprintf(stderr, "[%zu]  %d\n", (size_t)(pos -
+  //   FIO_NAME2(ary____test,ptr)(pa)), *pos);
   // }
   TEST_ASSERT(ary____test_get(pa, 99) == 1,
               "Intialized element should be kept (index 99)");
@@ -10557,7 +10691,7 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
               "Destroyed array should have zero capacity");
   TEST_ASSERT(ary____test_count(pa) == 0,
               "Destroyed array should have zero elements");
-  TEST_ASSERT(ary____test2ptr(pa) == NULL,
+  TEST_ASSERT(FIO_NAME2(ary____test, ptr)(pa) == NULL,
               "Destroyed array shouldn't have memory allocated");
   ary____test_unshift(pa, 1);
   ary____test_unshift(pa, 2);
@@ -10573,21 +10707,23 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   ary____test_free(pa);
 
   fprintf(stderr, "* Testing non-zero value for uninitialized elements.\n");
-  ary2____test_s a2 = FIO_ARY_INIT;
+  ary2____test_s a2 = FIO_ARRAY_INIT;
   ary2____test_set(&a2, 99, 1, NULL);
-  FIO_ARY_EACH(&a2, pos) {
-    TEST_ASSERT((*pos == 0xFF || (pos - ary2____test2ptr(&a2)) == 99),
-                "uninitialized elements should be initialized as "
-                "FIO_ARY_TYPE_INVALID");
+  FIO_ARRAY_EACH(&a2, pos) {
+    TEST_ASSERT(
+        (*pos == 0xFF || (pos - FIO_NAME2(ary2____test, ptr)(&a2)) == 99),
+        "uninitialized elements should be initialized as "
+        "FIO_ARRAY_TYPE_INVALID");
   }
   ary2____test_set(&a2, -200, 1, NULL);
   TEST_ASSERT(ary2____test_count(&a2) == 200, "array should have 100 items.");
-  FIO_ARY_EACH(&a2, pos) {
-    TEST_ASSERT((*pos == 0xFF || (pos - ary2____test2ptr(&a2)) == 0 ||
-                 (pos - ary2____test2ptr(&a2)) == 199),
+  FIO_ARRAY_EACH(&a2, pos) {
+    TEST_ASSERT((*pos == 0xFF ||
+                 (pos - FIO_NAME2(ary2____test, ptr)(&a2)) == 0 ||
+                 (pos - FIO_NAME2(ary2____test, ptr)(&a2)) == 199),
                 "uninitialized elements should be initialized as "
-                "FIO_ARY_TYPE_INVALID (index %zd)",
-                (pos - ary2____test2ptr(&a2)));
+                "FIO_ARRAY_TYPE_INVALID (index %zd)",
+                (pos - FIO_NAME2(ary2____test, ptr)(&a2)));
   }
   ary2____test_destroy(&a2);
 
@@ -10973,8 +11109,8 @@ TEST_FUNC void fio___dynamic_types_test___hmap_test(void) {
 Dynamic Strings - test
 ***************************************************************************** */
 
-#define FIO_STR_NO_ALIGN 0
-#define FIO_STR_NAME fio__str_____test
+#define FIO_STRING_NO_ALIGN 0
+#define FIO_STRING_NAME fio__str_____test
 #define FIO_PTR_TAG(p) fio___dynamic_types_test_tag((uintptr_t *)&(p))
 #define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag((uintptr_t *)&(p))
 #define FIO_REF_NAME fio__str_____test
@@ -10995,18 +11131,20 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
           sizeof(fio__str_____test__wrapper_s));
   fprintf(stderr, "* String container size (without wrapper): %zu\n",
           sizeof(fio__str_____test_s));
-  fprintf(stderr, "* Self-contained capacity (FIO_STR_SMALL_CAPA): %zu\n",
+  fprintf(stderr, "* Self-contained capacity (FIO_STRING_SMALL_CAPA): %zu\n",
           FIO__STR_SMALL_CAPA);
   fio__str_____test_s str = {.len = 0}; /* test zeroed out memory */
-  TEST_ASSERT(!fio__str_____test_is_frozen(&str), "new string is frozen");
+  TEST_ASSERT(!FIO_NAME_BL(fio__str_____test, frozen)(&str),
+              "new string is frozen");
   TEST_ASSERT(fio__str_____test_capa(&str) == FIO__STR_SMALL_CAPA,
               "small string capacity returned %zu",
               fio__str_____test_capa(&str));
   TEST_ASSERT(fio__str_____test_len(&str) == 0,
               "small string length reporting error!");
-  TEST_ASSERT(fio__str_____test2ptr(&str) == ((char *)(&str) + 1),
+  TEST_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) == ((char *)(&str) + 1),
               "small string pointer reporting error (%zd offset)!",
-              (ssize_t)(((char *)(&str) + 1) - fio__str_____test2ptr(&str)));
+              (ssize_t)(((char *)(&str) + 1) -
+                        FIO_NAME2(fio__str_____test, ptr)(&str)));
   fio__str_____test_write(&str, "World", 4);
   TEST_ASSERT(str.special,
               "small string writing error - not small on small write!");
@@ -11014,17 +11152,19 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
               "Small string capacity reporting error after write!");
   TEST_ASSERT(fio__str_____test_len(&str) == 4,
               "small string length reporting error after write!");
-  TEST_ASSERT(fio__str_____test2ptr(&str) == (char *)&str + 1,
+  TEST_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) == (char *)&str + 1,
               "small string pointer reporting error after write!");
-  TEST_ASSERT(strlen(fio__str_____test2ptr(&str)) == 4,
+  TEST_ASSERT(strlen(FIO_NAME2(fio__str_____test, ptr)(&str)) == 4,
               "small string NUL missing after write (%zu)!",
-              strlen(fio__str_____test2ptr(&str)));
-  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Worl"),
-              "small string write error (%s)!", fio__str_____test2ptr(&str));
-  TEST_ASSERT(fio__str_____test2ptr(&str) == fio__str_____test2cstr(&str).data,
+              strlen(FIO_NAME2(fio__str_____test, ptr)(&str)));
+  TEST_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Worl"),
+              "small string write error (%s)!",
+              FIO_NAME2(fio__str_____test, ptr)(&str));
+  TEST_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) ==
+                  FIO_NAME2(fio__str_____test, cstr)(&str).data,
               "small string `data` != `info.data` (%p != %p)",
-              (void *)fio__str_____test2ptr(&str),
-              (void *)fio__str_____test2cstr(&str).data);
+              (void *)FIO_NAME2(fio__str_____test, ptr)(&str),
+              (void *)FIO_NAME2(fio__str_____test, cstr)(&str).data);
 
   fio__str_____test_reserve(&str, sizeof(fio__str_____test_s));
   TEST_ASSERT(!str.special,
@@ -11032,48 +11172,53 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   TEST_ASSERT(fio__str_____test_capa(&str) >= sizeof(fio__str_____test_s) - 1,
               "Long String capacity update error (%zu != %zu)!",
               fio__str_____test_capa(&str), sizeof(fio__str_____test_s));
-  TEST_ASSERT(fio__str_____test2ptr(&str) == fio__str_____test2cstr(&str).data,
-              "Long String `fio__str_____test2ptr` !>= "
-              "`fio__str_____test2cstr(s).data` (%p != %p)",
-              (void *)fio__str_____test2ptr(&str),
-              (void *)fio__str_____test2cstr(&str).data);
+  TEST_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) ==
+                  FIO_NAME2(fio__str_____test, cstr)(&str).data,
+              "Long String `FIO_NAME2(fio__str_____test,ptr)` !>= "
+              "`FIO_NAME2(fio__str_____test,cstr)(s).data` (%p != %p)",
+              (void *)FIO_NAME2(fio__str_____test, ptr)(&str),
+              (void *)FIO_NAME2(fio__str_____test, cstr)(&str).data);
 
   TEST_ASSERT(
       fio__str_____test_len(&str) == 4,
       "Long String length changed during conversion from small string (%zu)!",
       fio__str_____test_len(&str));
-  TEST_ASSERT(fio__str_____test2ptr(&str) == str.data,
+  TEST_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) == str.data,
               "Long String pointer reporting error after capacity update!");
-  TEST_ASSERT(strlen(fio__str_____test2ptr(&str)) == 4,
+  TEST_ASSERT(strlen(FIO_NAME2(fio__str_____test, ptr)(&str)) == 4,
               "Long String NUL missing after capacity update (%zu)!",
-              strlen(fio__str_____test2ptr(&str)));
-  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Worl"),
+              strlen(FIO_NAME2(fio__str_____test, ptr)(&str)));
+  TEST_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Worl"),
               "Long String value changed after capacity update (%s)!",
-              fio__str_____test2ptr(&str));
+              FIO_NAME2(fio__str_____test, ptr)(&str));
 
   fio__str_____test_write(&str, "d!", 2);
-  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "World!"),
-              "Long String `write` error (%s)!", fio__str_____test2ptr(&str));
+  TEST_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "World!"),
+              "Long String `write` error (%s)!",
+              FIO_NAME2(fio__str_____test, ptr)(&str));
 
   fio__str_____test_replace(&str, 0, 0, "Hello ", 6);
-  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Hello World!"),
-              "Long String `insert` error (%s)!", fio__str_____test2ptr(&str));
+  TEST_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Hello World!"),
+              "Long String `insert` error (%s)!",
+              FIO_NAME2(fio__str_____test, ptr)(&str));
 
   fio__str_____test_resize(&str, 6);
-  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Hello "),
+  TEST_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Hello "),
               "Long String `resize` clipping error (%s)!",
-              fio__str_____test2ptr(&str));
+              FIO_NAME2(fio__str_____test, ptr)(&str));
 
   fio__str_____test_replace(&str, 6, 0, "My World!", 9);
-  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Hello My World!"),
-              "Long String `replace` error when testing overflow (%s)!",
-              fio__str_____test2ptr(&str));
+  TEST_ASSERT(
+      !strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Hello My World!"),
+      "Long String `replace` error when testing overflow (%s)!",
+      FIO_NAME2(fio__str_____test, ptr)(&str));
 
   str.capa = str.len;
   fio__str_____test_replace(&str, -10, 2, "Big", 3);
-  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Hello Big World!"),
-              "Long String `replace` error when testing splicing (%s)!",
-              fio__str_____test2ptr(&str));
+  TEST_ASSERT(
+      !strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Hello Big World!"),
+      "Long String `replace` error when testing splicing (%s)!",
+      FIO_NAME2(fio__str_____test, ptr)(&str));
 
   TEST_ASSERT(fio__str_____test_capa(&str) ==
                   ROUND_UP_CAPA_2WORDS(strlen("Hello Big World!")),
@@ -11088,8 +11233,9 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     TEST_ASSERT(fio__str_____test_len(&str) == strlen("Hello Big World!"),
                 "Compacting altered String length! (%zu != %zu)!",
                 fio__str_____test_len(&str), strlen("Hello Big World!"));
-    TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Hello Big World!"),
-                "Compact data error (%s)!", fio__str_____test2ptr(&str));
+    TEST_ASSERT(
+        !strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Hello Big World!"),
+        "Compact data error (%s)!", FIO_NAME2(fio__str_____test, ptr)(&str));
     TEST_ASSERT(fio__str_____test_capa(&str) == sizeof(str) - 2,
                 "Compacted String capacity reporting error!");
   } else {
@@ -11098,12 +11244,12 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
 
   {
     fio__str_____test_freeze(&str);
-    TEST_ASSERT(fio__str_____test_is_frozen(&str),
+    TEST_ASSERT(FIO_NAME_BL(fio__str_____test, frozen)(&str),
                 "Frozen String not flagged as frozen.");
-    fio_cstr_s old_state = fio__str_____test2cstr(&str);
+    fio_cstr_s old_state = FIO_NAME2(fio__str_____test, cstr)(&str);
     fio__str_____test_write(&str, "more data to be written here", 28);
     fio__str_____test_replace(&str, 2, 1, "more data to be written here", 28);
-    fio_cstr_s new_state = fio__str_____test2cstr(&str);
+    fio_cstr_s new_state = FIO_NAME2(fio__str_____test, cstr)(&str);
     TEST_ASSERT(old_state.len == new_state.len,
                 "Frozen String length changed!");
     TEST_ASSERT(old_state.data == new_state.data,
@@ -11114,23 +11260,26 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     str.special &= (uint8_t)(~(2U));
   }
   fio__str_____test_printf(&str, " %u", 42);
-  TEST_ASSERT(!strcmp(fio__str_____test2ptr(&str), "Hello Big World! 42"),
-              "`fio__str_____test_printf` data error (%s)!",
-              fio__str_____test2ptr(&str));
+  TEST_ASSERT(
+      !strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Hello Big World! 42"),
+      "`fio__str_____test_printf` data error (%s)!",
+      FIO_NAME2(fio__str_____test, ptr)(&str));
 
   {
-    fio__str_____test_s str2 = FIO_STR_INIT;
+    fio__str_____test_s str2 = FIO_STRING_INIT;
     fio__str_____test_concat(&str2, &str);
     TEST_ASSERT(
-        fio__str_____test_iseq(&str, &str2),
+        FIO_NAME_BL(fio__str_____test, eq)(&str, &str2),
         "`fio__str_____test_concat` error, strings not equal (%s != %s)!",
-        fio__str_____test2ptr(&str), fio__str_____test2ptr(&str2));
+        FIO_NAME2(fio__str_____test, ptr)(&str),
+        FIO_NAME2(fio__str_____test, ptr)(&str2));
     fio__str_____test_write(&str2, ":extra data", 11);
-    TEST_ASSERT(!fio__str_____test_iseq(&str, &str2),
-                "`fio__str_____test_write` error after copy, strings equal "
-                "((%zu)%s == (%zu)%s)!",
-                fio__str_____test_len(&str), fio__str_____test2ptr(&str),
-                fio__str_____test_len(&str2), fio__str_____test2ptr(&str2));
+    TEST_ASSERT(
+        !FIO_NAME_BL(fio__str_____test, eq)(&str, &str2),
+        "`fio__str_____test_write` error after copy, strings equal "
+        "((%zu)%s == (%zu)%s)!",
+        fio__str_____test_len(&str), FIO_NAME2(fio__str_____test, ptr)(&str),
+        fio__str_____test_len(&str2), FIO_NAME2(fio__str_____test, ptr)(&str2));
 
     fio__str_____test_destroy(&str2);
   }
@@ -11139,9 +11288,10 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
 
   fio__str_____test_write_i(&str, -42);
   TEST_ASSERT(fio__str_____test_len(&str) == 3 &&
-                  !memcmp("-42", fio__str_____test2ptr(&str), 3),
+                  !memcmp("-42", FIO_NAME2(fio__str_____test, ptr)(&str), 3),
               "fio__str_____test_write_i output error ((%zu) %s != -42)",
-              fio__str_____test_len(&str), fio__str_____test2ptr(&str));
+              fio__str_____test_len(&str),
+              FIO_NAME2(fio__str_____test, ptr)(&str));
   fio__str_____test_destroy(&str);
 
   {
@@ -11257,7 +11407,7 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   fio__str_____test_destroy(&str);
   if (1) {
     /* Testing Static initialization and writing */
-    str = (fio__str_____test_s)FIO_STR_INIT_STATIC("Welcome");
+    str = (fio__str_____test_s)FIO_STRING_INIT_STATIC("Welcome");
     TEST_ASSERT(fio__str_____test_capa(&str) == 0,
                 "Static string capacity non-zero.");
     TEST_ASSERT(fio__str_____test_len(&str) > 0,
@@ -11265,7 +11415,7 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     TEST_ASSERT(str.dealloc == NULL,
                 "Static string deallocation function should be NULL.");
     fio__str_____test_destroy(&str);
-    str = (fio__str_____test_s)FIO_STR_INIT_STATIC("Welcome");
+    str = (fio__str_____test_s)FIO_STRING_INIT_STATIC("Welcome");
     fio_cstr_s state = fio__str_____test_write(&str, " Home", 5);
     TEST_ASSERT(state.capa > 0, "Static string not converted to non-static.");
     TEST_ASSERT(str.dealloc, "Missing static string deallocation function"
@@ -11284,7 +11434,7 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     fprintf(stderr, "* Testing Base64 encoding / decoding.\n");
     fio__str_____test_destroy(&str); /* does nothing, but what the heck... */
 
-    fio__str_____test_s b64message = FIO_STR_INIT;
+    fio__str_____test_s b64message = FIO_STRING_INIT;
     fio_cstr_s b64i = fio__str_____test_write(
         &b64message, "Hello World, this is the voice of peace:)", 41);
     for (int i = 0; i < 256; ++i) {
@@ -11313,7 +11463,7 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   }
   {
     fprintf(stderr, "* Testing JSON style character escaping / unescaping.\n");
-    fio__str_____test_s unescaped = FIO_STR_INIT;
+    fio__str_____test_s unescaped = FIO_STRING_INIT;
     fio_cstr_s ue;
     const char *utf8_sample = /* three hearts, small-big-small*/
         "\xf0\x9f\x92\x95\xe2\x9d\xa4\xef\xb8\x8f\xf0\x9f\x92\x95";
@@ -11477,10 +11627,17 @@ TEST_FUNC void fio___dynamic_types_test___risky(void) {
 /* *****************************************************************************
 FIOBJ and JSON testing
 ***************************************************************************** */
-#if defined(FIOBJ_EXTERN_COMPLETE) || defined(FIOBJ_EXTERN)
+
+#ifndef H___FIOBJ_H
 #define FIOBJ_MARK_MEMORY 1
+#define FIOBJ_TEST_WARNING()
 #define FIO_FIOBJ
 #include __FILE__
+#else
+#define FIOBJ_TEST_WARNING()                                                   \
+  FIO_LOG_WARNING(                                                             \
+      "FIOBJ already defined before tesing. Tests might not be complete.");
+#endif
 
 TEST_FUNC int fio___dynamic_types_test___fiobj_task(FIOBJ o, void *e_) {
   static size_t index = 0;
@@ -11489,9 +11646,9 @@ TEST_FUNC int fio___dynamic_types_test___fiobj_task(FIOBJ o, void *e_) {
     TEST_ASSERT(FIOBJ_TYPE(o) == FIOBJ_T_ARRAY,
                 "each2 ordering issue [%zu] (array).", index);
   } else {
-    TEST_ASSERT(fiobj2i(o) == expect[index],
+    TEST_ASSERT(FIO_NAME2(fiobj, i)(o) == expect[index],
                 "each2 ordering issue [%zu] (number) %ld != %d", index,
-                fiobj2i(o), expect[index]);
+                FIO_NAME2(fiobj, i)(o), expect[index]);
   }
   ++index;
   return 0;
@@ -11502,27 +11659,38 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
   /* primitives - (in)sanity */
   {
     fprintf(stderr, "* Testing FIOBJ primitives.\n");
+    FIOBJ_TEST_WARNING();
     TEST_ASSERT(FIOBJ_TYPE(o) == FIOBJ_T_NULL,
                 "invalid FIOBJ type should be FIOBJ_T_NULL.");
-    TEST_ASSERT(!fiobj_is_eq(o, fiobj_null()),
-                "invalid FIOBJ is NOT a fiobj_null().");
-    TEST_ASSERT(!fiobj_is_eq(fiobj_true(), fiobj_null()),
+    TEST_ASSERT(
+        !FIO_NAME_BL(fiobj, eq)(o, FIO_NAME(fiobj, FIOBJ___NAME_NULL)()),
+        "invalid FIOBJ is NOT a fiobj_null().");
+    TEST_ASSERT(!FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(),
+                                        FIO_NAME(fiobj, FIOBJ___NAME_NULL)()),
                 "fiobj_true() is NOT fiobj_null().");
-    TEST_ASSERT(!fiobj_is_eq(fiobj_false(), fiobj_null()),
+    TEST_ASSERT(!FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_FALSE)(),
+                                        FIO_NAME(fiobj, FIOBJ___NAME_NULL)()),
                 "fiobj_false() is NOT fiobj_null().");
-    TEST_ASSERT(!fiobj_is_eq(fiobj_false(), fiobj_true()),
+    TEST_ASSERT(!FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_FALSE)(),
+                                        FIO_NAME(fiobj, FIOBJ___NAME_TRUE)()),
                 "fiobj_false() is NOT fiobj_true().");
-    TEST_ASSERT(FIOBJ_TYPE(fiobj_null()) == FIOBJ_T_NULL,
+    TEST_ASSERT(FIOBJ_TYPE(FIO_NAME(fiobj, FIOBJ___NAME_NULL)()) ==
+                    FIOBJ_T_NULL,
                 "fiobj_null() type should be FIOBJ_T_NULL.");
-    TEST_ASSERT(FIOBJ_TYPE(fiobj_true()) == FIOBJ_T_TRUE,
+    TEST_ASSERT(FIOBJ_TYPE(FIO_NAME(fiobj, FIOBJ___NAME_TRUE)()) ==
+                    FIOBJ_T_TRUE,
                 "fiobj_true() type should be FIOBJ_T_TRUE.");
-    TEST_ASSERT(FIOBJ_TYPE(fiobj_false()) == FIOBJ_T_FALSE,
+    TEST_ASSERT(FIOBJ_TYPE(FIO_NAME(fiobj, FIOBJ___NAME_FALSE)()) ==
+                    FIOBJ_T_FALSE,
                 "fiobj_false() type should be FIOBJ_T_FALSE.");
-    TEST_ASSERT(fiobj_is_eq(fiobj_null(), fiobj_null()),
+    TEST_ASSERT(FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_NULL)(),
+                                       FIO_NAME(fiobj, FIOBJ___NAME_NULL)()),
                 "fiobj_null() should be equal to self.");
-    TEST_ASSERT(fiobj_is_eq(fiobj_true(), fiobj_true()),
+    TEST_ASSERT(FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(),
+                                       FIO_NAME(fiobj, FIOBJ___NAME_TRUE)()),
                 "fiobj_true() should be equal to self.");
-    TEST_ASSERT(fiobj_is_eq(fiobj_false(), fiobj_false()),
+    TEST_ASSERT(FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_FALSE)(),
+                                       FIO_NAME(fiobj, FIOBJ___NAME_FALSE)()),
                 "fiobj_false() should be equal to self.");
   }
   {
@@ -11530,10 +11698,10 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
     uint8_t allocation_flags = 0;
     for (uint8_t bit = 0; bit < (sizeof(intptr_t) * 8); ++bit) {
       uintptr_t i = (uintptr_t)1 << bit;
-      o = fiobj_num_new((intptr_t)i);
-      TEST_ASSERT(fiobj2i(o) == (intptr_t)i,
+      o = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), new)((intptr_t)i);
+      TEST_ASSERT(FIO_NAME2(fiobj, i)(o) == (intptr_t)i,
                   "Number not reversible at bit %d (%zd != %zd)!", (int)bit,
-                  (ssize_t)fiobj2i(o), (ssize_t)i);
+                  (ssize_t)FIO_NAME2(fiobj, i)(o), (ssize_t)i);
       allocation_flags |= (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_NUMBER) ? 1 : 2;
       fiobj_free(o);
     }
@@ -11550,10 +11718,10 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
         uint64_t i;
       } punned;
       punned.i = (uint64_t)1 << bit;
-      o = fiobj_float_new(punned.d);
-      TEST_ASSERT(fiobj2f(o) == punned.d,
+      o = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), new)(punned.d);
+      TEST_ASSERT(FIO_NAME2(fiobj, f)(o) == punned.d,
                   "Float not reversible at bit %d (%lf != %lf)!", (int)bit,
-                  fiobj2f(o), punned.d);
+                  FIO_NAME2(fiobj, f)(o), punned.d);
       allocation_flags |= (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_FLOAT) ? 1 : 2;
       fiobj_free(o);
     }
@@ -11563,22 +11731,24 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
   }
   {
     fprintf(stderr, "* Testing FIOBJ each2.\n");
-    FIOBJ a = fiobj_array_new();
-    o = fiobj_array_new();
-    fiobj_array_push(o, a);
+    FIOBJ a = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
+    o = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(o, a);
     for (int i = 1; i < 10; ++i) // 1, 2, 3 ... 10
     {
-      fiobj_array_push(a, fiobj_num_new(i));
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)
+      (a, FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), new)(i));
       if (i % 3 == 0) {
-        a = fiobj_array_new();
-        fiobj_array_push(o, a);
+        a = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
+        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(o, a);
       }
     }
     int expectation[] = {
         -1 /* array */, -1, 1, 2, 3, -1, 4, 5, 6, -1, 7, 8, 9, -1};
     size_t c = fiobj_each2(o, fio___dynamic_types_test___fiobj_task,
                            (void *)expectation);
-    TEST_ASSERT(c == fiobj_array_count(o) + 9 + 1,
+    TEST_ASSERT(c == FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), count)(o) +
+                         9 + 1,
                 "each2 repetition count error");
     fiobj_free(o);
   }
@@ -11592,13 +11762,16 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
         "\"false\":false},\"array2\":[1,2,3,4.2,\"five\",{\"hash\":true}]}";
     o = fiobj_json_parse2(json, strlen(json));
     TEST_ASSERT(o, "JSON parsing failed - no data returned.");
-    FIOBJ j = fiobj2json(FIOBJ_INVALID, o, 0);
+    FIOBJ j = FIO_NAME2(fiobj, json)(FIOBJ_INVALID, o, 0);
 #if DEBUG
-    fprintf(stderr, "JSON: %s\n", fiobj2cstr(j).data);
+    fprintf(stderr, "JSON: %s\n", FIO_NAME2(fiobj, cstr)(j).data);
 #endif
-    TEST_ASSERT(fiobj_str_len(j) == strlen(json + 20),
+    TEST_ASSERT(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(j) ==
+                    strlen(json + 20),
                 "JSON roundtrip failed (length error).");
-    TEST_ASSERT(!memcmp(json + 20, fiobj_str2ptr(j), strlen(json + 20)),
+    TEST_ASSERT(!memcmp(json + 20,
+                        FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(j),
+                        strlen(json + 20)),
                 "JSON roundtrip failed (data error).");
     fiobj_free(o);
     fiobj_free(j);
@@ -11607,31 +11780,39 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
 #if FIOBJ_MARK_MEMORY
   {
     fprintf(stderr, "* Testing FIOBJ for memory leaks.\n");
-    FIOBJ a = fiobj_array_new();
-    fiobj_array_reserve(a, 64);
+    FIOBJ a = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), reserve)(a, 64);
     for (uint8_t bit = 0; bit < (sizeof(intptr_t) * 8); ++bit) {
       uintptr_t i = (uintptr_t)1 << bit;
-      fiobj_array_push(a, fiobj_num_new((intptr_t)i));
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)
+      (a, FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), new)((intptr_t)i));
     }
-    FIOBJ h = fiobj_hash_new();
-    FIOBJ key = fiobj_str_new();
-    fiobj_str_write(key, "array", 5);
-    fiobj_hash_set2(h, key, a);
-    TEST_ASSERT(fiobj_hash_get2(h, key) == a, "FIOBJ Hash retrival failed");
-    fiobj_array_push(a, key);
+    FIOBJ h = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), new)();
+    FIOBJ key = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(key, "array", 5);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), set2)(h, key, a);
+    TEST_ASSERT(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), get2)(h, key) == a,
+                "FIOBJ Hash retrival failed");
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(a, key);
     if (0) {
-      fiobj_array_push(a, fiobj_null());
-      fiobj_array_push(a, fiobj_true());
-      fiobj_array_push(a, fiobj_false());
-      fiobj_array_push(a, fiobj_float_new(0.42));
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)
+      (a, FIO_NAME(fiobj, FIOBJ___NAME_NULL)());
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)
+      (a, FIO_NAME(fiobj, FIOBJ___NAME_TRUE)());
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)
+      (a, FIO_NAME(fiobj, FIOBJ___NAME_FALSE)());
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)
+      (a, FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), new)(0.42));
 
-      FIOBJ json = fiobj2json(FIOBJ_INVALID, h, 0);
-      fiobj_str_write(json, "\n", 1);
-      fiobj_str_reserve(json, fiobj_str_len(json)
-                                  << 1); /* prevent memory realloc */
-      fiobj_str_write_escape(json, fiobj_str2ptr(json),
-                             fiobj_str_len(json) - 1);
-      fprintf(stderr, "%s\n", fiobj2cstr(json).data);
+      FIOBJ json = FIO_NAME2(fiobj, json)(FIOBJ_INVALID, h, 0);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "\n", 1);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), reserve)
+      (json, FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(json)
+                 << 1); /* prevent memory realloc */
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write_escape)
+      (json, FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(json),
+       FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(json) - 1);
+      fprintf(stderr, "%s\n", FIO_NAME2(fiobj, cstr)(json).data);
       fiobj_free(json);
     }
     fiobj_free(h);
@@ -11644,11 +11825,7 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
 #endif
   fprintf(stderr, "* Passed.\n");
 }
-#else
-#define fio___dynamic_types_test___fiobj()                                     \
-  fprintf(stderr,                                                              \
-          "WARNING: STL FIOBJ functions couldn't be initialized / tested.\n");
-#endif
+
 /* *****************************************************************************
 Environment printout
 ***************************************************************************** */
