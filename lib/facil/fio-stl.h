@@ -8129,12 +8129,21 @@ SFUNC size_t fio_json_parse(fio_json_parser_s *p, const char *buffer,
   const char *start = buffer;
   const char *stop = buffer + length;
   const char *last;
+  /* skip BOM, if exists */
+  if (length >= 3 && buffer[0] == 0xEF && buffer[1] == 0xBB &&
+      buffer[2] == 0xBF) {
+    buffer += 3;
+    if (length == 3)
+      goto finish;
+  }
+  /* loop until the first JSON data was read */
   do {
     last = buffer;
     buffer = fio___json_identify(p, buffer, stop);
     if (!buffer)
       goto failed;
   } while (!p->expect && buffer < stop);
+  /* loop until the JSON object (nesting) is closed */
   while (p->depth && buffer < stop) {
     last = buffer;
     buffer = fio___json_identify(p, buffer, stop);
@@ -8145,6 +8154,7 @@ SFUNC size_t fio_json_parse(fio_json_parser_s *p, const char *buffer,
     p->expect = 0;
     fio_json_on_json(p);
   }
+finish:
   return buffer - start;
 failed:
   FIO_LOG_DEBUG("JSON parsing failed after:\n%.*s",
