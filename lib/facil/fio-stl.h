@@ -207,20 +207,20 @@ Pointer Arithmatics
 Memory allocation macros
 ***************************************************************************** */
 #ifndef FIO_MEM_CALLOC
-
 /** Allocates size X units of bytes, where all bytes equal zero. */
 #define FIO_MEM_CALLOC(size, units) calloc((size), (units))
+#endif
 
-#undef FIO_MEM_REALLOC
+#ifndef FIO_MEM_REALLOC
 /** Reallocates memory, copying (at least) `copy_len` if neccessary. */
 #define FIO_MEM_REALLOC(ptr, old_size, new_size, copy_len)                     \
   realloc((ptr), (new_size))
+#endif
 
-#undef FIO_MEM_FREE
+#ifndef FIO_MEM_FREE
 /** Frees allocated memory. */
 #define FIO_MEM_FREE(ptr, size) free((ptr))
-
-#endif /* FIO_MEM_CALLOC */
+#endif
 
 /* *****************************************************************************
 String Information Helper Type
@@ -895,7 +895,7 @@ Bitewise helpers cleanup
 
 
 ***************************************************************************** */
-#if defined(FIO_BITMAP) && !defined(H___FIO_BITMAP_H)
+#if (defined(FIO_BITMAP) || defined(FIO_JSON)) && !defined(H___FIO_BITMAP_H)
 #define H___FIO_BITMAP_H
 /* *****************************************************************************
 Bitmap access / manipulation
@@ -3736,6 +3736,7 @@ Example - string based map which automatically copies and frees string data:
 ```c
 #define FIO_RISKY_HASH 1 // for hash value computation
 #define FIO_ATOL 1       // for string <=> number conversion
+#define FIO_MALLOC 1     // using the custom memory allocator
 #include "fio-stl.h"
 
 #define FIO_MAP_NAME mstr
@@ -7626,7 +7627,7 @@ Hash Map Cleanup
 
 ***************************************************************************** */
 
-#if defined(FIO_REF_NAME)
+#ifdef FIO_REF_NAME
 
 #ifndef fio_atomic_add
 #error FIO_REF_NAME requires enabling the FIO_ATOMIC extension.
@@ -7692,18 +7693,18 @@ IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME, FIO_REF_CONSTRUCTOR)(void);
 /** Increases the reference count. */
 IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME, up_ref)(FIO_REF_TYPE_PTR wrapped);
 
-#ifdef FIO_REF_METADATA
-/** Returns a pointer to the object's metadata, if defined. */
-IFUNC FIO_REF_METADATA *FIO_NAME(FIO_REF_NAME,
-                                 metadata)(FIO_REF_TYPE_PTR wrapped);
-#endif
-
 /**
  * Frees a reference counted object (or decreases the reference count).
  *
  * Returns 1 if the object was actually freed, returns 0 otherwise.
  */
 IFUNC int FIO_NAME(FIO_REF_NAME, FIO_REF_DESTRUCTOR)(FIO_REF_TYPE_PTR wrapped);
+
+#ifdef FIO_REF_METADATA
+/** Returns a pointer to the object's metadata, if defined. */
+IFUNC FIO_REF_METADATA *FIO_NAME(FIO_REF_NAME,
+                                 metadata)(FIO_REF_TYPE_PTR wrapped);
+#endif
 
 /* *****************************************************************************
 Reference Counter (Wrapper) Implementation
@@ -7731,17 +7732,6 @@ IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME,
   return wrapped_;
 }
 
-#ifdef FIO_REF_METADATA
-/** Returns a pointer to the object's metadata, if defined. */
-IFUNC FIO_REF_METADATA *FIO_NAME(FIO_REF_NAME,
-                                 metadata)(FIO_REF_TYPE_PTR wrapped_) {
-  FIO_REF_TYPE *wrapped = (FIO_REF_TYPE *)(FIO_PTR_UNTAG(wrapped_));
-  FIO_NAME(FIO_REF_NAME, _wrapper_s) *o =
-      FIO_PTR_FROM_FIELD(FIO_NAME(FIO_REF_NAME, _wrapper_s), wrapped, wrapped);
-  return &o->metadata;
-}
-#endif
-
 /** Frees a reference counted object (or decreases the reference count). */
 IFUNC int FIO_NAME(FIO_REF_NAME,
                    FIO_REF_DESTRUCTOR)(FIO_REF_TYPE_PTR wrapped_) {
@@ -7759,6 +7749,17 @@ IFUNC int FIO_NAME(FIO_REF_NAME,
   FIO_MEM_FREE_(o, sizeof(*o));
   return 1;
 }
+
+#ifdef FIO_REF_METADATA
+/** Returns a pointer to the object's metadata, if defined. */
+IFUNC FIO_REF_METADATA *FIO_NAME(FIO_REF_NAME,
+                                 metadata)(FIO_REF_TYPE_PTR wrapped_) {
+  FIO_REF_TYPE *wrapped = (FIO_REF_TYPE *)(FIO_PTR_UNTAG(wrapped_));
+  FIO_NAME(FIO_REF_NAME, _wrapper_s) *o =
+      FIO_PTR_FROM_FIELD(FIO_NAME(FIO_REF_NAME, _wrapper_s), wrapped, wrapped);
+  return &o->metadata;
+}
+#endif
 
 /* *****************************************************************************
 Reference Counter (Wrapper) Cleanup
@@ -7803,24 +7804,23 @@ Reference Counter (Wrapper) Cleanup
 #if defined(FIO_JSON) && !defined(H___FIO_JSON_H)
 #define H___FIO_JSON_H
 
+#ifndef JSON_MAX_DEPTH
+/** Maximum allowed JSON nesting level. Values above 64K might fail. */
+#define JSON_MAX_DEPTH 512
+#endif
+
 /** The JSON parser type. Memory must be initialized to 0 before first uses. */
 typedef struct {
-  /** nesting bit flags - dictionary bit = 0, array bit = 1. */
-  uint32_t nesting;
   /** level of nesting. */
-  uint8_t depth;
+  uint32_t depth;
   /** expectataion bit flag: 0=key, 1=colon, 2=value, 4=comma/closure . */
   uint8_t expect;
+  /** nesting bit flags - dictionary bit = 0, array bit = 1. */
+  uint8_t nesting[(JSON_MAX_DEPTH + 7) >> 3];
 } fio_json_parser_s;
 
 #define FIO_JSON_INIT                                                          \
-  { .nesting = 0 }
-
-/* maximum allowed depth values max out at 32, since a bitmap is used */
-#if !defined(JSON_MAX_DEPTH) || JSON_MAX_DEPTH > 32
-#undef JSON_MAX_DEPTH
-#define JSON_MAX_DEPTH 31
-#endif
+  { .depth = 0 }
 
 /**
  * Returns the number of bytes consumed. Stops as close as possible to the end
@@ -7972,7 +7972,7 @@ HFUNC const char *fio___json_identify(fio_json_parser_s *p, const char *buffer,
     if (!p->depth || !(p->expect & 4))
       goto unexpected_separator;
     ++buffer;
-    p->expect = ((p->nesting & 1) << 1);
+    p->expect = (fio_bitmap_get(p->nesting, p->depth) << 1);
     return buffer;
   case ':': /* colon separator */
     if (!p->depth || !(p->expect & 1))
@@ -8001,16 +8001,16 @@ HFUNC const char *fio___json_identify(fio_json_parser_s *p, const char *buffer,
     if (p->depth && !(p->expect & 2))
       goto missing_separator;
     p->expect = 0;
-    p->nesting <<= 1;
     if (p->depth == JSON_MAX_DEPTH)
       goto too_deep;
     ++p->depth;
+    fio_bitmap_unset(p->nesting, p->depth);
     fio_json_on_start_object(p);
     return buffer + 1;
   case '}':
-    if ((p->nesting & 1) || !p->depth || (p->expect & 3))
+    if (fio_bitmap_get(p->nesting, p->depth) || !p->depth || (p->expect & 3))
       goto object_closure_unexpected;
-    p->nesting >>= 1;
+    fio_bitmap_unset(p->nesting, p->depth);
     p->expect = 4; /* expect comma */
     --p->depth;
     fio_json_on_end_object(p);
@@ -8025,15 +8025,15 @@ HFUNC const char *fio___json_identify(fio_json_parser_s *p, const char *buffer,
       goto missing_separator;
     fio_json_on_start_array(p);
     p->expect = 2;
-    p->nesting = (p->nesting << 1) | 1;
     if (p->depth == JSON_MAX_DEPTH)
       goto too_deep;
     ++p->depth;
+    fio_bitmap_set(p->nesting, p->depth);
     return buffer + 1;
   case ']':
-    if (!(p->nesting & 1) || !p->depth)
+    if (!fio_bitmap_get(p->nesting, p->depth) || !p->depth)
       goto array_closure_unexpected;
-    p->nesting >>= 1;
+    fio_bitmap_unset(p->nesting, p->depth);
     p->expect = 4; /* expect comma */
     --p->depth;
     fio_json_on_end_array(p);
@@ -8329,10 +8329,23 @@ Type Naming Macros for FIOBJ types. By default, results in:
 #define FIOBJ___NAME_NULL null
 #define FIOBJ___NAME_NUMBER num
 #define FIOBJ___NAME_FLOAT float
-#define FIOBJ___NAME_STRING string
+#define FIOBJ___NAME_STRING str
 #define FIOBJ___NAME_ARRAY array
 #define FIOBJ___NAME_HASH hash
 
+#ifndef FIOBJ_JSON_MAX_NESTING
+/**
+ * Sets the limit on JSON output nesting level.
+ *
+ * Since JSON formatting is recursive, values should be less than 32K.
+ */
+#define FIOBJ_JSON_MAX_NESTING 512
+#endif
+
+/* make sure roundtrips work */
+#ifndef JSON_MAX_DEPTH
+#define JSON_MAX_DEPTH FIOBJ_JSON_MAX_NESTING
+#endif
 /* *****************************************************************************
 General Requirements / Macros
 ***************************************************************************** */
@@ -8340,6 +8353,8 @@ General Requirements / Macros
 #define FIO_ATOL 1
 #define FIO_ATOMIC 1
 #include __FILE__
+
+#include "math.h"
 
 #if !FIOBJ_EXTERN
 #define FIOBJ_FUNC static __attribute__((unused))
@@ -8747,11 +8762,14 @@ FIOBJ_HIFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash,
 FIOBJ JSON support
 ***************************************************************************** */
 
-#ifndef FIOBJ_JSON_MAX_NESTING
-/** Limits the JSON output nesting level. Can be any value between 0 and 255. */
-#define FIOBJ_JSON_MAX_NESTING 28
-#define JSON_MAX_DEPTH FIOBJ_JSON_MAX_NESTING
-#endif
+typedef struct {
+  FIOBJ json;
+  size_t level;
+  uint8_t beautify;
+} fiobj___json_format_internal__s;
+/* internal helper funnction for recursive JSON formatting. */
+FIOBJ_FUNC void
+fiobj___json_format_internal__(fiobj___json_format_internal__s *, FIOBJ);
 
 /**
  * Returns a JSON valid FIOBJ String, representing the object.
@@ -8761,10 +8779,6 @@ FIOBJ JSON support
  */
 FIOBJ_HIFUNC FIOBJ FIO_NAME2(fiobj, json)(FIOBJ dest, FIOBJ o,
                                           uint8_t beautify);
-
-/* internal helper funnction for recursive JSON formatting. */
-FIOBJ_FUNC void fiobj___json_format_internal__(FIOBJ, FIOBJ, uint8_t, uint8_t);
-
 /**
  * Returns a JSON valid FIOBJ String, representing the object.
  *
@@ -8773,10 +8787,12 @@ FIOBJ_FUNC void fiobj___json_format_internal__(FIOBJ, FIOBJ, uint8_t, uint8_t);
  */
 FIOBJ_HIFUNC FIOBJ FIO_NAME2(fiobj, json)(FIOBJ dest, FIOBJ o,
                                           uint8_t beautify) {
+  fiobj___json_format_internal__s args =
+      (fiobj___json_format_internal__s){.json = dest, .beautify = beautify};
   if (FIOBJ_TYPE_CLASS(dest) != FIOBJ_T_STRING)
-    dest = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
-  fiobj___json_format_internal__(dest, o, 0, beautify);
-  return dest;
+    args.json = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
+  fiobj___json_format_internal__(&args, o);
+  return args.json;
 }
 
 /**
@@ -9513,19 +9529,20 @@ FIOBJ JSON support - output
 ***************************************************************************** */
 
 FIOBJ_HIFUNC void fiobj___json_format_internal_beauty_pad(FIOBJ json,
-                                                          uint8_t level) {
+                                                          size_t level) {
   uint32_t pos = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(json);
   fio_cstr_s tmp = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
-                            resize)(json, level + pos + 2);
+                            resize)(json, (level << 1) + pos + 2);
   tmp.data[pos++] = '\r';
   tmp.data[pos++] = '\n';
-  for (uint8_t i = 0; i < level; ++i)
-    tmp.data[pos++] = '\t';
+  for (size_t i = 0; i < level; ++i) {
+    tmp.data[pos++] = ' ';
+    tmp.data[pos++] = ' ';
+  }
 }
 
-FIOBJ_FUNC void fiobj___json_format_internal__(FIOBJ json, FIOBJ o,
-                                               uint8_t level,
-                                               uint8_t beautify) {
+FIOBJ_FUNC void
+fiobj___json_format_internal__(fiobj___json_format_internal__s *args, FIOBJ o) {
   switch (FIOBJ_TYPE(o)) {
   case FIOBJ_T_TRUE:   /* fallthrough */
   case FIOBJ_T_FALSE:  /* fallthrough */
@@ -9535,78 +9552,81 @@ FIOBJ_FUNC void fiobj___json_format_internal__(FIOBJ json, FIOBJ o,
   {
     fio_cstr_s info = FIO_NAME2(fiobj, cstr)(o);
     FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)
-    (json, info.data, info.len);
+    (args->json, info.data, info.len);
     return;
   }
   case FIOBJ_T_STRING: /* fallthrough */
   default: {
     fio_cstr_s info = FIO_NAME2(fiobj, cstr)(o);
-    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "\"", 1);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(args->json, "\"", 1);
     FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write_escape)
-    (json, info.data, info.len);
-    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "\"", 1);
+    (args->json, info.data, info.len);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(args->json, "\"", 1);
     return;
   }
   case FIOBJ_T_ARRAY:
-    if (level == FIOBJ_JSON_MAX_NESTING) {
-      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "[ ]", 3);
+    if (args->level == FIOBJ_JSON_MAX_NESTING) {
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)
+      (args->json, "[ ]", 3);
       return;
     }
     {
-      ++level;
-      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "[", 1);
+      ++args->level;
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(args->json, "[", 1);
       const uint32_t len =
           FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), count)(o);
       for (uint32_t i = 0; i < len; ++i) {
-        if (beautify) {
-          fiobj___json_format_internal_beauty_pad(json, level);
+        if (args->beautify) {
+          fiobj___json_format_internal_beauty_pad(args->json, args->level);
         }
         FIOBJ child = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), get)(o, i);
-        fiobj___json_format_internal__(json, child, level, beautify);
+        fiobj___json_format_internal__(args, child);
         if (i + 1 < len)
-          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, ",", 1);
+          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)
+        (args->json, ",", 1);
       }
-      --level;
-      if (beautify) {
-        fiobj___json_format_internal_beauty_pad(json, level);
+      --args->level;
+      if (args->beautify) {
+        fiobj___json_format_internal_beauty_pad(args->json, args->level);
       }
-      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "]", 1);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(args->json, "]", 1);
     }
     return;
   case FIOBJ_T_HASH:
-    if (level == FIOBJ_JSON_MAX_NESTING) {
-      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "{ }", 3);
+    if (args->level == FIOBJ_JSON_MAX_NESTING) {
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)
+      (args->json, "{ }", 3);
       return;
     }
     {
-      ++level;
-      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "{", 1);
+      ++args->level;
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(args->json, "{", 1);
       uint32_t i = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), count)(o);
       if (i) {
         FIO_MAP_EACH(((FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                                 s) *)(o & (~(FIOBJ)7))),
                      couplet) {
-          if (beautify) {
-            fiobj___json_format_internal_beauty_pad(json, level);
+          if (args->beautify) {
+            fiobj___json_format_internal_beauty_pad(args->json, args->level);
           }
           fio_cstr_s info = FIO_NAME2(fiobj, cstr)(couplet->obj.key);
-          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "\"", 1);
-          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write_escape)
-          (json, info.data, info.len);
           FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)
-          (json, "\":", 2);
-          fiobj___json_format_internal__(json, couplet->obj.value, level,
-                                         beautify);
+          (args->json, "\"", 1);
+          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write_escape)
+          (args->json, info.data, info.len);
+          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)
+          (args->json, "\":", 2);
+          fiobj___json_format_internal__(args, couplet->obj.value);
           if (--i)
             FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)
-          (json, ",", 1);
+          (args->json, ",", 1);
         }
       }
-      --level;
-      if (beautify) {
-        fiobj___json_format_internal_beauty_pad(json, level);
+      --args->level;
+      if (args->beautify) {
+        fiobj___json_format_internal_beauty_pad(args->json, args->level);
       }
-      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(json, "}", 1);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(args->json, "}", 1);
     }
     return;
   }
