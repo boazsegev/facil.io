@@ -139,6 +139,7 @@ Basic macros and included files
 #endif
 
 #include <ctype.h>
+#include <errno.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -2257,6 +2258,7 @@ small_random:
 #if (defined(FIO_ATOL) || defined(FIO_CLI) || defined(FIO_JSON)) &&            \
     !defined(H___FIO_ATOL_H)
 #define H___FIO_ATOL_H
+#include <math.h>
 /* *****************************************************************************
 Strings to Numbers - API
 ***************************************************************************** */
@@ -2416,12 +2418,16 @@ SFUNC int64_t fio_atol(char **pstr) {
   /* sign can't be embeded */
 #define CALC_N_VAL()                                                           \
   if (invert) {                                                                \
-    if (n.expo || (n.val >> ((sizeof(n.val) << 3) - 1)))                       \
+    if (n.expo || ((n.val << 1) && (n.val >> ((sizeof(n.val) << 3) - 1)))) {   \
+      errno = E2BIG;                                                           \
       return (int64_t)(1ULL << ((sizeof(n.val) << 3) - 1));                    \
+    }                                                                          \
     n.val = 0 - n.val;                                                         \
   } else {                                                                     \
-    if (n.expo || (n.val >> ((sizeof(n.val) << 3) - 1)))                       \
+    if (n.expo || (n.val >> ((sizeof(n.val) << 3) - 1))) {                     \
+      errno = E2BIG;                                                           \
       return (int64_t)((~0ULL) >> 1);                                          \
+    }                                                                          \
   }
 
   CALC_N_VAL();
@@ -2438,12 +2444,16 @@ is_hex:
   /* sign can be embeded */
 #define CALC_N_VAL_EMBEDABLE()                                                 \
   if (invert) {                                                                \
-    if (n.expo)                                                                \
+    if (n.expo) {                                                              \
+      errno = E2BIG;                                                           \
       return (int64_t)(1ULL << ((sizeof(n.val) << 3) - 1));                    \
+    }                                                                          \
     n.val = 0 - n.val;                                                         \
   } else {                                                                     \
-    if (n.expo)                                                                \
+    if (n.expo) {                                                              \
+      errno = E2BIG;                                                           \
       return (int64_t)((~0ULL) >> 1);                                          \
+    }                                                                          \
   }
 
   CALC_N_VAL_EMBEDABLE();
@@ -2653,19 +2663,27 @@ zero:
 SFUNC size_t fio_ftoa(char *dest, double num, uint8_t base) {
   if (base == 2 || base == 16) {
     /* handle binary / Hex representation the same as an int64_t */
+    /* FIXME: Hex representation should use floating-point hex instead */
     int64_t *i = (int64_t *)&num;
     return fio_ltoa(dest, *i, base);
   }
+  size_t written = 0;
 
-  size_t written = sprintf(dest, "%g", num);
+  if (isinf(num))
+    goto is_inifinity;
+  if (isnan(num))
+    goto is_nan;
+
+  written = sprintf(dest, "%g", num);
   uint8_t need_zero = 1;
   char *start = dest;
   while (*start) {
+    if (*start == 'e')
+      goto finish;
     if (*start == ',') // locale issues?
       *start = '.';
-    if (*start == '.' || *start == 'e') {
+    if (*start == '.') {
       need_zero = 0;
-      break;
     }
     start++;
   }
@@ -2673,7 +2691,19 @@ SFUNC size_t fio_ftoa(char *dest, double num, uint8_t base) {
     dest[written++] = '.';
     dest[written++] = '0';
   }
+
+finish:
+  dest[written] = 0;
   return written;
+
+is_inifinity:
+  if (num < 0)
+    dest[written++] = '-';
+  memcpy(dest + written, "Infinity", 9);
+  return written + 8;
+is_nan:
+  memcpy(dest, "NaN", 4);
+  return 3;
 }
 
 #endif /* FIO_EXTERN_COMPLETE */
@@ -6554,6 +6584,60 @@ String - read file
 #include <sys/types.h>
 #include <unistd.h>
 #endif /* H___FIO_UNIX_TOOLS4STR_INCLUDED_H */
+
+/**
+ * Reads data from a file descriptor `fd` at offset `start_at` and pastes it's
+ * contents (or a slice ot it) at the end of the String. If `limit == 0`, than
+ * the data will be read until EOF.
+ *
+ * The file should be a regular file or the operation might fail (can't be used
+ * for sockets).
+ *
+ * Currently implemented only on POSIX systems.
+ */
+SFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME, readfd)(FIO_STRING_PTR s_, int fd,
+                                                   intptr_t start_at,
+                                                   intptr_t limit) {
+  struct stat f_data;
+  fio_cstr_s state = {.data = NULL};
+  if (fd == -1 || fstat(fd, &f_data) == -1) {
+    return state;
+  }
+
+  if (f_data.st_size <= 0 || start_at >= f_data.st_size) {
+    state = FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
+    return state;
+  }
+
+  if (limit <= 0 || f_data.st_size < (limit + start_at)) {
+    limit = f_data.st_size - start_at;
+  }
+
+  const size_t org_len = FIO_NAME(FIO_STRING_NAME, len)(s_);
+  size_t write_pos = org_len;
+  state = FIO_NAME(FIO_STRING_NAME, resize)(s_, org_len + limit);
+  if (state.capa < (org_len + limit) || !state.data)
+    return state;
+
+  while (limit) {
+    /* copy up to 128Mb at a time... why? because pread might fail */
+    const size_t to_read =
+        (limit & (((size_t)1 << 27) - 1)) | ((!!(limit >> 27)) << 27);
+    if (pread(fd, state.data + write_pos, to_read, start_at) !=
+        (ssize_t)to_read) {
+      FIO_NAME(FIO_STRING_NAME, resize)(s_, org_len);
+      state.data = NULL;
+      state.len = state.capa = 0;
+      close(fd);
+      return state;
+    }
+    limit -= to_read;
+    write_pos += to_read;
+    start_at += to_read;
+  }
+  return state;
+}
+
 /**
  * Opens the file `filename` and pastes it's contents (or a slice ot it) at
  * the end of the String. If `limit == 0`, than the data will be read until
@@ -6562,18 +6646,15 @@ String - read file
  * If the file can't be located, opened or read, or if `start_at` is beyond
  * the EOF position, NULL is returned in the state's `data` field.
  *
- * Works on POSIX only.
+ * Currently implemented only on POSIX systems.
  */
 SFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME,
                           readfile)(FIO_STRING_PTR s_, const char *filename,
                                     intptr_t start_at, intptr_t limit) {
-  FIO_NAME(FIO_STRING_NAME, s) *s =
-      (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
   fio_cstr_s state = {.data = NULL};
   /* POSIX implementations. */
-  if (filename == NULL || !s)
+  if (filename == NULL || !s_)
     return state;
-  struct stat f_data;
   int file = -1;
   char *path = NULL;
   size_t path_len = 0;
@@ -6600,51 +6681,13 @@ SFUNC fio_cstr_s FIO_NAME(FIO_STRING_NAME,
     }
   }
 
-  if (stat(filename, &f_data)) {
-    goto finish;
-  }
-
-  if (f_data.st_size <= 0 || start_at >= f_data.st_size) {
-    state = FIO_NAME2(FIO_STRING_NAME, cstr)(s_);
-    goto finish;
-  }
-
   file = open(filename, O_RDONLY);
   if (-1 == file) {
     goto finish;
   }
-
-  if (start_at < 0) {
-    start_at = f_data.st_size + start_at;
-    if (start_at < 0)
-      start_at = 0;
-  }
-
-  if (limit <= 0 || f_data.st_size < (limit + start_at))
-    limit = f_data.st_size - start_at;
-
-  {
-    const size_t org_len = FIO_NAME(FIO_STRING_NAME, len)(s_);
-    size_t write_pos = org_len;
-    state = FIO_NAME(FIO_STRING_NAME, resize)(s_, org_len + limit);
-    while (limit) {
-      /* copy up to 128Mb at a time... why? because pread might fail */
-      const size_t to_read =
-          (limit & (((size_t)1 << 27) - 1)) | ((!!(limit >> 27)) << 27);
-      if (pread(file, state.data + write_pos, to_read, start_at) !=
-          (ssize_t)to_read) {
-        FIO_NAME(FIO_STRING_NAME, resize)(s_, org_len);
-        state.data = NULL;
-        state.len = state.capa = 0;
-        close(file);
-        goto finish;
-      }
-      limit -= to_read;
-      write_pos += to_read;
-      start_at += to_read;
-    }
-  }
+  state = FIO_NAME(FIO_STRING_NAME, readfd)(s_, file, start_at, limit);
   close(file);
+
 finish:
   if (path) {
     FIO_MEM_FREE_(path, path_len + 1);
@@ -7823,8 +7866,17 @@ typedef struct {
   { .depth = 0 }
 
 /**
- * Returns the number of bytes consumed. Stops as close as possible to the end
- * of the buffer or once an object parsing was completed.
+ * The facil.io JSON parser is a non-strict parser, with support for trailing
+ * commas in collections, new-lines in strings, extended escape characters and
+ * octal, hex and binary numbers.
+ *
+ * The parser allows for streaming data and decouples the parsing process from
+ * the resulting data-structure by calling static callbacks for JSON related
+ * events.
+ *
+ * Returns the number of bytes consumed before parsing stoped (due to either
+ * error or end of data). Stops as close as possible to the end of the buffer or
+ * once an object parsing was completed.
  */
 SFUNC size_t fio_json_parse(fio_json_parser_s *parser, const char *buffer,
                             const size_t len);
@@ -7915,10 +7967,11 @@ HFUNC const char *fio___json_consume_number(fio_json_parser_s *p,
                                             const char *stop) {
 
   const char *const was = buffer;
+  errno = 0; /* testo for E2BIG on number parsing */
   long long i = fio_atol((char **)&buffer);
   if (buffer < stop &&
       ((*buffer) == '.' || (*buffer | 32) == 'e' || (*buffer | 32) == 'x' ||
-       (*buffer | 32) == 'p' || (*buffer | 32) == 'i')) {
+       (*buffer | 32) == 'p' || (*buffer | 32) == 'i' || errno)) {
     buffer = was;
     double f = fio_atof((char **)&buffer);
     fio_json_on_float(p, f);
@@ -8053,7 +8106,7 @@ HFUNC const char *fio___json_identify(fio_json_parser_s *p, const char *buffer,
           (buffer[2] | 32) != 'n')
         return NULL;
       char *nan_str = "NaN";
-      fio_atof(&nan_str);
+      fio_json_on_float(p, fio_atof(&nan_str));
       buffer += 3;
       break;
     }
@@ -8309,7 +8362,7 @@ memory consumption on 64 bit systems and uses 4 bytes on 32 bit systems.
 Note: this should be included after the STL file, since it leverages most of the
 SLT features and could be affected by their inclusion (i.e., memory allocation).
 ***************************************************************************** */
-#if defined(FIO_FIOBJ) && !defined(H___FIOBJ_H)
+#if defined(FIO_FIOBJ) && !defined(H___FIOBJ_H) && !defined(FIO_TEST_CSTL)
 #define H___FIOBJ_H
 
 /* *****************************************************************************
@@ -8353,8 +8406,6 @@ General Requirements / Macros
 #define FIO_ATOL 1
 #define FIO_ATOMIC 1
 #include __FILE__
-
-#include "math.h"
 
 #if !FIOBJ_EXTERN
 #define FIOBJ_FUNC static __attribute__((unused))
@@ -8531,7 +8582,7 @@ typedef struct {
   /**
    * MUST return a unique number to identify object type.
    *
-   * Numbers (IDs) under 100 are reserved.
+   * Numbers (type IDs) under 100 are reserved. Numbers under 40 are illegal.
    */
   size_t type_id;
   /** Test for equality between two objects with the same `type_id` */
@@ -8817,12 +8868,21 @@ FIOBJ_HIFUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                   update_json)(hash, (fio_cstr_s){.data = ptr, .len = len});
 }
 
-/** Returns a JSON valid FIOBJ String, representing the object. */
-FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_cstr_s str);
+/**
+ * Parses a C string for JSON data. If `consumed` is not NULL, the `size_t`
+ * variable will contain the number of bytes consumed before the parser stopped
+ * (due to either error or end of a valid JSON data segment).
+ *
+ * Returns a FIOBJ object matching the JSON valid C string `str`.
+ *
+ * If the parsing failed (no complete valid JSON data) `FIOBJ_INVALID` is
+ * returned.
+ */
+FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_cstr_s str, size_t *consumed);
 
 /** Helper macro, calls `fiobj_json_parse` with string information */
-#define fiobj_json_parse2(data_, len_)                                         \
-  fiobj_json_parse((fio_cstr_s){.data = data_, .len = len_})
+#define fiobj_json_parse2(data_, len_, consumed)                               \
+  fiobj_json_parse((fio_cstr_s){.data = data_, .len = len_}, consumed)
 
 /* *****************************************************************************
 
@@ -9785,9 +9845,12 @@ FIOBJ_FUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
 }
 
 /** Returns a JSON valid FIOBJ String, representing the object. */
-FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_cstr_s str) {
+FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_cstr_s str, size_t *consumed_p) {
   fiobj_json_parser_s p = {.top = FIOBJ_INVALID};
-  size_t consumed = fio_json_parse(&p.p, str.data, str.len);
+  const size_t register consumed = fio_json_parse(&p.p, str.data, str.len);
+  if (consumed_p) {
+    *consumed_p = consumed;
+  }
   if (!consumed || p.p.depth) {
     if (p.top) {
       FIO_LOG_DEBUG("WARNING - JSON failed secondary validation, no on_error");
@@ -11780,7 +11843,7 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
         "\"five\"],"
         "\"string\":\"hello\\tjson\\bworld!\\r\\n\",\"hash\":{\"true\":true,"
         "\"false\":false},\"array2\":[1,2,3,4.2,\"five\",{\"hash\":true}]}";
-    o = fiobj_json_parse2(json, strlen(json));
+    o = fiobj_json_parse2(json, strlen(json), NULL);
     TEST_ASSERT(o, "JSON parsing failed - no data returned.");
     FIOBJ j = FIO_NAME2(fiobj, json)(FIOBJ_INVALID, o, 0);
 #if DEBUG
