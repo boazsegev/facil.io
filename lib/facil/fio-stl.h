@@ -6587,7 +6587,7 @@ String - read file
 
 /**
  * Reads data from a file descriptor `fd` at offset `start_at` and pastes it's
- * contents (or a slice ot it) at the end of the String. If `limit == 0`, than
+ * contents (or a slice of it) at the end of the String. If `limit == 0`, than
  * the data will be read until EOF.
  *
  * The file should be a regular file or the operation might fail (can't be used
@@ -9078,7 +9078,6 @@ FIOBJ_HIFUNC intptr_t FIO_NAME2(fiobj, i)(FIOBJ o) {
   case FIOBJ_T_NUMBER:
     return FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), i)(o);
   case FIOBJ_T_FLOAT:
-    /* FIXME */
     return FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), i)(o);
   case FIOBJ_T_STRING:
     tmp = FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), cstr)(o);
@@ -9086,10 +9085,8 @@ FIOBJ_HIFUNC intptr_t FIO_NAME2(fiobj, i)(FIOBJ o) {
       return 0;
     return fio_atol(&tmp.data);
   case FIOBJ_T_ARRAY:
-    /* FIXME */
     return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), count)(o);
   case FIOBJ_T_HASH:
-    /* FIXME */
     return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), count)(o);
   case FIOBJ_T_OTHER:
     return (*fiobj_object_metadata(o))->to_i(o);
@@ -9122,10 +9119,8 @@ FIOBJ_HIFUNC double FIO_NAME2(fiobj, f)(FIOBJ o) {
       return 0;
     return (double)fio_atof(&tmp.data);
   case FIOBJ_T_ARRAY:
-    /* FIXME */
     return (double)FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), count)(o);
   case FIOBJ_T_HASH:
-    /* FIXME */
     return (double)FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), count)(o);
   case FIOBJ_T_OTHER:
     return (*fiobj_object_metadata(o))->to_f(o);
@@ -9179,7 +9174,6 @@ FIOBJ_HIFUNC intptr_t FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
                                 i)(FIOBJ i) {
   if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_NUMBER)
     return FIO_NUMBER_REVESE(i);
-  /* FIXME */
   return FIO_PTR_MATH_RMASK(intptr_t, i, 3)[0];
 }
 
@@ -9294,11 +9288,10 @@ FIOBJ_HFUNC uint32_t fiobj_each1(FIOBJ o, int32_t start_at,
   case FIOBJ_T_ARRAY:
     return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), each)(o, start_at,
                                                                task, arg);
-  case FIOBJ_T_HASH: /* fallthrough */
+  case FIOBJ_T_HASH:
     return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), each)(o, start_at, task,
                                                               arg);
-  /* FIXME */
-  case FIOBJ_T_OTHER: /* fallthrough */
+  case FIOBJ_T_OTHER:
     return (*fiobj_object_metadata(o))->each1(o, start_at, task, arg);
   }
   return 0;
@@ -9349,7 +9342,7 @@ FIOBJ_HIFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ o) {
     return h;
   }
   case FIOBJ_T_OTHER: {
-    /* FIXME */
+    /* FIXME? */
     fio_cstr_s tmp = (*fiobj_object_metadata(o))->to_s(o);
     return fio_risky_hash(tmp.data, tmp.len, target_hash);
   }
@@ -9462,6 +9455,7 @@ FIOBJ_HFUNC int fiobj____each2_wrapper_task(FIOBJ child, void *arg) {
  */
 FIOBJ_FUNC uint32_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ child, void *arg),
                                 void *arg) {
+  /* FIXME - move to recursion with nesting limiter? */
   fiobj_____each2_data_s d = {
       .stack = FIO_ARRAY_INIT,
       .task = task,

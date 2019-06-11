@@ -24,13 +24,15 @@ The core library includes a Simple Template Library for common types, such as:
 
 * [Linked Lists](#linked-lists) - defined by `FIO_LIST_NAME`
 
-* [Dynamic Arrays](#dynamic-arrays) - defined by `FIO_ARY_NAME`
+* [Dynamic Arrays](#dynamic-arrays) - defined by `FIO_ARRAY_NAME`
 
 * Hash Maps / Sets - defined by `FIO_MAP_NAME`
 
-* Binary Safe Dynamic Strings - defined by `FIO_STR_NAME`
+* Binary Safe Dynamic Strings - defined by `FIO_STRING_NAME`
 
 * Reference counting / Type wrapper - defined by `FIO_REF_NAME`
+
+* Soft / Dynamic Types (FIOBJ) - defined by `FIO_FIOBJ`
 
 In addition, the core library includes helpers for common tasks, such as:
 
@@ -53,6 +55,8 @@ In addition, the core library includes helpers for common tasks, such as:
 * Command Line Interface helpers - defined by `FIO_CLI`
 
 * Custom Memory Allocation - defined by `FIO_MALLOC`
+
+* Custom JSON Parser - defined by `FIO_JSON`
 
 -------------------------------------------------------------------------------
 
@@ -289,26 +293,26 @@ A common solution is to reserve a value for "empty" elements and `set` the eleme
 
 ### Dynamic Array Overview
 
-To create a dynamic array type, define the type name using the `FIO_ARY_NAME` macro. i.e.:
+To create a dynamic array type, define the type name using the `FIO_ARRAY_NAME` macro. i.e.:
 
 ```c
-#define FIO_ARY_NAME int_ary
+#define FIO_ARRAY_NAME int_ary
 ```
 
-Next (usually), define the `FIO_ARY_TYPE` macro with the element type. The default element type is `void *`. For example:
+Next (usually), define the `FIO_ARRAY_TYPE` macro with the element type. The default element type is `void *`. For example:
 
 ```c
-#define FIO_ARY_TYPE int
+#define FIO_ARRAY_TYPE int
 ```
 
 For complex types, define any (or all) of the following macros:
 
 ```c
-#define FIO_ARY_TYPE_COPY(dest, src)  // set to adjust element copying 
-#define FIO_ARY_TYPE_DESTROY(obj)     // set for element cleanup 
-#define FIO_ARY_TYPE_CMP(a, b)        // set to adjust element comparison 
-#define FIO_ARY_TYPE_INVALID 0 // to be returned when `index` is out of bounds / holes 
-#define FIO_ARY_TYPE_INVALID_SIMPLE 1 // set ONLY if the invalid element is all zero bytes 
+#define FIO_ARRAY_TYPE_COPY(dest, src)  // set to adjust element copying 
+#define FIO_ARRAY_TYPE_DESTROY(obj)     // set for element cleanup 
+#define FIO_ARRAY_TYPE_CMP(a, b)        // set to adjust element comparison 
+#define FIO_ARRAY_TYPE_INVALID 0 // to be returned when `index` is out of bounds / holes 
+#define FIO_ARRAY_TYPE_INVALID_SIMPLE 1 // set ONLY if the invalid element is all zero bytes 
 ```
 
 To create the type and helper functions, include the Simple Template Library header.
@@ -321,15 +325,15 @@ typedef struct {
   float f;
 } foo_s;
 
-#define FIO_ARY_NAME ary
-#define FIO_ARY_TYPE foo_s
-#define FIO_ARY_TYPE_CMP(a,b) (a.i == b.i && a.f == b.f)
+#define FIO_ARRAY_NAME ary
+#define FIO_ARRAY_TYPE foo_s
+#define FIO_ARRAY_TYPE_CMP(a,b) (a.i == b.i && a.f == b.f)
 #include "fio_cstl.h"
 
 void example(void) {
-  ary_s a = FIO_ARY_INIT;
+  ary_s a = FIO_ARRAY_INIT;
   foo_s *p = ary_push(&a, (foo_s){.i = 42});
-  FIO_ARY_EACH(&a, pos) { // pos will be a pointer to the element
+  FIO_ARRAY_EACH(&a, pos) { // pos will be a pointer to the element
     fprintf(stderr, "* [%zu]: %p : %d\n", (size_t)(pos - ary_to_a(&a)), pos->i);
   }
   ary_destroy(&a);
@@ -342,19 +346,19 @@ void example(void) {
 
 ```c
 typedef struct {
-  FIO_ARY_TYPE *ary;
+  FIO_ARRAY_TYPE *ary;
   uint32_t capa;
   uint32_t start;
   uint32_t end;
-} FIO_NAME(FIO_ARY_NAME, s); /* ARY_s in these docs */
+} FIO_NAME(FIO_ARRAY_NAME, s); /* ARY_s in these docs */
 ```
 
 The array type should be considered opaque. Use the helper functions to updated the array's state when possible, even though the array's data is easily understood and could be manually adjusted as needed.
 
-#### `FIO_ARY_INIT`
+#### `FIO_ARRAY_INIT`
 
 ````c
-#define FIO_ARY_INIT  {0}
+#define FIO_ARRAY_INIT  {0}
 ````
 
 This macro initializes an uninitialized array object.
@@ -428,10 +432,10 @@ Always returns the destination array (`dest`).
 #### `ARY_set`
 
 ```c
-FIO_ARY_TYPE * ARY_set(ARY_s * ary,
+FIO_ARRAY_TYPE * ARY_set(ARY_s * ary,
                        int32_t index,
-                       FIO_ARY_TYPE data,
-                       FIO_ARY_TYPE *old);
+                       FIO_ARRAY_TYPE data,
+                       FIO_ARRAY_TYPE *old);
 ```
 
 Sets `index` to the value in `data`.
@@ -445,7 +449,7 @@ Returns a pointer to the new object, or NULL on error.
 #### `ARY_get`
 
 ```c
-FIO_ARY_TYPE ARY_get(ARY_s * ary, int32_t index);
+FIO_ARRAY_TYPE ARY_get(ARY_s * ary, int32_t index);
 ```
 
 Returns the value located at `index` (no copying is performed).
@@ -457,7 +461,7 @@ If `index` is negative, it will be counted from the end of the Array (-1 == last
 #### `ARY_find`
 
 ```c
-int32_t ARY_find(ARY_s * ary, FIO_ARY_TYPE data, int32_t start_at);
+int32_t ARY_find(ARY_s * ary, FIO_ARRAY_TYPE data, int32_t start_at);
 ```
 
 Returns the index of the object or -1 if the object wasn't found.
@@ -466,7 +470,7 @@ If `start_at` is negative (i.e., -1), than seeking will be performed in reverse,
 
 #### `ARY_remove`
 ```c
-int ARY_remove(ARY_s * ary, int32_t index, FIO_ARY_TYPE *old);
+int ARY_remove(ARY_s * ary, int32_t index, FIO_ARRAY_TYPE *old);
 ```
 
 Removes an object from the array, MOVING all the other objects to prevent "holes" in the data.
@@ -480,7 +484,7 @@ This action is O(n) where n in the length of the array. It could get expensive.
 #### `ARY_remove2`
 
 ```c
-uint32_t ARY_remove2(ARY_S * ary, FIO_ARY_TYPE data);
+uint32_t ARY_remove2(ARY_S * ary, FIO_ARRAY_TYPE data);
 ```
 
 Removes all occurrences of an object from the array (if any), MOVING all the existing objects to prevent "holes" in the data.
@@ -499,7 +503,7 @@ Attempts to lower the array's memory consumption.
 #### `ARY_to_a`
 
 ```c
-FIO_ARY_TYPE * ARY_to_a(ARY_s * ary);
+FIO_ARRAY_TYPE * ARY_to_a(ARY_s * ary);
 ```
 
 Returns a pointer to the C array containing the objects.
@@ -507,7 +511,7 @@ Returns a pointer to the C array containing the objects.
 #### `ARY_push`
 
 ```c
-FIO_ARY_TYPE * ARY_push(ARY_s * ary, FIO_ARY_TYPE data);
+FIO_ARRAY_TYPE * ARY_push(ARY_s * ary, FIO_ARRAY_TYPE data);
 ```
 
  Pushes an object to the end of the Array. Returns a pointer to the new object or NULL on error.
@@ -515,7 +519,7 @@ FIO_ARY_TYPE * ARY_push(ARY_s * ary, FIO_ARY_TYPE data);
 #### `ARY_pop`
 
 ```c
-int ARY_pop(ARY_s * ary, FIO_ARY_TYPE *old);
+int ARY_pop(ARY_s * ary, FIO_ARRAY_TYPE *old);
 ```
 
 Removes an object from the end of the Array.
@@ -527,7 +531,7 @@ Returns -1 on error (Array is empty) and 0 on success.
 #### `ARY_unshift`
 
 ```c
-FIO_ARY_TYPE *ARY_unshift(ARY_s * ary, FIO_ARY_TYPE data);
+FIO_ARRAY_TYPE *ARY_unshift(ARY_s * ary, FIO_ARRAY_TYPE data);
 ```
 
 Unshifts an object to the beginning of the Array. Returns a pointer to the new object or NULL on error.
@@ -537,7 +541,7 @@ This could be expensive, causing `memmove`.
 #### `ARY_shift`
 
 ```c
-int ARY_shift(ARY_s * ary, FIO_ARY_TYPE *old);
+int ARY_shift(ARY_s * ary, FIO_ARRAY_TYPE *old);
 ```
 
 Removes an object from the beginning of the Array.
@@ -550,7 +554,7 @@ Returns -1 on error (Array is empty) and 0 on success.
 
 ```c
 uint32_t ARY_each(ARY_s * ary, int32_t start_at,
-                               int (*task)(FIO_ARY_TYPE obj, void *arg),
+                               int (*task)(FIO_ARRAY_TYPE obj, void *arg),
                                void *arg);
 ```
 
@@ -562,10 +566,10 @@ If the callback returns -1, the loop is broken. Any other value is ignored.
 
 Returns the relative "stop" position (number of items processed + starting point).
 
-#### `FIO_ARY_EACH`
+#### `FIO_ARRAY_EACH`
 
 ```c
-#define FIO_ARY_EACH(array, pos)                                               \
+#define FIO_ARRAY_EACH(array, pos)                                               \
   if ((array)->ary)                                                            \
     for (__typeof__((array)->ary) start__tmp__ = (array)->ary,                 \
                                   pos = ((array)->ary + (array)->start);       \
@@ -882,10 +886,10 @@ _Note: this macro doesn't work with pointer tagging_.
 
 ## Dynamic Strings
 
-To create a dynamic string type, define the type name using the `FIO_STR_NAME`
+To create a dynamic string type, define the type name using the `FIO_STRING_NAME`
 macro.
 
-The type (`FIO_STR_NAME_s`) and the functions will be automatically defined.
+The type (`FIO_STRING_NAME_s`) and the functions will be automatically defined.
 
 For the full list of functions see: Dynamic Strings
 
@@ -893,14 +897,14 @@ For the full list of functions see: Dynamic Strings
 
 #### `STR_s`
 
-The core type, created by the macro, is the `STR_s` type - where `STR` is replaced by `FIO_STR_NAME`. i.e.:
+The core type, created by the macro, is the `STR_s` type - where `STR` is replaced by `FIO_STRING_NAME`. i.e.:
 
 ```c
-#define FIO_STR_NAME my_str
+#define FIO_STRING_NAME my_str
 #include <fio-stl.h>
 // results in: my_str_s - i.e.:
 void hello(void){
-  my_str_s msg = FIO_STR_INIT;
+  my_str_s msg = FIO_STRING_INIT;
   my_str_write(&msg, "Hello World", 11);
   printf("%s\n", my_str_data(&msg));
   my_str_destroy(&msg);
@@ -909,7 +913,7 @@ void hello(void){
 
 The type should be considered **opaque** and **must never be accessed directly**.
 
-The type's attributes should be accessed ONLY through the accessor functions: `STR_info`, `STR_len`, `STR_data`, `STR_capa`, etc'.
+The type's attributes should be accessed ONLY through the accessor functions: `STR_info`, `STR_len`, `STR2ptr`, `STR_capa`, etc'.
 
 This is because: Small strings that fit into the type directly use the type itself for memory (except the first and last bytes). Larger strings use the type fields for the string's meta-data. Depending on the string's data, the type behaves differently.
 
@@ -933,20 +937,20 @@ Changes in string length should be followed by a call to `STR_resize`.
 
 The data in the string object is always NUL terminated. However, string data might contain binary data, where NUL is a valid character, so using C string functions isn't advised.
 
-#### String allocation alignment / `FIO_STR_NO_ALIGN`
+#### String allocation alignment / `FIO_STRING_NO_ALIGN`
 
 Memory allocators have allocation alignment concerns that require minimum space to be allocated.
 
 The default `STR_s` type makes use of this extra space for small strings, fitting them into the type.
 
-To prevent this behavior and minimize the space used by the `STR_s` type, set the `FIO_STR_NO_ALIGN` macro to `1`.
+To prevent this behavior and minimize the space used by the `STR_s` type, set the `FIO_STRING_NO_ALIGN` macro to `1`.
 
 ```c
-#define FIO_STR_NAME big_string
-#define FIO_STR_NO_ALIGN 1
+#define FIO_STRING_NAME big_string
+#define FIO_STRING_NO_ALIGN 1
 #include <fio-stl.h>
 // ...
-big_string_s foo = FIO_STR_INIT;
+big_string_s foo = FIO_STRING_INIT;
 ```
 
 This could save memory when strings aren't short enough to be contained within the type.
@@ -955,33 +959,33 @@ This could also save memory, potentially, if the string type will be wrapped / e
 
 ### String API - Initialization and Destruction
 
-#### `FIO_STR_INIT`
+#### `FIO_STRING_INIT`
 
 This value should be used for initialization. It should be considered opaque, but is defined as:
 
 ```c
-#define FIO_STR_INIT { .special = 1 }
+#define FIO_STRING_INIT { .special = 1 }
 ```
 
 For example:
 
 ```c
-#define FIO_STR_NAME fio_str
+#define FIO_STRING_NAME fio_str
 #include <fio-stl.h>
 void example(void) {
   // on the stack
-  fio_str_s str = FIO_STR_INIT;
+  fio_str_s str = FIO_STRING_INIT;
   // .. 
   fio_str_destroy(&str);
 }
 ```
 
-#### `FIO_STR_INIT_EXISTING`
+#### `FIO_STRING_INIT_EXISTING`
 
 This macro allows the container to be initialized with existing data.
 
 ```c
-#define FIO_STR_INIT_EXISTING(buffer, length, capacity, dealloc_)              \
+#define FIO_STRING_INIT_EXISTING(buffer, length, capacity, dealloc_)              \
   {                                                                            \
     .data = (buffer), .len = (length), .capa = (capacity),                     \
     .dealloc = (dealloc_)                                                      \
@@ -991,28 +995,28 @@ The `capacity` value should exclude the space required for the NUL character (if
 
 `dealloc` should be a function pointer to a memory deallocation function, such as `free`, `fio_free` or `NULL` (doesn't deallocate the memory).
 
-#### `FIO_STR_INIT_STATIC`
+#### `FIO_STRING_INIT_STATIC`
 
 This macro allows the string container to be initialized with existing static data, that shouldn't be freed.
 
 ```c
-#define FIO_STR_INIT_STATIC(buffer)                                            \
+#define FIO_STRING_INIT_STATIC(buffer)                                            \
   { .data = (char *)(buffer), .len = strlen((buffer)), .dealloc = NULL }
 ```
 
-#### `FIO_STR_INIT_STATIC2`
+#### `FIO_STRING_INIT_STATIC2`
 
 This macro allows the string container to be initialized with existing static data, that shouldn't be freed.
 
 ```c
-#define FIO_STR_INIT_STATIC2(buffer, length)                                   \
+#define FIO_STRING_INIT_STATIC2(buffer, length)                                   \
   { .data = (char *)(buffer), .len = (length), .dealloc = NULL }
 ```
 
 #### `STR_destroy`
 
 ```c
-void STR_destroy(FIO_STR_PTR s);
+void STR_destroy(FIO_STRING_PTR s);
 ```
 
 Frees the String's resources and reinitializes the container.
@@ -1022,7 +1026,7 @@ Note: if the container isn't allocated on the stack, it should be freed separate
 #### `STR_new`
 
 ```c
-FIO_STR_PTR STR_new(void);
+FIO_STRING_PTR STR_new(void);
 ```
 
 Allocates a new String object on the heap.
@@ -1030,7 +1034,7 @@ Allocates a new String object on the heap.
 #### `STR_free`
 
 ```c
-void STR_free(FIO_STR_PTR s);
+void STR_free(FIO_STRING_PTR s);
 ```
 
 Destroys the string and frees the container (if allocated with `STR_new`).
@@ -1038,7 +1042,7 @@ Destroys the string and frees the container (if allocated with `STR_new`).
 #### `STR_detach`
 
 ```c
-char * STR_detach(FIO_STR_PTR s);
+char * STR_detach(FIO_STRING_PTR s);
 ```
 
 Returns a C string with the existing data, **re-initializing** the String.
@@ -1052,7 +1056,7 @@ Returns NULL if there's no String data.
 #### `STR_info`
 
 ```c
-fio_str_info_s STR_info(const FIO_STR_PTR s);
+fio_str_info_s STR_info(const FIO_STRING_PTR s);
 ```
 
 Returns the String's complete state (capacity, length and pointer). 
@@ -1060,23 +1064,23 @@ Returns the String's complete state (capacity, length and pointer).
 #### `STR_len`
 
 ```c
-size_t STR_len(FIO_STR_PTR s);
+size_t STR_len(FIO_STRING_PTR s);
 ```
 
 Returns the String's length in bytes.
 
-#### `STR_data`
+#### `STR2ptr`
 
 ```c
-char *STR_data(FIO_STR_PTR s);
+char *STR2ptr(FIO_STRING_PTR s);
 ```
 
-Returns a pointer (`char *`) to the String's content.
+Returns a pointer (`char *`) to the String's content (first character in the string).
 
 #### `STR_capa`
 
 ```c
-size_t STR_capa(FIO_STR_PTR s);
+size_t STR_capa(FIO_STRING_PTR s);
 ```
 
 Returns the String's existing capacity (total used & available memory).
@@ -1084,7 +1088,7 @@ Returns the String's existing capacity (total used & available memory).
 #### `STR_freeze`
 
 ```c
-void STR_freeze(FIO_STR_PTR s);
+void STR_freeze(FIO_STRING_PTR s);
 ```
 
 Prevents further manipulations to the String's content.
@@ -1092,15 +1096,15 @@ Prevents further manipulations to the String's content.
 #### `STR_is_frozen`
 
 ```c
-uint8_t STR_is_frozen(FIO_STR_PTR s);
+uint8_t STR_is_frozen(FIO_STRING_PTR s);
 ```
 
 Returns true if the string is frozen.
 
-#### `STR_iseq`
+#### `STR_is_eq`
 
 ```c
-int STR_iseq(const FIO_STR_PTR str1, const FIO_STR_PTR str2);
+int STR_is_eq(const FIO_STRING_PTR str1, const FIO_STRING_PTR str2);
 ```
 
 Binary comparison returns `1` if both strings are equal and `0` if not.
@@ -1108,7 +1112,7 @@ Binary comparison returns `1` if both strings are equal and `0` if not.
 #### `STR_hash`
 
 ```c
-uint64_t STR_hash(const FIO_STR_PTR s);
+uint64_t STR_hash(const FIO_STRING_PTR s);
 ```
 
 Returns the string's Risky Hash value.
@@ -1120,7 +1124,7 @@ Note: Hash algorithm might change without notice.
 #### `STR_resize`
 
 ```c
-fio_str_info_s STR_resize(FIO_STR_PTR s, size_t size);
+fio_str_info_s STR_resize(FIO_STRING_PTR s, size_t size);
 ```
 
 Sets the new String size without reallocating any memory (limited by existing capacity).
@@ -1132,7 +1136,7 @@ Note: When shrinking, any existing data beyond the new size may be corrupted or 
 #### `STR_compact`
 
 ```c
-void STR_compact(FIO_STR_PTR s);
+void STR_compact(FIO_STRING_PTR s);
 ```
 
 Performs a best attempt at minimizing memory consumption.
@@ -1142,7 +1146,7 @@ Actual effects depend on the underlying memory allocator and it's implementation
 #### `STR_reserve`
 
 ```c
-fio_str_info_s STR_reserve(FIO_STR_PTR s, size_t amount);
+fio_str_info_s STR_reserve(FIO_STRING_PTR s, size_t amount);
 ```
 
 Reserves at least `amount` of bytes for the string's data (reserved count includes used data).
@@ -1154,7 +1158,7 @@ Returns the current state of the String.
 #### `STR_utf8_valid`
 
 ```c
-size_t STR_utf8_valid(FIO_STR_PTR s);
+size_t STR_utf8_valid(FIO_STRING_PTR s);
 ```
 
 Returns 1 if the String is UTF-8 valid and 0 if not.
@@ -1162,7 +1166,7 @@ Returns 1 if the String is UTF-8 valid and 0 if not.
 #### `STR_utf8_len`
 
 ```c
-size_t STR_utf8_len(FIO_STR_PTR s);
+size_t STR_utf8_len(FIO_STRING_PTR s);
 ```
 
 Returns the String's length in UTF-8 characters.
@@ -1170,7 +1174,7 @@ Returns the String's length in UTF-8 characters.
 #### `STR_utf8_select`
 
 ```c
-int STR_utf8_select(FIO_STR_PTR s, intptr_t *pos, size_t *len);
+int STR_utf8_select(FIO_STRING_PTR s, intptr_t *pos, size_t *len);
 ```
 
 Takes a UTF-8 character selection information (UTF-8 position and length) and updates the same variables so they reference the raw byte slice information.
@@ -1186,7 +1190,7 @@ Returns -1 on error and 0 on success.
 #### `STR_write`
 
 ```c
-fio_str_info_s STR_write(FIO_STR_PTR s, const void *src, size_t src_len);
+fio_str_info_s STR_write(FIO_STRING_PTR s, const void *src, size_t src_len);
 ```
 
 Writes data at the end of the String.
@@ -1194,7 +1198,7 @@ Writes data at the end of the String.
 #### `STR_write_i`
 
 ```c
-fio_str_info_s STR_write_i(FIO_STR_PTR s, int64_t num);
+fio_str_info_s STR_write_i(FIO_STRING_PTR s, int64_t num);
 ```
 
 Writes a number at the end of the String using normal base 10 notation.
@@ -1202,7 +1206,7 @@ Writes a number at the end of the String using normal base 10 notation.
 #### `STR_concat` / `STR_join`
 
 ```c
-fio_str_info_s STR_concat(FIO_STR_PTR dest, FIO_STR_PTR const src);
+fio_str_info_s STR_concat(FIO_STRING_PTR dest, FIO_STRING_PTR const src);
 ```
 
 Appends the `src` String to the end of the `dest` String. If `dest` is empty, the resulting Strings will be equal.
@@ -1213,7 +1217,7 @@ Appends the `src` String to the end of the `dest` String. If `dest` is empty, th
 #### `STR_replace`
 
 ```c
-fio_str_info_s STR_replace(FIO_STR_PTR s,
+fio_str_info_s STR_replace(FIO_STRING_PTR s,
                            intptr_t start_pos,
                            size_t old_len,
                            const void *src,
@@ -1231,7 +1235,7 @@ If `src_len == 0` than `src` will be ignored and the data marked for replacement
 #### `STR_vprintf`
 
 ```c
-fio_str_info_s STR_vprintf(FIO_STR_PTR s, const char *format, va_list argv);
+fio_str_info_s STR_vprintf(FIO_STRING_PTR s, const char *format, va_list argv);
 ```
 
 Writes to the String using a vprintf like interface.
@@ -1241,17 +1245,32 @@ Data is written to the end of the String.
 #### `STR_printf`
 
 ```c
-fio_str_info_s STR_printf(FIO_STR_PTR s, const char *format, ...);
+fio_str_info_s STR_printf(FIO_STRING_PTR s, const char *format, ...);
 ```
 
 Writes to the String using a printf like interface.
 
 Data is written to the end of the String.
 
+#### `STR_readfd`
+
+```c
+fio_str_info_s STR_readfd(FIO_STRING_PTR s,
+                            int fd,
+                            intptr_t start_at,
+                            intptr_t limit);
+```
+
+Reads data from a file descriptor `fd` at offset `start_at` and pastes it's contents (or a slice of it) at the end of the String. If `limit == 0`, than the data will be read until EOF.
+
+The file should be a regular file or the operation might fail (can't be used for sockets).
+
+Currently implemented only on POSIX systems.
+
 #### `STR_readfile`
 
 ```c
-fio_str_info_s STR_readfile(FIO_STR_PTR s,
+fio_str_info_s STR_readfile(FIO_STRING_PTR s,
                             const char *filename,
                             intptr_t start_at,
                             intptr_t limit);
@@ -1268,7 +1287,7 @@ Works on POSIX systems only.
 #### `STR_write_b64enc`
 
 ```c
-fio_str_info_s STR_write_b64enc(FIO_STR_PTR s,
+fio_str_info_s STR_write_b64enc(FIO_STRING_PTR s,
                                 const void *data,
                                 size_t data_len,
                                 uint8_t url_encoded);
@@ -1279,7 +1298,7 @@ Writes data at the end of the String, encoding the data as Base64 encoded data.
 #### `STR_write_b64dec`
 
 ```c
-fio_str_info_s STR_write_b64dec(FIO_STR_PTR s,
+fio_str_info_s STR_write_b64dec(FIO_STRING_PTR s,
                                 const void *encoded,
                                 size_t encoded_len);
 ```
@@ -1500,18 +1519,18 @@ defined:
 - `fio_rrot32(i, bits)`
 - `fio_lrot64(i, bits)`
 - `fio_rrot64(i, bits)`
-- `fio_lrot(i, bits)`
-- `fio_rrot(i, bits)`
+- `FIO_LROT(i, bits)`
+- `FIO_RROT(i, bits)`
 
 #### Bytes to Numbers (network ordered)
-- `fio_str2u16(c)`
-- `fio_str2u32(c)`
-- `fio_str2u64(c)`
+- `fio_buf2u16(c)`
+- `fio_buf2u32(c)`
+- `fio_buf2u64(c)`
 
 #### Numbers to Bytes (network ordered)
-- `fio_u2str16(buffer, i)`
-- `fio_u2str32(buffer, i)`
-- `fio_u2str64(buffer, i)`
+- `fio_u2buf16(buffer, i)`
+- `fio_u2buf32(buffer, i)`
+- `fio_u2buf64(buffer, i)`
 
 #### Constant Time Bit Operations
 - `fio_ct_true(condition)`
