@@ -190,7 +190,7 @@ Pointer Arithmatics
 
 /** Masks a pointer's right-most bits, returning the left bits. */
 #define FIO_PTR_MATH_RMASK(T_type, ptr, bits)                                  \
-  ((T_type *)((uintptr_t)(ptr) & (~(((uintptr_t)1 << (bits)) - 1))))
+  ((T_type *)((uintptr_t)(ptr) & ((~(uintptr_t)0) << bits)))
 
 /** Add offset bytes to pointer, updating the pointer's type. */
 #define FIO_PTR_MATH_ADD(T_type, ptr, offset)                                  \
@@ -229,9 +229,12 @@ String Information Helper Type
 
 /** An information type for reporting the string's state. */
 typedef struct fio_str_info_s {
-  size_t capa; /* Buffer capacity, if the string is writable. */
-  size_t len;  /* The string's length. */
-  char *buf;   /* The string's buffer (pointer to first byte). */
+  /** The buffer's capacity. Zero (0) indicates the buffer is read-only. */
+  size_t capa;
+  /** The string's length, if any. */
+  size_t len;
+  /** The string's buffer (pointer to first byte) or NULL on error. */
+  char *buf;
 } fio_str_info_s;
 
 /* *****************************************************************************
@@ -277,6 +280,7 @@ Miscellaneous helper macros
 #define FIO_NOOP
 /* allow logging to quitely fail unless enabled */
 #define FIO_LOG_DEBUG(...)
+#define FIO_LOG_DEBUG2(...)
 #define FIO_LOG_INFO(...)
 #define FIO_LOG_WARNING(...)
 #define FIO_LOG_ERROR(...)
@@ -521,6 +525,9 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
   FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG,                                         \
                   "DEBUG ("__FILE__                                            \
                   ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
+#undef FIO_LOG_DEBUG2
+#define FIO_LOG_DEBUG2(...)                                                    \
+  FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG, "DEBUG: " __VA_ARGS__)
 #undef FIO_LOG_INFO
 #define FIO_LOG_INFO(...)                                                      \
   FIO_LOG_PRINT__(FIO_LOG_LEVEL_INFO, "INFO: " __VA_ARGS__)
@@ -534,8 +541,8 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 #define FIO_LOG_FATAL(...)                                                     \
   FIO_LOG_PRINT__(FIO_LOG_LEVEL_FATAL, "FATAL: " __VA_ARGS__)
 
-#undef FIO_LOG
 #endif /* FIO_LOG */
+#undef FIO_LOG
 
 /* *****************************************************************************
 
@@ -999,6 +1006,7 @@ Network Byte Ordering
 
 #endif /* __BIG_ENDIAN__ */
 #endif /* H___FIO_NTOL_H */
+#undef FIO_NTOL
 
 /* *****************************************************************************
 
@@ -1127,9 +1135,51 @@ Memory Allocation - redefine default allocation macros
 #define FIO_MEM_FREE(ptr, size) fio_free((ptr))
 
 /* *****************************************************************************
+
+
+
+
+
 Memory Allocation - Implementation
+
+
+
+
+
 ***************************************************************************** */
-#ifdef FIO_EXTERN_COMPLETE
+
+/* *****************************************************************************
+Memory Allocation - forced bypass
+***************************************************************************** */
+#if defined(FIO_EXTERN_COMPLETE) && defined(FIO_MALLOC_FORCE_SYSTEM)
+
+SFUNC void *FIO_ALIGN_NEW fio_malloc(size_t size) { return calloc(size, 1); }
+
+SFUNC void *FIO_ALIGN_NEW fio_calloc(size_t size_per_unit, size_t unit_count) {
+  return calloc(size_per_unit, unit_count);
+}
+
+SFUNC void fio_free(void *ptr) { free(ptr); }
+
+SFUNC void *FIO_ALIGN fio_realloc(void *ptr, size_t new_size) {
+  return realloc(ptr, new_size);
+}
+
+SFUNC void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size,
+                                   size_t copy_len) {
+  return realloc(ptr, new_size);
+  (void)copy_len;
+}
+
+SFUNC void *FIO_ALIGN_NEW fio_mmap(size_t size) { return calloc(size, 1); }
+
+SFUNC void fio_malloc_after_fork(void) {}
+
+/* *****************************************************************************
+Memory Allocation - forced bypass
+***************************************************************************** */
+
+#elif defined(FIO_EXTERN_COMPLETE)
 
 #if H___FIO_UNIX_TOOLS_H
 #include <unistd.h>
@@ -1204,9 +1254,9 @@ FIO_MEMCOPY_HFUNC_ALIGNED(uint64_t, 8)
 HFUNC void fio____memcpy_16byte(void *dest_, void *src_, size_t units) {
 #if SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
   fio____memcpy_8b(dest_, src_, units << 1);
-#elif SIZE_MAX == 0xFFFFFFFF /* 32 bit size_t */
+#elif SIZE_MAX == 0xFFFFFFFF       /* 32 bit size_t */
   fio____memcpy_4b(dest_, src_, units << 2);
-#else                        /* unknown... assume 16 bit? */
+#else                              /* unknown... assume 16 bit? */
   fio____memcpy_2b(dest_, src_, units << 3);
 #endif
 }
@@ -1587,11 +1637,11 @@ HSFUNC fio___mem_block_s *fio___mem_block_alloc(void) {
                                              FIO_MEMORY_BLOCK_SIZE),
                          FIO_MEMORY_BLOCK_SIZE_LOG);
   FIO_ASSERT_ALLOC(b);
-#if DEBUG && defined(FIO_LOG_INFO)
-  FIO_LOG_INFO("memory allocator allocated %zu pages from the system: %p",
-               (size_t)FIO_MEM_BYTES2PAGES(FIO_MEMORY_BLOCKS_PER_ALLOCATION *
-                                           FIO_MEMORY_BLOCK_SIZE),
-               (void *)b);
+#if DEBUG
+  FIO_LOG_DEBUG2("memory allocator allocated %zu pages from the system: %p",
+                 (size_t)FIO_MEM_BYTES2PAGES(FIO_MEMORY_BLOCKS_PER_ALLOCATION *
+                                             FIO_MEMORY_BLOCK_SIZE),
+                 (void *)b);
 #endif
   /* initialize and push all block slices into memory pool */
   for (uint16_t i = 0; i < (FIO_MEMORY_BLOCKS_PER_ALLOCATION - 1); ++i) {
@@ -1639,8 +1689,8 @@ HSFUNC void fio___mem_block_free(fio___mem_block_s *b) {
                                            FIO_MEMORY_BLOCK_SIZE));
   /* debug counter */
   FIO_MEMORY_ON_BLOCK_FREE();
-#if DEBUG && defined(FIO_LOG_INFO)
-  FIO_LOG_INFO("memory allocator returned %p to the system", (void *)b);
+#if DEBUG
+  FIO_LOG_DEBUG2("memory allocator returned %p to the system", (void *)b);
 #endif
 }
 
@@ -1862,6 +1912,16 @@ void fio_malloc_after_fork(void) {
 }
 
 /* *****************************************************************************
+Override the system's malloc functions if required
+***************************************************************************** */
+#ifdef FIO_MALLOC_OVERRIDE_SYSTEM
+void *malloc(size_t size) { return fio_malloc(size); }
+void *calloc(size_t size, size_t count) { return fio_calloc(size, count); }
+void free(void *ptr) { fio_free(ptr); }
+void *realloc(void *ptr, size_t new_size) { return fio_realloc(ptr, new_size); }
+#endif
+
+/* *****************************************************************************
 Memory Allocation - cleanup
 ***************************************************************************** */
 #undef FIO_MEMORY_ON_BLOCK_ALLOC
@@ -1892,8 +1952,8 @@ Memory Allocation - cleanup
 
 
 
-                                Memory Management
-
+                          Memory Management MACROs
+                    (used internally, for dynamic types)
 
 
 
@@ -1909,7 +1969,7 @@ Memory Allocation - cleanup
 Memory management macros
 ***************************************************************************** */
 
-#if FIO_FORCE_MALLOC_TMP /* force malloc */
+#if FIO_MALLOC_TMP_USE_SYSTEM /* force malloc */
 #define FIO_MEM_CALLOC_(size, units) calloc((size), (units))
 #define FIO_MEM_REALLOC_(ptr, old_size, new_size, copy_len)                    \
   realloc((ptr), (new_size))
@@ -2167,7 +2227,7 @@ SFUNC uint64_t fio_rand64(void) {
   return fio_lrot64(s[0], 31) + fio_lrot64(s[1], 29);
 }
 
-/* copies 64 bits of randomness (8 bytes) repeatedly... */
+/* copies 64 bits of randomness (8 bytes) repeatedly. */
 SFUNC void fio_rand_bytes(void *data_, size_t len) {
   if (!data_ || !len)
     return;
@@ -2799,10 +2859,10 @@ Linked Lists (embeded) - API
 /* FIO_LIST_INIT(obj) */
 
 /** Returns a non-zero value if there are any linked nodes in the list. */
-IFUNC int FIO_NAME(FIO_LIST_NAME, any)(FIO_LIST_HEAD *head);
+IFUNC int FIO_NAME(FIO_LIST_NAME, any)(const FIO_LIST_HEAD *head);
 
 /** Returns a non-zero value if the list is empty. */
-IFUNC int FIO_NAME_BL(FIO_LIST_NAME, empty)(FIO_LIST_HEAD *head);
+IFUNC int FIO_NAME_BL(FIO_LIST_NAME, empty)(const FIO_LIST_HEAD *head);
 
 /** Removes a node from the list, Returns NULL if node isn't linked. */
 IFUNC FIO_LIST_TYPE_PTR FIO_NAME(FIO_LIST_NAME, remove)(FIO_LIST_TYPE_PTR node);
@@ -2843,13 +2903,13 @@ Linked Lists (embeded) - Implementation
 #ifdef FIO_EXTERN_COMPLETE
 
 /** Returns a non-zero value if there are any linked nodes in the list. */
-IFUNC int FIO_NAME(FIO_LIST_NAME, any)(FIO_LIST_HEAD *head) {
+IFUNC int FIO_NAME(FIO_LIST_NAME, any)(const FIO_LIST_HEAD *head) {
   head = (FIO_LIST_HEAD *)(FIO_PTR_UNTAG(head));
   return head->next != head;
 }
 
 /** Returns a non-zero value if the list is empty. */
-IFUNC int FIO_NAME_BL(FIO_LIST_NAME, empty)(FIO_LIST_HEAD *head) {
+IFUNC int FIO_NAME_BL(FIO_LIST_NAME, empty)(const FIO_LIST_HEAD *head) {
   head = (FIO_LIST_HEAD *)(FIO_PTR_UNTAG(head));
   return head->next == head;
 }
@@ -3414,7 +3474,7 @@ IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME,
     /* -1 based (look backwards) */
     index += ary->end;
     if (index < 0) {
-      /* TODO: we need more memory at the HEAD (requires copying...) */
+      /* we need more memory at the HEAD (requires copying) */
       const uint32_t new_capa = FIO_ARRAY_SIZE2WORDS(
           ((uint32_t)ary->capa + FIO_ARRAY_ADD2CAPA + ((uint32_t)0 - index)));
       const uint32_t valid_data = ary->end - ary->start;
@@ -3961,7 +4021,7 @@ Hash Map / Set - type and hash macros
 
 /* Prime numbers are better */
 #ifndef FIO_MAP_CUCKOO_STEPS
-#define FIO_MAP_CUCKOO_STEPS (0x43F82D0B) /* was (11) */
+#define FIO_MAP_CUCKOO_STEPS (0x43F82D0B) /* should be a high prime */
 #endif
 
 /* *****************************************************************************
@@ -4532,7 +4592,7 @@ Hash Map / Set - (re) hashing / compacting
 
 /** Rehashes the Hash Map / Set. Usually this is performed automatically. */
 SFUNC int FIO_NAME(FIO_MAP_NAME, rehash)(FIO_MAP_PTR m_) {
-  /* really no need for this function, but WTH... */
+  /* really no need for this function, but WTH */
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   return FIO_NAME(FIO_MAP_NAME, _remap2bits)(m, m->used_bits);
@@ -4885,7 +4945,6 @@ Hash Map / Set - cleanup
 
 
 ***************************************************************************** */
-
 #if defined(FIO_STRING_NAME)
 
 /* *****************************************************************************
@@ -5219,18 +5278,16 @@ String API - Base64 support
  * Writes data at the end of the String, encoding the data as Base64 encoded
  * data.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME,
-                              write_b64enc)(FIO_STRING_PTR s, const void *data,
-                                            size_t data_len,
-                                            uint8_t url_encoded);
+IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, write_base64enc)(
+    FIO_STRING_PTR s, const void *data, size_t data_len, uint8_t url_encoded);
 
 /**
  * Writes decoded base64 data to the end of the String.
  */
 IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME,
-                              write_b64dec)(FIO_STRING_PTR s,
-                                            const void *encoded,
-                                            size_t encoded_len);
+                              write_base64dec)(FIO_STRING_PTR s,
+                                               const void *encoded,
+                                               size_t encoded_len);
 
 /* *****************************************************************************
 
@@ -6372,8 +6429,9 @@ String - Base64 support
  * data.
  */
 IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME,
-                              write_b64enc)(FIO_STRING_PTR s_, const void *data,
-                                            size_t len, uint8_t url_encoded) {
+                              write_base64enc)(FIO_STRING_PTR s_,
+                                               const void *data, size_t len,
+                                               uint8_t url_encoded) {
   if (!FIO_PTR_UNTAG(s_) || !len)
     return FIO_NAME(FIO_STRING_NAME, info)(s_);
 
@@ -6434,8 +6492,9 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME,
  * Writes decoded base64 data to the end of the String.
  */
 IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME,
-                              write_b64dec)(FIO_STRING_PTR s_,
-                                            const void *encoded_, size_t len) {
+                              write_base64dec)(FIO_STRING_PTR s_,
+                                               const void *encoded_,
+                                               size_t len) {
   /*
   Base64 decoding array. Generation script (Ruby):
 
@@ -7462,7 +7521,7 @@ SFUNC uint32_t FIO_NAME(FIO_HMAP_NAME, __pos)(FIO_HMAP_PTR m_, uint64_t hash,
       return pos;
     }
     if (m->map[pos].hash == target && m->map[pos].pos != FIO_HMAP_INVALID_POS) {
-      /* match / hole / collision ... */
+      /* match / hole / collision */
       const uint32_t o_pos = m->map[pos].pos;
       if (m->data[o_pos].hash == hash) {
         /* match / collision ? */
@@ -8355,20 +8414,23 @@ FIOBJ - dynamic types
 
 These are dynamic types that use pointer tagging for fast type identification.
 
-Pointer tagging on 64 bit systems allows for 3 bits at the lower bits...
-On most 32 bit systems this is also true due to allocator alignment.
+Pointer tagging on 64 bit systems allows for 3 bits at the lower bits. On most
+32 bit systems this is also true due to allocator alignment. When in doubt, use
+the provided custom allocator.
 
 To keep the 64bit memory address alignment on 32bit systems, a 32bit metadata
 integer is added when a virtual function table is missing. This doesn't effect
 memory consumption on 64 bit systems and uses 4 bytes on 32 bit systems.
 
-Note: this should be included after the STL file, since it leverages most of the
-SLT features and could be affected by their inclusion (i.e., memory allocation).
+Note: this code is placed at the end of the STL file, since it leverages most of
+the SLT features and could be affected by their inclusion.
 ***************************************************************************** */
 #if defined(FIO_FIOBJ) && !defined(H___FIOBJ_H) && !defined(FIO_TEST_CSTL)
 #define H___FIOBJ_H
 
 /* *****************************************************************************
+FIOBJ compilation settings (type names and JSON nesting limits).
+
 Type Naming Macros for FIOBJ types. By default, results in:
 - fiobj_true()
 - fiobj_false()
@@ -9053,6 +9115,7 @@ FIOBJ_HIFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
     FIOBJ j = FIO_NAME2(fiobj, json)(FIOBJ_INVALID, o, 0);
     if (!j || FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(j) >=
                   FIOBJ2CSTR_BUFFER_LIMIT) {
+      fiobj_free(j);
       return (fio_str_info_s){
           .buf = (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_ARRAY ? "[...]" : "{...}"),
           .len = 5};
@@ -9063,7 +9126,6 @@ FIOBJ_HIFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
     i.buf = fiobj___2cstr___buffer__perthread;
     return i;
   }
-    return (fio_str_info_s){.buf = "<...>", .len = 5};
   case FIOBJ_T_OTHER:
     return (*fiobj_object_metadata(o))->to_s(o);
   }
@@ -10421,7 +10483,7 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
   fprintf(stderr, "\t  avarage hemming distance\t%zu\n", (size_t)hemming);
   /* expect avarage hemming distance of 25% == 16 bits */
   TEST_ASSERT(hemming >= 14 && hemming <= 18,
-              "randomness isn't random (hemming)?");
+              "randomness isn't random (hemming distance failed)?");
   /* test chi-square ... I think */
   if (len * sizeof(*stream) > 2560) {
     double n_r = (double)1.0 * ((len * sizeof(*stream)) / 256);
@@ -10882,7 +10944,7 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
 Hash Map / Set - test
 ***************************************************************************** */
 
-/* use Risky Hash for hashing data ... sometimes */
+/* Ensure Risky Hash is available, for hashing data */
 #define FIO_RISKY_HASH 1
 #include __FILE__
 
@@ -11542,12 +11604,12 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
       b64i = fio__str_____test_write(&b64message, &c, 1);
     }
     fio_str_info_s encoded =
-        fio__str_____test_write_b64enc(&str, b64i.buf, b64i.len, 1);
+        fio__str_____test_write_base64enc(&str, b64i.buf, b64i.len, 1);
     /* prevent encoded data from being deallocated during unencoding */
     encoded = fio__str_____test_reserve(&str, encoded.len +
                                                   ((encoded.len >> 2) * 3) + 8);
     fio_str_info_s decoded =
-        fio__str_____test_write_b64dec(&str, encoded.buf, encoded.len);
+        fio__str_____test_write_base64dec(&str, encoded.buf, encoded.len);
     TEST_ASSERT(encoded.len, "Base64 encoding failed");
     TEST_ASSERT(decoded.len > encoded.len, "Base64 decoding failed:\n%s",
                 encoded.buf);
@@ -11635,6 +11697,14 @@ TEST_FUNC void fio___dynamic_types_test___cli(void) {
 Memory Allocation - test
 ***************************************************************************** */
 
+#ifdef FIO_MALLOC_FORCE_SYSTEM
+
+TEST_FUNC void fio___dynamic_types_test___mem(void) {
+  fprintf(stderr, "* Custom memory allocator bypassed.\n");
+}
+
+#else
+
 #define FIO_MALLOC
 #include __FILE__
 
@@ -11673,6 +11743,7 @@ TEST_FUNC void fio___dynamic_types_test___mem(void) {
   TEST_ASSERT(fio___mem_block_count <= 1, "memory leaks?");
 #endif
 }
+#endif
 
 /* *****************************************************************************
 Hashing speed test
@@ -11684,7 +11755,14 @@ Hashing speed test
 typedef uintptr_t (*fio__hashing_func_fn)(char *, size_t);
 
 TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h, char *name) {
+#ifdef DEBUG
+  fprintf(stderr,
+          "Testing %s speed "
+          "(DEBUG mode detected - speed may be affected).\n",
+          name);
+#else
   fprintf(stderr, "Testing %s speed.\n", name);
+#endif
   /* test based on code from BearSSL with credit to Thomas Pornin */
   uint8_t buffer[8192];
   memset(buffer, 'T', sizeof(buffer));
@@ -11991,10 +12069,8 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___fiobj();
   fprintf(stderr, "===============\n");
-#ifndef DEBUG
   fio___dynamic_types_test___risky();
   fprintf(stderr, "===============\n");
-#endif
   fprintf(stderr, "Dynamic types testing complete - PASS.\n\n");
 }
 
