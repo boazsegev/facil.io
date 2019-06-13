@@ -14,10 +14,9 @@ Than run:
 
 */
 #include "fio.h"
-#include "fio_tls.h"
 
 /* add the fio_str_s helpers */
-#define FIO_STR_NAME fio_str
+#define FIO_STRING_NAME fio_str
 #define FIO_CLI 1
 #include "fio-stl.h"
 
@@ -33,8 +32,8 @@ static void repl_on_data(intptr_t uuid, fio_protocol_s *protocol) {
   char buffer[MAX_BYTES_RAPEL_PER_CYCLE];
   ret = fio_read(uuid, buffer, MAX_BYTES_RAPEL_PER_CYCLE);
   if (ret > 0) {
-    fio_publish(.channel = {.data = "repl", .len = 4},
-                .message = {.data = buffer, .len = ret});
+    fio_publish(.channel = {.buf = "repl", .len = 4},
+                .message = {.buf = buffer, .len = ret});
   }
   (void)protocol; /* we ignore the protocol object, we don't use it */
 }
@@ -117,7 +116,7 @@ static fio_protocol_s client_protocol = {
 
 /* Forward REPL messages to the socket - pub/sub callback */
 static void on_repl_message(fio_msg_s *msg) {
-  fio_write((intptr_t)msg->udata1, msg->msg.data, msg->msg.len);
+  fio_write((intptr_t)msg->udata1, msg->msg.buf, msg->msg.len);
 }
 
 static void on_connect(intptr_t uuid, void *udata) {
@@ -128,7 +127,7 @@ static void on_connect(intptr_t uuid, void *udata) {
 
   /* subscribe to REPL */
   subscription_s *sub =
-      fio_subscribe(.channel = {.data = "repl", .len = 4},
+      fio_subscribe(.channel = {.buf = "repl", .len = 4},
                     .on_message = on_repl_message, .udata1 = (void *)uuid);
 
   /* link subscription lifetime to the connection's UUID */
@@ -176,9 +175,9 @@ int main(int argc, char const *argv[]) {
       const char *end = memchr(trust, ',', len);
       while (end) {
         /* copy partial string to attach NUL char at end of file name */
-        fio_str_s tmp = FIO_STR_INIT;
+        fio_str_s tmp = FIO_STRING_INIT;
         fio_str_info_s t = fio_str_write(&tmp, trust, end - trust);
-        fio_tls_trust(tls, t.data);
+        fio_tls_trust(tls, t.buf);
         fio_str_free(&tmp);
         len -= (end - trust) + 1;
         trust = end + 1;

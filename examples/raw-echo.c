@@ -16,11 +16,12 @@ Or:
     nc localhost 3000
 
 This example uses the core facil.io library (fio.h) and the Command Line
-Interface library (fio_cli.h).
+Interface API in the core STL (fio-stl.h).
 ***************************************************************************** */
 
 #include <fio.h>
-#include <fio_cli.h>
+#define FIO_CLI
+#include <fio-stl.h>
 
 /* *****************************************************************************
 Echo connection callbacks
@@ -80,7 +81,7 @@ static void echo_on_open(intptr_t uuid, void *udata) {
                                  .on_close = echo_on_close,
                                  .ping = echo_ping};
   fprintf(stderr, "New Connection %p received from %s\n", (void *)echo_proto,
-          fio_peer_addr(uuid).data);
+          fio_peer_addr(uuid).buf);
   fio_attach(uuid, echo_proto);
   fio_write2(uuid, .data.buffer = "Echo Service: Welcome\n", .length = 22,
              .after.dealloc = FIO_DEALLOC_NOOP);

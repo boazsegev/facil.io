@@ -16,11 +16,12 @@ Or:
     nc localhost 3000
 
 This example uses the core facil.io library (fio.h) and the Command Line
-Interface library (fio_cli.h).
+Interface API in the core STL (fio-stl.h).
 ***************************************************************************** */
 
 #include <fio.h>
-#include <fio_cli.h>
+#define FIO_CLI
+#include <fio-stl.h>
 
 /* *****************************************************************************
 Chat connection callbacks
@@ -34,8 +35,8 @@ static void chat_on_data(intptr_t uuid, fio_protocol_s *prt) {
   // Read to the buffer, starting after the "Chat: "
   while ((len = fio_read(uuid, buffer + 6, 1018)) > 0) {
     fprintf(stderr, "Broadcasting: %.*s", (int)len, buffer + 6);
-    fio_publish(.message = {.data = buffer, .len = (len + 6)},
-                .channel = {.data = "chat", .len = 4});
+    fio_publish(.message = {.buf = buffer, .len = (len + 6)},
+                .channel = {.buf = "chat", .len = 4});
   }
   (void)prt; // we can ignore the unused argument
 }
@@ -65,7 +66,7 @@ The main chat pub/sub callback
 ***************************************************************************** */
 
 static void chat_message(fio_msg_s *msg) {
-  fio_write((intptr_t)msg->udata1, msg->msg.data, msg->msg.len);
+  fio_write((intptr_t)msg->udata1, msg->msg.buf, msg->msg.len);
 }
 
 /* *****************************************************************************
@@ -85,7 +86,7 @@ static void chat_on_open(intptr_t uuid, void *udata) {
   fio_attach(uuid, proto);
   fio_timeout_set(uuid, 10);
   fprintf(stderr, "* (%d) new Connection %p received from %s\n", getpid(),
-          (void *)proto, fio_peer_addr(uuid).data);
+          (void *)proto, fio_peer_addr(uuid).buf);
   /* Send a Welcome message to the client */
   fio_write2(uuid, .data.buffer = "Chat Service: Welcome\n", .length = 22,
              .after.dealloc = FIO_DEALLOC_NOOP);
@@ -93,7 +94,7 @@ static void chat_on_open(intptr_t uuid, void *udata) {
   /* Subscribe client to chat channel */
   subscription_s *s =
       fio_subscribe(.on_message = chat_message, .udata1 = (void *)uuid,
-                    .channel = {.data = "chat", .len = 4});
+                    .channel = {.buf = "chat", .len = 4});
   /* Link the subscription's life-time to the connection */
   fio_uuid_link(uuid, s, (void (*)(void *))fio_unsubscribe);
   (void)udata; // ignore this
