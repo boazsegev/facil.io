@@ -4086,10 +4086,10 @@ typedef struct {
   uint32_t next;
   FIO_MAP_HASH hash;
   FIO_MAP_OBJ obj;
-} FIO_NAME(FIO_MAP_NAME, _map_s);
+} FIO_NAME(FIO_MAP_NAME, __map_s);
 
 typedef struct {
-  FIO_NAME(FIO_MAP_NAME, _map_s) * map;
+  FIO_NAME(FIO_MAP_NAME, __map_s) * map;
   uint32_t head;
   uint32_t count;
   uint8_t used_bits;
@@ -4141,6 +4141,10 @@ Hash Map / Set - API (hash map only)
 SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m, FIO_MAP_HASH hash,
                                                FIO_MAP_KEY key);
 
+/** Returns a pointer to the object in the hash map (if any) or NULL. */
+SFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m,
+                                                    FIO_MAP_HASH hash,
+                                                    FIO_MAP_KEY key);
 /**
  * Inserts an object to the hash map, returning the new object.
  *
@@ -4170,6 +4174,10 @@ Hash Map / Set - API (set only)
 SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m, FIO_MAP_HASH hash,
                                                FIO_MAP_TYPE obj);
 
+/** Returns a pointer to the object in the hash map (if any) or NULL. */
+SFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m,
+                                                    FIO_MAP_HASH hash,
+                                                    FIO_MAP_TYPE obj);
 /**
  * Inserts an object to the hash map, returning the existing or new object.
  *
@@ -4296,7 +4304,7 @@ Hash Map / Set - helpers
 ***************************************************************************** */
 #ifdef FIO_EXTERN_COMPLETE
 
-HFUNC void FIO_NAME(FIO_MAP_NAME, _report_attack)(const char *msg) {
+HFUNC void FIO_NAME(FIO_MAP_NAME, __report_attack)(const char *msg) {
 #ifdef FIO_LOG2STDERR
   fwrite(msg, strlen(msg), 1, stderr);
 #else
@@ -4304,13 +4312,13 @@ HFUNC void FIO_NAME(FIO_MAP_NAME, _report_attack)(const char *msg) {
 #endif
 }
 
-SFUNC int FIO_NAME(FIO_MAP_NAME, _remap2bits)(FIO_NAME(FIO_MAP_NAME, s) * m,
-                                              const uint8_t bits);
+SFUNC int FIO_NAME(FIO_MAP_NAME, __remap2bits)(FIO_NAME(FIO_MAP_NAME, s) * m,
+                                               const uint8_t bits);
 
 /** Finds an object's theoretical position in the map */
-HFUNC FIO_NAME(FIO_MAP_NAME, _map_s) *
-    FIO_NAME(FIO_MAP_NAME, _find_map_pos)(FIO_NAME(FIO_MAP_NAME, s) * m,
-                                          FIO_MAP_OBJ obj, FIO_MAP_HASH hash) {
+HFUNC FIO_NAME(FIO_MAP_NAME, __map_s) *
+    FIO_NAME(FIO_MAP_NAME, __find_map_pos)(FIO_NAME(FIO_MAP_NAME, s) * m,
+                                           FIO_MAP_OBJ obj, FIO_MAP_HASH hash) {
   if (FIO_MAP_HASH_CMP(hash, FIO_MAP_HASH_INVALID)) {
     FIO_MAP_HASH_COPY(hash, (FIO_MAP_HASH){~0ULL});
   }
@@ -4319,7 +4327,7 @@ HFUNC FIO_NAME(FIO_MAP_NAME, _map_s) *
 
   /* make sure full collisions don't effect seeking when holes exist */
   if (!FIO_MAP_OBJ_CMP_SIMPLE && (m->has_collisions & 2)) {
-    FIO_NAME(FIO_MAP_NAME, _remap2bits)(m, m->used_bits);
+    FIO_NAME(FIO_MAP_NAME, __remap2bits)(m, m->used_bits);
   }
 
   const uintptr_t mask = ((uintptr_t)1 << m->used_bits) - 1;
@@ -4328,7 +4336,7 @@ HFUNC FIO_NAME(FIO_MAP_NAME, _map_s) *
   uint8_t full_attack_counter = 0;
 
   for (uint8_t attempts = 0; attempts <= max_seek; ++attempts) {
-    FIO_NAME(FIO_MAP_NAME, _map_s) *const pos = m->map + pos_key;
+    FIO_NAME(FIO_MAP_NAME, __map_s) *const pos = m->map + pos_key;
     if (FIO_MAP_HASH_CMP(pos->hash, FIO_MAP_HASH_INVALID)) {
       /* empty slot */
       return pos;
@@ -4344,7 +4352,7 @@ HFUNC FIO_NAME(FIO_MAP_NAME, _map_s) *
       m->has_collisions |= 1;
       if (++full_attack_counter >= FIO_MAP_MAX_FULL_COLLISIONS) {
         m->under_attack = 1;
-        FIO_NAME(FIO_MAP_NAME, _report_attack)
+        FIO_NAME(FIO_MAP_NAME, __report_attack)
         ("SECURITY: (core type) Hash Map under attack? "
          "(multiple full collisions)\n");
       }
@@ -4357,14 +4365,14 @@ HFUNC FIO_NAME(FIO_MAP_NAME, _map_s) *
 }
 
 HFUNC void FIO_NAME(FIO_MAP_NAME,
-                    ___link_node)(FIO_NAME(FIO_MAP_NAME, s) * m,
-                                  FIO_NAME(FIO_MAP_NAME, _map_s) * n) {
+                    __link_node)(FIO_NAME(FIO_MAP_NAME, s) * m,
+                                 FIO_NAME(FIO_MAP_NAME, __map_s) * n) {
   if (m->head == (uint32_t)-1) {
     /* inserting first node */
     n->prev = n->next = m->head = n - m->map;
   } else {
     /* list exists */
-    FIO_NAME(FIO_MAP_NAME, _map_s) *r = m->map + m->head; /* root */
+    FIO_NAME(FIO_MAP_NAME, __map_s) *r = m->map + m->head; /* root */
     n->next = m->head;
     n->prev = r->prev;
     r->prev = (m->map + n->prev)->next = (n - m->map);
@@ -4372,8 +4380,8 @@ HFUNC void FIO_NAME(FIO_MAP_NAME,
 }
 
 HFUNC void FIO_NAME(FIO_MAP_NAME,
-                    ___unlink_node)(FIO_NAME(FIO_MAP_NAME, s) * m,
-                                    FIO_NAME(FIO_MAP_NAME, _map_s) * n) {
+                    __unlink_node)(FIO_NAME(FIO_MAP_NAME, s) * m,
+                                   FIO_NAME(FIO_MAP_NAME, __map_s) * n) {
   (m->map + n->next)->prev = n->prev;
   (m->map + n->prev)->next = n->next;
   if (n->next == m->head) {
@@ -4388,11 +4396,11 @@ HFUNC void FIO_NAME(FIO_MAP_NAME,
   n->prev = (uint32_t)-1;
 }
 
-SFUNC int FIO_NAME(FIO_MAP_NAME, _remap2bits)(FIO_NAME(FIO_MAP_NAME, s) * m,
-                                              const uint8_t bits) {
+SFUNC int FIO_NAME(FIO_MAP_NAME, __remap2bits)(FIO_NAME(FIO_MAP_NAME, s) * m,
+                                               const uint8_t bits) {
   FIO_NAME(FIO_MAP_NAME, s)
   dest = {
-      .map = (FIO_NAME(FIO_MAP_NAME, _map_s) *)FIO_MEM_CALLOC_(
+      .map = (FIO_NAME(FIO_MAP_NAME, __map_s) *)FIO_MEM_CALLOC_(
           sizeof(*dest.map), (uint32_t)1 << (bits & 31)),
       .used_bits = bits,
       .head = (uint32_t)(-1),
@@ -4404,16 +4412,16 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, _remap2bits)(FIO_NAME(FIO_MAP_NAME, s) * m,
   }
   uint32_t i = m->head;
   for (;;) {
-    FIO_NAME(FIO_MAP_NAME, _map_s) *src = m->map + i;
-    FIO_NAME(FIO_MAP_NAME, _map_s) *pos =
-        FIO_NAME(FIO_MAP_NAME, _find_map_pos)(&dest, src->obj, src->hash);
+    FIO_NAME(FIO_MAP_NAME, __map_s) *src = m->map + i;
+    FIO_NAME(FIO_MAP_NAME, __map_s) *pos =
+        FIO_NAME(FIO_MAP_NAME, __find_map_pos)(&dest, src->obj, src->hash);
     if (!pos) {
       FIO_MEM_FREE_(dest.map, (uint32_t)1 << (bits & 31));
       return -1;
     }
     pos->hash = src->hash;
     pos->obj = src->obj;
-    FIO_NAME(FIO_MAP_NAME, ___link_node)(&dest, pos);
+    FIO_NAME(FIO_MAP_NAME, __link_node)(&dest, pos);
     ++dest.count;
     i = src->next;
     if (i == m->head)
@@ -4425,12 +4433,12 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, _remap2bits)(FIO_NAME(FIO_MAP_NAME, s) * m,
 }
 
 /** Inserts an object to the map */
-HFUNC FIO_NAME(FIO_MAP_NAME, _map_s) *
+HFUNC FIO_NAME(FIO_MAP_NAME, __map_s) *
     FIO_NAME(FIO_MAP_NAME,
              _insert_or_overwrite)(FIO_NAME(FIO_MAP_NAME, s) * m,
                                    FIO_MAP_OBJ obj, FIO_MAP_HASH hash,
                                    FIO_MAP_TYPE *old, uint8_t overwrite) {
-  FIO_NAME(FIO_MAP_NAME, _map_s) *pos = NULL;
+  FIO_NAME(FIO_MAP_NAME, __map_s) *pos = NULL;
   if (FIO_MAP_HASH_CMP(hash, FIO_MAP_HASH_INVALID)) {
     FIO_MAP_HASH_COPY(hash, (FIO_MAP_HASH){~0ULL});
   }
@@ -4438,14 +4446,14 @@ HFUNC FIO_NAME(FIO_MAP_NAME, _map_s) *
 #if FIO_MAP_MAX_ELEMENTS
   if (m->count >= FIO_MAP_MAX_ELEMENTS) {
     /* limits the number of elements to m->count, with 1 dangling element  */
-    FIO_NAME(FIO_MAP_NAME, _map_s) *oldest = m->map + m->head;
+    FIO_NAME(FIO_MAP_NAME, __map_s) *oldest = m->map + m->head;
     FIO_MAP_OBJ_DESTROY((oldest->obj));
-    FIO_NAME(FIO_MAP_NAME, ___unlink_node)(m, oldest);
+    FIO_NAME(FIO_MAP_NAME, __unlink_node)(m, oldest);
     --m->count;
   }
 #endif
 
-  pos = FIO_NAME(FIO_MAP_NAME, _find_map_pos)(m, obj, hash);
+  pos = FIO_NAME(FIO_MAP_NAME, __find_map_pos)(m, obj, hash);
 
   if (!pos)
     goto remap_and_find_pos;
@@ -4456,7 +4464,7 @@ found_pos:
     /* empty slot */
     FIO_MAP_HASH_COPY(pos->hash, hash);
     FIO_MAP_OBJ_COPY(pos->obj, obj);
-    FIO_NAME(FIO_MAP_NAME, ___link_node)(m, pos);
+    FIO_NAME(FIO_MAP_NAME, __link_node)(m, pos);
     m->count++;
     if (old)
       FIO_MAP_TYPE_COPY((*old), FIO_MAP_TYPE_INVALID);
@@ -4484,36 +4492,36 @@ found_pos:
 remap_and_find_pos:
   if ((m->count << 1) <= ((uint32_t)1 << m->used_bits)) {
     /* we should have enough room at 50% usage (too many holes)? */
-    FIO_NAME(FIO_MAP_NAME, _remap2bits)(m, m->used_bits);
-    pos = FIO_NAME(FIO_MAP_NAME, _find_map_pos)(m, obj, hash);
+    FIO_NAME(FIO_MAP_NAME, __remap2bits)(m, m->used_bits);
+    pos = FIO_NAME(FIO_MAP_NAME, __find_map_pos)(m, obj, hash);
   }
   if (pos)
     goto found_pos;
   for (size_t i = 0; !pos && i < 3; ++i) {
-    FIO_NAME(FIO_MAP_NAME, _remap2bits)(m, m->used_bits + 1);
-    pos = FIO_NAME(FIO_MAP_NAME, _find_map_pos)(m, obj, hash);
+    FIO_NAME(FIO_MAP_NAME, __remap2bits)(m, m->used_bits + 1);
+    pos = FIO_NAME(FIO_MAP_NAME, __find_map_pos)(m, obj, hash);
     if (pos)
       goto found_pos;
   }
-  FIO_NAME(FIO_MAP_NAME, _report_attack)
+  FIO_NAME(FIO_MAP_NAME, __report_attack)
   ("SECURITY: (core type) Map under attack?"
    " (non-random keys with full collisions?)\n");
   m->under_attack = 1;
-  pos = FIO_NAME(FIO_MAP_NAME, _find_map_pos)(m, obj, hash);
+  pos = FIO_NAME(FIO_MAP_NAME, __find_map_pos)(m, obj, hash);
   if (pos)
     goto found_pos;
   return NULL;
 }
 
 /** Removes an object from the map */
-HFUNC int FIO_NAME(FIO_MAP_NAME, _remove)(FIO_NAME(FIO_MAP_NAME, s) * m,
-                                          FIO_MAP_OBJ obj, FIO_MAP_HASH hash,
-                                          FIO_MAP_TYPE *old) {
+HFUNC int FIO_NAME(FIO_MAP_NAME, __remove)(FIO_NAME(FIO_MAP_NAME, s) * m,
+                                           FIO_MAP_OBJ obj, FIO_MAP_HASH hash,
+                                           FIO_MAP_TYPE *old) {
   if (FIO_MAP_HASH_CMP(hash, FIO_MAP_HASH_INVALID)) {
     FIO_MAP_HASH_COPY(hash, (FIO_MAP_HASH){~0ULL});
   }
-  FIO_NAME(FIO_MAP_NAME, _map_s) *pos =
-      FIO_NAME(FIO_MAP_NAME, _find_map_pos)(m, obj, hash);
+  FIO_NAME(FIO_MAP_NAME, __map_s) *pos =
+      FIO_NAME(FIO_MAP_NAME, __find_map_pos)(m, obj, hash);
   if (!pos || FIO_MAP_HASH_CMP(pos->hash, FIO_MAP_HASH_INVALID) ||
       pos->next == (uint32_t)-1) {
     /* nothing to remove */;
@@ -4526,13 +4534,13 @@ HFUNC int FIO_NAME(FIO_MAP_NAME, _remove)(FIO_NAME(FIO_MAP_NAME, s) * m,
     FIO_MAP_TYPE_COPY((*old), FIO_MAP_OBJ2TYPE(pos->obj));
   }
   FIO_MAP_OBJ_DESTROY((pos->obj));
-  FIO_NAME(FIO_MAP_NAME, ___unlink_node)(m, pos);
+  FIO_NAME(FIO_MAP_NAME, __unlink_node)(m, pos);
   --m->count;
   m->has_collisions |= (m->has_collisions << 1);
 
   if (m->used_bits >= 8 && (m->count << 3) < (uint32_t)1 << m->used_bits) {
     /* usage at less then 25%, we could shrink */
-    FIO_NAME(FIO_MAP_NAME, _remap2bits)(m, m->used_bits - 1);
+    FIO_NAME(FIO_MAP_NAME, __remap2bits)(m, m->used_bits - 1);
   }
 
   return 0;
@@ -4595,7 +4603,7 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, rehash)(FIO_MAP_PTR m_) {
   /* really no need for this function, but WTH */
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
-  return FIO_NAME(FIO_MAP_NAME, _remap2bits)(m, m->used_bits);
+  return FIO_NAME(FIO_MAP_NAME, __remap2bits)(m, m->used_bits);
 }
 
 /** Attempts to lower the map's memory consumption. */
@@ -4605,7 +4613,7 @@ SFUNC void FIO_NAME(FIO_MAP_NAME, compact)(FIO_MAP_PTR m_) {
   uint8_t new_bits = 1;
   while (m->count < ((size_t)1 << new_bits))
     ++new_bits;
-  while (FIO_NAME(FIO_MAP_NAME, _remap2bits)(m, new_bits))
+  while (FIO_NAME(FIO_MAP_NAME, __remap2bits)(m, new_bits))
     ++new_bits;
 }
 
@@ -4614,6 +4622,21 @@ Hash Map / Set - API (hash map only)
 ***************************************************************************** */
 #ifdef FIO_MAP_KEY
 
+/** Returns a pointer to the object in the hash map (if any) or NULL. */
+SFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m_,
+                                                    FIO_MAP_HASH hash,
+                                                    FIO_MAP_KEY key) {
+  FIO_NAME(FIO_MAP_NAME, s) *m =
+      (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
+  FIO_MAP_OBJ obj = {.key = key};
+  FIO_NAME(FIO_MAP_NAME, __map_s) *pos =
+      FIO_NAME(FIO_MAP_NAME, __find_map_pos)(m, obj, hash);
+  if (!pos || FIO_MAP_HASH_CMP(pos->hash, FIO_MAP_HASH_INVALID) ||
+      pos->next == (uint32_t)-1)
+    return NULL;
+  return &FIO_MAP_OBJ2TYPE(pos->obj);
+}
+
 /** Returns the object in the hash map (if any) or FIO_MAP_TYPE_INVALID. */
 SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m_,
                                                FIO_MAP_HASH hash,
@@ -4621,8 +4644,8 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m_,
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   FIO_MAP_OBJ obj = {.key = key};
-  FIO_NAME(FIO_MAP_NAME, _map_s) *pos =
-      FIO_NAME(FIO_MAP_NAME, _find_map_pos)(m, obj, hash);
+  FIO_NAME(FIO_MAP_NAME, __map_s) *pos =
+      FIO_NAME(FIO_MAP_NAME, __find_map_pos)(m, obj, hash);
   if (!pos || FIO_MAP_HASH_CMP(pos->hash, FIO_MAP_HASH_INVALID) ||
       pos->next == (uint32_t)-1)
     return FIO_MAP_TYPE_INVALID;
@@ -4641,7 +4664,7 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME,
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   FIO_MAP_OBJ obj = {.key = key, .value = value};
-  FIO_NAME(FIO_MAP_NAME, _map_s) *pos =
+  FIO_NAME(FIO_MAP_NAME, __map_s) *pos =
       FIO_NAME(FIO_MAP_NAME, _insert_or_overwrite)(m, obj, hash, old, 1);
   return FIO_MAP_OBJ2TYPE(pos->obj);
 }
@@ -4658,7 +4681,7 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m_, FIO_MAP_HASH hash,
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   FIO_MAP_OBJ obj = {.key = key};
-  return FIO_NAME(FIO_MAP_NAME, _remove)(m, obj, hash, old);
+  return FIO_NAME(FIO_MAP_NAME, __remove)(m, obj, hash, old);
 }
 
 /* *****************************************************************************
@@ -4666,14 +4689,28 @@ Hash Map / Set - API (set only)
 ***************************************************************************** */
 #else /* !FIO_MAP_KEY */
 
+/** Returns a pointer to the object in the hash map (if any) or NULL. */
+SFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m_,
+                                                    FIO_MAP_HASH hash,
+                                                    FIO_MAP_TYPE obj) {
+  FIO_NAME(FIO_MAP_NAME, s) *m =
+      (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
+  FIO_NAME(FIO_MAP_NAME, __map_s) *pos =
+      FIO_NAME(FIO_MAP_NAME, __find_map_pos)(m, obj, hash);
+  if (!pos || FIO_MAP_HASH_CMP(pos->hash, FIO_MAP_HASH_INVALID) ||
+      pos->next == (uint32_t)-1)
+    return NULL;
+  return &FIO_MAP_OBJ2TYPE(pos->obj);
+}
+
 /** Returns the object in the hash map (if any) or FIO_MAP_TYPE_INVALID. */
 SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m_,
                                                FIO_MAP_HASH hash,
                                                FIO_MAP_TYPE obj) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
-  FIO_NAME(FIO_MAP_NAME, _map_s) *pos =
-      FIO_NAME(FIO_MAP_NAME, _find_map_pos)(m, obj, hash);
+  FIO_NAME(FIO_MAP_NAME, __map_s) *pos =
+      FIO_NAME(FIO_MAP_NAME, __find_map_pos)(m, obj, hash);
   if (!pos || FIO_MAP_HASH_CMP(pos->hash, FIO_MAP_HASH_INVALID) ||
       pos->next == (uint32_t)-1)
     return FIO_MAP_TYPE_INVALID;
@@ -4690,7 +4727,7 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set_if_missing)(FIO_MAP_PTR m_,
                                                           FIO_MAP_TYPE obj) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
-  FIO_NAME(FIO_MAP_NAME, _map_s) *pos =
+  FIO_NAME(FIO_MAP_NAME, __map_s) *pos =
       FIO_NAME(FIO_MAP_NAME, _insert_or_overwrite)(m, obj, hash, NULL, 0);
   return FIO_MAP_OBJ2TYPE(pos->obj);
 }
@@ -4719,7 +4756,7 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m_, FIO_MAP_HASH hash,
                                          FIO_MAP_TYPE obj, FIO_MAP_TYPE *old) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
-  return FIO_NAME(FIO_MAP_NAME, _remove)(m, obj, hash, old);
+  return FIO_NAME(FIO_MAP_NAME, __remove)(m, obj, hash, old);
 }
 
 #endif /* FIO_MAP_KEY */
@@ -4750,7 +4787,7 @@ IFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, reserve)(FIO_MAP_PTR m_, uint32_t capa) {
   uint8_t bits = m->used_bits + 1;
   while (capa > (1ULL << bits))
     ++bits;
-  FIO_NAME(FIO_MAP_NAME, _remap2bits)(m, bits);
+  FIO_NAME(FIO_MAP_NAME, __remap2bits)(m, bits);
   return FIO_NAME(FIO_MAP_NAME, capa)(m_);
 }
 
@@ -4777,9 +4814,9 @@ IFUNC void FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m_) {
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   if (!m->count || m->head == (uint32_t)-1)
     return;
-  FIO_NAME(FIO_MAP_NAME, _map_s) *n = (m->map + ((m->map + m->head)->prev));
+  FIO_NAME(FIO_MAP_NAME, __map_s) *n = (m->map + ((m->map + m->head)->prev));
   FIO_MAP_OBJ_DESTROY(n->obj);
-  FIO_NAME(FIO_MAP_NAME, ___unlink_node)(m, n);
+  FIO_NAME(FIO_MAP_NAME, __unlink_node)(m, n);
   --m->count;
 }
 
@@ -7456,7 +7493,7 @@ Hash Map types
 typedef struct {
   uint32_t hash; /* the other half of the hash is the position in the array */
   uint32_t pos;  /* the position in the ordered / data array */
-} FIO_NAME(FIO_HMAP_NAME, __map_s);
+} FIO_NAME(FIO_HMAP_NAME, ___map_s);
 
 typedef struct {
   uint64_t hash; /* the full hash value */
@@ -7466,7 +7503,7 @@ typedef struct {
 
 typedef struct {
   FIO_NAME(FIO_HMAP_NAME, __data_s) * data;
-  FIO_NAME(FIO_HMAP_NAME, __map_s) * map;
+  FIO_NAME(FIO_HMAP_NAME, ___map_s) * map;
   uint32_t count;
   uint16_t offset;
   uint8_t bits;
@@ -7569,7 +7606,7 @@ SFUNC int FIO_NAME(FIO_HMAP_NAME, rehash)(FIO_HMAP_PTR m_) {
       m->offset = used_count - m->count;
       return -1;
     }
-    m->map[pos] = (FIO_NAME(FIO_HMAP_NAME, __map_s)){
+    m->map[pos] = (FIO_NAME(FIO_HMAP_NAME, ___map_s)){
         .hash = FIO_NAME(FIO_HMAP_NAME, __hash4map)(m_, m->data[w].hash),
         .pos = w,
     };
@@ -11760,8 +11797,10 @@ TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h, char *name) {
           "Testing %s speed "
           "(DEBUG mode detected - speed may be affected).\n",
           name);
+  uint64_t cycles_start_at = (8192 << 4);
 #else
   fprintf(stderr, "Testing %s speed.\n", name);
+  uint64_t cycles_start_at = (8192 << 8);
 #endif
   /* test based on code from BearSSL with credit to Thomas Pornin */
   uint8_t buffer[8192];
@@ -11773,7 +11812,7 @@ TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h, char *name) {
     memcpy(buffer, &hash, sizeof(hash));
   }
   /* loop until test runs for more than 2 seconds */
-  for (uint64_t cycles = (8192 << 8);;) {
+  for (uint64_t cycles = cycles_start_at;;) {
     clock_t start, end;
     start = clock();
     for (size_t i = cycles; i > 0; i--) {
