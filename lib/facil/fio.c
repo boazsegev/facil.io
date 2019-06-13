@@ -6,10 +6,11 @@ Feel free to copy, use and enjoy according to the license provided.
 ***************************************************************************** */
 
 #define FIO_EXTERN_COMPLETE 1
+#define FIOBJ_EXTERN_COMPLETE 1
 #include <fio.h>
 
 #define FIO_LIST
-#define FIO_STR_NAME fio_str
+#define FIO_STRING_NAME fio_str
 #define FIO_REF_NAME fio_str
 #include "fio-stl.h"
 
@@ -89,16 +90,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #endif
 
 /* *****************************************************************************
-FIO_OVERRIDE_MALLOC - override glibc / library malloc
-***************************************************************************** */
-#if FIO_OVERRIDE_MALLOC && !defined(FIO_FORCE_MALLOC)
-void *malloc(size_t size) { return fio_malloc(size); }
-void *calloc(size_t size, size_t count) { return fio_calloc(size, count); }
-void free(void *ptr) { fio_free(ptr); }
-void *realloc(void *ptr, size_t new_size) { return fio_realloc(ptr, new_size); }
-#endif
-
-/* *****************************************************************************
 Event deferring (declarations)
 ***************************************************************************** */
 
@@ -137,10 +128,10 @@ Section Start Marker
 ***************************************************************************** */
 
 typedef void (*fio_uuid_link_fn)(void *);
-#define FIO_SET_NAME fio_uuid_links
-#define FIO_SET_OBJ_TYPE fio_uuid_link_fn
-#define FIO_SET_OBJ_COMPARE(o1, o2) 1
-#include <fio.h>
+#define FIO_MAP_NAME fio_uuid_links
+#define FIO_MAP_TYPE fio_uuid_link_fn
+#define FIO_MAP_TYPE_CMP(o1, o2) 1
+#include <fio-stl.h>
 
 /** User-space socket buffer data */
 typedef struct fio_packet_s fio_packet_s;
@@ -328,12 +319,12 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
     fio_packet_free(tmp);
   }
   if (fio_uuid_links_count(&links)) {
-    FIO_SET_FOR_LOOP(&links, pos) {
+    FIO_MAP_EACH(&links, pos) {
       if (pos->hash)
         pos->obj((void *)pos->hash);
     }
   }
-  fio_uuid_links_free(&links);
+  fio_uuid_links_destroy(&links);
   if (protocol && protocol->on_close) {
     fio_defer(deferred_on_close, (void *)fd2uuid(fd), protocol);
   }
@@ -453,8 +444,8 @@ void fio_touch(intptr_t uuid) {
 /* public API. */
 fio_str_info_s fio_peer_addr(intptr_t uuid) {
   if (fio_is_closed(uuid) || !uuid_data(uuid).addr_len)
-    return (fio_str_info_s){.data = NULL, .len = 0, .capa = 0};
-  return (fio_str_info_s){.data = (char *)uuid_data(uuid).addr,
+    return (fio_str_info_s){.buf = NULL, .len = 0, .capa = 0};
+  return (fio_str_info_s){.buf = (char *)uuid_data(uuid).addr,
                           .len = uuid_data(uuid).addr_len,
                           .capa = 0};
 }
@@ -511,8 +502,7 @@ void fio_uuid_link(intptr_t uuid, void *obj, void (*on_close)(void *obj)) {
   fio_lock(&uuid_data(uuid).sock_lock);
   if (!uuid_is_valid(uuid))
     goto locked_invalid;
-  fio_uuid_links_overwrite(&uuid_data(uuid).links, (uintptr_t)obj, on_close,
-                           NULL);
+  fio_uuid_links_set(&uuid_data(uuid).links, (uintptr_t)obj, on_close, NULL);
   fio_unlock(&uuid_data(uuid).sock_lock);
   return;
 locked_invalid:
@@ -3052,7 +3042,7 @@ invalid:
 attacked:
   /* don't close, just detach from facil.io and mark uuid as invalid */
   FIO_LOG_WARNING("(facil.io) possible Slowloris attack from %.*s",
-                  (int)fio_peer_addr(uuid).len, fio_peer_addr(uuid).data);
+                  (int)fio_peer_addr(uuid).len, fio_peer_addr(uuid).buf);
   fio_unlock(&uuid_data(uuid).sock_lock);
   fio_clear_fd(fio_uuid2fd(uuid), 0);
   return -1;
@@ -4423,7 +4413,7 @@ fio_url_s fio_url_parse(const char *url, size_t length) {
   */
   const char *end = url + length;
   const char *pos = url;
-  fio_url_s r = {.scheme = {.data = (char *)url}};
+  fio_url_s r = {.scheme = {.buf = (char *)url}};
   if (length == 0) {
     goto finish;
   }
@@ -4439,27 +4429,27 @@ fio_url_s fio_url_parse(const char *url, size_t length) {
 
   if (pos == end) {
     /* was only host (path starts with '/') */
-    r.host = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
     goto finish;
   }
   switch (pos[0]) {
   case '@':
     /* username@[host] */
-    r.user = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    r.user = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
     ++pos;
     goto start_host;
   case '/':
     /* host[/path] */
-    r.host = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
     goto start_path;
   case '?':
     /* host?[query] */
-    r.host = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
     ++pos;
     goto start_query;
   case '#':
     /* host#[target] */
-    r.host = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
     ++pos;
     goto start_target;
   case ':':
@@ -4470,7 +4460,7 @@ fio_url_s fio_url_parse(const char *url, size_t length) {
     } else {
       /* username:[password] OR */
       /* host:[port] */
-      r.user = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+      r.user = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
       ++pos;
       goto start_password;
     }
@@ -4484,24 +4474,24 @@ fio_url_s fio_url_parse(const char *url, size_t length) {
     ++pos;
 
   if (pos >= end) { /* scheme://host */
-    r.host = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
     goto finish;
   }
 
   switch (pos[0]) {
   case '/':
     /* scheme://host[/path] */
-    r.host = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
     goto start_path;
   case '@':
     /* scheme://username@[host]... */
-    r.user = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    r.user = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
     ++pos;
     goto start_host;
   case ':':
     /* scheme://username:[password]@[host]... OR */
     /* scheme://host:[port][/...] */
-    r.user = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    r.user = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
     ++pos;
     break;
   }
@@ -4513,7 +4503,7 @@ start_password:
 
   if (pos >= end) {
     /* was host:port */
-    r.port = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    r.port = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
     r.host = r.user;
     r.user.len = 0;
     goto finish;
@@ -4522,12 +4512,12 @@ start_password:
 
   switch (pos[0]) {
   case '/':
-    r.port = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    r.port = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
     r.host = r.user;
     r.user.len = 0;
     goto start_path;
   case '@':
-    r.password = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    r.password = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
     ++pos;
     break;
   }
@@ -4538,7 +4528,7 @@ start_host:
          pos[0] != '?')
     ++pos;
 
-  r.host = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+  r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
   if (pos >= end) {
     goto finish;
   }
@@ -4564,7 +4554,7 @@ start_host:
   while (pos < end && pos[0] != '/' && pos[0] != '#' && pos[0] != '?')
     ++pos;
 
-  r.port = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+  r.port = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
 
   if (pos >= end) {
     /* scheme://[...@]host:port */
@@ -4588,7 +4578,7 @@ start_path:
   while (pos < end && pos[0] != '#' && pos[0] != '?')
     ++pos;
 
-  r.path = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+  r.path = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
 
   if (pos >= end) {
     goto finish;
@@ -4602,34 +4592,34 @@ start_query:
   while (pos < end && pos[0] != '#')
     ++pos;
 
-  r.query = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+  r.query = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
   ++pos;
 
   if (pos >= end)
     goto finish;
 
 start_target:
-  r.target = (fio_str_info_s){.data = (char *)pos, .len = end - pos};
+  r.target = (fio_str_info_s){.buf = (char *)pos, .len = end - pos};
 
 finish:
 
   /* set any empty values to NULL */
   if (!r.scheme.len)
-    r.scheme.data = NULL;
+    r.scheme.buf = NULL;
   if (!r.user.len)
-    r.user.data = NULL;
+    r.user.buf = NULL;
   if (!r.password.len)
-    r.password.data = NULL;
+    r.password.buf = NULL;
   if (!r.host.len)
-    r.host.data = NULL;
+    r.host.buf = NULL;
   if (!r.port.len)
-    r.port.data = NULL;
+    r.port.buf = NULL;
   if (!r.path.len)
-    r.path.data = NULL;
+    r.path.buf = NULL;
   if (!r.query.len)
-    r.query.data = NULL;
+    r.query.buf = NULL;
   if (!r.target.len)
-    r.target.data = NULL;
+    r.target.buf = NULL;
 
   return r;
 }
@@ -4787,23 +4777,23 @@ static int fio_channel_cmp(channel_s *ch1, channel_s *ch2) {
 }
 /* pub/sub channels and core data sets have a long life, so avoid fio_malloc */
 #define FIO_FORCE_MALLOC_TMP 1
-#define FIO_SET_NAME fio_ch_set
-#define FIO_SET_OBJ_TYPE channel_s *
-#define FIO_SET_OBJ_COMPARE(o1, o2) fio_channel_cmp((o1), (o2))
-#define FIO_SET_OBJ_DESTROY(obj) fio_channel_free((obj))
-#define FIO_SET_OBJ_COPY(dest, src) ((dest) = fio_channel_copy((src)))
-#include <fio.h>
-
-#define FIO_FORCE_MALLOC_TMP 1
-#define FIO_ARY_NAME fio_meta_ary
-#define FIO_ARY_TYPE fio_msg_metadata_fn
+#define FIO_MAP_NAME fio_ch_set
+#define FIO_MAP_TYPE channel_s *
+#define FIO_MAP_TYPE_CMP(o1, o2) fio_channel_cmp((o1), (o2))
+#define FIO_MAP_TYPE_DESTROY(obj) fio_channel_free((obj))
+#define FIO_MAP_TYPE_COPY(dest, src) ((dest) = fio_channel_copy((src)))
 #include <fio-stl.h>
 
 #define FIO_FORCE_MALLOC_TMP 1
-#define FIO_SET_NAME fio_engine_set
-#define FIO_SET_OBJ_TYPE fio_pubsub_engine_s *
-#define FIO_SET_OBJ_COMPARE(k1, k2) ((k1) == (k2))
-#include <fio.h>
+#define FIO_ARRAY_NAME fio_meta_ary
+#define FIO_ARRAY_TYPE fio_msg_metadata_fn
+#include <fio-stl.h>
+
+#define FIO_FORCE_MALLOC_TMP 1
+#define FIO_MAP_NAME fio_engine_set
+#define FIO_MAP_TYPE fio_pubsub_engine_s *
+#define FIO_MAP_TYPE_CMP(k1, k2) ((k1) == (k2))
+#include <fio-stl.h>
 
 struct fio_collection_s {
   fio_ch_set_s channels;
@@ -4811,7 +4801,7 @@ struct fio_collection_s {
 };
 
 #define COLLECTION_INIT                                                        \
-  { .channels = FIO_SET_INIT, .lock = FIO_LOCK_INIT }
+  { .channels = FIO_MAP_INIT, .lock = FIO_LOCK_INIT }
 
 static struct {
   fio_collection_s filters;
@@ -4861,7 +4851,7 @@ Internal message object creation
 
 /** returns a temporary fio_meta_ary_s with a copy of the metadata array */
 static fio_meta_ary_s fio_postoffice_meta_copy_new(void) {
-  fio_meta_ary_s t = FIO_ARY_INIT;
+  fio_meta_ary_s t = FIO_ARRAY_INIT;
   if (!fio_meta_ary_count(&fio_postoffice.meta.ary)) {
     return t;
   }
@@ -4893,7 +4883,7 @@ static void fio_postoffice_meta_update(fio_msg_internal_s *m) {
 static fio_msg_internal_s *
 fio_msg_internal_create(int32_t filter, uint32_t type, fio_str_info_s ch,
                         fio_str_info_s data, int8_t is_json, int8_t cpy) {
-  fio_meta_ary_s t = FIO_ARY_INIT;
+  fio_meta_ary_s t = FIO_ARRAY_INIT;
   if (!filter)
     t = fio_postoffice_meta_copy_new();
   fio_msg_internal_s *m = fio_malloc(sizeof(*m) + (sizeof(*m->meta) * t.end) +
@@ -4901,25 +4891,25 @@ fio_msg_internal_create(int32_t filter, uint32_t type, fio_str_info_s ch,
   FIO_ASSERT_ALLOC(m);
   *m = (fio_msg_internal_s){
       .filter = filter,
-      .channel = (fio_str_info_s){.data = (char *)(m->meta + t.end) + 16,
+      .channel = (fio_str_info_s){.buf = (char *)(m->meta + t.end) + 16,
                                   .len = ch.len},
-      .data = (fio_str_info_s){.data = ((char *)(m->meta + t.end) + ch.len +
-                                        16 + 1),
-                               .len = data.len},
+      .data =
+          (fio_str_info_s){.buf = ((char *)(m->meta + t.end) + ch.len + 16 + 1),
+                           .len = data.len},
       .is_json = is_json,
       .ref = 1,
       .meta_len = t.end,
   };
-  fio_u2str32((uint8_t *)(m + 1) + (sizeof(*m->meta) * t.end), ch.len);
-  fio_u2str32((uint8_t *)(m + 1) + (sizeof(*m->meta) * t.end) + 4, data.len);
-  fio_u2str32((uint8_t *)(m + 1) + (sizeof(*m->meta) * t.end) + 8, type);
-  fio_u2str32((uint8_t *)(m + 1) + (sizeof(*m->meta) * t.end) + 12,
+  fio_u2buf32((uint8_t *)(m + 1) + (sizeof(*m->meta) * t.end), ch.len);
+  fio_u2buf32((uint8_t *)(m + 1) + (sizeof(*m->meta) * t.end) + 4, data.len);
+  fio_u2buf32((uint8_t *)(m + 1) + (sizeof(*m->meta) * t.end) + 8, type);
+  fio_u2buf32((uint8_t *)(m + 1) + (sizeof(*m->meta) * t.end) + 12,
               (uint32_t)filter);
-  // m->channel.data[ch.len] = 0; /* redundant, fio_malloc is all zero */
-  // m->data.data[data.len] = 0; /* redundant, fio_malloc is all zero */
+  // m->channel.buf[ch.len] = 0; /* redundant, fio_malloc is all zero */
+  // m->data.buf[data.len] = 0; /* redundant, fio_malloc is all zero */
   if (cpy) {
-    memcpy(m->channel.data, ch.data, ch.len);
-    memcpy(m->data.data, data.data, data.len);
+    memcpy(m->channel.buf, ch.buf, ch.len);
+    memcpy(m->data.buf, data.buf, data.len);
     while (t.end) {
       --t.end;
       m->meta[t.end] = t.ary[t.end](m->channel, m->data, is_json);
@@ -4932,9 +4922,9 @@ fio_msg_internal_create(int32_t filter, uint32_t type, fio_str_info_s ch,
 /** frees the internal message data */
 static inline void fio_msg_internal_finalize(fio_msg_internal_s *m) {
   if (!m->channel.len)
-    m->channel.data = NULL;
+    m->channel.buf = NULL;
   if (!m->data.len)
-    m->data.data = NULL;
+    m->data.buf = NULL;
 }
 
 /** frees the internal message data */
@@ -4989,7 +4979,7 @@ static inline channel_s *fio_filter_dup_lock_internal(channel_s *ch,
                                                       uint64_t hashed,
                                                       fio_collection_s *c) {
   fio_lock(&c->lock);
-  ch = fio_ch_set_insert(&c->channels, hashed, ch);
+  ch = fio_ch_set_set_if_missing(&c->channels, hashed, ch);
   fio_channel_dup(ch);
   fio_lock(&ch->lock);
   fio_unlock(&c->lock);
@@ -5010,13 +5000,13 @@ static channel_s *fio_filter_dup_lock(uint32_t filter) {
 /** Creates / finds a pubsub channel, adds a reference count and locks it. */
 static channel_s *fio_channel_dup_lock(fio_str_info_s name) {
   channel_s ch = (channel_s){
-      .name = name.data,
+      .name = name.buf,
       .name_len = name.len,
       .parent = &fio_postoffice.pubsub,
       .ref = 8, /* avoid freeing stack memory */
   };
-  uint64_t hashed_name = FIO_HASH_FN(
-      name.data, name.len, &fio_postoffice.pubsub, &fio_postoffice.pubsub);
+  uint64_t hashed_name = FIO_HASH_FN(name.buf, name.len, &fio_postoffice.pubsub,
+                                     &fio_postoffice.pubsub);
   channel_s *ch_p =
       fio_filter_dup_lock_internal(&ch, hashed_name, &fio_postoffice.pubsub);
   if (subscriptions_is_empty(&ch_p->subscriptions)) {
@@ -5029,14 +5019,14 @@ static channel_s *fio_channel_dup_lock(fio_str_info_s name) {
 static channel_s *fio_channel_match_dup_lock(fio_str_info_s name,
                                              fio_match_fn match) {
   channel_s ch = (channel_s){
-      .name = name.data,
+      .name = name.buf,
       .name_len = name.len,
       .parent = &fio_postoffice.patterns,
       .match = match,
       .ref = 8, /* avoid freeing stack memory */
   };
-  uint64_t hashed_name = FIO_HASH_FN(
-      name.data, name.len, &fio_postoffice.pubsub, &fio_postoffice.pubsub);
+  uint64_t hashed_name = FIO_HASH_FN(name.buf, name.len, &fio_postoffice.pubsub,
+                                     &fio_postoffice.pubsub);
   channel_s *ch_p =
       fio_filter_dup_lock_internal(&ch, hashed_name, &fio_postoffice.patterns);
   if (subscriptions_is_empty(&ch_p->subscriptions)) {
@@ -5136,7 +5126,7 @@ finish:
  * To keep the string beyond the lifetime of the subscription, copy the string.
  */
 fio_str_info_s fio_subscription_channel(subscription_s *subscription) {
-  return (fio_str_info_s){.data = subscription->parent->name,
+  return (fio_str_info_s){.buf = subscription->parent->name,
                           .len = subscription->parent->name_len};
 }
 
@@ -5151,11 +5141,11 @@ static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
 /* runs in lock(!) let'm all know */
 static void fio_pubsub_on_channel_create(channel_s *ch) {
   fio_lock(&fio_postoffice.engines.lock);
-  FIO_SET_FOR_LOOP(&fio_postoffice.engines.set, pos) {
+  FIO_MAP_EACH(&fio_postoffice.engines.set, pos) {
     if (!pos->hash)
       continue;
     pos->obj->subscribe(pos->obj,
-                        (fio_str_info_s){.data = ch->name, .len = ch->name_len},
+                        (fio_str_info_s){.buf = ch->name, .len = ch->name_len},
                         ch->match);
   }
   fio_unlock(&fio_postoffice.engines.lock);
@@ -5165,11 +5155,11 @@ static void fio_pubsub_on_channel_create(channel_s *ch) {
 /* runs in lock(!) let'm all know */
 static void fio_pubsub_on_channel_destroy(channel_s *ch) {
   fio_lock(&fio_postoffice.engines.lock);
-  FIO_SET_FOR_LOOP(&fio_postoffice.engines.set, pos) {
+  FIO_MAP_EACH(&fio_postoffice.engines.set, pos) {
     if (!pos->hash)
       continue;
     pos->obj->unsubscribe(
-        pos->obj, (fio_str_info_s){.data = ch->name, .len = ch->name_len},
+        pos->obj, (fio_str_info_s){.buf = ch->name, .len = ch->name_len},
         ch->match);
   }
   fio_unlock(&fio_postoffice.engines.lock);
@@ -5188,7 +5178,8 @@ static void fio_pubsub_on_channel_destroy(channel_s *ch) {
  */
 void fio_pubsub_attach(fio_pubsub_engine_s *engine) {
   fio_lock(&fio_postoffice.engines.lock);
-  fio_engine_set_insert(&fio_postoffice.engines.set, (uintptr_t)engine, engine);
+  fio_engine_set_set_if_missing(&fio_postoffice.engines.set, (uintptr_t)engine,
+                                engine);
   fio_unlock(&fio_postoffice.engines.lock);
   fio_pubsub_reattach(engine);
 }
@@ -5205,8 +5196,8 @@ void fio_pubsub_detach(fio_pubsub_engine_s *engine) {
 int fio_pubsub_is_attached(fio_pubsub_engine_s *engine) {
   fio_pubsub_engine_s *addr;
   fio_lock(&fio_postoffice.engines.lock);
-  addr = fio_engine_set_find(&fio_postoffice.engines.set, (uintptr_t)engine,
-                             engine);
+  addr = fio_engine_set_get(&fio_postoffice.engines.set, (uintptr_t)engine,
+                            engine);
   fio_unlock(&fio_postoffice.engines.lock);
   return addr != NULL;
 }
@@ -5228,22 +5219,20 @@ int fio_pubsub_is_attached(fio_pubsub_engine_s *engine) {
  */
 void fio_pubsub_reattach(fio_pubsub_engine_s *eng) {
   fio_lock(&fio_postoffice.pubsub.lock);
-  FIO_SET_FOR_LOOP(&fio_postoffice.pubsub.channels, pos) {
+  FIO_MAP_EACH(&fio_postoffice.pubsub.channels, pos) {
     if (!pos->hash)
       continue;
     eng->subscribe(
-        eng,
-        (fio_str_info_s){.data = pos->obj->name, .len = pos->obj->name_len},
+        eng, (fio_str_info_s){.buf = pos->obj->name, .len = pos->obj->name_len},
         NULL);
   }
   fio_unlock(&fio_postoffice.pubsub.lock);
   fio_lock(&fio_postoffice.patterns.lock);
-  FIO_SET_FOR_LOOP(&fio_postoffice.patterns.channels, pos) {
+  FIO_MAP_EACH(&fio_postoffice.patterns.channels, pos) {
     if (!pos->hash)
       continue;
     eng->subscribe(
-        eng,
-        (fio_str_info_s){.data = pos->obj->name, .len = pos->obj->name_len},
+        eng, (fio_str_info_s){.buf = pos->obj->name, .len = pos->obj->name_len},
         pos->obj->match);
   }
   fio_unlock(&fio_postoffice.patterns.lock);
@@ -5285,7 +5274,7 @@ static channel_s *fio_channel_find_dup_internal(channel_s *ch_tmp,
                                                 uint64_t hashed,
                                                 fio_collection_s *c) {
   fio_lock(&c->lock);
-  channel_s *ch = fio_ch_set_find(&c->channels, hashed, ch_tmp);
+  channel_s *ch = fio_ch_set_get(&c->channels, hashed, ch_tmp);
   if (!ch) {
     fio_unlock(&c->lock);
     return NULL;
@@ -5305,9 +5294,9 @@ static channel_s *fio_filter_find_dup(uint32_t filter) {
 
 /** Finds a pubsub channel, increasing it's reference count if it exists. */
 static channel_s *fio_channel_find_dup(fio_str_info_s name) {
-  channel_s tmp = {.name = name.data, .name_len = name.len};
-  uint64_t hashed_name = FIO_HASH_FN(
-      name.data, name.len, &fio_postoffice.pubsub, &fio_postoffice.pubsub);
+  channel_s tmp = {.name = name.buf, .name_len = name.len};
+  uint64_t hashed_name = FIO_HASH_FN(name.buf, name.len, &fio_postoffice.pubsub,
+                                     &fio_postoffice.pubsub);
   channel_s *ch =
       fio_channel_find_dup_internal(&tmp, hashed_name, &fio_postoffice.pubsub);
   return ch;
@@ -5401,13 +5390,13 @@ static void fio_publish2process(fio_msg_internal_s *m) {
   if (m->filter == 0) {
     /* pattern matching match */
     fio_lock(&fio_postoffice.patterns.lock);
-    FIO_SET_FOR_LOOP(&fio_postoffice.patterns.channels, p) {
+    FIO_MAP_EACH(&fio_postoffice.patterns.channels, p) {
       if (!p->hash) {
         continue;
       }
 
       if (p->obj->match(
-              (fio_str_info_s){.data = p->obj->name, .len = p->obj->name_len},
+              (fio_str_info_s){.buf = p->obj->name, .len = p->obj->name_len},
               m->channel)) {
         fio_channel_dup(p->obj);
         fio_defer_push_urgent(fio_publish2channel_task, p->obj,
@@ -5426,20 +5415,20 @@ finish:
 
 #define CLUSTER_READ_BUFFER 16384
 
-#define FIO_SET_NAME fio_sub_hash
-#define FIO_SET_OBJ_TYPE subscription_s *
-#define FIO_SET_KEY_TYPE fio_str_s
-#define FIO_SET_KEY_COPY(k1, k2)                                               \
-  (k1) = (fio_str_s)FIO_STR_INIT;                                              \
+#define FIO_MAP_NAME fio_sub_hash
+#define FIO_MAP_TYPE subscription_s *
+#define FIO_MAP_KEY fio_str_s
+#define FIO_MAP_KEY_COPY(k1, k2)                                               \
+  (k1) = (fio_str_s)FIO_STRING_INIT;                                           \
   fio_str_concat(&(k1), &(k2))
-#define FIO_SET_KEY_COMPARE(k1, k2) fio_str_iseq(&(k1), &(k2))
-#define FIO_SET_KEY_DESTROY(key) fio_str_destroy(&(key))
-#define FIO_SET_OBJ_DESTROY(obj) fio_unsubscribe(obj)
-#include <fio.h>
+#define FIO_MAP_KEY_CMP(k1, k2) fio_str_is_eq(&(k1), &(k2))
+#define FIO_MAP_KEY_DESTROY(key) fio_str_destroy(&(key))
+#define FIO_MAP_TYPE_DESTROY(obj) fio_unsubscribe(obj)
+#include <fio-stl.h>
 
-#define FIO_ARY_NAME cluster_clients
-#define FIO_ARY_TYPE intptr_t
-#define FIO_ARY_TYPE_DESTROY(a) fio_close((a))
+#define FIO_ARRAY_NAME cluster_clients
+#define FIO_ARRAY_TYPE intptr_t
+#define FIO_ARRAY_TYPE_DESTROY(a) fio_close((a))
 #include "fio-stl.h"
 
 #define FIO_CLUSTER_NAME_LIMIT 255
@@ -5466,7 +5455,7 @@ static struct cluster_data_s {
   cluster_clients_s clients;
   fio_lock_i lock;
   char name[FIO_CLUSTER_NAME_LIMIT + 1];
-} cluster_data = {.clients = FIO_ARY_INIT, .lock = FIO_LOCK_INIT};
+} cluster_data = {.clients = FIO_ARRAY_INIT, .lock = FIO_LOCK_INIT};
 
 static void fio_cluster_data_cleanup(int delete_file) {
   if (delete_file && cluster_data.name[0]) {
@@ -5552,10 +5541,10 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
     if (!c->exp_channel && !c->exp_msg) {
       if (c->length - i < 16)
         break;
-      c->exp_channel = fio_str2u32(c->buffer + i) + 1;
-      c->exp_msg = fio_str2u32(c->buffer + i + 4) + 1;
-      c->type = fio_str2u32(c->buffer + i + 8);
-      c->filter = (int32_t)fio_str2u32(c->buffer + i + 12);
+      c->exp_channel = fio_buf2u32(c->buffer + i) + 1;
+      c->exp_msg = fio_buf2u32(c->buffer + i + 4) + 1;
+      c->type = fio_buf2u32(c->buffer + i + 8);
+      c->filter = (int32_t)fio_buf2u32(c->buffer + i + 12);
       if (c->exp_channel) {
         if (c->exp_channel >= (1024 * 1024 * 16) + 1) {
           FIO_LOG_FATAL("(%d) cluster message name too long (16Mb limit): %u\n",
@@ -5574,9 +5563,9 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
       }
       c->msg = fio_msg_internal_create(
           c->filter, c->type,
-          (fio_str_info_s){.data = (char *)(c->msg + 1),
+          (fio_str_info_s){.buf = (char *)(c->msg + 1),
                            .len = c->exp_channel - 1},
-          (fio_str_info_s){.data = ((char *)(c->msg + 1) + c->exp_channel + 1),
+          (fio_str_info_s){.buf = ((char *)(c->msg + 1) + c->exp_channel + 1),
                            .len = c->exp_msg - 1},
           (int8_t)(c->type == FIO_CLUSTER_MSG_JSON ||
                    c->type == FIO_CLUSTER_MSG_ROOT_JSON),
@@ -5585,14 +5574,14 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
     }
     if (c->exp_channel) {
       if (c->exp_channel + i > c->length) {
-        memcpy(c->msg->channel.data +
+        memcpy(c->msg->channel.buf +
                    ((c->msg->channel.len + 1) - c->exp_channel),
                (char *)c->buffer + i, (size_t)(c->length - i));
         c->exp_channel -= (c->length - i);
         i = c->length;
         break;
       } else {
-        memcpy(c->msg->channel.data +
+        memcpy(c->msg->channel.buf +
                    ((c->msg->channel.len + 1) - c->exp_channel),
                (char *)c->buffer + i, (size_t)(c->exp_channel));
         i += c->exp_channel;
@@ -5601,13 +5590,13 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
     }
     if (c->exp_msg) {
       if (c->exp_msg + i > c->length) {
-        memcpy(c->msg->data.data + ((c->msg->data.len + 1) - c->exp_msg),
+        memcpy(c->msg->data.buf + ((c->msg->data.len + 1) - c->exp_msg),
                (char *)c->buffer + i, (size_t)(c->length - i));
         c->exp_msg -= (c->length - i);
         i = c->length;
         break;
       } else {
-        memcpy(c->msg->data.data + ((c->msg->data.len + 1) - c->exp_msg),
+        memcpy(c->msg->data.buf + ((c->msg->data.len + 1) - c->exp_msg),
                (char *)c->buffer + i, (size_t)(c->exp_msg));
         i += c->exp_msg;
         c->exp_msg = 0;
@@ -5654,7 +5643,7 @@ static void fio_cluster_on_close(intptr_t uuid, fio_protocol_s *pr_) {
   if (c->msg)
     fio_msg_internal_free(c->msg);
   c->msg = NULL;
-  fio_sub_hash_free(&c->pubsub);
+  fio_sub_hash_destroy(&c->pubsub);
   fio_cluster_protocol_free(c);
   (void)uuid;
 }
@@ -5677,8 +5666,8 @@ fio_cluster_protocol_alloc(intptr_t uuid,
   p->uuid = uuid;
   p->handler = handler;
   p->sender = sender;
-  p->pubsub = (fio_sub_hash_s)FIO_SET_INIT;
-  p->patterns = (fio_sub_hash_s)FIO_SET_INIT;
+  p->pubsub = (fio_sub_hash_s)FIO_MAP_INIT;
+  p->patterns = (fio_sub_hash_s)FIO_MAP_INIT;
   p->lock = FIO_LOCK_INIT;
   return &p->protocol;
 }
@@ -5690,7 +5679,7 @@ fio_cluster_protocol_alloc(intptr_t uuid,
 static void fio_cluster_server_sender(void *m_, intptr_t avoid_uuid) {
   fio_msg_internal_s *m = m_;
   fio_lock(&cluster_data.lock);
-  FIO_ARY_EACH(&cluster_data.clients, pos) {
+  FIO_ARRAY_EACH(&cluster_data.clients, pos) {
     if (*pos != -1) {
       if (*pos != avoid_uuid) {
         fio_msg_internal_send_dup(*pos, m);
@@ -5717,23 +5706,23 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     subscription_s *s =
         fio_subscribe(.on_message = fio_mock_on_message, .match = NULL,
                       .channel = pr->msg->channel);
-    fio_str_s tmp = (fio_str_s)FIO_STR_INIT_EXISTING(
-        pr->msg->channel.data, pr->msg->channel.len, 0, NULL); // don't free
+    fio_str_s tmp = (fio_str_s)FIO_STRING_INIT_EXISTING(
+        pr->msg->channel.buf, pr->msg->channel.len, 0, NULL); // don't free
     fio_lock(&pr->lock);
-    fio_sub_hash_insert(&pr->pubsub,
-                        FIO_HASH_FN(pr->msg->channel.data, pr->msg->channel.len,
-                                    &fio_postoffice.pubsub,
-                                    &fio_postoffice.pubsub),
-                        tmp, s, NULL);
+    fio_sub_hash_set(&pr->pubsub,
+                     FIO_HASH_FN(pr->msg->channel.buf, pr->msg->channel.len,
+                                 &fio_postoffice.pubsub,
+                                 &fio_postoffice.pubsub),
+                     tmp, s, NULL);
     fio_unlock(&pr->lock);
     break;
   }
   case FIO_CLUSTER_MSG_PUBSUB_UNSUB: {
-    fio_str_s tmp = FIO_STR_INIT_EXISTING(
-        pr->msg->channel.data, pr->msg->channel.len, 0, NULL); // don't free
+    fio_str_s tmp = FIO_STRING_INIT_EXISTING(
+        pr->msg->channel.buf, pr->msg->channel.len, 0, NULL); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_remove(&pr->pubsub,
-                        FIO_HASH_FN(pr->msg->channel.data, pr->msg->channel.len,
+                        FIO_HASH_FN(pr->msg->channel.buf, pr->msg->channel.len,
                                     &fio_postoffice.pubsub,
                                     &fio_postoffice.pubsub),
                         tmp, NULL);
@@ -5742,28 +5731,28 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
   }
 
   case FIO_CLUSTER_MSG_PATTERN_SUB: {
-    uintptr_t match = fio_str2u64(pr->msg->data.data);
+    uintptr_t match = fio_buf2u64(pr->msg->data.buf);
     subscription_s *s = fio_subscribe(.on_message = fio_mock_on_message,
                                       .match = (fio_match_fn)match,
                                       .channel = pr->msg->channel);
-    fio_str_s tmp = FIO_STR_INIT_EXISTING(
-        pr->msg->channel.data, pr->msg->channel.len, 0, NULL); // don't free
+    fio_str_s tmp = FIO_STRING_INIT_EXISTING(
+        pr->msg->channel.buf, pr->msg->channel.len, 0, NULL); // don't free
     fio_lock(&pr->lock);
-    fio_sub_hash_insert(&pr->patterns,
-                        FIO_HASH_FN(pr->msg->channel.data, pr->msg->channel.len,
-                                    &fio_postoffice.pubsub,
-                                    &fio_postoffice.pubsub),
-                        tmp, s, NULL);
+    fio_sub_hash_set(&pr->patterns,
+                     FIO_HASH_FN(pr->msg->channel.buf, pr->msg->channel.len,
+                                 &fio_postoffice.pubsub,
+                                 &fio_postoffice.pubsub),
+                     tmp, s, NULL);
     fio_unlock(&pr->lock);
     break;
   }
 
   case FIO_CLUSTER_MSG_PATTERN_UNSUB: {
-    fio_str_s tmp = FIO_STR_INIT_EXISTING(
-        pr->msg->channel.data, pr->msg->channel.len, 0, NULL); // don't free
+    fio_str_s tmp = FIO_STRING_INIT_EXISTING(
+        pr->msg->channel.buf, pr->msg->channel.len, 0, NULL); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_remove(&pr->patterns,
-                        FIO_HASH_FN(pr->msg->channel.data, pr->msg->channel.len,
+                        FIO_HASH_FN(pr->msg->channel.buf, pr->msg->channel.len,
                                     &fio_postoffice.pubsub,
                                     &fio_postoffice.pubsub),
                         tmp, NULL);
@@ -5894,7 +5883,7 @@ static void fio_cluster_on_connect(intptr_t uuid, void *udata) {
 
   /* inform root about all existing channels */
   fio_lock(&fio_postoffice.pubsub.lock);
-  FIO_SET_FOR_LOOP(&fio_postoffice.pubsub.channels, pos) {
+  FIO_MAP_EACH(&fio_postoffice.pubsub.channels, pos) {
     if (!pos->hash) {
       continue;
     }
@@ -5902,7 +5891,7 @@ static void fio_cluster_on_connect(intptr_t uuid, void *udata) {
   }
   fio_unlock(&fio_postoffice.pubsub.lock);
   fio_lock(&fio_postoffice.patterns.lock);
-  FIO_SET_FOR_LOOP(&fio_postoffice.patterns.channels, pos) {
+  FIO_MAP_EACH(&fio_postoffice.patterns.channels, pos) {
     if (!pos->hash) {
       continue;
     }
@@ -5964,11 +5953,11 @@ static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
   if (!fio_data->is_worker || fio_data->workers == 1 || !cluster_data.uuid ||
       !ch)
     return;
-  fio_str_info_s ch_name = {.data = ch->name, .len = ch->name_len};
-  fio_str_info_s msg = {.data = NULL, .len = 0};
+  fio_str_info_s ch_name = {.buf = ch->name, .len = ch->name_len};
+  fio_str_info_s msg = {.buf = NULL, .len = 0};
 #if DEBUG
   FIO_LOG_DEBUG("(%d) informing root about: %s (%zu) msg type %d",
-                (int)getpid(), ch_name.data, ch_name.len,
+                (int)getpid(), ch_name.buf, ch_name.len,
                 (ch->match ? (add ? FIO_CLUSTER_MSG_PATTERN_SUB
                                   : FIO_CLUSTER_MSG_PATTERN_UNSUB)
                            : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
@@ -5976,8 +5965,8 @@ static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
 #endif
   char buf[8] = {0};
   if (ch->match) {
-    fio_u2str64(buf, (uint64_t)ch->match);
-    msg.data = buf;
+    fio_u2buf64(buf, (uint64_t)ch->match);
+    msg.buf = buf;
     msg.len = sizeof(ch->match);
   }
 
@@ -6029,9 +6018,9 @@ static void fio_cluster_at_exit(void *ignore) {
     }
     fio_ch_set_pop(&fio_postoffice.filters.channels);
   }
-  fio_ch_set_free(&fio_postoffice.filters.channels);
-  fio_ch_set_free(&fio_postoffice.patterns.channels);
-  fio_ch_set_free(&fio_postoffice.pubsub.channels);
+  fio_ch_set_destroy(&fio_postoffice.filters.channels);
+  fio_ch_set_destroy(&fio_postoffice.patterns.channels);
+  fio_ch_set_destroy(&fio_postoffice.pubsub.channels);
 
   /* clear engines */
   FIO_PUBSUB_DEFAULT = FIO_PUBSUB_CLUSTER;
@@ -6039,7 +6028,7 @@ static void fio_cluster_at_exit(void *ignore) {
     fio_pubsub_detach(fio_engine_set_last(&fio_postoffice.engines.set));
     fio_engine_set_last(&fio_postoffice.engines.set);
   }
-  fio_engine_set_free(&fio_postoffice.engines.set);
+  fio_engine_set_destroy(&fio_postoffice.engines.set);
 
   /* clear meta hooks */
   fio_meta_ary_destroy(&fio_postoffice.meta.ary);
@@ -6069,7 +6058,7 @@ static void fio_pubsub_on_fork(void) {
   fio_postoffice.meta.lock = FIO_LOCK_INIT;
   cluster_data.lock = FIO_LOCK_INIT;
   cluster_data.uuid = 0;
-  FIO_SET_FOR_LOOP(&fio_postoffice.filters.channels, pos) {
+  FIO_MAP_EACH(&fio_postoffice.filters.channels, pos) {
     if (!pos->hash)
       continue;
     pos->obj->lock = FIO_LOCK_INIT;
@@ -6077,7 +6066,7 @@ static void fio_pubsub_on_fork(void) {
       n->lock = FIO_LOCK_INIT;
     }
   }
-  FIO_SET_FOR_LOOP(&fio_postoffice.pubsub.channels, pos) {
+  FIO_MAP_EACH(&fio_postoffice.pubsub.channels, pos) {
     if (!pos->hash)
       continue;
     pos->obj->lock = FIO_LOCK_INIT;
@@ -6085,7 +6074,7 @@ static void fio_pubsub_on_fork(void) {
       n->lock = FIO_LOCK_INIT;
     }
   }
-  FIO_SET_FOR_LOOP(&fio_postoffice.patterns.channels, pos) {
+  FIO_MAP_EACH(&fio_postoffice.patterns.channels, pos) {
     if (!pos->hash)
       continue;
     pos->obj->lock = FIO_LOCK_INIT;
@@ -6203,7 +6192,7 @@ static int fio_glob_match(fio_str_info_s pat, fio_str_info_s ch) {
    * character later in the string.  Because * matches all characters,
    * there's never a need to backtrack multiple levels.
    */
-  uint8_t *back_pat = NULL, *back_str = (uint8_t *)ch.data;
+  uint8_t *back_pat = NULL, *back_str = (uint8_t *)ch.buf;
   size_t back_pat_len = 0, back_str_len = ch.len;
 
   /*
@@ -6212,8 +6201,8 @@ static int fio_glob_match(fio_str_info_s pat, fio_str_info_s ch) {
    * on mismatch, or true after matching the trailing nul bytes.
    */
   while (ch.len) {
-    uint8_t c = *(uint8_t *)ch.data++;
-    uint8_t d = *(uint8_t *)pat.data++;
+    uint8_t c = *(uint8_t *)ch.buf++;
+    uint8_t d = *(uint8_t *)pat.buf++;
     ch.len--;
     pat.len--;
 
@@ -6224,15 +6213,15 @@ static int fio_glob_match(fio_str_info_s pat, fio_str_info_s ch) {
     case '*':       /* Any-length wildcard */
       if (!pat.len) /* Optimize trailing * case */
         return 1;
-      back_pat = (uint8_t *)pat.data;
+      back_pat = (uint8_t *)pat.buf;
       back_pat_len = pat.len;
-      back_str = (uint8_t *)--ch.data; /* Allow zero-length match */
+      back_str = (uint8_t *)--ch.buf; /* Allow zero-length match */
       back_str_len = ++ch.len;
       break;
 
     case '[': { /* Character class */
-      uint8_t match = 0, inverted = (*(uint8_t *)pat.data == '^');
-      uint8_t *cls = (uint8_t *)pat.data + inverted;
+      uint8_t match = 0, inverted = (*(uint8_t *)pat.buf == '^');
+      uint8_t *cls = (uint8_t *)pat.buf + inverted;
       uint8_t a = *cls++;
 
       /*
@@ -6258,12 +6247,12 @@ static int fio_glob_match(fio_str_info_s pat, fio_str_info_s ch) {
 
       if (match == inverted)
         goto backtrack;
-      pat.len -= cls - (uint8_t *)pat.data;
-      pat.data = (char *)cls;
+      pat.len -= cls - (uint8_t *)pat.buf;
+      pat.buf = (char *)cls;
 
     } break;
     case '\\':
-      d = *(uint8_t *)pat.data++;
+      d = *(uint8_t *)pat.buf++;
       pat.len--;
     /* fallthrough */
     default: /* Literal character */
@@ -6273,8 +6262,8 @@ static int fio_glob_match(fio_str_info_s pat, fio_str_info_s ch) {
       if (!back_pat)
         return 0; /* No point continuing */
       /* Try again from last *, one character later in str. */
-      pat.data = (char *)back_pat;
-      ch.data = (char *)++back_str;
+      pat.buf = (char *)back_pat;
+      ch.buf = (char *)++back_str;
       ch.len = --back_str_len;
       pat.len = back_pat_len;
     }
@@ -6363,7 +6352,7 @@ static inline uint64_t fio_siphash_xy(const void *data, size_t len, size_t x,
   } while (0);
 
   while (len >= 8) {
-    word.i = sip_local64(fio_str2u64(w8));
+    word.i = sip_local64(fio_buf2u64(w8));
     v3 ^= word.i;
     /* Sip Rounds */
     for (size_t i = 0; i < x; ++i) {
@@ -6449,22 +6438,22 @@ static inline void fio_sha1_perform_all_rounds(fio_sha1_s *s,
   uint32_t e = s->digest.i[4];
   uint32_t t, w[16];
   /* copy data to words, performing byte swapping as needed */
-  w[0] = fio_str2u32(buffer);
-  w[1] = fio_str2u32(buffer + 4);
-  w[2] = fio_str2u32(buffer + 8);
-  w[3] = fio_str2u32(buffer + 12);
-  w[4] = fio_str2u32(buffer + 16);
-  w[5] = fio_str2u32(buffer + 20);
-  w[6] = fio_str2u32(buffer + 24);
-  w[7] = fio_str2u32(buffer + 28);
-  w[8] = fio_str2u32(buffer + 32);
-  w[9] = fio_str2u32(buffer + 36);
-  w[10] = fio_str2u32(buffer + 40);
-  w[11] = fio_str2u32(buffer + 44);
-  w[12] = fio_str2u32(buffer + 48);
-  w[13] = fio_str2u32(buffer + 52);
-  w[14] = fio_str2u32(buffer + 56);
-  w[15] = fio_str2u32(buffer + 60);
+  w[0] = fio_buf2u32(buffer);
+  w[1] = fio_buf2u32(buffer + 4);
+  w[2] = fio_buf2u32(buffer + 8);
+  w[3] = fio_buf2u32(buffer + 12);
+  w[4] = fio_buf2u32(buffer + 16);
+  w[5] = fio_buf2u32(buffer + 20);
+  w[6] = fio_buf2u32(buffer + 24);
+  w[7] = fio_buf2u32(buffer + 28);
+  w[8] = fio_buf2u32(buffer + 32);
+  w[9] = fio_buf2u32(buffer + 36);
+  w[10] = fio_buf2u32(buffer + 40);
+  w[11] = fio_buf2u32(buffer + 44);
+  w[12] = fio_buf2u32(buffer + 48);
+  w[13] = fio_buf2u32(buffer + 52);
+  w[14] = fio_buf2u32(buffer + 56);
+  w[15] = fio_buf2u32(buffer + 60);
   /* perform rounds */
 #undef perform_single_round
 #define perform_single_round(num)                                              \
@@ -6716,22 +6705,22 @@ static inline void fio_sha2_perform_all_rounds(fio_sha2_s *s,
     uint64_t g = s->digest.i64[6];
     uint64_t h = s->digest.i64[7];
     uint64_t t1, t2, w[80];
-    w[0] = fio_str2u64(data);
-    w[1] = fio_str2u64(data + 8);
-    w[2] = fio_str2u64(data + 16);
-    w[3] = fio_str2u64(data + 24);
-    w[4] = fio_str2u64(data + 32);
-    w[5] = fio_str2u64(data + 40);
-    w[6] = fio_str2u64(data + 48);
-    w[7] = fio_str2u64(data + 56);
-    w[8] = fio_str2u64(data + 64);
-    w[9] = fio_str2u64(data + 72);
-    w[10] = fio_str2u64(data + 80);
-    w[11] = fio_str2u64(data + 88);
-    w[12] = fio_str2u64(data + 96);
-    w[13] = fio_str2u64(data + 104);
-    w[14] = fio_str2u64(data + 112);
-    w[15] = fio_str2u64(data + 120);
+    w[0] = fio_buf2u64(data);
+    w[1] = fio_buf2u64(data + 8);
+    w[2] = fio_buf2u64(data + 16);
+    w[3] = fio_buf2u64(data + 24);
+    w[4] = fio_buf2u64(data + 32);
+    w[5] = fio_buf2u64(data + 40);
+    w[6] = fio_buf2u64(data + 48);
+    w[7] = fio_buf2u64(data + 56);
+    w[8] = fio_buf2u64(data + 64);
+    w[9] = fio_buf2u64(data + 72);
+    w[10] = fio_buf2u64(data + 80);
+    w[11] = fio_buf2u64(data + 88);
+    w[12] = fio_buf2u64(data + 96);
+    w[13] = fio_buf2u64(data + 104);
+    w[14] = fio_buf2u64(data + 112);
+    w[15] = fio_buf2u64(data + 120);
 
 #undef perform_single_round
 #define perform_single_round(i)                                                \
@@ -6809,22 +6798,22 @@ static inline void fio_sha2_perform_all_rounds(fio_sha2_s *s,
     uint32_t h = s->digest.i32[7];
     uint32_t t1, t2, w[64];
 
-    w[0] = fio_str2u32(data);
-    w[1] = fio_str2u32(data + 4);
-    w[2] = fio_str2u32(data + 8);
-    w[3] = fio_str2u32(data + 12);
-    w[4] = fio_str2u32(data + 16);
-    w[5] = fio_str2u32(data + 20);
-    w[6] = fio_str2u32(data + 24);
-    w[7] = fio_str2u32(data + 28);
-    w[8] = fio_str2u32(data + 32);
-    w[9] = fio_str2u32(data + 36);
-    w[10] = fio_str2u32(data + 40);
-    w[11] = fio_str2u32(data + 44);
-    w[12] = fio_str2u32(data + 48);
-    w[13] = fio_str2u32(data + 52);
-    w[14] = fio_str2u32(data + 56);
-    w[15] = fio_str2u32(data + 60);
+    w[0] = fio_buf2u32(data);
+    w[1] = fio_buf2u32(data + 4);
+    w[2] = fio_buf2u32(data + 8);
+    w[3] = fio_buf2u32(data + 12);
+    w[4] = fio_buf2u32(data + 16);
+    w[5] = fio_buf2u32(data + 20);
+    w[6] = fio_buf2u32(data + 24);
+    w[7] = fio_buf2u32(data + 28);
+    w[8] = fio_buf2u32(data + 32);
+    w[9] = fio_buf2u32(data + 36);
+    w[10] = fio_buf2u32(data + 40);
+    w[11] = fio_buf2u32(data + 44);
+    w[12] = fio_buf2u32(data + 48);
+    w[13] = fio_buf2u32(data + 52);
+    w[14] = fio_buf2u32(data + 56);
+    w[15] = fio_buf2u32(data + 60);
 
 #undef perform_single_round
 #define perform_single_round(i)                                                \
@@ -7152,243 +7141,6 @@ char *fio_sha2_result(fio_sha2_s *s) {
 
 #undef perform_single_round
 
-/* ****************************************************************************
-Base64 encoding
-***************************************************************************** */
-
-/** the base64 encoding array */
-static const char base64_encodes_original[] =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
-
-/** the base64 encoding array */
-static const char base64_encodes_url[] =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_=";
-
-/**
-A base64 decoding array.
-
-Generation script (Ruby):
-
-a = []; a[255] = 0
-s = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=".bytes;
-s.length.times {|i| a[s[i]] = i };
-s = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,".bytes;
-s.length.times {|i| a[s[i]] = i };
-s = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".bytes;
-s.length.times {|i| a[s[i]] = i }; a.map!{ |i| i.to_i }; a
-
-*/
-static unsigned base64_decodes[] = {
-    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-    0,  0,  0,  0,  0,  62, 63, 62, 0,  63, 52, 53, 54, 55, 56, 57, 58, 59, 60,
-    61, 0,  0,  0,  64, 0,  0,  0,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
-    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 0,  0,  0,  0,
-    63, 0,  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
-    43, 44, 45, 46, 47, 48, 49, 50, 51, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-    0,  0,  0,  0,  0,  0,  0,  0,  0,
-};
-#define BITVAL(x) (base64_decodes[(x)] & 63)
-
-/*
- * The actual encoding logic. The map can be switched for encoding variations.
- */
-static inline int fio_base64_encode_internal(char *target, const char *data,
-                                             int len,
-                                             const char *base64_encodes) {
-  /* walk backwards, allowing fo inplace decoding (target == data) */
-  int groups = len / 3;
-  const int mod = len - (groups * 3);
-  const int target_size = (groups + (mod != 0)) * 4;
-  char *writer = target + target_size - 1;
-  const char *reader = data + len - 1;
-  writer[1] = 0;
-  switch (mod) {
-  case 2: {
-    char tmp2 = *(reader--);
-    char tmp1 = *(reader--);
-    *(writer--) = '=';
-    *(writer--) = base64_encodes[((tmp2 & 15) << 2)];
-    *(writer--) = base64_encodes[((tmp1 & 3) << 4) | ((tmp2 >> 4) & 15)];
-    *(writer--) = base64_encodes[(tmp1 >> 2) & 63];
-  } break;
-  case 1: {
-    char tmp1 = *(reader--);
-    *(writer--) = '=';
-    *(writer--) = '=';
-    *(writer--) = base64_encodes[(tmp1 & 3) << 4];
-    *(writer--) = base64_encodes[(tmp1 >> 2) & 63];
-  } break;
-  }
-  while (groups) {
-    groups--;
-    const char tmp3 = *(reader--);
-    const char tmp2 = *(reader--);
-    const char tmp1 = *(reader--);
-    *(writer--) = base64_encodes[tmp3 & 63];
-    *(writer--) = base64_encodes[((tmp2 & 15) << 2) | ((tmp3 >> 6) & 3)];
-    *(writer--) = base64_encodes[(((tmp1 & 3) << 4) | ((tmp2 >> 4) & 15))];
-    *(writer--) = base64_encodes[(tmp1 >> 2) & 63];
-  }
-  return target_size;
-}
-
-/**
-This will encode a byte array (data) of a specified length (len) and
-place the encoded data into the target byte buffer (target). The target buffer
-MUST have enough room for the expected data.
-
-Base64 encoding always requires 4 bytes for each 3 bytes. Padding is added if
-the raw data's length isn't devisable by 3.
-
-Always assume the target buffer should have room enough for (len*4/3 + 4)
-bytes.
-
-Returns the number of bytes actually written to the target buffer
-(including the Base64 required padding and excluding a NULL terminator).
-
-A NULL terminator char is NOT written to the target buffer.
-*/
-int fio_base64_encode(char *target, const char *data, int len) {
-  return fio_base64_encode_internal(target, data, len, base64_encodes_original);
-}
-
-/**
-Same as fio_base64_encode, but using Base64URL encoding.
-*/
-int fio_base64url_encode(char *target, const char *data, int len) {
-  return fio_base64_encode_internal(target, data, len, base64_encodes_url);
-}
-
-/**
-This will decode a Base64 encoded string of a specified length (len) and
-place the decoded data into the target byte buffer (target).
-
-The target buffer MUST have enough room for the expected data.
-
-A NULL byte will be appended to the target buffer. The function will return
-the number of bytes written to the target buffer.
-
-If the target buffer is NULL, the encoded string will be destructively edited
-and the decoded data will be placed in the original string's buffer.
-
-Base64 encoding always requires 4 bytes for each 3 bytes. Padding is added if
-the raw data's length isn't devisable by 3. Hence, the target buffer should
-be, at least, `base64_len/4*3 + 3` long.
-
-Returns the number of bytes actually written to the target buffer (excluding
-the NULL terminator byte).
-
-If an error occurred, returns the number of bytes written up to the error. Test
-`errno` for error (will be set to ERANGE).
-*/
-int fio_base64_decode(char *target, char *encoded, int base64_len) {
-  if (!target)
-    target = encoded;
-  if (base64_len <= 0) {
-    target[0] = 0;
-    return 0;
-  }
-  int written = 0;
-  uint8_t tmp1, tmp2, tmp3, tmp4;
-  // skip unknown data at end
-  while (base64_len &&
-         !base64_decodes[*(uint8_t *)(encoded + (base64_len - 1))]) {
-    base64_len--;
-  }
-  // skip white space
-  while (base64_len && isspace((*(uint8_t *)encoded))) {
-    base64_len--;
-    encoded++;
-  }
-  while (base64_len >= 4) {
-    if (!base64_len) {
-      return written;
-    }
-    tmp1 = *(uint8_t *)(encoded++);
-    tmp2 = *(uint8_t *)(encoded++);
-    tmp3 = *(uint8_t *)(encoded++);
-    tmp4 = *(uint8_t *)(encoded++);
-    if (!base64_decodes[tmp1] || !base64_decodes[tmp2] ||
-        !base64_decodes[tmp3] || !base64_decodes[tmp4]) {
-      errno = ERANGE;
-      goto finish;
-    }
-    *(target++) = (BITVAL(tmp1) << 2) | (BITVAL(tmp2) >> 4);
-    *(target++) = (BITVAL(tmp2) << 4) | (BITVAL(tmp3) >> 2);
-    *(target++) = (BITVAL(tmp3) << 6) | (BITVAL(tmp4));
-    // make sure we don't loop forever.
-    base64_len -= 4;
-    // count written bytes
-    written += 3;
-    // skip white space
-    while (base64_len && isspace((*encoded))) {
-      base64_len--;
-      encoded++;
-    }
-  }
-  // deal with the "tail" of the mis-encoded stream - this shouldn't happen
-  tmp1 = 0;
-  tmp2 = 0;
-  tmp3 = 0;
-  tmp4 = 0;
-  switch (base64_len) {
-  case 1:
-    tmp1 = *(uint8_t *)(encoded++);
-    if (!base64_decodes[tmp1]) {
-      errno = ERANGE;
-      goto finish;
-    }
-    *(target++) = BITVAL(tmp1);
-    written += 1;
-    break;
-  case 2:
-    tmp1 = *(uint8_t *)(encoded++);
-    tmp2 = *(uint8_t *)(encoded++);
-    if (!base64_decodes[tmp1] || !base64_decodes[tmp2]) {
-      errno = ERANGE;
-      goto finish;
-    }
-    *(target++) = (BITVAL(tmp1) << 2) | (BITVAL(tmp2) >> 6);
-    *(target++) = (BITVAL(tmp2) << 4);
-    written += 2;
-    break;
-  case 3:
-    tmp1 = *(uint8_t *)(encoded++);
-    tmp2 = *(uint8_t *)(encoded++);
-    tmp3 = *(uint8_t *)(encoded++);
-    if (!base64_decodes[tmp1] || !base64_decodes[tmp2] ||
-        !base64_decodes[tmp3]) {
-      errno = ERANGE;
-      goto finish;
-    }
-    *(target++) = (BITVAL(tmp1) << 2) | (BITVAL(tmp2) >> 6);
-    *(target++) = (BITVAL(tmp2) << 4) | (BITVAL(tmp3) >> 2);
-    *(target++) = BITVAL(tmp3) << 6;
-    written += 3;
-    break;
-  }
-finish:
-  if (encoded[-1] == '=') {
-    target--;
-    written--;
-    if (encoded[-2] == '=') {
-      target--;
-      written--;
-    }
-    if (written < 0)
-      written = 0;
-  }
-  *target = 0;
-  return written;
-}
-
 /* *****************************************************************************
 Section Start Marker
 
@@ -7579,11 +7331,11 @@ Testing listening socket
 
 FIO_FUNC void fio_socket_test(void) {
   /* initialize unix socket name */
-  fio_str_s sock_name = FIO_STR_INIT;
+  fio_str_s sock_name = FIO_STRING_INIT;
 #ifdef P_tmpdir
   fio_str_write(&sock_name, P_tmpdir, strlen(P_tmpdir));
   if (fio_str_len(&sock_name) &&
-      fio_str_data(&sock_name)[fio_str_len(&sock_name) - 1] == '/')
+      fio_str2ptr(&sock_name)[fio_str_len(&sock_name) - 1] == '/')
     fio_str_resize(&sock_name, fio_str_len(&sock_name) - 1);
 #else
   fio_str_write(&sock_name, "/tmp", 4);
@@ -7593,17 +7345,17 @@ FIO_FUNC void fio_socket_test(void) {
   fprintf(stderr, "=== Testing facil.io listening socket creation (partial "
                   "testing only).\n");
   fprintf(stderr, "* testing on TCP/IP port 8765 and Unix socket: %s\n",
-          fio_str_data(&sock_name));
-  intptr_t uuid = fio_socket(fio_str_data(&sock_name), NULL, 1);
+          fio_str2ptr(&sock_name));
+  intptr_t uuid = fio_socket(fio_str2ptr(&sock_name), NULL, 1);
   FIO_ASSERT(uuid != -1, "Failed to open unix socket\n");
   FIO_ASSERT(uuid_data(uuid).open, "Unix socket not initialized");
-  intptr_t client1 = fio_socket(fio_str_data(&sock_name), NULL, 0);
+  intptr_t client1 = fio_socket(fio_str2ptr(&sock_name), NULL, 0);
   FIO_ASSERT(client1 != -1, "Failed to connect to unix socket.");
   intptr_t client2 = fio_accept(uuid);
   FIO_ASSERT(client2 != -1, "Failed to accept unix socket connection.");
-  fprintf(stderr, "* Unix server addr %s\n", fio_peer_addr(uuid).data);
-  fprintf(stderr, "* Unix client1 addr %s\n", fio_peer_addr(client1).data);
-  fprintf(stderr, "* Unix client2 addr %s\n", fio_peer_addr(client2).data);
+  fprintf(stderr, "* Unix server addr %s\n", fio_peer_addr(uuid).buf);
+  fprintf(stderr, "* Unix client1 addr %s\n", fio_peer_addr(client1).buf);
+  fprintf(stderr, "* Unix client2 addr %s\n", fio_peer_addr(client2).buf);
   {
     char tmp_buf[28];
     ssize_t r = -1;
@@ -7645,17 +7397,17 @@ FIO_FUNC void fio_socket_test(void) {
   fio_force_close(client1);
   fio_force_close(client2);
   fio_force_close(uuid);
-  unlink(fio_str_data(&sock_name));
+  unlink(fio_str2ptr(&sock_name));
   /* free unix socket name */
   fio_str_destroy(&sock_name);
 
   uuid = fio_socket(NULL, "8765", 1);
   FIO_ASSERT(uuid != -1, "Failed to open TCP/IP socket on port 8765");
   FIO_ASSERT(uuid_data(uuid).open, "TCP/IP socket not initialized");
-  fprintf(stderr, "* TCP/IP server addr %s\n", fio_peer_addr(uuid).data);
+  fprintf(stderr, "* TCP/IP server addr %s\n", fio_peer_addr(uuid).buf);
   client1 = fio_socket("Localhost", "8765", 0);
   FIO_ASSERT(client1 != -1, "Failed to connect to TCP/IP socket on port 8765");
-  fprintf(stderr, "* TCP/IP client1 addr %s\n", fio_peer_addr(client1).data);
+  fprintf(stderr, "* TCP/IP client1 addr %s\n", fio_peer_addr(client1).buf);
   errno = EAGAIN;
   for (size_t i = 0; i < 100 && (errno == EAGAIN || errno == EWOULDBLOCK);
        ++i) {
@@ -7667,7 +7419,7 @@ FIO_FUNC void fio_socket_test(void) {
     perror("accept error");
   FIO_ASSERT(client2 != -1,
              "Failed to accept TCP/IP socket connection on port 8765");
-  fprintf(stderr, "* TCP/IP client2 addr %s\n", fio_peer_addr(client2).data);
+  fprintf(stderr, "* TCP/IP client2 addr %s\n", fio_peer_addr(client2).buf);
   fio_force_close(client1);
   fio_force_close(client2);
   fio_force_close(uuid);
@@ -7784,307 +7536,6 @@ FIO_FUNC void fio_defer_test(void) {
   FIO_ASSERT(task_queue_normal.writer == &task_queue_normal.static_queue,
              "defer library didn't release dynamic queue (should be static)");
   fprintf(stderr, "\n* passed.\n");
-}
-
-/* *****************************************************************************
-Set data-structure Testing
-***************************************************************************** */
-
-#define FIO_SET_TEST_COUNT 524288UL
-
-#define FIO_SET_NAME fio_set_test
-#define FIO_SET_OBJ_TYPE uintptr_t
-#include <fio.h>
-
-#define FIO_SET_NAME fio_hash_test
-#define FIO_SET_KEY_TYPE uintptr_t
-#define FIO_SET_OBJ_TYPE uintptr_t
-#include <fio.h>
-
-#define FIO_SET_NAME fio_set_attack
-#define FIO_SET_OBJ_COMPARE(a, b) ((a) == (b))
-#define FIO_SET_OBJ_TYPE uintptr_t
-#include <fio.h>
-
-FIO_FUNC void fio_set_test(void) {
-  fio_set_test_s s = FIO_SET_INIT;
-  fio_hash_test_s h = FIO_SET_INIT;
-  fprintf(
-      stderr,
-      "=== Testing Core ordered Set (re-including fio.h with FIO_SET_NAME)\n");
-  fprintf(stderr, "* Inserting %lu items\n", FIO_SET_TEST_COUNT);
-
-  FIO_ASSERT(fio_set_test_count(&s) == 0, "empty set should have zero objects");
-  FIO_ASSERT(fio_set_test_capa(&s) == 0, "empty set should have no capacity");
-  FIO_ASSERT(fio_hash_test_capa(&h) == 0, "empty hash should have no capacity");
-  FIO_ASSERT(!fio_set_test_is_fragmented(&s),
-             "empty set shouldn't be considered fragmented");
-  FIO_ASSERT(!fio_hash_test_is_fragmented(&h),
-             "empty hash shouldn't be considered fragmented");
-  FIO_ASSERT(!fio_set_test_last(&s), "empty set shouldn't have a last object");
-  FIO_ASSERT(!fio_hash_test_last(&h).key && !fio_hash_test_last(&h).obj,
-             "empty hash shouldn't have a last object");
-
-  for (uintptr_t i = 1; i < FIO_SET_TEST_COUNT; ++i) {
-    fio_set_test_insert(&s, i, i);
-    fio_hash_test_insert(&h, i, i, i + 1, NULL);
-    FIO_ASSERT(fio_set_test_find(&s, i, i), "set find failed after insert");
-    FIO_ASSERT(fio_hash_test_find(&h, i, i), "hash find failed after insert");
-    FIO_ASSERT(i == fio_set_test_find(&s, i, i), "set insertion != find");
-    FIO_ASSERT(i + 1 == fio_hash_test_find(&h, i, i), "hash insertion != find");
-  }
-  fprintf(stderr, "* Seeking %lu items\n", FIO_SET_TEST_COUNT);
-  for (unsigned long i = 1; i < FIO_SET_TEST_COUNT; ++i) {
-    FIO_ASSERT((i == fio_set_test_find(&s, i, i)),
-               "set insertion != find (seek)");
-    FIO_ASSERT((i + 1 == fio_hash_test_find(&h, i, i)),
-               "hash insertion != find (seek)");
-  }
-  {
-    fprintf(stderr, "* Testing order for %lu items in set\n",
-            FIO_SET_TEST_COUNT);
-    uintptr_t i = 1;
-    FIO_SET_FOR_LOOP(&s, pos) {
-      FIO_ASSERT(pos->obj == i, "object order mismatch %lu != %lu.",
-                 (unsigned long)i, (unsigned long)pos->obj);
-      ++i;
-    }
-  }
-  {
-    fprintf(stderr, "* Testing order for %lu items in hash\n",
-            FIO_SET_TEST_COUNT);
-    uintptr_t i = 1;
-    FIO_SET_FOR_LOOP(&h, pos) {
-      FIO_ASSERT(pos->obj.obj == i + 1 && pos->obj.key == i,
-                 "object order mismatch %lu != %lu.", (unsigned long)i,
-                 (unsigned long)pos->obj.key);
-      ++i;
-    }
-  }
-
-  fprintf(stderr, "* Removing odd items from %lu items\n", FIO_SET_TEST_COUNT);
-  for (unsigned long i = 1; i < FIO_SET_TEST_COUNT; i += 2) {
-    fio_set_test_remove(&s, i, i, NULL);
-    fio_hash_test_remove(&h, i, i, NULL);
-    FIO_ASSERT(!(fio_set_test_find(&s, i, i)),
-               "Removal failed in set (still exists).");
-    FIO_ASSERT(!(fio_hash_test_find(&h, i, i)),
-               "Removal failed in hash (still exists).");
-  }
-  {
-    fprintf(stderr, "* Testing for %lu / 2 holes\n", FIO_SET_TEST_COUNT);
-    uintptr_t i = 1;
-    FIO_SET_FOR_LOOP(&s, pos) {
-      if (pos->hash == 0) {
-        FIO_ASSERT((i & 1) == 1, "deleted object wasn't odd");
-      } else {
-        FIO_ASSERT(pos->obj == i, "deleted object value mismatch %lu != %lu",
-                   (unsigned long)i, (unsigned long)pos->obj);
-      }
-      ++i;
-    }
-    i = 1;
-    FIO_SET_FOR_LOOP(&h, pos) {
-      if (pos->hash == 0) {
-        FIO_ASSERT((i & 1) == 1, "deleted object wasn't odd");
-      } else {
-        FIO_ASSERT(pos->obj.key == i,
-                   "deleted object value mismatch %lu != %lu", (unsigned long)i,
-                   (unsigned long)pos->obj.key);
-      }
-      ++i;
-    }
-    {
-      fprintf(stderr, "* Poping two elements (testing pop through holes)\n");
-      FIO_ASSERT(fio_set_test_last(&s), "Pop `last` 1 failed - no last object");
-      uintptr_t tmp = fio_set_test_last(&s);
-      FIO_ASSERT(tmp, "Pop set `last` 1 failed to collect object");
-      fio_set_test_pop(&s);
-      FIO_ASSERT(
-          fio_set_test_last(&s) != tmp,
-          "Pop `last` 2 in set same as `last` 1 - failed to collect object");
-      tmp = fio_hash_test_last(&h).key;
-      FIO_ASSERT(tmp, "Pop hash `last` 1 failed to collect object");
-      fio_hash_test_pop(&h);
-      FIO_ASSERT(
-          fio_hash_test_last(&h).key != tmp,
-          "Pop `last` 2 in hash same as `last` 1 - failed to collect object");
-      FIO_ASSERT(fio_set_test_last(&s), "Pop `last` 2 failed - no last object");
-      FIO_ASSERT(fio_hash_test_last(&h).obj,
-                 "Pop `last` 2 failed in hash - no last object");
-      fio_set_test_pop(&s);
-      fio_hash_test_pop(&h);
-    }
-    if (1) {
-      uintptr_t tmp = 1;
-      fio_set_test_remove(&s, tmp, tmp, NULL);
-      fio_hash_test_remove(&h, tmp, tmp, NULL);
-      size_t count = s.count;
-      fio_set_test_overwrite(&s, tmp, tmp, NULL);
-      FIO_ASSERT(
-          count + 1 == s.count,
-          "Re-adding a removed item in set should increase count by 1 (%zu + "
-          "1 != %zu).",
-          count, (size_t)s.count);
-      count = h.count;
-      fio_hash_test_insert(&h, tmp, tmp, tmp, NULL);
-      FIO_ASSERT(
-          count + 1 == h.count,
-          "Re-adding a removed item in hash should increase count by 1 (%zu + "
-          "1 != %zu).",
-          count, (size_t)s.count);
-      tmp = fio_set_test_find(&s, tmp, tmp);
-      FIO_ASSERT(tmp == 1,
-                 "Re-adding a removed item should update the item in the set "
-                 "(%lu != 1)!",
-                 (unsigned long)fio_set_test_find(&s, tmp, tmp));
-      fio_set_test_remove(&s, tmp, tmp, NULL);
-      fio_hash_test_remove(&h, tmp, tmp, NULL);
-      FIO_ASSERT(count == h.count,
-                 "Re-removing an item should decrease count (%zu != %zu).",
-                 count, (size_t)s.count);
-      FIO_ASSERT(!fio_set_test_find(&s, tmp, tmp),
-                 "Re-removing a re-added item should update the item!");
-    }
-  }
-  fprintf(stderr, "* Compacting HashMap to %lu\n", FIO_SET_TEST_COUNT >> 1);
-  fio_set_test_compact(&s);
-  {
-    fprintf(stderr, "* Testing that %lu items are continuous\n",
-            FIO_SET_TEST_COUNT >> 1);
-    uintptr_t i = 0;
-    FIO_SET_FOR_LOOP(&s, pos) {
-      FIO_ASSERT(pos->hash != 0, "Found a hole after compact.");
-      ++i;
-    }
-    FIO_ASSERT(i == s.count, "count error (%lu != %lu).", i, s.count);
-  }
-
-  fio_set_test_free(&s);
-  fio_hash_test_free(&h);
-  FIO_ASSERT(!s.map && !s.ordered && !s.pos && !s.capa,
-             "HashMap not re-initialized after free.");
-
-  fio_set_test_capa_require(&s, FIO_SET_TEST_COUNT);
-
-  FIO_ASSERT(
-      s.map && s.ordered && !s.pos && s.capa >= FIO_SET_TEST_COUNT,
-      "capa_require changes state in a bad way (%p, %p, %zu, %zu ?>= %zu)",
-      (void *)s.map, (void *)s.ordered, s.pos, s.capa, FIO_SET_TEST_COUNT);
-
-  for (unsigned long i = 1; i < FIO_SET_TEST_COUNT; ++i) {
-    fio_set_test_insert(&s, i, i);
-    FIO_ASSERT(fio_set_test_find(&s, i, i),
-               "find failed after insert (2nd round)");
-    FIO_ASSERT(i == fio_set_test_find(&s, i, i),
-               "insertion (2nd round) != find");
-    FIO_ASSERT(i == s.count, "count error (%lu != %lu) post insertion.", i,
-               s.count);
-  }
-  fio_set_test_free(&s);
-  /* full/partial collision attack against set and test response */
-  if (1) {
-    fio_set_attack_s as = FIO_SET_INIT;
-    time_t start_ok = clock();
-    for (uintptr_t i = 0; i < FIO_SET_TEST_COUNT; ++i) {
-      fio_set_attack_insert(&as, i, i + 1);
-      FIO_ASSERT(fio_set_attack_find(&as, i, i + 1) == i + 1,
-                 "set attack verctor failed sanity test (seek != insert)");
-    }
-    time_t end_ok = clock();
-    FIO_ASSERT(fio_set_attack_count(&as) == FIO_SET_TEST_COUNT,
-               "set attack verctor failed sanity test (count error %zu != %zu)",
-               fio_set_attack_count(&as), FIO_SET_TEST_COUNT);
-    fio_set_attack_free(&as);
-
-    /* full collision attack */
-    time_t start_bad = clock();
-    for (uintptr_t i = 0; i < FIO_SET_TEST_COUNT; ++i) {
-      fio_set_attack_insert(&as, 1, i + 1);
-    }
-    time_t end_bad = clock();
-    FIO_ASSERT(fio_set_attack_count(&as) != FIO_SET_TEST_COUNT,
-               "set attack success! too many full-collisions inserts!");
-    FIO_LOG_DEBUG("set full-collision attack final count/capa = %zu / %zu",
-                  fio_set_attack_count(&as), fio_set_attack_capa(&as));
-    FIO_LOG_DEBUG("set full-collision attack timing impact (attack vs. normal) "
-                  "%zu vs. %zu",
-                  end_bad - start_bad, end_ok - start_ok);
-    fio_set_attack_free(&as);
-
-    /* partial collision attack */
-    start_bad = clock();
-    for (uintptr_t i = 0; i < FIO_SET_TEST_COUNT; ++i) {
-      fio_set_attack_insert(&as, ((i << 20) | 1), i + 1);
-    }
-    end_bad = clock();
-    FIO_ASSERT(fio_set_attack_count(&as) == FIO_SET_TEST_COUNT,
-               "partial collision resolusion failed, not enough inserts!");
-    FIO_LOG_DEBUG("set partial collision attack final count/capa = %zu / %zu",
-                  fio_set_attack_count(&as), fio_set_attack_capa(&as));
-    FIO_LOG_DEBUG("set partial collision attack timing impact (attack vs. "
-                  "normal) %zu vs. %zu",
-                  end_bad - start_bad, end_ok - start_ok);
-    fio_set_attack_free(&as);
-  }
-}
-
-/* *****************************************************************************
-Bad Hash (risky hash) tests
-***************************************************************************** */
-
-FIO_FUNC void fio_riskyhash_speed_test(void) {
-  /* test based on code from BearSSL with credit to Thomas Pornin */
-  uint8_t buffer[8192];
-  memset(buffer, 'T', sizeof(buffer));
-  /* warmup */
-  uint64_t hash = 0;
-  for (size_t i = 0; i < 4; i++) {
-    hash += fio_risky_hash(buffer, 8192, 1);
-    memcpy(buffer, &hash, sizeof(hash));
-  }
-  /* loop until test runs for more than 2 seconds */
-  for (uint64_t cycles = 8192;;) {
-    clock_t start, end;
-    start = clock();
-    for (size_t i = cycles; i > 0; i--) {
-      hash += fio_risky_hash(buffer, 8192, 1);
-      __asm__ volatile("" ::: "memory");
-    }
-    end = clock();
-    memcpy(buffer, &hash, sizeof(hash));
-    if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
-        cycles >= ((uint64_t)1 << 62)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio_risky_hash",
-              (double)(sizeof(buffer) * cycles) /
-                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
-      break;
-    }
-    cycles <<= 2;
-  }
-}
-
-FIO_FUNC void fio_riskyhash_test(void) {
-  fprintf(stderr, "===================================\n");
-#if NODEBUG
-  fio_riskyhash_speed_test();
-#else
-  fprintf(stderr, "fio_risky_hash speed test skipped (debug mode is slow)\n");
-  fio_str_info_s str1 =
-      (fio_str_info_s){.data = "nothing_is_really_here1", .len = 23};
-  fio_str_info_s str2 =
-      (fio_str_info_s){.data = "nothing_is_really_here2", .len = 23};
-  fio_str_s copy = FIO_STR_INIT;
-  FIO_ASSERT(fio_risky_hash(str1.data, str1.len, 1) !=
-                 fio_risky_hash(str2.data, str2.len, 1),
-             "Different strings should have a different risky hash");
-  fio_str_write(&copy, str1.data, str1.len);
-  FIO_ASSERT(fio_risky_hash(str1.data, str1.len, 1) ==
-                 fio_risky_hash(fio_str_data(&copy), fio_str_len(&copy), 1),
-             "Same string values should have the same risky hash");
-  fio_str_destroy(&copy);
-  (void)fio_riskyhash_speed_test;
-#endif
 }
 
 /* *****************************************************************************
@@ -8506,173 +7957,6 @@ error:
 }
 
 /* *****************************************************************************
-Base64 tests
-***************************************************************************** */
-
-FIO_FUNC void fio_base64_speed_test(void) {
-  /* test based on code from BearSSL with credit to Thomas Pornin */
-  char buffer[8192];
-  char result[8192 * 2];
-  memset(buffer, 'T', sizeof(buffer));
-  /* warmup */
-  for (size_t i = 0; i < 4; i++) {
-    fio_base64_encode(result, buffer, sizeof(buffer));
-    memcpy(buffer, result, sizeof(buffer));
-  }
-  /* loop until test runs for more than 2 seconds */
-  for (size_t cycles = 8192;;) {
-    clock_t start, end;
-    start = clock();
-    for (size_t i = cycles; i > 0; i--) {
-      fio_base64_encode(result, buffer, sizeof(buffer));
-      __asm__ volatile("" ::: "memory");
-    }
-    end = clock();
-    if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio Base64 Encode",
-              (double)(sizeof(buffer) * cycles) /
-                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
-      break;
-    }
-    cycles <<= 2;
-  }
-
-  /* speed test decoding */
-  const int encoded_len =
-      fio_base64_encode(result, buffer, (int)(sizeof(buffer) - 2));
-  /* warmup */
-  for (size_t i = 0; i < 4; i++) {
-    fio_base64_decode(buffer, result, encoded_len);
-    __asm__ volatile("" ::: "memory");
-  }
-  /* loop until test runs for more than 2 seconds */
-  for (size_t cycles = 8192;;) {
-    clock_t start, end;
-    start = clock();
-    for (size_t i = cycles; i > 0; i--) {
-      fio_base64_decode(buffer, result, encoded_len);
-      __asm__ volatile("" ::: "memory");
-    }
-    end = clock();
-    if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio Base64 Decode",
-              (double)(encoded_len * cycles) /
-                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
-      break;
-    }
-    cycles <<= 2;
-  }
-}
-
-FIO_FUNC void fio_base64_test(void) {
-  struct {
-    char *str;
-    char *base64;
-  } sets[] = {
-      {"Man is distinguished, not only by his reason, but by this singular "
-       "passion from other animals, which is a lust of the mind, that by a "
-       "perseverance of delight in the continued "
-       "and indefatigable generation "
-       "of knowledge, exceeds the short vehemence of any carnal pleasure.",
-       "TWFuIGlzIGRpc3Rpbmd1aXNoZWQsIG5vdCBvbmx5IGJ5IGhpcyByZWFzb24sIGJ1dCBieSB"
-       "0aGlzIHNpbmd1bGFyIHBhc3Npb24gZnJvbSBvdGhlciBhbmltYWxzLCB3aGljaCBpcyBhIG"
-       "x1c3Qgb2YgdGhlIG1pbmQsIHRoYXQgYnkgYSBwZXJzZXZlcmFuY2Ugb2YgZGVsaWdodCBpb"
-       "iB0aGUgY29udGludWVkIGFuZCBpbmRlZmF0aWdhYmxlIGdlbmVyYXRpb24gb2Yga25vd2xl"
-       "ZGdlLCBleGNlZWRzIHRoZSBzaG9ydCB2ZWhlbWVuY2Ugb2YgYW55IGNhcm5hbCBwbGVhc3V"
-       "yZS4="},
-      {"any carnal pleasure.", "YW55IGNhcm5hbCBwbGVhc3VyZS4="},
-      {"any carnal pleasure", "YW55IGNhcm5hbCBwbGVhc3VyZQ=="},
-      {"any carnal pleasur", "YW55IGNhcm5hbCBwbGVhc3Vy"},
-      {"", ""},
-      {"f", "Zg=="},
-      {"fo", "Zm8="},
-      {"foo", "Zm9v"},
-      {"foob", "Zm9vYg=="},
-      {"fooba", "Zm9vYmE="},
-      {"foobar", "Zm9vYmFy"},
-      {NULL, NULL} // Stop
-  };
-  int i = 0;
-  char buffer[1024];
-  fprintf(stderr, "===================================\n");
-  fprintf(stderr, "+ fio");
-  while (sets[i].str) {
-    fio_base64_encode(buffer, sets[i].str, strlen(sets[i].str));
-    if (strcmp(buffer, sets[i].base64)) {
-      fprintf(stderr,
-              ":\n--- fio Base64 Test FAILED!\nstring: %s\nlength: %lu\n "
-              "expected: %s\ngot: %s\n\n",
-              sets[i].str, strlen(sets[i].str), sets[i].base64, buffer);
-      FIO_ASSERT(0, "Base64 failure.");
-    }
-    i++;
-  }
-  if (!sets[i].str)
-    fprintf(stderr, " Base64 encode passed.\n");
-
-  i = 0;
-  fprintf(stderr, "+ fio");
-  while (sets[i].str) {
-    fio_base64_decode(buffer, sets[i].base64, strlen(sets[i].base64));
-    if (strcmp(buffer, sets[i].str)) {
-      fprintf(stderr,
-              ":\n--- fio Base64 Test FAILED!\nbase64: %s\nexpected: "
-              "%s\ngot: %s\n\n",
-              sets[i].base64, sets[i].str, buffer);
-      FIO_ASSERT(0, "Base64 failure.");
-    }
-    i++;
-  }
-  fprintf(stderr, " Base64 decode passed.\n");
-
-#if NODEBUG
-  fio_base64_speed_test();
-#else
-  fprintf(stderr,
-          "* Base64 speed test skipped (debug speeds are always slow).\n");
-  (void)fio_base64_speed_test;
-#endif
-}
-
-/*******************************************************************************
-Random Testing
-***************************************************************************** */
-
-FIO_FUNC void fio_test_random(void) {
-  fprintf(stderr, "=== Testing random generator\n");
-  uint64_t rnd = fio_rand64();
-  FIO_ASSERT((rnd != fio_rand64() && rnd != fio_rand64()),
-             "fio_rand64 returned the same result three times in a row.");
-#if NODEBUG
-  uint64_t buffer1[8];
-  uint8_t buffer2[8192];
-  clock_t start, end;
-  start = clock();
-  for (size_t i = 0; i < (8388608 / (64 / 8)); i++) {
-    buffer1[i & 7] = fio_rand64();
-    __asm__ volatile("" ::: "memory");
-  }
-  end = clock();
-  fprintf(stderr,
-          "+ Random generator available\n+ created 8Mb using 64bits "
-          "Random %lu CPU clock count ~%.2fMb/s\n",
-          end - start, (8.0) / (((double)(end - start)) / CLOCKS_PER_SEC));
-  start = clock();
-  for (size_t i = 0; i < (8388608 / (8192)); i++) {
-    fio_rand_bytes(buffer2, 8192);
-    __asm__ volatile("" ::: "memory");
-  }
-  end = clock();
-  fprintf(stderr,
-          "+ created 8Mb using 8,192 Bytes "
-          "Random %lu CPU clock count ~%.2fMb/s\n",
-          end - start, (8.0) / (((double)(end - start)) / CLOCKS_PER_SEC));
-  (void)buffer1;
-  (void)buffer2;
-#endif
-}
-
-/* *****************************************************************************
 Poll (not kqueue or epoll) tests
 ***************************************************************************** */
 #if FIO_ENGINE_POLL
@@ -8747,29 +8031,29 @@ FIO_FUNC void fio_uuid_link_test(void) {
 Byte Order Testing
 ***************************************************************************** */
 
-FIO_FUNC void fio_str2u_test(void) {
-  fprintf(stderr, "=== Testing fio_u2strX and fio_u2strX functions.\n");
+FIO_FUNC void fio_buf2u_test(void) {
+  fprintf(stderr, "=== Testing fio_u2bufX and fio_u2bufX functions.\n");
   char buffer[32];
   for (int64_t i = -1024; i < 1024; ++i) {
-    fio_u2str64(buffer, i);
+    fio_u2buf64(buffer, i);
     __asm__ volatile("" ::: "memory");
-    FIO_ASSERT((int64_t)fio_str2u64(buffer) == i,
-               "fio_u2str64 / fio_str2u64  mismatch %zd != %zd",
-               (ssize_t)fio_str2u64(buffer), (ssize_t)i);
+    FIO_ASSERT((int64_t)fio_buf2u64(buffer) == i,
+               "fio_u2buf64 / fio_buf2u64  mismatch %zd != %zd",
+               (ssize_t)fio_buf2u64(buffer), (ssize_t)i);
   }
   for (int32_t i = -1024; i < 1024; ++i) {
-    fio_u2str32(buffer, i);
+    fio_u2buf32(buffer, i);
     __asm__ volatile("" ::: "memory");
-    FIO_ASSERT((int32_t)fio_str2u32(buffer) == i,
-               "fio_u2str32 / fio_str2u32  mismatch %zd != %zd",
-               (ssize_t)(fio_str2u32(buffer)), (ssize_t)i);
+    FIO_ASSERT((int32_t)fio_buf2u32(buffer) == i,
+               "fio_u2buf32 / fio_buf2u32  mismatch %zd != %zd",
+               (ssize_t)(fio_buf2u32(buffer)), (ssize_t)i);
   }
   for (int16_t i = -1024; i < 1024; ++i) {
-    fio_u2str16(buffer, i);
+    fio_u2buf16(buffer, i);
     __asm__ volatile("" ::: "memory");
-    FIO_ASSERT((int16_t)fio_str2u16(buffer) == i,
-               "fio_u2str16 / fio_str2u16  mismatch %zd != %zd",
-               (ssize_t)(fio_str2u16(buffer)), (ssize_t)i);
+    FIO_ASSERT((int16_t)fio_buf2u16(buffer) == i,
+               "fio_u2buf16 / fio_buf2u16  mismatch %zd != %zd",
+               (ssize_t)(fio_buf2u16(buffer)), (ssize_t)i);
   }
   fprintf(stderr, "* passed.\n");
 }
@@ -8798,12 +8082,12 @@ FIO_FUNC void fio_pubsub_test(void) {
   uintptr_t expect = 0;
   FIO_ASSERT(!s, "fio_subscribe should fail without a callback!");
   char buffer[8];
-  fio_u2str32((uint8_t *)buffer + 1, 42);
-  FIO_ASSERT(fio_str2u32((uint8_t *)buffer + 1) == 42,
-             "fio_u2str32 / fio_str2u32 not reversible (42)!");
-  fio_u2str32((uint8_t *)buffer, 4);
-  FIO_ASSERT(fio_str2u32((uint8_t *)buffer) == 4,
-             "fio_u2str32 / fio_str2u32 not reversible (4)!");
+  fio_u2buf32((uint8_t *)buffer + 1, 42);
+  FIO_ASSERT(fio_buf2u32((uint8_t *)buffer + 1) == 42,
+             "fio_u2buf32 / fio_buf2u32 not reversible (42)!");
+  fio_u2buf32((uint8_t *)buffer, 4);
+  FIO_ASSERT(fio_buf2u32((uint8_t *)buffer) == 4,
+             "fio_u2buf32 / fio_buf2u32 not reversible (4)!");
   subscription_s *s2 =
       fio_subscribe(.filter = 1, .udata1 = &counter,
                     .on_message = fio_pubsub_test_on_message,
@@ -8850,287 +8134,21 @@ FIO_FUNC void fio_pubsub_test(void) {
 #endif
 
 /* *****************************************************************************
-String 2 Number and Number 2 String (partial) testing
-***************************************************************************** */
-
-#if NODEBUG
-#define FIO_ATOL_TEST_MAX_CYCLES 3145728
-#else
-#define FIO_ATOL_TEST_MAX_CYCLES 4096
-#endif
-FIO_FUNC void fio_atol_test(void) {
-  fprintf(stderr, "=== Testing fio_ltoa and fio_atol (partial)\n");
-#ifndef NODEBUG
-  fprintf(stderr,
-          "Note: No optimizations - facil.io performance will be slow.\n");
-#endif
-  fprintf(stderr,
-          "      Test with make test/optimized for realistic results.\n");
-  time_t start, end;
-
-#define TEST_ATOL(s, n)                                                        \
-  do {                                                                         \
-    char *p = (char *)(s);                                                     \
-    int64_t r = fio_atol(&p);                                                  \
-    FIO_ASSERT(r == (n), "fio_atol test error! %s => %zd (not %zd)",           \
-               ((char *)(s)), (size_t)r, (size_t)n);                           \
-    FIO_ASSERT((s) + strlen((s)) == p,                                         \
-               "fio_atol test error! %s reading position not at end (%zu)",    \
-               (s), (size_t)(p - (s)));                                        \
-    char buf[72];                                                              \
-    buf[fio_ltoa(buf, n, 2)] = 0;                                              \
-    p = buf;                                                                   \
-    FIO_ASSERT(fio_atol(&p) == (n),                                            \
-               "fio_ltoa base 2 test error! "                                  \
-               "%s != %s (%zd)",                                               \
-               buf, ((char *)(s)), (size_t)((p = buf), fio_atol(&p)));         \
-    buf[fio_ltoa(buf, n, 8)] = 0;                                              \
-    p = buf;                                                                   \
-    FIO_ASSERT(fio_atol(&p) == (n),                                            \
-               "fio_ltoa base 8 test error! "                                  \
-               "%s != %s (%zd)",                                               \
-               buf, ((char *)(s)), (size_t)((p = buf), fio_atol(&p)));         \
-    buf[fio_ltoa(buf, n, 10)] = 0;                                             \
-    p = buf;                                                                   \
-    FIO_ASSERT(fio_atol(&p) == (n),                                            \
-               "fio_ltoa base 10 test error! "                                 \
-               "%s != %s (%zd)",                                               \
-               buf, ((char *)(s)), (size_t)((p = buf), fio_atol(&p)));         \
-    buf[fio_ltoa(buf, n, 16)] = 0;                                             \
-    p = buf;                                                                   \
-    FIO_ASSERT(fio_atol(&p) == (n),                                            \
-               "fio_ltoa base 16 test error! "                                 \
-               "%s != %s (%zd)",                                               \
-               buf, ((char *)(s)), (size_t)((p = buf), fio_atol(&p)));         \
-  } while (0)
-  TEST_ATOL("0x1", 1);
-  TEST_ATOL("-0x1", -1);
-  TEST_ATOL("-0xa", -10);                                /* sign before hex */
-  TEST_ATOL("0xe5d4c3b2a1908770", -1885667171979196560); /* sign within hex */
-  TEST_ATOL("0b00000000000011", 3);
-  TEST_ATOL("-0b00000000000011", -3);
-  TEST_ATOL("0b0000000000000000000000000000000000000000000000000", 0);
-  TEST_ATOL("0", 0);
-  TEST_ATOL("1", 1);
-  TEST_ATOL("2", 2);
-  TEST_ATOL("-2", -2);
-  TEST_ATOL("0000000000000000000000000000000000000000000000042", 34); /* oct */
-  TEST_ATOL("9223372036854775807", 9223372036854775807LL); /* INT64_MAX */
-  TEST_ATOL("9223372036854775808",
-            9223372036854775807LL); /* INT64_MAX overflow protection */
-  TEST_ATOL("9223372036854775999",
-            9223372036854775807LL); /* INT64_MAX overflow protection */
-
-  char number_hex[128] = "0xe5d4c3b2a1908770"; /* hex with embedded sign */
-  // char number_hex[128] = "-0x1a2b3c4d5e6f7890";
-  char number[128] = "-1885667171979196560";
-  intptr_t expect = -1885667171979196560;
-  intptr_t result = 0;
-
-  result = 0;
-
-  start = clock();
-  for (size_t i = 0; i < FIO_ATOL_TEST_MAX_CYCLES; ++i) {
-    __asm__ volatile("" ::: "memory");
-    char *pos = number;
-    result = fio_atol(&pos);
-    __asm__ volatile("" ::: "memory");
-  }
-  end = clock();
-  fprintf(stderr, "fio_atol base 10 (%ld): %zd CPU cycles\n", result,
-          end - start);
-
-  result = 0;
-  start = clock();
-  for (size_t i = 0; i < FIO_ATOL_TEST_MAX_CYCLES; ++i) {
-    __asm__ volatile("" ::: "memory");
-    result = strtol(number, NULL, 0);
-    __asm__ volatile("" ::: "memory");
-  }
-  end = clock();
-  fprintf(stderr, "native strtol base 10 (%ld): %zd CPU cycles\n", result,
-          end - start);
-
-  result = 0;
-  start = clock();
-  for (size_t i = 0; i < FIO_ATOL_TEST_MAX_CYCLES; ++i) {
-    __asm__ volatile("" ::: "memory");
-    char *pos = number_hex;
-    result = fio_atol(&pos);
-    __asm__ volatile("" ::: "memory");
-  }
-  end = clock();
-  fprintf(stderr, "fio_atol base 16 (%ld): %zd CPU cycles\n", result,
-          end - start);
-
-  result = 0;
-  start = clock();
-  for (size_t i = 0; i < FIO_ATOL_TEST_MAX_CYCLES; ++i) {
-    __asm__ volatile("" ::: "memory");
-    result = strtol(number_hex, NULL, 0);
-    __asm__ volatile("" ::: "memory");
-  }
-  end = clock();
-  fprintf(stderr, "native strtol base 16 (%ld): %zd CPU cycles%s\n", result,
-          end - start, (result != expect ? " (!?stdlib overflow?!)" : ""));
-
-  result = 0;
-  start = clock();
-  for (size_t i = 0; i < FIO_ATOL_TEST_MAX_CYCLES; ++i) {
-    __asm__ volatile("" ::: "memory");
-    fio_ltoa(number, expect, 10);
-    __asm__ volatile("" ::: "memory");
-  }
-  end = clock();
-  {
-    char *buf = number;
-    FIO_ASSERT(fio_atol(&buf) == expect,
-               "fio_ltoa with base 10 returned wrong result (%s != %ld)",
-               number, expect);
-  }
-  fprintf(stderr, "fio_ltoa base 10 (%s): %zd CPU cycles\n", number,
-          end - start);
-
-  result = 0;
-  start = clock();
-  for (size_t i = 0; i < FIO_ATOL_TEST_MAX_CYCLES; ++i) {
-    __asm__ volatile("" ::: "memory");
-    sprintf(number, "%ld", expect);
-    __asm__ volatile("" ::: "memory");
-  }
-  end = clock();
-  fprintf(stderr, "native sprintf base 10 (%s): %zd CPU cycles\n", number,
-          end - start);
-  FIO_ASSERT(fio_ltoa(number, 0, 0) == 1,
-             "base 10 zero should be single char.");
-  FIO_ASSERT(memcmp(number, "0", 2) == 0, "base 10 zero should be \"0\" (%s).",
-             number);
-  fprintf(stderr, "* passed.\n");
-#undef TEST_ATOL
-}
-
-/* *****************************************************************************
-String 2 Float and Float 2 String (partial) testing
-***************************************************************************** */
-
-FIO_FUNC void fio_atof_test(void) {
-  fprintf(stderr, "=== Testing fio_ftoa and fio_ftoa (partial)\n");
-#define TEST_DOUBLE(s, d, must)                                                \
-  do {                                                                         \
-    char *p = (char *)(s);                                                     \
-    double r = fio_atof(&p);                                                   \
-    if (r != (d)) {                                                            \
-      FIO_LOG_DEBUG("Double Test Error! %s => %.19g (not %.19g)",              \
-                    ((char *)(s)), r, d);                                      \
-      if (must) {                                                              \
-        FIO_ASSERT(0, "double test failed on %s", ((char *)(s)));              \
-        exit(-1);                                                              \
-      }                                                                        \
-    }                                                                          \
-  } while (0)
-  /* The numbers were copied from https://github.com/miloyip/rapidjson */
-  TEST_DOUBLE("0.0", 0.0, 1);
-  TEST_DOUBLE("-0.0", -0.0, 1);
-  TEST_DOUBLE("1.0", 1.0, 1);
-  TEST_DOUBLE("-1.0", -1.0, 1);
-  TEST_DOUBLE("1.5", 1.5, 1);
-  TEST_DOUBLE("-1.5", -1.5, 1);
-  TEST_DOUBLE("3.1416", 3.1416, 1);
-  TEST_DOUBLE("1E10", 1E10, 1);
-  TEST_DOUBLE("1e10", 1e10, 1);
-  TEST_DOUBLE("1E+10", 1E+10, 1);
-  TEST_DOUBLE("1E-10", 1E-10, 1);
-  TEST_DOUBLE("-1E10", -1E10, 1);
-  TEST_DOUBLE("-1e10", -1e10, 1);
-  TEST_DOUBLE("-1E+10", -1E+10, 1);
-  TEST_DOUBLE("-1E-10", -1E-10, 1);
-  TEST_DOUBLE("1.234E+10", 1.234E+10, 1);
-  TEST_DOUBLE("1.234E-10", 1.234E-10, 1);
-  TEST_DOUBLE("1.79769e+308", 1.79769e+308, 1);
-  TEST_DOUBLE("2.22507e-308", 2.22507e-308, 1);
-  TEST_DOUBLE("-1.79769e+308", -1.79769e+308, 1);
-  TEST_DOUBLE("-2.22507e-308", -2.22507e-308, 1);
-  TEST_DOUBLE("4.9406564584124654e-324", 4.9406564584124654e-324, 0);
-  TEST_DOUBLE("2.2250738585072009e-308", 2.2250738585072009e-308, 0);
-  TEST_DOUBLE("2.2250738585072014e-308", 2.2250738585072014e-308, 1);
-  TEST_DOUBLE("1.7976931348623157e+308", 1.7976931348623157e+308, 1);
-  TEST_DOUBLE("1e-10000", 0.0, 0);
-  TEST_DOUBLE("18446744073709551616", 18446744073709551616.0, 0);
-
-  TEST_DOUBLE("-9223372036854775809", -9223372036854775809.0, 0);
-
-  TEST_DOUBLE("0.9868011474609375", 0.9868011474609375, 0);
-  TEST_DOUBLE("123e34", 123e34, 1);
-  TEST_DOUBLE("45913141877270640000.0", 45913141877270640000.0, 1);
-  TEST_DOUBLE("2.2250738585072011e-308", 2.2250738585072011e-308, 0);
-  TEST_DOUBLE("1e-214748363", 0.0, 1);
-  TEST_DOUBLE("1e-214748364", 0.0, 1);
-  TEST_DOUBLE("0.017976931348623157e+310, 1", 1.7976931348623157e+308, 0);
-
-  TEST_DOUBLE("2.2250738585072012e-308", 2.2250738585072014e-308, 0);
-  TEST_DOUBLE("2.22507385850720113605740979670913197593481954635164565e-308",
-              2.2250738585072014e-308, 0);
-
-  TEST_DOUBLE("0.999999999999999944488848768742172978818416595458984375", 1.0,
-              0);
-  TEST_DOUBLE("0.999999999999999944488848768742172978818416595458984376", 1.0,
-              0);
-  TEST_DOUBLE("1.00000000000000011102230246251565404236316680908203125", 1.0,
-              0);
-  TEST_DOUBLE("1.00000000000000011102230246251565404236316680908203124", 1.0,
-              0);
-
-  TEST_DOUBLE("72057594037927928.0", 72057594037927928.0, 0);
-  TEST_DOUBLE("72057594037927936.0", 72057594037927936.0, 0);
-  TEST_DOUBLE("72057594037927932.0", 72057594037927936.0, 0);
-  TEST_DOUBLE("7205759403792793200001e-5", 72057594037927936.0, 0);
-
-  TEST_DOUBLE("9223372036854774784.0", 9223372036854774784.0, 0);
-  TEST_DOUBLE("9223372036854775808.0", 9223372036854775808.0, 0);
-  TEST_DOUBLE("9223372036854775296.0", 9223372036854775808.0, 0);
-  TEST_DOUBLE("922337203685477529600001e-5", 9223372036854775808.0, 0);
-
-  TEST_DOUBLE("10141204801825834086073718800384",
-              10141204801825834086073718800384.0, 0);
-  TEST_DOUBLE("10141204801825835211973625643008",
-              10141204801825835211973625643008.0, 0);
-  TEST_DOUBLE("10141204801825834649023672221696",
-              10141204801825835211973625643008.0, 0);
-  TEST_DOUBLE("1014120480182583464902367222169600001e-5",
-              10141204801825835211973625643008.0, 0);
-
-  TEST_DOUBLE("5708990770823838890407843763683279797179383808",
-              5708990770823838890407843763683279797179383808.0, 0);
-  TEST_DOUBLE("5708990770823839524233143877797980545530986496",
-              5708990770823839524233143877797980545530986496.0, 0);
-  TEST_DOUBLE("5708990770823839207320493820740630171355185152",
-              5708990770823839524233143877797980545530986496.0, 0);
-  TEST_DOUBLE("5708990770823839207320493820740630171355185152001e-3",
-              5708990770823839524233143877797980545530986496.0, 0);
-  fprintf(stderr, "\n* passed.\n");
-}
-/* *****************************************************************************
 Run all tests
 ***************************************************************************** */
 
 void fio_test(void) {
+  fio_siphash_test();
+  fio_sha1_test();
+  fio_sha2_test();
   FIO_ASSERT(fio_capa(), "facil.io initialization error!");
   fio_state_callback_test();
-  fio_atol_test();
-  fio_atof_test();
-  fio_set_test();
   fio_defer_test();
   fio_timer_test();
   fio_poll_test();
   fio_socket_test();
   fio_uuid_link_test();
   fio_cycle_test();
-  fio_riskyhash_test();
-  fio_siphash_test();
-  fio_sha1_test();
-  fio_sha2_test();
-  fio_base64_test();
-  fio_test_random();
   fio_pubsub_test();
   (void)fio_sentinel_task;
   (void)deferred_on_shutdown;
