@@ -37,6 +37,45 @@ Feel free to copy, use and enjoy according to the license provided.
  * SHA-1
  * SHA-2
  *
+ *
+ *
+ * Quick Overview
+ * ==============
+ *
+ * The core IO library follows an evented design and uses callbacks for IO
+ * events. Using the API described in the Connection Callback (Protocol)
+ * Management section:
+ *
+ * - Each connection / socket, is identified by a process unique number
+ *   (`uuid`).
+ *
+ * - Connections are assigned protocol objects (`fio_protocol_s`) using the
+ *   `fio_attach` function.
+ *
+ * - The callbacks in the protocol object are called whenever an IO event
+ *   occurs.
+ *
+ * - Callbacks are protected using one of two connection bound locks -
+ *   `FIO_PR_LOCK_TASK` for most tasks and `FIO_PR_LOCK_WRITE` for `on_ready`
+ *   and `ping` tasks.
+ *
+ * - User data is assumed to be stored in the protocol object using C style
+ *   inheritance.
+ *
+ * Reading and writing operations use an internal user-land buffer and they
+ * never fail... unless, the client is so slow that they appear to be attacking
+ * the network layer (slowloris), the connection was lost due to other reasons
+ * or the system is out of memory.
+ *
+ * Because the framework is evented, there's API that offers easy event and task
+ * scheduling, including timers etc'. Also, connection events can be
+ * rescheduled, allowing connections to behave like state-machines.
+ *
+ * The core library includes Pub/Sub (publish / subscribe) services which offer
+ * easy IPC (inter process communication) in a network friendly API. Pub/Sub
+ * services can be extended to synchronize with external databases such as
+ * Redis.
+ *
  **************************************************************************** */
 
 /* *****************************************************************************
@@ -89,16 +128,6 @@ Compilation Macros
 #ifndef FIO_TLS_IGNORE_MISSING_ERROR
 /* If true, a no-op TLS implementation will be enabled (for debugging). */
 #define FIO_TLS_IGNORE_MISSING_ERROR 0
-#endif
-
-/* *****************************************************************************
-C++ extern start
-***************************************************************************** */
-/* support C++ */
-#ifdef __cplusplus
-extern "C" {
-/* C++ keyword was deprecated */
-#define register
 #endif
 
 /* *****************************************************************************
@@ -178,6 +207,16 @@ FIO_IFUNC int patch_clock_gettime(int clk_id, struct timespec *t) {
 #endif
 
 /* *****************************************************************************
+C++ extern start
+***************************************************************************** */
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+/* C++ keyword was deprecated */
+#define register
+#endif
+
+/* *****************************************************************************
 
 
 
@@ -205,7 +244,12 @@ Connection Callback (Protocol) Management
 
 ***************************************************************************** */
 
+/** The main protocol object type. See `struct fio_protocol_s`. */
 typedef struct fio_protocol_s fio_protocol_s;
+
+/** An opaque type used for the SSL/TLS functions. */
+typedef struct fio_tls_s fio_tls_s;
+
 /**************************************************************************/ /**
 * The Protocol
 
@@ -283,27 +327,6 @@ void fio_attach(intptr_t uuid, fio_protocol_s *protocol);
  */
 void fio_attach_fd(int fd, fio_protocol_s *protocol);
 
-/**
- * Sets a socket to non blocking state.
- *
- * This will also set the O_CLOEXEC flag for the file descriptor.
- *
- * This function is called automatically for the new socket, when using
- * `fio_accept` or `fio_connect`.
- */
-int fio_set_non_block(int fd);
-
-/**
- * Returns the maximum number of open files facil.io can handle per worker
- * process.
- *
- * Total OS limits might apply as well but aren't shown.
- *
- * The value of 0 indicates either that the facil.io library wasn't initialized
- * yet or that it's resources were released.
- */
-size_t fio_capa(void);
-
 /** Sets a timeout for a specific connection (only when running and valid). */
 void fio_timeout_set(intptr_t uuid, uint8_t timeout);
 
@@ -336,6 +359,17 @@ void fio_force_event(intptr_t uuid, enum fio_io_event);
  */
 void fio_suspend(intptr_t uuid);
 
+/**
+ * Returns the maximum number of open files facil.io can handle per worker
+ * process.
+ *
+ * Total OS limits might apply as well but aren't shown.
+ *
+ * The value of 0 indicates either that the facil.io library wasn't initialized
+ * yet or that it's resources were released.
+ */
+size_t fio_capa(void);
+
 /* *****************************************************************************
 Listening to Incoming Connections
 ***************************************************************************** */
@@ -353,7 +387,7 @@ struct fio_listen_args {
   /** The socket binding address. Defaults to the recommended NULL. */
   const char *address;
   /** a pointer to a `fio_tls_s` object, for SSL/TLS support (fio_tls.h). */
-  void *tls;
+  fio_tls_s *tls;
   /** Opaque user data. */
   void *udata;
   /**
@@ -493,7 +527,7 @@ struct fio_connect_args {
    */
   void (*on_fail)(intptr_t uuid, void *udata);
   /** a pointer to a `fio_tls_s` object, for SSL/TLS support (fio_tls.h). */
-  void *tls;
+  fio_tls_s *tls;
   /** Opaque user data. */
   void *udata;
   /** A non-system timeout after which connection is assumed to have failed. */
@@ -659,7 +693,7 @@ int fio_is_worker(void);
 int fio_is_master(void);
 
 /** Returns facil.io's parent (root) process pid. */
-pid_t fio_parent_pid(void);
+pid_t fio_master_pid(void);
 
 /**
  * Initializes zombie reaping for the process. Call before `fio_start` to enable
@@ -726,6 +760,16 @@ intptr_t fio_socket(const char *address, const char *port, uint8_t is_server);
  * `fio_attach`.
  */
 intptr_t fio_accept(intptr_t srv_uuid);
+
+/**
+ * Sets a socket to non blocking state.
+ *
+ * This will also set the O_CLOEXEC flag for the file descriptor.
+ *
+ * This function is called automatically for the new socket, when using
+ * `fio_accept`, `fio_connect` or `fio_socket`.
+ */
+int fio_set_non_block(int fd);
 
 /**
  * Returns 1 if the uuid refers to a valid and open, socket.
@@ -911,16 +955,28 @@ FIO_IFUNC ssize_t fio_write(const intptr_t uuid, const void *buf,
 FIO_IFUNC ssize_t fio_sendfile(intptr_t uuid, intptr_t source_fd, off_t offset,
                                size_t len) {
   return fio_write2(uuid, .data.fd = source_fd, .len = len, .is_fd = 1,
-                    .offset = offset);
+                    .offset = (uintptr_t)offset);
 }
 
-/** a helper macro for sending reference counted core strings. */
-#define FIO_STR_SEND_FREE2(str_name, uuid, s)                                  \
-  fio_write2(r->sub_data.uuid, .data.buf = (char *)s,                          \
-             .offset = ((char *)s - str_name##_data(s)),                       \
-             .len = str_name##_len(s),                                         \
-             .after.dealloc = (void (*)(void *))str_name##_free2);
+/* internal helper */
+FIO_SFUNC void fiobj___free_after_send(void *o) { fiobj_str_free((FIOBJ)o); }
 
+/** Writes a FIOBJ object to the `uuid` and frees it once it was sent. */
+FIO_IFUNC ssize_t fiobj_write_free(intptr_t uuid, FIOBJ o) {
+  if (o == FIOBJ_INVALID)
+    return 0;
+  if (FIOBJ_TYPE_CLASS(o) != FIOBJ_T_STRING) {
+    FIOBJ tmp = fiobj2json(FIOBJ_INVALID, o, 0);
+    fiobj_free(o);
+    o = tmp;
+    if (o == FIOBJ_INVALID)
+      return 0;
+  }
+  fio_str_info_s s = fiobj_str_info(o);
+  return fio_write2(uuid, .data.buf = (char *)o,
+                    .offset = ((uintptr_t)o - (uintptr_t)s.buf), .len = s.len,
+                    .after.dealloc = fiobj___free_after_send);
+}
 /**
  * Returns the number of `fio_write` calls that are waiting in the socket's
  * queue and haven't been processed.
@@ -963,22 +1019,6 @@ size_t fio_flush_all(void);
  * `uuid`.
  *
  * If the file descriptor was closed, __it will be registered as open__.
- *
- * If the file descriptor was closed directly (not using `fio_close`) or the
- * closure event hadn't been processed, a false positive will be possible. This
- * is not an issue, since the use of an invalid fd will result in the registry
- * being updated and the fd being closed.
- *
- * Returns -1 on error. Returns a valid socket (non-random) UUID.
- */
-intptr_t fio_fd2uuid(int fd);
-
-/**
- * `fio_fd2uuid` takes an existing file decriptor `fd` and returns it's active
- * `uuid`.
- *
- * If the file descriptor is marked as closed (wasn't opened / registered with
- * facil.io) the function returns -1;
  *
  * If the file descriptor was closed directly (not using `fio_close`) or the
  * closure event hadn't been processed, a false positive will be possible. This
@@ -1297,9 +1337,6 @@ void fio_state_callback_clear(callback_type_e);
 /* *****************************************************************************
 TLS Support (weak functions, to bea overriden by library wrapper)
 ***************************************************************************** */
-
-/** An opaque type used for the SSL/TLS functions. */
-typedef struct fio_tls_s fio_tls_s;
 
 /**
  * Creates a new SSL/TLS context / settings object with a default certificate
@@ -2005,127 +2042,6 @@ C++ extern end
 ***************************************************************************** */
 #ifdef __cplusplus
 } /* extern "C" */
-#endif
-
-/* *****************************************************************************
-
-
-
-
-
-
-
-
-                             Memory Allocator Details
-
-
-
-
-
-
-
-
-***************************************************************************** */
-
-/**
- * This is a custom memory allocator the utilizes memory pools to allow for
- * concurrent memory allocations across threads.
- *
- * Allocated memory is always zeroed out and aligned on a 16 byte boundary.
- *
- * Reallocated memory is always aligned on a 16 byte boundary but it might be
- * filled with junk data after the valid data (this is true also for
- * `fio_realloc2`).
- *
- * The memory allocator assumes multiple concurrent allocation/deallocation,
- * short life spans (memory is freed shortly, but not immediately, after it was
- * allocated) as well as small allocations (realloc almost always copies data).
- *
- * These assumptions allow the allocator to avoid lock contention by ignoring
- * fragmentation within a memory "block" and waiting for the whole "block" to be
- * freed before it's memory is recycled (no per-allocation "free list").
- *
- * An "arena" is allocated per-CPU core during initialization - there's no
- * dynamic allocation of arenas. This allows threads to minimize lock contention
- * by cycling through the arenas until a free arena is detected.
- *
- * There should be a free arena at any given time (statistically speaking) and
- * the thread will only be deferred in the unlikely event in which there's no
- * available arena.
- *
- * By avoiding the "free-list", the need for allocation "headers" is also
- * avoided and allocations are performed with practically zero overhead (about
- * 32 bytes overhead per 32KB memory, that's 1 bit per 1Kb).
- *
- * However, the lack of a "free list" means that memory "leaks" are more
- * expensive and small long-life allocations could cause fragmentation if
- * performed periodically (rather than performed during startup).
- *
- * This allocator should NOT be used for objects with a long life-span, because
- * even a single persistent object will prevent the re-use of the whole memory
- * block from which it was allocated (see FIO_MEMORY_BLOCK_SIZE for size).
- *
- * Some more details:
- *
- * Allocation and deallocations and (usually) managed by "blocks".
- *
- * A memory "block" can include any number of memory pages that are a multiple
- * of 2 (up to 1Mb of memory). However, the default value, set by the value of
- * FIO_MEMORY_BLOCK_SIZE_LOG, is 32Kb (see value at the end of this header).
- *
- * Each block includes a 32 byte header that uses reference counters and
- * position markers (24 bytes are required padding).
- *
- * The block's position marker (`pos`) marks the next available byte (counted in
- * multiples of 16 bytes).
- *
- * The block's reference counter (`ref`) counts how many allocations reference
- * memory in the block (including the "arena" that "owns" the block).
- *
- * Except for the position marker (`pos`) that acts the same as `sbrk`, there's
- * no way to know which "slices" are allocated and which "slices" are available.
- *
- * The allocator uses `mmap` when requesting memory from the system and for
- * allocations bigger than MEMORY_BLOCK_ALLOC_LIMIT (37.5% of the block).
- *
- * Small allocations are differentiated from big allocations by their memory
- * alignment.
- *
- * If a memory allocation is placed 16 bytes after whole block alignment (within
- * a block's padding zone), the memory was allocated directly using `mmap` as a
- * "big allocation". The 16 bytes include an 8 byte header and an 8 byte
- * padding.
- *
- * To replace the system's `malloc` function family compile with the
- * `FIO_OVERRIDE_MALLOC` defined (`-DFIO_OVERRIDE_MALLOC`).
- *
- * When using tcmalloc or jemalloc, it's possible to define `FIO_FORCE_MALLOC`
- * to prevent the facil.io allocator from compiling (`-DFIO_FORCE_MALLOC`).
- */
-
-#ifndef FIO_MEMORY_BLOCK_SIZE_LOG
-/**
- * The logarithmic value for a memory block, 15 == 32Kb, 16 == 64Kb, etc'
- *
- * By default, a block of memory is 32Kb silce from an 8Mb allocation.
- *
- * A value of 16 will make this a 64Kb silce from a 16Mb allocation.
- */
-#define FIO_MEMORY_BLOCK_SIZE_LOG (15)
-#endif
-
-#undef FIO_MEMORY_BLOCK_SIZE
-/** The resulting memoru block size, depends on `FIO_MEMORY_BLOCK_SIZE_LOG` */
-#define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << FIO_MEMORY_BLOCK_SIZE_LOG)
-
-/**
- * The maximum allocation size, after which `mmap` will be called instead of the
- * facil.io allocator.
- *
- * Defaults to 50% of the block (16Kb), after which `mmap` is used instead
- */
-#ifndef FIO_MEMORY_BLOCK_ALLOC_LIMIT
-#define FIO_MEMORY_BLOCK_ALLOC_LIMIT (FIO_MEMORY_BLOCK_SIZE >> 1)
 #endif
 
 /* *****************************************************************************

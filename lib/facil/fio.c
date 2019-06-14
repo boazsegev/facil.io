@@ -1493,7 +1493,7 @@ int fio_is_master(void) {
 }
 
 /** returns facil.io's parent (root) process pid. */
-pid_t fio_parent_pid(void) { return fio_data->parent; }
+pid_t fio_master_pid(void) { return fio_data->parent; }
 
 static inline size_t fio_detect_cpu_cores(void) {
   ssize_t cpu_count = 0;
@@ -3832,7 +3832,7 @@ static void *fio_sentinel_worker_thread(void *arg) {
   if (child == -1) {
     FIO_LOG_FATAL("couldn't spawn worker.");
     perror("\n           errno");
-    kill(fio_parent_pid(), SIGINT);
+    kill(fio_master_pid(), SIGINT);
     fio_stop();
     return NULL;
   } else if (child) {
@@ -5372,7 +5372,7 @@ static void fio_cluster_data_cleanup(int delete_file) {
 
 static void fio_cluster_cleanup(void *ignore) {
   /* cleanup the cluster data */
-  fio_cluster_data_cleanup(fio_parent_pid() == getpid());
+  fio_cluster_data_cleanup(fio_master_pid() == getpid());
   (void)ignore;
 }
 
@@ -5694,7 +5694,7 @@ static void fio_cluster_listen_on_close(intptr_t uuid,
                                         fio_protocol_s *protocol) {
   free(protocol);
   cluster_data.uuid = -1;
-  if (fio_parent_pid() == getpid()) {
+  if (fio_master_pid() == getpid()) {
 #if DEBUG
     FIO_LOG_DEBUG("(%d) stopped listening for cluster connections",
                   (int)getpid());
@@ -5810,7 +5810,7 @@ static void fio_cluster_on_connect(intptr_t uuid, void *udata) {
 static void fio_cluster_on_fail(intptr_t uuid, void *udata) {
   FIO_LOG_FATAL("(facil.io) unknown cluster connection error");
   perror("       errno");
-  kill(fio_parent_pid(), SIGINT);
+  kill(fio_master_pid(), SIGINT);
   fio_stop();
   // exit(errno ? errno : 1);
   (void)udata;
@@ -5990,7 +5990,7 @@ static void fio_pubsub_on_fork(void) {
 
 /** Signals children (or self) to shutdown) - NOT signal safe. */
 static void fio_cluster_signal_children(void) {
-  if (fio_parent_pid() != getpid()) {
+  if (fio_master_pid() != getpid()) {
     kill(getpid(), SIGINT);
     return;
   }
