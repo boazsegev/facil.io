@@ -134,13 +134,13 @@ typedef struct fio_packet_s fio_packet_s;
 struct fio_packet_s {
   fio_packet_s *next;
   int (*write_func)(int fd, struct fio_packet_s *packet);
-  void (*dealloc)(void *buffer);
+  void (*dealloc)(void *buf);
   union {
-    void *buffer;
+    void *buf;
     intptr_t fd;
   } data;
   uintptr_t offset;
-  uintptr_t length;
+  uintptr_t len;
 };
 
 /** Connection data (fd_data) */
@@ -252,7 +252,7 @@ Packet allocation (for socket's user-buffer)
 ***************************************************************************** */
 
 static inline void fio_packet_free(fio_packet_s *packet) {
-  packet->dealloc(packet->data.buffer);
+  packet->dealloc(packet->data.buf);
   fio_free(packet);
 }
 static inline fio_packet_s *fio_packet_alloc(void) {
@@ -666,7 +666,7 @@ static __thread fio_thread_queue_s fio_thread_data = {
 
 static fio_lock_i fio_thread_lock = FIO_LOCK_INIT;
 
-FIO_FUNC inline void fio_thread_make_suspendable(void) {
+FIO_IFUNC void fio_thread_make_suspendable(void) {
   if (fio_thread_data.fd_signal >= 0)
     return;
   int fd[2] = {0, 0};
@@ -680,7 +680,7 @@ FIO_FUNC inline void fio_thread_make_suspendable(void) {
   fio_thread_data.fd_signal = fd[1];
 }
 
-FIO_FUNC inline void fio_thread_cleanup(void) {
+FIO_IFUNC void fio_thread_cleanup(void) {
   if (fio_thread_data.fd_signal < 0)
     return;
   close(fio_thread_data.fd_wait);
@@ -690,7 +690,7 @@ FIO_FUNC inline void fio_thread_cleanup(void) {
 }
 
 /* suspend thread execution (might be resumed unexpectedly) */
-FIO_FUNC void fio_thread_suspend(void) {
+FIO_SFUNC void fio_thread_suspend(void) {
   fio_lock(&fio_thread_lock);
   fio_thread_queue_push(&fio_thread_queue, &fio_thread_data);
   fio_unlock(&fio_thread_lock);
@@ -712,7 +712,7 @@ FIO_FUNC void fio_thread_suspend(void) {
 }
 
 /* wake up a single thread */
-FIO_FUNC void fio_thread_signal(void) {
+FIO_SFUNC void fio_thread_signal(void) {
   fio_thread_queue_s *t;
   int fd = -2;
   fio_lock(&fio_thread_lock);
@@ -731,7 +731,7 @@ FIO_FUNC void fio_thread_signal(void) {
 }
 
 /* wake up all threads */
-FIO_FUNC void fio_thread_broadcast(void) {
+FIO_SFUNC void fio_thread_broadcast(void) {
   while (fio_thread_queue_any(&fio_thread_queue)) {
     fio_thread_signal();
   }
@@ -1708,7 +1708,7 @@ static inline void fio_poll_add(intptr_t fd) {
   return;
 }
 
-FIO_FUNC inline void fio_poll_remove_fd(intptr_t fd) {
+FIO_IFUNC void fio_poll_remove_fd(intptr_t fd) {
   struct epoll_event chevent = {.events = (EPOLLOUT | EPOLLIN), .data.fd = fd};
   epoll_ctl(evio_fd[1], EPOLL_CTL_DEL, fd, &chevent);
   epoll_ctl(evio_fd[2], EPOLL_CTL_DEL, fd, &chevent);
@@ -1838,7 +1838,7 @@ static inline void fio_poll_add(intptr_t fd) {
   return;
 }
 
-FIO_FUNC inline void fio_poll_remove_fd(intptr_t fd) {
+FIO_IFUNC void fio_poll_remove_fd(intptr_t fd) {
   if (evio_fd < 0)
     return;
   struct kevent chevent[2];
@@ -2106,7 +2106,7 @@ static void mock_ping2(intptr_t uuid, fio_protocol_s *protocol) {
   fio_close(uuid);
 }
 
-FIO_FUNC void mock_ping_eternal(intptr_t uuid, fio_protocol_s *protocol) {
+FIO_SFUNC void mock_ping_eternal(intptr_t uuid, fio_protocol_s *protocol) {
   (void)protocol;
   fio_touch(uuid);
 }
@@ -2623,14 +2623,14 @@ static inline void fio_sock_packet_rotate_unsafe(uintptr_t fd) {
   fio_packet_free(packet);
 }
 
-static int fio_sock_write_buffer(int fd, fio_packet_s *packet) {
+static int fio_sock_write_buf(int fd, fio_packet_s *packet) {
   int written = fd_data(fd).rw_hooks->write(
       fd2uuid(fd), fd_data(fd).rw_udata,
-      ((uint8_t *)packet->data.buffer + packet->offset), packet->length);
+      ((uint8_t *)packet->data.buf + packet->offset), packet->len);
   if (written > 0) {
-    packet->length -= written;
+    packet->len -= written;
     packet->offset += written;
-    if (!packet->length) {
+    if (!packet->len) {
       fio_sock_packet_rotate_unsafe(fd);
     }
   }
@@ -2644,23 +2644,23 @@ static int fio_sock_write_from_fd(int fd, fio_packet_s *packet) {
   char buff[BUFFER_FILE_READ_SIZE];
   do {
     packet->offset += sent;
-    packet->length -= sent;
+    packet->len -= sent;
   retry:
-    asked = pread(packet->data.fd, buff,
-                  ((packet->length < BUFFER_FILE_READ_SIZE)
-                       ? packet->length
-                       : BUFFER_FILE_READ_SIZE),
-                  packet->offset);
+    asked =
+        pread(packet->data.fd, buff,
+              ((packet->len < BUFFER_FILE_READ_SIZE) ? packet->len
+                                                     : BUFFER_FILE_READ_SIZE),
+              packet->offset);
     if (asked <= 0)
       goto read_error;
     sent = fd_data(fd).rw_hooks->write(fd2uuid(fd), fd_data(fd).rw_udata, buff,
                                        asked);
-  } while (sent == asked && packet->length);
+  } while (sent == asked && packet->len);
   if (sent >= 0) {
     packet->offset += sent;
-    packet->length -= sent;
+    packet->len -= sent;
     total += sent;
-    if (!packet->length) {
+    if (!packet->len) {
       fio_sock_packet_rotate_unsafe(fd);
       return 1;
     }
@@ -2682,12 +2682,11 @@ read_error:
 
 static int fio_sock_sendfile_from_fd(int fd, fio_packet_s *packet) {
   ssize_t sent;
-  sent =
-      sendfile64(fd, packet->data.fd, (off_t *)&packet->offset, packet->length);
+  sent = sendfile64(fd, packet->data.fd, (off_t *)&packet->offset, packet->len);
   if (sent < 0)
     return -1;
-  packet->length -= sent;
-  if (!packet->length)
+  packet->len -= sent;
+  if (!packet->len)
     fio_sock_packet_rotate_unsafe(fd);
   return sent;
 }
@@ -2698,8 +2697,8 @@ static int fio_sock_sendfile_from_fd(int fd, fio_packet_s *packet) {
 static int fio_sock_sendfile_from_fd(int fd, fio_packet_s *packet) {
   off_t act_sent = 0;
   ssize_t ret = 0;
-  while (packet->length) {
-    act_sent = packet->length;
+  while (packet->len) {
+    act_sent = packet->len;
 #if USE_SENDFILE_APPLE
     ret = sendfile(packet->data.fd, fd, packet->offset, &act_sent, NULL, 0);
 #else
@@ -2708,14 +2707,14 @@ static int fio_sock_sendfile_from_fd(int fd, fio_packet_s *packet) {
 #endif
     if (ret < 0)
       goto error;
-    packet->length -= act_sent;
+    packet->len -= act_sent;
     packet->offset += act_sent;
   }
   fio_sock_packet_rotate_unsafe(fd);
   return act_sent;
 error:
   if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-    packet->length -= act_sent;
+    packet->len -= act_sent;
     packet->offset += act_sent;
   }
   return -1;
@@ -2758,7 +2757,7 @@ Socket / Connection Functions
  * Data might be available in the kernel's buffer while it is not available to
  * be read using `fio_read` (i.e., when using a transport layer, such as TLS).
  */
-ssize_t fio_read(intptr_t uuid, void *buffer, size_t count) {
+ssize_t fio_read(intptr_t uuid, void *buf, size_t count) {
   if (!uuid_is_valid(uuid) || !uuid_data(uuid).open) {
     errno = EBADF;
     return -1;
@@ -2773,7 +2772,7 @@ ssize_t fio_read(intptr_t uuid, void *buffer, size_t count) {
   int old_errno = errno;
   ssize_t ret;
 retry_int:
-  ret = rw_read(uuid, udata, buffer, count);
+  ret = rw_read(uuid, udata, buf, count);
   if (ret > 0) {
     fio_touch(uuid);
     return ret;
@@ -2799,9 +2798,9 @@ ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s options) {
   /* create packet */
   fio_packet_s *packet = fio_packet_alloc();
   *packet = (fio_packet_s){
-      .length = options.length,
+      .len = options.len,
       .offset = options.offset,
-      .data.buffer = (void *)options.data.buffer,
+      .data.buf = (void *)options.data.buf,
   };
   if (options.is_fd) {
     packet->write_func = (uuid_data(uuid).rw_hooks == &FIO_DEFAULT_RW_HOOKS)
@@ -2811,7 +2810,7 @@ ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s options) {
         (options.after.dealloc ? options.after.dealloc
                                : (void (*)(void *))fio_sock_perform_close_fd);
   } else {
-    packet->write_func = fio_sock_write_buffer;
+    packet->write_func = fio_sock_write_buf;
     packet->dealloc = (options.after.dealloc ? options.after.dealloc : free);
   }
   /* add packet to outgoing list */
@@ -2850,7 +2849,7 @@ locked_error:
   return -1;
 error:
   if (options.after.dealloc) {
-    options.after.dealloc((void *)options.data.buffer);
+    options.after.dealloc((void *)options.data.buf);
   }
   errno = EBADF;
   return -1;
@@ -3481,8 +3480,7 @@ postpone:
  * If an error ocuurs or the connection is closed before the task can run, the
  * `fallback` task wil be called instead, allowing for resource cleanup.
  */
-void fio_defer_io_task FIO_IGNORE_MACRO(intptr_t uuid,
-                                        fio_defer_iotask_args_s args) {
+void fio_defer_io_task FIO_NOOP(intptr_t uuid, fio_defer_iotask_args_s args) {
   if (!args.task) {
     if (args.fallback)
       fio_defer_push_task((void (*)(void *, void *))args.fallback, (void *)uuid,
@@ -3894,7 +3892,7 @@ static void fio_sentinel_task(void *arg1, void *arg2) {
   (void)arg2;
 }
 
-FIO_FUNC void fio_start_(void) {} /* marker for SublimeText3 jump feature */
+FIO_SFUNC void fio_start_(void) {} /* marker for SublimeText3 jump feature */
 
 /**
  * Starts the facil.io event loop. This function will return after facil.io is
@@ -3905,7 +3903,7 @@ FIO_FUNC void fio_start_(void) {} /* marker for SublimeText3 jump feature */
  * This method blocks the current thread until the server is stopped (when a
  * SIGINT/SIGTERM is received).
  */
-void fio_start FIO_IGNORE_MACRO(struct fio_start_args args) {
+void fio_start FIO_NOOP(struct fio_start_args args) {
   fio_expected_concurrency(&args.threads, &args.workers);
   fio_signal_handler_setup();
 
@@ -4061,7 +4059,7 @@ void fio_listen____(void);
  *
  * Returns the listening socket or -1 (on error).
  */
-intptr_t fio_listen FIO_IGNORE_MACRO(struct fio_listen_args args) {
+intptr_t fio_listen FIO_NOOP(struct fio_listen_args args) {
   // ...
   if ((!args.on_open && (!args.tls || !fio_tls_alpn_count(args.tls))) ||
       (!args.address && !args.port)) {
@@ -4240,7 +4238,7 @@ static void fio_connect_on_ready_tls_alpn(intptr_t uuid, fio_protocol_s *pr_) {
 /* stub for sublime text function navigation */
 intptr_t fio_connect___(struct fio_connect_args args);
 
-intptr_t fio_connect FIO_IGNORE_MACRO(struct fio_connect_args args) {
+intptr_t fio_connect FIO_NOOP(struct fio_connect_args args) {
   if ((!args.on_connect && (!args.tls || !fio_tls_alpn_count(args.tls))) ||
       (!args.address && !args.port)) {
     errno = EINVAL;
@@ -4309,15 +4307,15 @@ URL address parsing
  *
  * Invalid formats might produce unexpected results. No error testing performed.
  */
-fio_url_s fio_url_parse(const char *url, size_t length) {
+fio_url_s fio_url_parse(const char *url, size_t len) {
   /*
   Intention:
   [schema://][user[:]][password[@]][host.com[:/]][:port/][/path][?quary][#target]
   */
-  const char *end = url + length;
+  const char *end = url + len;
   const char *pos = url;
   fio_url_s r = {.scheme = {.buf = (char *)url}};
-  if (length == 0) {
+  if (len == 0) {
     goto finish;
   }
 
@@ -4859,9 +4857,9 @@ static inline fio_msg_internal_s *fio_msg_internal_dup(fio_msg_internal_s *m) {
 
 static inline ssize_t fio_msg_internal_send_dup(intptr_t uuid,
                                                 fio_msg_internal_s *m) {
-  return fio_write2(uuid, .data.buffer = fio_msg_internal_dup(m),
+  return fio_write2(uuid, .data.buf = fio_msg_internal_dup(m),
                     .offset = (sizeof(*m) + (m->meta_len * sizeof(*m->meta))),
-                    .length = 16 + m->data.len + m->channel.len + 2,
+                    .len = 16 + m->data.len + m->channel.len + 2,
                     .after.dealloc = fio_msg_internal_free2);
 }
 
@@ -4954,7 +4952,7 @@ static inline void fio_subscription_free(subscription_s *s) {
 subscription_s *fio_subscribe___(subscribe_args_s args);
 
 /** Subscribes to a filter, pub/sub channle or patten */
-subscription_s *fio_subscribe FIO_IGNORE_MACRO(subscribe_args_s args) {
+subscription_s *fio_subscribe FIO_NOOP(subscribe_args_s args) {
   if (!args.on_message)
     goto error;
   channel_s *ch;
@@ -5348,9 +5346,9 @@ typedef struct cluster_pr_s {
   uint32_t exp_msg;
   uint32_t type;
   int32_t filter;
-  uint32_t length;
+  uint32_t len;
   fio_lock_i lock;
-  uint8_t buffer[CLUSTER_READ_BUFFER];
+  uint8_t buf[CLUSTER_READ_BUFFER];
 } cluster_pr_s;
 
 static struct cluster_data_s {
@@ -5434,20 +5432,19 @@ static uint8_t fio_cluster_on_shutdown(intptr_t uuid, fio_protocol_s *pr_) {
 
 static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
   cluster_pr_s *c = (cluster_pr_s *)pr_;
-  ssize_t i =
-      fio_read(uuid, c->buffer + c->length, CLUSTER_READ_BUFFER - c->length);
+  ssize_t i = fio_read(uuid, c->buf + c->len, CLUSTER_READ_BUFFER - c->len);
   if (i <= 0)
     return;
-  c->length += i;
+  c->len += i;
   i = 0;
   do {
     if (!c->exp_channel && !c->exp_msg) {
-      if (c->length - i < 16)
+      if (c->len - i < 16)
         break;
-      c->exp_channel = fio_buf2u32(c->buffer + i) + 1;
-      c->exp_msg = fio_buf2u32(c->buffer + i + 4) + 1;
-      c->type = fio_buf2u32(c->buffer + i + 8);
-      c->filter = (int32_t)fio_buf2u32(c->buffer + i + 12);
+      c->exp_channel = fio_buf2u32(c->buf + i) + 1;
+      c->exp_msg = fio_buf2u32(c->buf + i + 4) + 1;
+      c->type = fio_buf2u32(c->buf + i + 8);
+      c->filter = (int32_t)fio_buf2u32(c->buf + i + 12);
       if (c->exp_channel) {
         if (c->exp_channel >= (1024 * 1024 * 16) + 1) {
           FIO_LOG_FATAL("(%d) cluster message name too long (16Mb limit): %u\n",
@@ -5476,31 +5473,31 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
       i += 16;
     }
     if (c->exp_channel) {
-      if (c->exp_channel + i > c->length) {
+      if (c->exp_channel + i > c->len) {
         memcpy(c->msg->channel.buf +
                    ((c->msg->channel.len + 1) - c->exp_channel),
-               (char *)c->buffer + i, (size_t)(c->length - i));
-        c->exp_channel -= (c->length - i);
-        i = c->length;
+               (char *)c->buf + i, (size_t)(c->len - i));
+        c->exp_channel -= (c->len - i);
+        i = c->len;
         break;
       } else {
         memcpy(c->msg->channel.buf +
                    ((c->msg->channel.len + 1) - c->exp_channel),
-               (char *)c->buffer + i, (size_t)(c->exp_channel));
+               (char *)c->buf + i, (size_t)(c->exp_channel));
         i += c->exp_channel;
         c->exp_channel = 0;
       }
     }
     if (c->exp_msg) {
-      if (c->exp_msg + i > c->length) {
+      if (c->exp_msg + i > c->len) {
         memcpy(c->msg->data.buf + ((c->msg->data.len + 1) - c->exp_msg),
-               (char *)c->buffer + i, (size_t)(c->length - i));
-        c->exp_msg -= (c->length - i);
-        i = c->length;
+               (char *)c->buf + i, (size_t)(c->len - i));
+        c->exp_msg -= (c->len - i);
+        i = c->len;
         break;
       } else {
         memcpy(c->msg->data.buf + ((c->msg->data.len + 1) - c->exp_msg),
-               (char *)c->buffer + i, (size_t)(c->exp_msg));
+               (char *)c->buf + i, (size_t)(c->exp_msg));
         i += c->exp_msg;
         c->exp_msg = 0;
       }
@@ -5509,10 +5506,10 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
     c->handler(c);
     fio_msg_internal_free(c->msg);
     c->msg = NULL;
-  } while (c->length > i);
-  c->length -= i;
-  if (c->length && i) {
-    memmove(c->buffer, c->buffer + i, c->length);
+  } while (c->len > i);
+  c->len -= i;
+  if (c->len && i) {
+    memmove(c->buf, c->buf + i, c->len);
   }
   (void)pr_;
 }
@@ -6023,7 +6020,7 @@ void fio_publish___(fio_publish_args_s args);
  * To publish messages to the pub/sub layer, the `.filter` argument MUST be
  * equal to 0 or missing.
  */
-void fio_publish FIO_IGNORE_MACRO(fio_publish_args_s args) {
+void fio_publish FIO_NOOP(fio_publish_args_s args) {
   if (args.filter && !args.engine) {
     args.engine = FIO_PUBSUB_CLUSTER;
   } else if (!args.engine) {
@@ -6345,8 +6342,7 @@ ALPN Helpers
 ***************************************************************************** */
 
 /** Returns a pointer to the ALPN data (callback, etc') IF exists in the TLS. */
-FIO_FUNC inline alpn_s *fio___tls_alpn_find(fio_tls_s *tls, char *name,
-                                            size_t len) {
+FIO_IFUNC alpn_s *fio___tls_alpn_find(fio_tls_s *tls, char *name, size_t len) {
   alpn_s tmp = {.name = FIO_STRING_INIT_STATIC2(name, len)};
   alpn_s *pos =
       fio___tls_alpn_list_get_ptr(&tls->alpn, fio_str_hash(&tmp.name, 0), tmp);
@@ -6354,7 +6350,7 @@ FIO_FUNC inline alpn_s *fio___tls_alpn_find(fio_tls_s *tls, char *name,
 }
 
 /** Adds an ALPN data object to the ALPN "list" (set) */
-FIO_FUNC inline void fio___tls_alpn_add(
+FIO_IFUNC void fio___tls_alpn_add(
     fio_tls_s *tls, const char *protocol_name,
     void (*on_selected)(intptr_t uuid, void *udata_connection, void *udata_tls),
     void *udata_tls, void (*on_cleanup)(void *udata_tls)) {
@@ -6374,7 +6370,7 @@ FIO_FUNC inline void fio___tls_alpn_add(
 }
 
 /** Returns a pointer to the default (first) ALPN object in the TLS (if any). */
-FIO_FUNC inline alpn_s *fio___tls_alpn_default(fio_tls_s *tls) {
+FIO_IFUNC alpn_s *fio___tls_alpn_default(fio_tls_s *tls) {
   if (!tls || !fio___tls_alpn_list_count(&tls->alpn))
     return NULL;
   FIO_MAP_EACH(&tls->alpn, pos) { return &pos->obj; }
@@ -6387,7 +6383,7 @@ typedef struct {
   void *udata_connection;
 } alpn_task_s;
 
-FIO_FUNC inline void fio___tls_alpn_select___task(void *t_, void *ignr_) {
+FIO_IFUNC void fio___tls_alpn_select___task(void *t_, void *ignr_) {
   alpn_task_s *t = t_;
   if (fio_is_valid(t->uuid))
     t->alpn.on_selected(t->uuid, t->udata_connection, t->alpn.udata_tls);
@@ -6396,8 +6392,8 @@ FIO_FUNC inline void fio___tls_alpn_select___task(void *t_, void *ignr_) {
 }
 
 /** Schedules the ALPN protocol callback. */
-FIO_FUNC inline void fio___tls_alpn_select(alpn_s *alpn, intptr_t uuid,
-                                           void *udata_connection) {
+FIO_IFUNC void fio___tls_alpn_select(alpn_s *alpn, intptr_t uuid,
+                                     void *udata_connection) {
   if (!alpn || !alpn->on_selected)
     return;
   alpn_task_s *t = fio_malloc(sizeof(*t));
@@ -6470,8 +6466,8 @@ typedef struct {
   fio_tls_s *tls;
   size_t len;
   uint8_t alpn_ok;
-  char buffer[TLS_BUFFER_LENGTH];
-} buffer_s;
+  char buf[TLS_BUFFER_LENGTH];
+} tls_buffer_s;
 
 /**
  * Implement reading from a file descriptor. Should behave like the file
@@ -6501,22 +6497,22 @@ static ssize_t fio_tls_read(intptr_t uuid, void *udata, void *buf,
  * deadlock might occur.
  */
 static ssize_t fio_tls_flush(intptr_t uuid, void *udata) {
-  buffer_s *buffer = udata;
-  if (!buffer->len) {
+  tls_buffer_s *tlsbuf = udata;
+  if (!tlsbuf->len) {
     FIO_LOG_DEBUG("Flush empty for %p", (void *)uuid);
     return 0;
   }
-  ssize_t r = write(fio_uuid2fd(uuid), buffer->buffer, buffer->len);
+  ssize_t r = write(fio_uuid2fd(uuid), tlsbuf->buf, tlsbuf->len);
   if (r < 0)
     return -1;
   if (r == 0) {
     errno = ECONNRESET;
     return -1;
   }
-  size_t len = buffer->len - r;
+  size_t len = tlsbuf->len - r;
   if (len)
-    memmove(buffer->buffer, buffer->buffer + r, len);
-  buffer->len = len;
+    memmove(tlsbuf->buf, tlsbuf->buf + r, len);
+  tlsbuf->len = len;
   FIO_LOG_DEBUG("Sent %zd bytes to %p", r, (void *)uuid);
   return r;
 }
@@ -6533,14 +6529,14 @@ static ssize_t fio_tls_flush(intptr_t uuid, void *udata) {
  */
 static ssize_t fio_tls_write(intptr_t uuid, void *udata, const void *buf,
                              size_t count) {
-  buffer_s *buffer = udata;
-  size_t can_copy = TLS_BUFFER_LENGTH - buffer->len;
+  tls_buffer_s *tlsbuf = udata;
+  size_t can_copy = TLS_BUFFER_LENGTH - tlsbuf->len;
   if (can_copy > count)
     can_copy = count;
   if (!can_copy)
     goto would_block;
-  memcpy(buffer->buffer + buffer->len, buf, can_copy);
-  buffer->len += can_copy;
+  memcpy(tlsbuf->buf + tlsbuf->len, buf, can_copy);
+  tlsbuf->len += can_copy;
   FIO_LOG_DEBUG("Copied %zu bytes to %p", can_copy, (void *)uuid);
   fio_tls_flush(uuid, udata);
   return can_copy;
@@ -6567,13 +6563,13 @@ static ssize_t fio_tls_before_close(intptr_t uuid, void *udata) {
  * Called to perform cleanup after the socket was closed.
  * */
 static void fio_tls_cleanup(void *udata) {
-  buffer_s *buffer = udata;
+  tls_buffer_s *tlsbuf = udata;
   /* make sure the ALPN callback was called, just in case cleanup is required */
-  if (!buffer->alpn_ok) {
-    fio___tls_alpn_select(fio___tls_alpn_default(buffer->tls), -1,
+  if (!tlsbuf->alpn_ok) {
+    fio___tls_alpn_select(fio___tls_alpn_default(tlsbuf->tls), -1,
                           NULL /* ALPN udata */);
   }
-  fio_tls_destroy(buffer->tls); /* manage reference count */
+  fio_tls_destroy(tlsbuf->tls); /* manage reference count */
   fio_free(udata);
 }
 
@@ -6650,7 +6646,7 @@ static inline void fio_tls_attach2uuid(intptr_t uuid, fio_tls_s *tls,
                   (void *)uuid);
   }
   /* common implementation (TODO) */
-  buffer_s *connection_data = fio_malloc(sizeof(*connection_data));
+  tls_buffer_s *connection_data = fio_malloc(sizeof(*connection_data));
   FIO_ASSERT_ALLOC(connection_data);
   fio_rw_hook_set(uuid, &FIO_TLS_HANDSHAKE_HOOKS,
                   connection_data); /* 32Kb buffer */
@@ -6973,7 +6969,7 @@ static const uint8_t sha1_padding[64] = {0x80, 0};
 Process the buffer once full.
 */
 static inline void fio_sha1_perform_all_rounds(fio_sha1_s *s,
-                                               const uint8_t *buffer) {
+                                               const uint8_t *buf) {
   /* collect data */
   uint32_t a = s->digest.i[0];
   uint32_t b = s->digest.i[1];
@@ -6982,22 +6978,22 @@ static inline void fio_sha1_perform_all_rounds(fio_sha1_s *s,
   uint32_t e = s->digest.i[4];
   uint32_t t, w[16];
   /* copy data to words, performing byte swapping as needed */
-  w[0] = fio_buf2u32(buffer);
-  w[1] = fio_buf2u32(buffer + 4);
-  w[2] = fio_buf2u32(buffer + 8);
-  w[3] = fio_buf2u32(buffer + 12);
-  w[4] = fio_buf2u32(buffer + 16);
-  w[5] = fio_buf2u32(buffer + 20);
-  w[6] = fio_buf2u32(buffer + 24);
-  w[7] = fio_buf2u32(buffer + 28);
-  w[8] = fio_buf2u32(buffer + 32);
-  w[9] = fio_buf2u32(buffer + 36);
-  w[10] = fio_buf2u32(buffer + 40);
-  w[11] = fio_buf2u32(buffer + 44);
-  w[12] = fio_buf2u32(buffer + 48);
-  w[13] = fio_buf2u32(buffer + 52);
-  w[14] = fio_buf2u32(buffer + 56);
-  w[15] = fio_buf2u32(buffer + 60);
+  w[0] = fio_buf2u32(buf);
+  w[1] = fio_buf2u32(buf + 4);
+  w[2] = fio_buf2u32(buf + 8);
+  w[3] = fio_buf2u32(buf + 12);
+  w[4] = fio_buf2u32(buf + 16);
+  w[5] = fio_buf2u32(buf + 20);
+  w[6] = fio_buf2u32(buf + 24);
+  w[7] = fio_buf2u32(buf + 28);
+  w[8] = fio_buf2u32(buf + 32);
+  w[9] = fio_buf2u32(buf + 36);
+  w[10] = fio_buf2u32(buf + 40);
+  w[11] = fio_buf2u32(buf + 44);
+  w[12] = fio_buf2u32(buf + 48);
+  w[13] = fio_buf2u32(buf + 52);
+  w[14] = fio_buf2u32(buf + 56);
+  w[15] = fio_buf2u32(buf + 60);
   /* perform rounds */
 #undef perform_single_round
 #define perform_single_round(num)                                              \
@@ -7110,18 +7106,18 @@ fio_sha1_s fio_sha1_init(void) {
 Writes data to the sha1 buffer.
 */
 void fio_sha1_write(fio_sha1_s *s, const void *data, size_t len) {
-  size_t in_buffer = s->length & 63;
-  size_t partial = 64 - in_buffer;
-  s->length += len;
+  size_t in_buf = s->len & 63;
+  size_t partial = 64 - in_buf;
+  s->len += len;
   if (partial > len) {
-    memcpy(s->buffer + in_buffer, data, len);
+    memcpy(s->buf + in_buf, data, len);
     return;
   }
-  if (in_buffer) {
-    memcpy(s->buffer + in_buffer, data, partial);
+  if (in_buf) {
+    memcpy(s->buf + in_buf, data, partial);
     len -= partial;
     data = (void *)((uintptr_t)data + partial);
-    fio_sha1_perform_all_rounds(s, s->buffer);
+    fio_sha1_perform_all_rounds(s, s->buf);
   }
   while (len >= 64) {
     fio_sha1_perform_all_rounds(s, data);
@@ -7129,28 +7125,28 @@ void fio_sha1_write(fio_sha1_s *s, const void *data, size_t len) {
     len -= 64;
   }
   if (len) {
-    memcpy(s->buffer + in_buffer, data, len);
+    memcpy(s->buf + in_buf, data, len);
   }
   return;
 }
 
 char *fio_sha1_result(fio_sha1_s *s) {
-  size_t in_buffer = s->length & 63;
-  if (in_buffer > 55) {
-    memcpy(s->buffer + in_buffer, sha1_padding, 64 - in_buffer);
-    fio_sha1_perform_all_rounds(s, s->buffer);
-    memcpy(s->buffer, sha1_padding + 1, 56);
-  } else if (in_buffer != 55) {
-    memcpy(s->buffer + in_buffer, sha1_padding, 56 - in_buffer);
+  size_t in_buf = s->len & 63;
+  if (in_buf > 55) {
+    memcpy(s->buf + in_buf, sha1_padding, 64 - in_buf);
+    fio_sha1_perform_all_rounds(s, s->buf);
+    memcpy(s->buf, sha1_padding + 1, 56);
+  } else if (in_buf != 55) {
+    memcpy(s->buf + in_buf, sha1_padding, 56 - in_buf);
   } else {
-    s->buffer[55] = sha1_padding[0];
+    s->buf[55] = sha1_padding[0];
   }
   /* store the length in BITS - alignment should be promised by struct */
   /* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
-  uint64_t *len = (uint64_t *)(s->buffer + 56);
-  *len = s->length << 3;
+  uint64_t *len = (uint64_t *)(s->buf + 56);
+  *len = s->len << 3;
   *len = fio_lton64(*len);
-  fio_sha1_perform_all_rounds(s, s->buffer);
+  fio_sha1_perform_all_rounds(s, s->buf);
 
   /* change back to little endian */
   s->digest.i[0] = fio_ntol32(s->digest.i[0]);
@@ -7512,26 +7508,26 @@ fio_sha2_s fio_sha2_init(fio_sha2_variant_e variant) {
 Writes data to the SHA-2 buffer.
 */
 void fio_sha2_write(fio_sha2_s *s, const void *data, size_t len) {
-  size_t in_buffer;
+  size_t in_buf;
   size_t partial;
   if (s->type & 1) { /* 512 type derived */
-    in_buffer = s->length.words[0] & 127;
-    if (s->length.words[0] + len < s->length.words[0]) {
+    in_buf = s->len.words[0] & 127;
+    if (s->len.words[0] + len < s->len.words[0]) {
       /* we are at wraping around the 64bit limit */
-      s->length.words[1] = (s->length.words[1] << 1) | 1;
+      s->len.words[1] = (s->len.words[1] << 1) | 1;
     }
-    s->length.words[0] += len;
-    partial = 128 - in_buffer;
+    s->len.words[0] += len;
+    partial = 128 - in_buf;
 
     if (partial > len) {
-      memcpy(s->buffer + in_buffer, data, len);
+      memcpy(s->buf + in_buf, data, len);
       return;
     }
-    if (in_buffer) {
-      memcpy(s->buffer + in_buffer, data, partial);
+    if (in_buf) {
+      memcpy(s->buf + in_buf, data, partial);
       len -= partial;
       data = (void *)((uintptr_t)data + partial);
-      fio_sha2_perform_all_rounds(s, s->buffer);
+      fio_sha2_perform_all_rounds(s, s->buf);
     }
     while (len >= 128) {
       fio_sha2_perform_all_rounds(s, data);
@@ -7539,26 +7535,26 @@ void fio_sha2_write(fio_sha2_s *s, const void *data, size_t len) {
       len -= 128;
     }
     if (len) {
-      memcpy(s->buffer + in_buffer, data, len);
+      memcpy(s->buf + in_buf, data, len);
     }
     return;
   }
   /* else... NOT 512 bits derived (64bit base) */
 
-  in_buffer = s->length.words[0] & 63;
-  partial = 64 - in_buffer;
+  in_buf = s->len.words[0] & 63;
+  partial = 64 - in_buf;
 
-  s->length.words[0] += len;
+  s->len.words[0] += len;
 
   if (partial > len) {
-    memcpy(s->buffer + in_buffer, data, len);
+    memcpy(s->buf + in_buf, data, len);
     return;
   }
-  if (in_buffer) {
-    memcpy(s->buffer + in_buffer, data, partial);
+  if (in_buf) {
+    memcpy(s->buf + in_buf, data, partial);
     len -= partial;
     data = (void *)((uintptr_t)data + partial);
-    fio_sha2_perform_all_rounds(s, s->buffer);
+    fio_sha2_perform_all_rounds(s, s->buf);
   }
   while (len >= 64) {
     fio_sha2_perform_all_rounds(s, data);
@@ -7566,7 +7562,7 @@ void fio_sha2_write(fio_sha2_s *s, const void *data, size_t len) {
     len -= 64;
   }
   if (len) {
-    memcpy(s->buffer + in_buffer, data, len);
+    memcpy(s->buf + in_buf, data, len);
   }
   return;
 }
@@ -7581,37 +7577,37 @@ char *fio_sha2_result(fio_sha2_s *s) {
   if (s->type & 1) {
     /* 512 bits derived hashing */
 
-    size_t in_buffer = s->length.words[0] & 127;
+    size_t in_buf = s->len.words[0] & 127;
 
-    if (in_buffer > 111) {
-      memcpy(s->buffer + in_buffer, sha2_padding, 128 - in_buffer);
-      fio_sha2_perform_all_rounds(s, s->buffer);
-      memcpy(s->buffer, sha2_padding + 1, 112);
-    } else if (in_buffer != 111) {
-      memcpy(s->buffer + in_buffer, sha2_padding, 112 - in_buffer);
+    if (in_buf > 111) {
+      memcpy(s->buf + in_buf, sha2_padding, 128 - in_buf);
+      fio_sha2_perform_all_rounds(s, s->buf);
+      memcpy(s->buf, sha2_padding + 1, 112);
+    } else if (in_buf != 111) {
+      memcpy(s->buf + in_buf, sha2_padding, 112 - in_buf);
     } else {
-      s->buffer[111] = sha2_padding[0];
+      s->buf[111] = sha2_padding[0];
     }
     /* store the length in BITS - alignment should be promised by struct */
     /* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
 
-    s->length.words[1] = (s->length.words[1] << 3) | (s->length.words[0] >> 61);
-    s->length.words[0] = s->length.words[0] << 3;
-    s->length.words[0] = fio_lton64(s->length.words[0]);
-    s->length.words[1] = fio_lton64(s->length.words[1]);
+    s->len.words[1] = (s->len.words[1] << 3) | (s->len.words[0] >> 61);
+    s->len.words[0] = s->len.words[0] << 3;
+    s->len.words[0] = fio_lton64(s->len.words[0]);
+    s->len.words[1] = fio_lton64(s->len.words[1]);
 
 #if !__BIG_ENDIAN__
     {
-      uint_fast64_t tmp = s->length.words[0];
-      s->length.words[0] = s->length.words[1];
-      s->length.words[1] = tmp;
+      uint_fast64_t tmp = s->len.words[0];
+      s->len.words[0] = s->len.words[1];
+      s->len.words[1] = tmp;
     }
 #endif
 
-    uint64_t *len = (uint64_t *)(s->buffer + 112);
-    len[0] = s->length.words[0];
-    len[1] = s->length.words[1];
-    fio_sha2_perform_all_rounds(s, s->buffer);
+    uint64_t *len = (uint64_t *)(s->buf + 112);
+    len[0] = s->len.words[0];
+    len[1] = s->len.words[1];
+    fio_sha2_perform_all_rounds(s, s->buf);
 
     /* change back to little endian */
     s->digest.i64[0] = fio_ntol64(s->digest.i64[0]);
@@ -7645,22 +7641,22 @@ char *fio_sha2_result(fio_sha2_s *s) {
     return (char *)s->digest.str;
   }
 
-  size_t in_buffer = s->length.words[0] & 63;
-  if (in_buffer > 55) {
-    memcpy(s->buffer + in_buffer, sha2_padding, 64 - in_buffer);
-    fio_sha2_perform_all_rounds(s, s->buffer);
-    memcpy(s->buffer, sha2_padding + 1, 56);
-  } else if (in_buffer != 55) {
-    memcpy(s->buffer + in_buffer, sha2_padding, 56 - in_buffer);
+  size_t in_buf = s->len.words[0] & 63;
+  if (in_buf > 55) {
+    memcpy(s->buf + in_buf, sha2_padding, 64 - in_buf);
+    fio_sha2_perform_all_rounds(s, s->buf);
+    memcpy(s->buf, sha2_padding + 1, 56);
+  } else if (in_buf != 55) {
+    memcpy(s->buf + in_buf, sha2_padding, 56 - in_buf);
   } else {
-    s->buffer[55] = sha2_padding[0];
+    s->buf[55] = sha2_padding[0];
   }
   /* store the length in BITS - alignment should be promised by struct */
   /* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
-  uint64_t *len = (uint64_t *)(s->buffer + 56);
-  *len = s->length.words[0] << 3;
+  uint64_t *len = (uint64_t *)(s->buf + 56);
+  *len = s->len.words[0] << 3;
   *len = fio_lton64(*len);
-  fio_sha2_perform_all_rounds(s, s->buffer);
+  fio_sha2_perform_all_rounds(s, s->buf);
 
   /* change back to little endian, if required */
 
@@ -7761,12 +7757,12 @@ Section Start Marker
 Testing Core Callback add / remove / ensure
 ***************************************************************************** */
 
-FIO_FUNC void fio_state_callback_test_task(void *pi) {
+FIO_SFUNC void fio_state_callback_test_task(void *pi) {
   ((uintptr_t *)pi)[0] += 1;
 }
 
 #define FIO_STATE_TEST_COUNT 10
-FIO_FUNC void fio_state_callback_order_test_task(void *pi) {
+FIO_SFUNC void fio_state_callback_order_test_task(void *pi) {
   static uintptr_t start = FIO_STATE_TEST_COUNT;
   --start;
   FIO_ASSERT((uintptr_t)pi == start,
@@ -7774,7 +7770,7 @@ FIO_FUNC void fio_state_callback_order_test_task(void *pi) {
              (size_t)pi);
 }
 
-FIO_FUNC void fio_state_callback_test(void) {
+FIO_SFUNC void fio_state_callback_test(void) {
   fprintf(stderr, "=== Testing facil.io workflow state callback system\n");
   uintptr_t result = 0;
   uintptr_t other = 0;
@@ -7807,9 +7803,9 @@ FIO_FUNC void fio_state_callback_test(void) {
 Testing fio_timers
 ***************************************************************************** */
 
-FIO_FUNC void fio_timer_test_task(void *arg) { ++(((size_t *)arg)[0]); }
+FIO_SFUNC void fio_timer_test_task(void *arg) { ++(((size_t *)arg)[0]); }
 
-FIO_FUNC void fio_timer_test(void) {
+FIO_SFUNC void fio_timer_test(void) {
   fprintf(stderr, "=== Testing facil.io timer system\n");
   size_t result = 0;
   const size_t total = 5;
@@ -7873,7 +7869,7 @@ FIO_FUNC void fio_timer_test(void) {
 Testing listening socket
 ***************************************************************************** */
 
-FIO_FUNC void fio_socket_test(void) {
+FIO_SFUNC void fio_socket_test(void) {
   /* initialize unix socket name */
   fio_str_s sock_name = FIO_STRING_INIT;
 #ifdef P_tmpdir
@@ -7976,17 +7972,17 @@ FIO_FUNC void fio_socket_test(void) {
 Testing listening socket
 ***************************************************************************** */
 
-FIO_FUNC void fio_cycle_test_task(void *arg) {
+FIO_SFUNC void fio_cycle_test_task(void *arg) {
   fio_stop();
   (void)arg;
 }
-FIO_FUNC void fio_cycle_test_task2(void *arg) {
+FIO_SFUNC void fio_cycle_test_task2(void *arg) {
   fprintf(stderr, "* facil.io cycling test fatal error!\n");
   exit(-1);
   (void)arg;
 }
 
-FIO_FUNC void fio_cycle_test(void) {
+FIO_SFUNC void fio_cycle_test(void) {
   fprintf(stderr,
           "=== Testing facil.io cycling logic (partial - only tests timers)\n");
   fio_mark_time();
@@ -8011,18 +8007,18 @@ Testing fio_defer task system
 #define FIO_DEFER_TEST_PRINT 0
 #endif
 
-FIO_FUNC void sample_task(void *i_count, void *unused2) {
+FIO_SFUNC void sample_task(void *i_count, void *unused2) {
   (void)(unused2);
   fio_atomic_add((uintptr_t *)i_count, 1);
 }
 
-FIO_FUNC void sched_sample_task(void *count, void *i_count) {
+FIO_SFUNC void sched_sample_task(void *count, void *i_count) {
   for (size_t i = 0; i < (uintptr_t)count; i++) {
     fio_defer(sample_task, i_count, NULL);
   }
 }
 
-FIO_FUNC void fio_defer_test(void) {
+FIO_SFUNC void fio_defer_test(void) {
   const size_t cpu_cores = fio_detect_cpu_cores();
   FIO_ASSERT(cpu_cores, "couldn't detect CPU cores!");
   uintptr_t i_count;
@@ -8086,30 +8082,30 @@ FIO_FUNC void fio_defer_test(void) {
 SipHash tests
 ***************************************************************************** */
 
-FIO_FUNC void fio_siphash_speed_test(void) {
+FIO_SFUNC void fio_siphash_speed_test(void) {
   /* test based on code from BearSSL with credit to Thomas Pornin */
-  uint8_t buffer[8192];
-  memset(buffer, 'T', sizeof(buffer));
+  uint8_t buf[8192];
+  memset(buf, 'T', sizeof(buf));
   /* warmup */
   uint64_t hash = 0;
   for (size_t i = 0; i < 4; i++) {
-    hash += fio_siphash24(buffer, sizeof(buffer), 0, 0);
-    memcpy(buffer, &hash, sizeof(hash));
+    hash += fio_siphash24(buf, sizeof(buf), 0, 0);
+    memcpy(buf, &hash, sizeof(hash));
   }
   /* loop until test runs for more than 2 seconds */
   for (uint64_t cycles = 8192;;) {
     clock_t start, end;
     start = clock();
     for (size_t i = cycles; i > 0; i--) {
-      hash += fio_siphash24(buffer, sizeof(buffer), 0, 0);
+      hash += fio_siphash24(buf, sizeof(buf), 0, 0);
       __asm__ volatile("" ::: "memory");
     }
     end = clock();
-    memcpy(buffer, &hash, sizeof(hash));
+    memcpy(buf, &hash, sizeof(hash));
     if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
         cycles >= ((uint64_t)1 << 62)) {
       fprintf(stderr, "%-20s %8.2f MB/s\n", "fio SipHash24",
-              (double)(sizeof(buffer) * cycles) /
+              (double)(sizeof(buf) * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
     }
@@ -8120,15 +8116,15 @@ FIO_FUNC void fio_siphash_speed_test(void) {
     clock_t start, end;
     start = clock();
     for (size_t i = cycles; i > 0; i--) {
-      hash += fio_siphash13(buffer, sizeof(buffer), 0, 0);
+      hash += fio_siphash13(buf, sizeof(buf), 0, 0);
       __asm__ volatile("" ::: "memory");
     }
     end = clock();
-    memcpy(buffer, &hash, sizeof(hash));
+    memcpy(buf, &hash, sizeof(hash));
     if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
         cycles >= ((uint64_t)1 << 62)) {
       fprintf(stderr, "%-20s %8.2f MB/s\n", "fio SipHash13",
-              (double)(sizeof(buffer) * cycles) /
+              (double)(sizeof(buf) * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
     }
@@ -8136,7 +8132,7 @@ FIO_FUNC void fio_siphash_speed_test(void) {
   }
 }
 
-FIO_FUNC void fio_siphash_test(void) {
+FIO_SFUNC void fio_siphash_test(void) {
   fprintf(stderr, "===================================\n");
 #if NODEBUG
   fio_siphash_speed_test();
@@ -8149,16 +8145,16 @@ FIO_FUNC void fio_siphash_test(void) {
 SHA-1 tests
 ***************************************************************************** */
 
-FIO_FUNC void fio_sha1_speed_test(void) {
+FIO_SFUNC void fio_sha1_speed_test(void) {
   /* test based on code from BearSSL with credit to Thomas Pornin */
-  uint8_t buffer[8192];
+  uint8_t buf[8192];
   uint8_t result[21];
   fio_sha1_s sha1;
-  memset(buffer, 'T', sizeof(buffer));
+  memset(buf, 'T', sizeof(buf));
   /* warmup */
   for (size_t i = 0; i < 4; i++) {
     sha1 = fio_sha1_init();
-    fio_sha1_write(&sha1, buffer, sizeof(buffer));
+    fio_sha1_write(&sha1, buf, sizeof(buf));
     memcpy(result, fio_sha1_result(&sha1), 21);
   }
   /* loop until test runs for more than 2 seconds */
@@ -8167,14 +8163,14 @@ FIO_FUNC void fio_sha1_speed_test(void) {
     sha1 = fio_sha1_init();
     start = clock();
     for (size_t i = cycles; i > 0; i--) {
-      fio_sha1_write(&sha1, buffer, sizeof(buffer));
+      fio_sha1_write(&sha1, buf, sizeof(buf));
       __asm__ volatile("" ::: "memory");
     }
     end = clock();
     fio_sha1_result(&sha1);
     if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
       fprintf(stderr, "%-20s %8.2f MB/s\n", "fio SHA-1",
-              (double)(sizeof(buffer) * cycles) /
+              (double)(sizeof(buf) * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
     }
@@ -8183,16 +8179,16 @@ FIO_FUNC void fio_sha1_speed_test(void) {
 }
 
 #ifdef HAVE_OPENSSL
-FIO_FUNC void fio_sha1_open_ssl_speed_test(void) {
+FIO_SFUNC void fio_sha1_open_ssl_speed_test(void) {
   /* test based on code from BearSSL with credit to Thomas Pornin */
-  uint8_t buffer[8192];
+  uint8_t buf[8192];
   uint8_t result[21];
   SHA_CTX o_sh1;
-  memset(buffer, 'T', sizeof(buffer));
+  memset(buf, 'T', sizeof(buf));
   /* warmup */
   for (size_t i = 0; i < 4; i++) {
     SHA1_Init(&o_sh1);
-    SHA1_Update(&o_sh1, buffer, sizeof(buffer));
+    SHA1_Update(&o_sh1, buf, sizeof(buf));
     SHA1_Final(result, &o_sh1);
   }
   /* loop until test runs for more than 2 seconds */
@@ -8201,14 +8197,14 @@ FIO_FUNC void fio_sha1_open_ssl_speed_test(void) {
     SHA1_Init(&o_sh1);
     start = clock();
     for (size_t i = cycles; i > 0; i--) {
-      SHA1_Update(&o_sh1, buffer, sizeof(buffer));
+      SHA1_Update(&o_sh1, buf, sizeof(buf));
       __asm__ volatile("" ::: "memory");
     }
     end = clock();
     SHA1_Final(result, &o_sh1);
     if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
       fprintf(stderr, "%-20s %8.2f MB/s\n", "OpenSSL SHA-1",
-              (double)(sizeof(buffer) * cycles) /
+              (double)(sizeof(buf) * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
     }
@@ -8217,7 +8213,7 @@ FIO_FUNC void fio_sha1_open_ssl_speed_test(void) {
 }
 #endif
 
-FIO_FUNC void fio_sha1_test(void) {
+FIO_SFUNC void fio_sha1_test(void) {
   // clang-format off
   struct {
     char *str;
@@ -8288,22 +8284,22 @@ FIO_FUNC void fio_sha1_test(void) {
 SHA-2 tests
 ***************************************************************************** */
 
-FIO_FUNC char *sha2_variant_names[] = {
+FIO_SFUNC char *sha2_variant_names[] = {
     "unknown", "SHA_512",     "SHA_256", "SHA_512_256",
     "SHA_224", "SHA_512_224", "none",    "SHA_384",
 };
 
-FIO_FUNC void fio_sha2_speed_test(fio_sha2_variant_e var,
-                                  const char *var_name) {
+FIO_SFUNC void fio_sha2_speed_test(fio_sha2_variant_e var,
+                                   const char *var_name) {
   /* test based on code from BearSSL with credit to Thomas Pornin */
-  uint8_t buffer[8192];
+  uint8_t buf[8192];
   uint8_t result[65];
   fio_sha2_s sha2;
-  memset(buffer, 'T', sizeof(buffer));
+  memset(buf, 'T', sizeof(buf));
   /* warmup */
   for (size_t i = 0; i < 4; i++) {
     sha2 = fio_sha2_init(var);
-    fio_sha2_write(&sha2, buffer, sizeof(buffer));
+    fio_sha2_write(&sha2, buf, sizeof(buf));
     memcpy(result, fio_sha2_result(&sha2), 65);
   }
   /* loop until test runs for more than 2 seconds */
@@ -8312,14 +8308,14 @@ FIO_FUNC void fio_sha2_speed_test(fio_sha2_variant_e var,
     sha2 = fio_sha2_init(var);
     start = clock();
     for (size_t i = cycles; i > 0; i--) {
-      fio_sha2_write(&sha2, buffer, sizeof(buffer));
+      fio_sha2_write(&sha2, buf, sizeof(buf));
       __asm__ volatile("" ::: "memory");
     }
     end = clock();
     fio_sha2_result(&sha2);
     if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
       fprintf(stderr, "%-20s %8.2f MB/s\n", var_name,
-              (double)(sizeof(buffer) * cycles) /
+              (double)(sizeof(buf) * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
     }
@@ -8327,17 +8323,17 @@ FIO_FUNC void fio_sha2_speed_test(fio_sha2_variant_e var,
   }
 }
 
-FIO_FUNC void fio_sha2_openssl_speed_test(const char *var_name, int (*init)(),
-                                          int (*update)(), int (*final)(),
-                                          void *sha) {
+FIO_SFUNC void fio_sha2_openssl_speed_test(const char *var_name, int (*init)(),
+                                           int (*update)(), int (*final)(),
+                                           void *sha) {
   /* test adapted from BearSSL code with credit to Thomas Pornin */
-  uint8_t buffer[8192];
+  uint8_t buf[8192];
   uint8_t result[1024];
-  memset(buffer, 'T', sizeof(buffer));
+  memset(buf, 'T', sizeof(buf));
   /* warmup */
   for (size_t i = 0; i < 4; i++) {
     init(sha);
-    update(sha, buffer, sizeof(buffer));
+    update(sha, buf, sizeof(buf));
     final(result, sha);
   }
   /* loop until test runs for more than 2 seconds */
@@ -8346,21 +8342,21 @@ FIO_FUNC void fio_sha2_openssl_speed_test(const char *var_name, int (*init)(),
     init(sha);
     start = clock();
     for (size_t i = cycles; i > 0; i--) {
-      update(sha, buffer, sizeof(buffer));
+      update(sha, buf, sizeof(buf));
       __asm__ volatile("" ::: "memory");
     }
     end = clock();
     final(result, sha);
     if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
       fprintf(stderr, "%-20s %8.2f MB/s\n", var_name,
-              (double)(sizeof(buffer) * cycles) /
+              (double)(sizeof(buf) * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
     }
     cycles <<= 1;
   }
 }
-FIO_FUNC void fio_sha2_test(void) {
+FIO_SFUNC void fio_sha2_test(void) {
   fio_sha2_s s;
   char *expect;
   char *got;
@@ -8504,7 +8500,7 @@ error:
 Poll (not kqueue or epoll) tests
 ***************************************************************************** */
 #if FIO_ENGINE_POLL
-FIO_FUNC void fio_poll_test(void) {
+FIO_SFUNC void fio_poll_test(void) {
   fprintf(stderr, "=== Testing poll add / remove fd\n");
   fio_poll_add(5);
   FIO_ASSERT(fio_data->poll[5].fd == 5, "fio_poll_add didn't set used fd data");
@@ -8548,11 +8544,11 @@ FIO_FUNC void fio_poll_test(void) {
 Test UUID Linking
 ***************************************************************************** */
 
-FIO_FUNC void fio_uuid_link_test_on_close(void *obj) {
+FIO_SFUNC void fio_uuid_link_test_on_close(void *obj) {
   fio_atomic_add((uintptr_t *)obj, 1);
 }
 
-FIO_FUNC void fio_uuid_link_test(void) {
+FIO_SFUNC void fio_uuid_link_test(void) {
   fprintf(stderr, "=== Testing fio_uuid_link\n");
   uintptr_t called = 0;
   uintptr_t removed = 0;
@@ -8575,29 +8571,29 @@ FIO_FUNC void fio_uuid_link_test(void) {
 Byte Order Testing
 ***************************************************************************** */
 
-FIO_FUNC void fio_buf2u_test(void) {
+FIO_SFUNC void fio_buf2u_test(void) {
   fprintf(stderr, "=== Testing fio_u2bufX and fio_u2bufX functions.\n");
-  char buffer[32];
+  char buf[32];
   for (int64_t i = -1024; i < 1024; ++i) {
-    fio_u2buf64(buffer, i);
+    fio_u2buf64(buf, i);
     __asm__ volatile("" ::: "memory");
-    FIO_ASSERT((int64_t)fio_buf2u64(buffer) == i,
+    FIO_ASSERT((int64_t)fio_buf2u64(buf) == i,
                "fio_u2buf64 / fio_buf2u64  mismatch %zd != %zd",
-               (ssize_t)fio_buf2u64(buffer), (ssize_t)i);
+               (ssize_t)fio_buf2u64(buf), (ssize_t)i);
   }
   for (int32_t i = -1024; i < 1024; ++i) {
-    fio_u2buf32(buffer, i);
+    fio_u2buf32(buf, i);
     __asm__ volatile("" ::: "memory");
-    FIO_ASSERT((int32_t)fio_buf2u32(buffer) == i,
+    FIO_ASSERT((int32_t)fio_buf2u32(buf) == i,
                "fio_u2buf32 / fio_buf2u32  mismatch %zd != %zd",
-               (ssize_t)(fio_buf2u32(buffer)), (ssize_t)i);
+               (ssize_t)(fio_buf2u32(buf)), (ssize_t)i);
   }
   for (int16_t i = -1024; i < 1024; ++i) {
-    fio_u2buf16(buffer, i);
+    fio_u2buf16(buf, i);
     __asm__ volatile("" ::: "memory");
-    FIO_ASSERT((int16_t)fio_buf2u16(buffer) == i,
+    FIO_ASSERT((int16_t)fio_buf2u16(buf) == i,
                "fio_u2buf16 / fio_buf2u16  mismatch %zd != %zd",
-               (ssize_t)(fio_buf2u16(buffer)), (ssize_t)i);
+               (ssize_t)(fio_buf2u16(buf)), (ssize_t)i);
   }
   fprintf(stderr, "* passed.\n");
 }
@@ -8608,15 +8604,15 @@ Pub/Sub partial tests
 
 #if FIO_PUBSUB_SUPPORT
 
-FIO_FUNC void fio_pubsub_test_on_message(fio_msg_s *msg) {
+FIO_SFUNC void fio_pubsub_test_on_message(fio_msg_s *msg) {
   fio_atomic_add((uintptr_t *)msg->udata1, 1);
 }
-FIO_FUNC void fio_pubsub_test_on_unsubscribe(void *udata1, void *udata2) {
+FIO_SFUNC void fio_pubsub_test_on_unsubscribe(void *udata1, void *udata2) {
   fio_atomic_add((uintptr_t *)udata1, 1);
   (void)udata2;
 }
 
-FIO_FUNC void fio_pubsub_test(void) {
+FIO_SFUNC void fio_pubsub_test(void) {
   fprintf(stderr, "=== Testing pub/sub (partial)\n");
   fio_data->active = 1;
   fio_data->is_worker = 1;
@@ -8625,12 +8621,12 @@ FIO_FUNC void fio_pubsub_test(void) {
   uintptr_t counter = 0;
   uintptr_t expect = 0;
   FIO_ASSERT(!s, "fio_subscribe should fail without a callback!");
-  char buffer[8];
-  fio_u2buf32((uint8_t *)buffer + 1, 42);
-  FIO_ASSERT(fio_buf2u32((uint8_t *)buffer + 1) == 42,
+  char buf[8];
+  fio_u2buf32((uint8_t *)buf + 1, 42);
+  FIO_ASSERT(fio_buf2u32((uint8_t *)buf + 1) == 42,
              "fio_u2buf32 / fio_buf2u32 not reversible (42)!");
-  fio_u2buf32((uint8_t *)buffer, 4);
-  FIO_ASSERT(fio_buf2u32((uint8_t *)buffer) == 4,
+  fio_u2buf32((uint8_t *)buf, 4);
+  FIO_ASSERT(fio_buf2u32((uint8_t *)buf) == 4,
              "fio_u2buf32 / fio_buf2u32 not reversible (4)!");
   subscription_s *s2 =
       fio_subscribe(.filter = 1, .udata1 = &counter,

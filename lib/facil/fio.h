@@ -40,6 +40,58 @@ Feel free to copy, use and enjoy according to the license provided.
  **************************************************************************** */
 
 /* *****************************************************************************
+Compilation Macros
+***************************************************************************** */
+
+#ifndef FIO_MAX_SOCK_CAPACITY
+/**
+ * The maximum number of connections per worker process.
+ */
+#define FIO_MAX_SOCK_CAPACITY 131072
+#endif
+
+#ifndef FIO_CPU_CORES_LIMIT
+/**
+ * If facil.io detects more CPU cores than the number of cores stated in the
+ * FIO_CPU_CORES_LIMIT, it will assume an error and cap the number of cores
+ * detected to the assigned limit.
+ *
+ * This is only relevant to automated values, when running facil.io with zero
+ * threads and processes, which invokes a large matrix of workers and threads
+ * (see {facil_run})
+ *
+ * The default auto-detection cap is set at 8 cores. The number is arbitrary
+ * (historically the number 7 was used after testing `malloc` race conditions on
+ * a MacBook Pro).
+ *
+ * This does NOT effect manually set (non-zero) worker/thread values.
+ */
+#define FIO_CPU_CORES_LIMIT 64
+#endif
+
+#ifndef FIO_PUBSUB_SUPPORT
+/**
+ * If true (1), compiles the facil.io pub/sub API.
+ */
+#define FIO_PUBSUB_SUPPORT 1
+#endif
+
+#ifndef FIO_TLS_PRINT_SECRET
+/* If true, the master key secret SHOULD be printed using FIO_LOG_DEBUG */
+#define FIO_TLS_PRINT_SECRET 0
+#endif
+
+#ifndef FIO_TLS_SKIP
+/* If true, the weak-function TLS (missing) implementation will be skipped. */
+#define FIO_TLS_SKIP 0
+#endif
+
+#ifndef FIO_TLS_IGNORE_MISSING_ERROR
+/* If true, a no-op TLS implementation will be enabled (for debugging). */
+#define FIO_TLS_IGNORE_MISSING_ERROR 0
+#endif
+
+/* *****************************************************************************
 C++ extern start
 ***************************************************************************** */
 /* support C++ */
@@ -91,91 +143,13 @@ Import STL
 #define FIOBJ_EXTERN 1
 #include "fio-stl.h"
 
-/* *****************************************************************************
-Compilation Macros
-***************************************************************************** */
-
-#ifndef FIO_MAX_SOCK_CAPACITY
-/**
- * The maximum number of connections per worker process.
- */
-#define FIO_MAX_SOCK_CAPACITY 131072
-#endif
-
-#ifndef FIO_CPU_CORES_LIMIT
-/**
- * If facil.io detects more CPU cores than the number of cores stated in the
- * FIO_CPU_CORES_LIMIT, it will assume an error and cap the number of cores
- * detected to the assigned limit.
- *
- * This is only relevant to automated values, when running facil.io with zero
- * threads and processes, which invokes a large matrix of workers and threads
- * (see {facil_run})
- *
- * The default auto-detection cap is set at 8 cores. The number is arbitrary
- * (historically the number 7 was used after testing `malloc` race conditions on
- * a MacBook Pro).
- *
- * This does NOT effect manually set (non-zero) worker/thread values.
- */
-#define FIO_CPU_CORES_LIMIT 8
-#endif
-
-#ifndef FIO_DEFER_THROTTLE_PROGRESSIVE
-/**
- * The progressive throttling model makes concurrency and parallelism more
- * likely.
- *
- * Otherwise threads are assumed to be intended for "fallback" in case of slow
- * user code, where a single thread should be active most of the time and other
- * threads are activated only when that single thread is slow to perform.
- */
-#define FIO_DEFER_THROTTLE_PROGRESSIVE 1
-#endif
-
-#ifndef FIO_PUBSUB_SUPPORT
-/**
- * If true (1), compiles the facil.io pub/sub API.
- */
-#define FIO_PUBSUB_SUPPORT 1
-#endif
-
-#ifndef FIO_TLS_PRINT_SECRET
-/* If true, the master key secret SHOULD be printed using FIO_LOG_DEBUG */
-#define FIO_TLS_PRINT_SECRET 0
-#endif
-
-#ifndef FIO_TLS_SKIP
-/* If true, the weak-function TLS (missing) implementation will be skipped. */
-#define FIO_TLS_SKIP 0
-#endif
-
-#ifndef FIO_TLS_IGNORE_MISSING_ERROR
-/* If true, a no-op TLS implementation will be enabled (for debugging). */
-#define FIO_TLS_IGNORE_MISSING_ERROR 0
-#endif
-
-#ifndef FIO_IGNORE_MACRO
-/**
- * This is used internally to ignore macros that shadow functions (avoiding
- * named arguments when required).
- */
-#define FIO_IGNORE_MACRO
-#endif
-
-#include <errno.h>
 #include <limits.h>
 #include <signal.h>
-#include <strings.h>
 
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
-
-#ifndef FIO_FUNC
-#define FIO_FUNC static __attribute__((unused))
-#endif
 
 #if defined(__FreeBSD__)
 #include <netinet/in.h>
@@ -191,7 +165,7 @@ Patch for OSX version < 10.12 from https://stackoverflow.com/a/9781275/4025095
 #define clock_gettime patch_clock_gettime
 // clock_gettime is not implemented on older versions of OS X (< 10.12).
 // If implemented, CLOCK_REALTIME will have already been defined.
-FIO_FUNC inline int patch_clock_gettime(int clk_id, struct timespec *t) {
+FIO_IFUNC int patch_clock_gettime(int clk_id, struct timespec *t) {
   struct timeval now;
   int rv = gettimeofday(&now, NULL);
   if (rv)
@@ -428,16 +402,16 @@ The following is an example echo server using facil.io:
 static void echo_on_data(intptr_t uuid, fio_protocol_s *prt) {
   (void)prt; // we can ignore the unused argument
   // echo buffer
-  char buffer[1024] = {'E', 'c', 'h', 'o', ':', ' '};
+  char buf[1024] = {'E', 'c', 'h', 'o', ':', ' '};
   ssize_t len;
   // Read to the buffer, starting after the "Echo: "
-  while ((len = fio_read(uuid, buffer + 6, 1018)) > 0) {
-    fprintf(stderr, "Read: %.*s", (int)len, buffer + 6);
+  while ((len = fio_read(uuid, buf + 6, 1018)) > 0) {
+    fprintf(stderr, "Read: %.*s", (int)len, buf + 6);
     // Write back the message
-    fio_write(uuid, buffer, len + 6);
+    fio_write(uuid, buf, len + 6);
     // Handle goodbye
-    if ((buffer[6] | 32) == 'b' && (buffer[7] | 32) == 'y' &&
-        (buffer[8] | 32) == 'e') {
+    if ((buf[6] | 32) == 'b' && (buf[7] | 32) == 'y' &&
+        (buf[8] | 32) == 'e') {
       fio_write(uuid, "Goodbye.\n", 9);
       fio_close(uuid);
       return;
@@ -478,7 +452,7 @@ static void echo_on_open(intptr_t uuid, void *udata) {
   fprintf(stderr, "New Connection %p received from %s\n", (void *)echo_proto,
           fio_peer_addr(uuid).data);
   fio_attach(uuid, echo_proto);
-  fio_write2(uuid, .data.buffer = "Echo Service: Welcome\n", .length = 22,
+  fio_write2(uuid, .data.buf = "Echo Service: Welcome\n", .len = 22,
              .after.dealloc = FIO_DEALLOC_NOOP);
   fio_timeout_set(uuid, 5);
 }
@@ -602,7 +576,7 @@ typedef struct {
  *
  * Invalid formats might produce unexpected results. No error testing performed.
  */
-fio_url_s fio_url_parse(const char *url, size_t length);
+fio_url_s fio_url_parse(const char *url, size_t len);
 /* *****************************************************************************
 Starting the IO reactor and reviewing it's state
 ***************************************************************************** */
@@ -824,13 +798,13 @@ size_t fio_local_addr(char *dest, size_t limit);
  * Data might be available in the kernel's buffer while it is not available to
  * be read using `fio_read` (i.e., when using a transport layer, such as TLS).
  */
-ssize_t fio_read(intptr_t uuid, void *buffer, size_t count);
+ssize_t fio_read(intptr_t uuid, void *buf, size_t len);
 
 /** The following structure is used for `fio_write2_fn` function arguments. */
 typedef struct {
   union {
     /** The in-memory data to be sent. */
-    const void *buffer;
+    const void *buf;
     /** The data to be sent, if this is a file. */
     const intptr_t fd;
   } data;
@@ -844,7 +818,7 @@ typedef struct {
      * Note: socket library functions MUST NEVER be called by a callback, or a
      * deadlock might occur.
      */
-    void (*dealloc)(void *buffer);
+    void (*dealloc)(void *buf);
     /**
      * This is an alternative deallocation callback accessor (same memory space
      * as `dealloc`) for conveniently setting the file `close` callback.
@@ -854,17 +828,15 @@ typedef struct {
      */
     void (*close)(intptr_t fd);
   } after;
-  /** The length (size) of the buffer, or the amount of data to be sent from the
-   * file descriptor.
-   */
-  uintptr_t length;
+  /** The length of the buffer, or the amount of data to be sent. */
+  uintptr_t len;
   /** Starting point offset from the buffer or file descriptor's beginning. */
   uintptr_t offset;
   /** The packet will be sent as soon as possible. */
   unsigned urgent : 1;
   /**
    * The data union contains the value of a file descriptor (`int`). i.e.:
-   *  `.data.fd = fd` or `.data.buffer = (void*)fd;`
+   *  `.data.fd = fd` or `.data.buf = (void*)fd;`
    */
   unsigned is_fd : 1;
   /** for internal use */
@@ -909,16 +881,15 @@ void FIO_DEALLOC_NOOP(void *arg);
  *
  * Returns the same values as `fio_write2`.
  */
-// ssize_t fio_write(uintptr_t uuid, void *buffer, size_t legnth);
-inline FIO_FUNC ssize_t fio_write(const intptr_t uuid, const void *buffer,
-                                  const size_t length) {
-  if (!length || !buffer)
+FIO_IFUNC ssize_t fio_write(const intptr_t uuid, const void *buf,
+                            const size_t len) {
+  if (!len || !buf)
     return 0;
-  void *cpy = fio_malloc(length);
+  void *cpy = fio_malloc(len);
   if (!cpy)
     return -1;
-  memcpy(cpy, buffer, length);
-  return fio_write2(uuid, .data.buffer = cpy, .length = length,
+  memcpy(cpy, buf, len);
+  return fio_write2(uuid, .data.buf = cpy, .len = len,
                     .after.dealloc = fio_free);
 }
 
@@ -937,17 +908,17 @@ inline FIO_FUNC ssize_t fio_write(const intptr_t uuid, const void *buffer,
  *
  * Returns -1 and closes the file on error. Returns 0 on success.
  */
-inline FIO_FUNC ssize_t fio_sendfile(intptr_t uuid, intptr_t source_fd,
-                                     off_t offset, size_t length) {
-  return fio_write2(uuid, .data.fd = source_fd, .length = length, .is_fd = 1,
+FIO_IFUNC ssize_t fio_sendfile(intptr_t uuid, intptr_t source_fd, off_t offset,
+                               size_t len) {
+  return fio_write2(uuid, .data.fd = source_fd, .len = len, .is_fd = 1,
                     .offset = offset);
 }
 
 /** a helper macro for sending reference counted core strings. */
 #define FIO_STR_SEND_FREE2(str_name, uuid, s)                                  \
-  fio_write2(r->sub_data.uuid, .data.buffer = (char *)s,                       \
+  fio_write2(r->sub_data.uuid, .data.buf = (char *)s,                          \
              .offset = ((char *)s - str_name##_data(s)),                       \
-             .length = str_name##_len(s),                                      \
+             .len = str_name##_len(s),                                         \
              .after.dealloc = (void (*)(void *))str_name##_free2);
 
 /**
@@ -1821,12 +1792,12 @@ int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);
 ***************************************************************************** */
 
 #if FIO_USE_RISKY_HASH
-#define FIO_HASH_FN(data, length, key1, key2)                                  \
-  fio_risky_hash((data), (length),                                             \
+#define FIO_HASH_FN(buf, len, key1, key2)                                      \
+  fio_risky_hash((buf), (len),                                                 \
                  ((uint64_t)(key1) >> 19) | ((uint64_t)(key2) << 27))
 #else
-#define FIO_HASH_FN(data, length, key1, key2)                                  \
-  fio_siphash13((data), (length), (uint64_t)(key1), (uint64_t)(key2))
+#define FIO_HASH_FN(buf, len, key1, key2)                                      \
+  fio_siphash13((buf), (len), (uint64_t)(key1), (uint64_t)(key2))
 #endif
 
 /* *****************************************************************************
@@ -1836,13 +1807,13 @@ SipHash
 /**
  * A SipHash variation (2-4).
  */
-uint64_t fio_siphash24(const void *data, size_t len, uint64_t key1,
+uint64_t fio_siphash24(const void *buf, size_t len, uint64_t key1,
                        uint64_t key2);
 
 /**
  * A SipHash 1-3 variation.
  */
-uint64_t fio_siphash13(const void *data, size_t len, uint64_t key1,
+uint64_t fio_siphash13(const void *buf, size_t len, uint64_t key1,
                        uint64_t key2);
 
 /**
@@ -1850,8 +1821,7 @@ uint64_t fio_siphash13(const void *data, size_t len, uint64_t key1,
  *
  * Currently implemented using SipHash 1-3.
  */
-#define fio_siphash(data, length, k1, k2)                                      \
-  fio_siphash13((data), (length), (k1), (k2))
+#define fio_siphash(buf, len, k1, k2) fio_siphash13((buf), (len), (k1), (k2))
 
 /* *****************************************************************************
 SHA-1
@@ -1873,8 +1843,8 @@ Use, for example:
     char *hashed_result = fio_sha1_result(&sha1);
 */
 typedef struct {
-  uint64_t length;
-  uint8_t buffer[64];
+  uint64_t len;
+  uint8_t buf[64];
   union {
     uint32_t i[5];
     unsigned char str[21];
@@ -1901,7 +1871,7 @@ char *fio_sha1_result(fio_sha1_s *s);
 /**
 An SHA1 helper function that performs initialiation, writing and finalizing.
 */
-inline FIO_FUNC char *fio_sha1(fio_sha1_s *s, const void *data, size_t len) {
+FIO_IFUNC char *fio_sha1(fio_sha1_s *s, const void *data, size_t len) {
   *s = fio_sha1_init();
   fio_sha1_write(s, data, len);
   return fio_sha1_result(s);
@@ -1952,8 +1922,8 @@ typedef struct {
 #if defined(__SIZEOF_INT128__)
     __uint128_t i;
 #endif
-  } length;
-  uint8_t buffer[128];
+  } len;
+  uint8_t buf[128];
   union {
     uint32_t i32[16];
     uint64_t i64[8];
@@ -1994,8 +1964,7 @@ char *fio_sha2_result(fio_sha2_s *s);
 An SHA2 helper function that performs initialiation, writing and finalizing.
 Uses the SHA2 512 variant.
 */
-inline FIO_FUNC char *fio_sha2_512(fio_sha2_s *s, const void *data,
-                                   size_t len) {
+FIO_IFUNC char *fio_sha2_512(fio_sha2_s *s, const void *data, size_t len) {
   *s = fio_sha2_init(SHA_512);
   fio_sha2_write(s, data, len);
   return fio_sha2_result(s);
@@ -2005,8 +1974,7 @@ inline FIO_FUNC char *fio_sha2_512(fio_sha2_s *s, const void *data,
 An SHA2 helper function that performs initialiation, writing and finalizing.
 Uses the SHA2 256 variant.
 */
-inline FIO_FUNC char *fio_sha2_256(fio_sha2_s *s, const void *data,
-                                   size_t len) {
+FIO_IFUNC char *fio_sha2_256(fio_sha2_s *s, const void *data, size_t len) {
   *s = fio_sha2_init(SHA_256);
   fio_sha2_write(s, data, len);
   return fio_sha2_result(s);
@@ -2016,8 +1984,7 @@ inline FIO_FUNC char *fio_sha2_256(fio_sha2_s *s, const void *data,
 An SHA2 helper function that performs initialiation, writing and finalizing.
 Uses the SHA2 384 variant.
 */
-inline FIO_FUNC char *fio_sha2_384(fio_sha2_s *s, const void *data,
-                                   size_t len) {
+FIO_IFUNC char *fio_sha2_384(fio_sha2_s *s, const void *data, size_t len) {
   *s = fio_sha2_init(SHA_384);
   fio_sha2_write(s, data, len);
   return fio_sha2_result(s);
@@ -2185,8 +2152,7 @@ C++ extern end
 
 #if DEBUG_SPINLOCK
 /** Busy waits for a lock, reports contention. */
-FIO_FUNC inline void fio_lock_dbg(fio_lock_i *lock, const char *file,
-                                  int line) {
+FIO_IFUNC void fio_lock_dbg(fio_lock_i *lock, const char *file, int line) {
   size_t lock_cycle_count = 0;
   while (fio_trylock(lock)) {
     if (lock_cycle_count >= 8 &&
@@ -2202,8 +2168,7 @@ FIO_FUNC inline void fio_lock_dbg(fio_lock_i *lock, const char *file,
 }
 #define fio_lock(lock) fio_lock_dbg((lock), __FILE__, __LINE__)
 
-FIO_FUNC inline int fio_trylock_dbg(fio_lock_i *lock, const char *file,
-                                    int line) {
+FIO_IFUNC int fio_trylock_dbg(fio_lock_i *lock, const char *file, int line) {
   static int last_line = 0;
   static size_t count = 0;
   int result = fio_trylock(lock);

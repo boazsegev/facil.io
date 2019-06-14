@@ -88,7 +88,7 @@ static void chat_on_open(intptr_t uuid, void *udata) {
   fprintf(stderr, "* (%d) new Connection %p received from %s\n", getpid(),
           (void *)proto, fio_peer_addr(uuid).buf);
   /* Send a Welcome message to the client */
-  fio_write2(uuid, .data.buffer = "Chat Service: Welcome\n", .length = 22,
+  fio_write2(uuid, .data.buf = "Chat Service: Welcome\n", .len = 22,
              .after.dealloc = FIO_DEALLOC_NOOP);
 
   /* Subscribe client to chat channel */
