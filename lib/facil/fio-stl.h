@@ -266,9 +266,9 @@ Naming macros
   FIO_NAME_FROM_MACRO_STEP2(prefix, postfix, div)
 /** Used for naming functions and variables resulting in: prefix_postfix */
 #define FIO_NAME(prefix, postfix) FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, _)
-/** Used for naming conversion functions, i.e.: foo2bar */
+/** Sents naming convention for conversion functions, i.e.: foo2bar */
 #define FIO_NAME2(prefix, postfix) FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, 2)
-/** Used for naming boolean testing functions, i.e.: foo_is_true */
+/** Sents naming convention for boolean testing functions, i.e.: foo_is_true */
 #define FIO_NAME_BL(prefix, postfix)                                           \
   FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, _is_)
 
@@ -776,13 +776,13 @@ Unaligned memory read / write operations
 ***************************************************************************** */
 
 /** Converts an unaligned network ordered byte stream to a 16 bit number. */
-HFUNC uint16_t FIO_NAME2(fio_buf, u16)(const void *c) {
+HFUNC uint16_t FIO_NAME2(fio_buf, u16)(const void *c) { /* fio_buf2u16 */
   return ((uint16_t)(((uint16_t)(((const uint8_t *)(c))[0]) << 8) |
                      (uint16_t)(((const uint8_t *)(c))[1])));
 }
 
 /** Converts an unaligned network ordered byte stream to a 32 bit number. */
-HFUNC uint32_t FIO_NAME2(fio_buf, u32)(const void *c) {
+HFUNC uint32_t FIO_NAME2(fio_buf, u32)(const void *c) { /* fio_buf2u32 */
   return ((uint32_t)(((uint32_t)(((const uint8_t *)(c))[0]) << 24) |
                      ((uint32_t)(((const uint8_t *)(c))[1]) << 16) |
                      ((uint32_t)(((const uint8_t *)(c))[2]) << 8) |
@@ -790,7 +790,7 @@ HFUNC uint32_t FIO_NAME2(fio_buf, u32)(const void *c) {
 }
 
 /** Converts an unaligned network ordered byte stream to a 64 bit number. */
-HFUNC uint64_t FIO_NAME2(fio_buf, u64)(const void *c) {
+HFUNC uint64_t FIO_NAME2(fio_buf, u64)(const void *c) { /* fio_buf2u64 */
   return ((uint64_t)((((uint64_t)((const uint8_t *)(c))[0]) << 56) |
                      (((uint64_t)((const uint8_t *)(c))[1]) << 48) |
                      (((uint64_t)((const uint8_t *)(c))[2]) << 40) |
@@ -802,13 +802,13 @@ HFUNC uint64_t FIO_NAME2(fio_buf, u64)(const void *c) {
 }
 
 /** Writes a local 16 bit number to an unaligned buffer in network order. */
-HFUNC void FIO_NAME2(fio_u, buf16)(void *buf, uint16_t i) {
+HFUNC void FIO_NAME2(fio_u, buf16)(void *buf, uint16_t i) { /* fio_u2buf16 */
   ((uint8_t *)(buf))[0] = (i >> 8) & 0xFF;
   ((uint8_t *)(buf))[1] = (i)&0xFF;
 }
 
 /** Writes a local 32 bit number to an unaligned buffer in network order. */
-HFUNC void FIO_NAME2(fio_u, buf32)(void *buf, uint32_t i) {
+HFUNC void FIO_NAME2(fio_u, buf32)(void *buf, uint32_t i) { /* fio_u2buf32 */
   ((uint8_t *)(buf))[0] = (i >> 24) & 0xFF;
   ((uint8_t *)(buf))[1] = (i >> 16) & 0xFF;
   ((uint8_t *)(buf))[2] = (i >> 8) & 0xFF;
@@ -816,7 +816,7 @@ HFUNC void FIO_NAME2(fio_u, buf32)(void *buf, uint32_t i) {
 }
 
 /** Writes a local 64 bit number to an unaligned buffer in network order. */
-HFUNC void FIO_NAME2(fio_u, buf64)(void *buf, uint64_t i) {
+HFUNC void FIO_NAME2(fio_u, buf64)(void *buf, uint64_t i) { /* fio_u2buf64 */
   ((uint8_t *)(buf))[0] = ((i >> 56) & 0xFF);
   ((uint8_t *)(buf))[1] = ((i >> 48) & 0xFF);
   ((uint8_t *)(buf))[2] = ((i >> 40) & 0xFF);
@@ -1057,6 +1057,9 @@ Memory allocator for short lived objects
  *
  * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
  * will be redirected to `mmap`, as if `fio_mmap` was called.
+ *
+ * `fio_malloc` promises a best attempt at providing locality between
+ * consecutive calls, but locality can't be guaranteed.
  */
 SFUNC void *FIO_ALIGN_NEW fio_malloc(size_t size);
 
@@ -1272,6 +1275,15 @@ Big memory allocation macros and helpers (page allocation / mmap)
 
 #if H___FIO_UNIX_TOOLS_H || __has_include("sys/mman.h")
 #include <sys/mman.h>
+
+/* Mitigates MAP_ANONYMOUS not being defined on older versions of MacOS */
+#if !defined(MAP_ANONYMOUS)
+#if defined(MAP_ANON)
+#define MAP_ANONYMOUS MAP_ANON
+#else
+#define MAP_ANONYMOUS 0
+#endif
+#endif
 
 /*
  * allocates memory using `mmap`, but enforces alignment.
@@ -4291,11 +4303,11 @@ SFUNC FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
  * data.
  */
 #define FIO_MAP_EACH(map_, pos_)                                               \
-  for (__typeof__((map_)->map) prev__ = NULL,                                  \
-                               pos_ = (map_)->map + (map_)->head;              \
-       (map_)->head != (uint32_t)-1 && pos_ &&                                 \
-       (prev__ == NULL || pos_ != (map_)->map + (map_)->head);                 \
-       (prev__ = pos_), pos_ = (map_)->map + pos_->next)
+  if ((map_)->map && (map_)->head != (uint32_t)-1)                             \
+    for (__typeof__((map_)->map) prev__ = NULL,                                \
+                                 pos_ = (map_)->map + (map_)->head;            \
+         (prev__ == NULL || pos_ != (map_)->map + (map_)->head);               \
+         (prev__ = pos_), pos_ = (map_)->map + pos_->next)
 
 #endif
 
@@ -4827,9 +4839,9 @@ Hash Map / Set - API iteration
 #ifdef FIO_MAP_KEY
 /* Hash map implementation */
 
-HSFUNC __thread uint32_t FIO_NAME(FIO_MAP_NAME, ___each_pos) = -1;
+HSFUNC __thread uint32_t FIO_NAME(FIO_MAP_NAME, __each_pos) = -1;
 HSFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
-    FIO_NAME(FIO_MAP_NAME, ___each_map) = NULL;
+    FIO_NAME(FIO_MAP_NAME, __each_map) = NULL;
 
 /**
  * Returns the current `key` within an `each` task.
@@ -4839,19 +4851,19 @@ HSFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
  * For sets, returns the hash value, for hash maps, returns the key value.
  */
 SFUNC FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
-  if (!FIO_NAME(FIO_MAP_NAME, ___each_map) ||
-      !FIO_NAME(FIO_MAP_NAME, ___each_map)->map)
+  if (!FIO_NAME(FIO_MAP_NAME, __each_map) ||
+      !FIO_NAME(FIO_MAP_NAME, __each_map)->map)
     return FIO_MAP_KEY_INVALID;
-  return FIO_NAME(FIO_MAP_NAME, ___each_map)
-      ->map[FIO_NAME(FIO_MAP_NAME, ___each_pos)]
+  return FIO_NAME(FIO_MAP_NAME, __each_map)
+      ->map[FIO_NAME(FIO_MAP_NAME, __each_pos)]
       .obj.key;
 }
 #else
 /* Set implementation */
 
-HSFUNC __thread uint32_t FIO_NAME(FIO_MAP_NAME, ___each_pos) = -1;
+HSFUNC __thread uint32_t FIO_NAME(FIO_MAP_NAME, __each_pos) = -1;
 HSFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
-    FIO_NAME(FIO_MAP_NAME, ___each_map) = NULL;
+    FIO_NAME(FIO_MAP_NAME, __each_map) = NULL;
 
 /**
  * Returns the current `key` within an `each` task.
@@ -4861,8 +4873,8 @@ HSFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
  * For sets, returns the hash value, for hash maps, returns the key value.
  */
 SFUNC FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
-  return FIO_NAME(FIO_MAP_NAME, ___each_map)
-      ->map[FIO_NAME(FIO_MAP_NAME, ___each_pos)]
+  return FIO_NAME(FIO_MAP_NAME, __each_map)
+      ->map[FIO_NAME(FIO_MAP_NAME, __each_pos)]
       .hash;
 }
 
@@ -4885,28 +4897,28 @@ IFUNC uint32_t FIO_NAME(FIO_MAP_NAME,
                               void *arg) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
-  FIO_NAME(FIO_MAP_NAME, s) *old_map = FIO_NAME(FIO_MAP_NAME, ___each_map);
+  FIO_NAME(FIO_MAP_NAME, s) *old_map = FIO_NAME(FIO_MAP_NAME, __each_map);
   if (start_at < 0)
     start_at = m->count + start_at;
   if (start_at < 0 || (uint32_t)start_at >= m->count)
     return m->count;
-  uint32_t old_pos = FIO_NAME(FIO_MAP_NAME, ___each_pos);
+  uint32_t old_pos = FIO_NAME(FIO_MAP_NAME, __each_pos);
   uint32_t count = 0;
-  FIO_NAME(FIO_MAP_NAME, ___each_pos) = m->head;
-  FIO_NAME(FIO_MAP_NAME, ___each_map) = m;
+  FIO_NAME(FIO_MAP_NAME, __each_pos) = m->head;
+  FIO_NAME(FIO_MAP_NAME, __each_map) = m;
   count = start_at;
   while (start_at) {
     --start_at;
-    FIO_NAME(FIO_MAP_NAME, ___each_pos) =
-        m->map[FIO_NAME(FIO_MAP_NAME, ___each_pos)].next;
+    FIO_NAME(FIO_MAP_NAME, __each_pos) =
+        m->map[FIO_NAME(FIO_MAP_NAME, __each_pos)].next;
   }
   while (count < m->count && (++count) &&
-         task(FIO_MAP_OBJ2TYPE(m->map[FIO_NAME(FIO_MAP_NAME, ___each_pos)].obj),
+         task(FIO_MAP_OBJ2TYPE(m->map[FIO_NAME(FIO_MAP_NAME, __each_pos)].obj),
               arg) != -1)
-    FIO_NAME(FIO_MAP_NAME, ___each_pos) =
-        m->map[FIO_NAME(FIO_MAP_NAME, ___each_pos)].next;
-  FIO_NAME(FIO_MAP_NAME, ___each_pos) = old_pos;
-  FIO_NAME(FIO_MAP_NAME, ___each_map) = old_map;
+    FIO_NAME(FIO_MAP_NAME, __each_pos) =
+        m->map[FIO_NAME(FIO_MAP_NAME, __each_pos)].next;
+  FIO_NAME(FIO_MAP_NAME, __each_pos) = old_pos;
+  FIO_NAME(FIO_MAP_NAME, __each_map) = old_map;
   return count;
 }
 
@@ -8488,18 +8500,25 @@ Type Naming Macros for FIOBJ types. By default, results in:
 #define FIOBJ___NAME_ARRAY array
 #define FIOBJ___NAME_HASH hash
 
-#ifndef FIOBJ_JSON_MAX_NESTING
+#ifndef FIOBJ_MAX_NESTING
 /**
- * Sets the limit on JSON output nesting level.
+ * Sets the limit on nesting level transversal by recursive functions.
  *
- * Since JSON formatting is recursive, values should be less than 32K.
+ * This effects JSON output / input and the `fiobj_each2` function since they
+ * are recursive.
+ *
+ * HOWEVER: this value will NOT effect the recursive `fiobj_free` which could
+ * (potentially) expload the stack if given melformed input such as cyclic data
+ * structures.
+ *
+ * Values should be less than 32K.
  */
-#define FIOBJ_JSON_MAX_NESTING 512
+#define FIOBJ_MAX_NESTING 512
 #endif
 
 /* make sure roundtrips work */
 #ifndef JSON_MAX_DEPTH
-#define JSON_MAX_DEPTH FIOBJ_JSON_MAX_NESTING
+#define JSON_MAX_DEPTH FIOBJ_MAX_NESTING
 #endif
 /* *****************************************************************************
 General Requirements / Macros
@@ -9490,7 +9509,6 @@ FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___OBJECT_CLASS_VTBL = {
 /* *****************************************************************************
 FIOBJ Complex Iteration
 ***************************************************************************** */
-
 typedef struct {
   FIOBJ obj;
   uint32_t pos;
@@ -9578,6 +9596,13 @@ FIOBJ_FUNC uint32_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ child, void *arg),
   while (!d.stop && i.obj && i.pos < end) {
     i.pos = fiobj_each1(i.obj, i.pos, fiobj____each2_wrapper_task, &d);
     if (d.next != FIOBJ_INVALID) {
+      if (fiobj____stack_count(&d.stack) + 1 >= FIOBJ_MAX_NESTING) {
+        FIO_LOG_ERROR("FIOBJ nesting level too deep (%u)."
+                      "`fiobj_each2` stopping loop early.",
+                      (unsigned int)fiobj____stack_count(&d.stack));
+        d.stop = 1;
+        continue;
+      }
       fiobj____stack_push(&d.stack, i);
       i.pos = 0;
       i.obj = d.next;
@@ -9729,7 +9754,7 @@ fiobj___json_format_internal__(fiobj___json_format_internal__s *args, FIOBJ o) {
     return;
   }
   case FIOBJ_T_ARRAY:
-    if (args->level == FIOBJ_JSON_MAX_NESTING) {
+    if (args->level == FIOBJ_MAX_NESTING) {
       FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)
       (args->json, "[ ]", 3);
       return;
@@ -9757,7 +9782,7 @@ fiobj___json_format_internal__(fiobj___json_format_internal__s *args, FIOBJ o) {
     }
     return;
   case FIOBJ_T_HASH:
-    if (args->level == FIOBJ_JSON_MAX_NESTING) {
+    if (args->level == FIOBJ_MAX_NESTING) {
       FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)
       (args->json, "{ }", 3);
       return;

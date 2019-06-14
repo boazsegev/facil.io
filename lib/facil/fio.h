@@ -962,7 +962,7 @@ FIO_IFUNC ssize_t fio_sendfile(intptr_t uuid, intptr_t source_fd, off_t offset,
 FIO_SFUNC void fiobj___free_after_send(void *o) { fiobj_str_free((FIOBJ)o); }
 
 /** Writes a FIOBJ object to the `uuid` and frees it once it was sent. */
-FIO_IFUNC ssize_t fiobj_write_free(intptr_t uuid, FIOBJ o) {
+FIO_IFUNC ssize_t fiobj_send_free(intptr_t uuid, FIOBJ o) {
   if (o == FIOBJ_INVALID)
     return 0;
   if (FIOBJ_TYPE_CLASS(o) != FIOBJ_T_STRING) {

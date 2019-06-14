@@ -9,13 +9,11 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FIOBJ_EXTERN_COMPLETE 1
 #include <fio.h>
 
-#define FIO_LIST
 #define FIO_STRING_NAME fio_str
 #define FIO_REF_NAME fio_str
+#define FIO_REF_CONSTRUCTOR_ONLY
 #include "fio-stl.h"
 
-#include <errno.h>
-#include <limits.h>
 #include <pthread.h>
 #include <sys/mman.h>
 
@@ -74,15 +72,6 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #if !defined(__clang__) && !defined(__GNUC__)
 #define __thread _Thread_value
-#endif
-
-/* Mitigates MAP_ANONYMOUS not being defined on older versions of MacOS */
-#if !defined(MAP_ANONYMOUS)
-#if defined(MAP_ANON)
-#define MAP_ANONYMOUS MAP_ANON
-#else
-#define MAP_ANONYMOUS 0
-#endif
 #endif
 
 /* *****************************************************************************
