@@ -154,22 +154,24 @@ Import STL
 #define FIO_MALLOC_FORCE_SYSTEM
 #endif
 
+/* Enable CLI extension before enabling the custom memory allocator. */
+#define FIO_EXTERN 1
+#define FIO_CLI 1
+#include "fio-stl.h"
+
 /* Enable custom memory allocator. */
 #define FIO_MALLOC 1
 #define FIO_EXTERN 1
 #include "fio-stl.h"
 
 #define FIO_EXTERN 1
+#define FIOBJ_EXTERN 1
 #define FIO_ATOMIC 1
 #define FIO_BITWISE 1
 #define FIO_ATOL 1
 #define FIO_NTOL 1
 #define FIO_RAND 1
-#define FIO_CLI 1
-#include "fio-stl.h"
-
 #define FIO_FIOBJ
-#define FIOBJ_EXTERN 1
 #include "fio-stl.h"
 
 #include <limits.h>

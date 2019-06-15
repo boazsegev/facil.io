@@ -1774,7 +1774,6 @@ or using a different memory allocator.
 
 By defining `FIO_MALLOC`, the following functions will be defined.
 
-
 #### `void * fio_malloc(size_t size)`
 
 Allocates memory using a per-CPU core block memory pool. Memory is zeroed out.

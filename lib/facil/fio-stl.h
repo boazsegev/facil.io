@@ -354,16 +354,16 @@ Common macros
 ***************************************************************************** */
 #ifndef SFUNC_ /* if we aren't in a recursive #include statement */
 
-#if !FIO_EXTERN
+#ifdef FIO_EXTERN
+#define SFUNC_
+#define IFUNC_
+
+#else /* !FIO_EXTERN */
 #define SFUNC_ static __attribute__((unused))
 #define IFUNC_ static inline __attribute__((unused))
 #ifndef FIO_EXTERN_COMPLETE /* force implementation, emitting static data */
 #define FIO_EXTERN_COMPLETE 2
-#endif
-
-#else /* FIO_EXTERN */
-#define SFUNC_
-#define IFUNC_
+#endif /* FIO_EXTERN_COMPLETE */
 #endif /* FIO_EXTERN */
 
 #define HFUNC static inline __attribute__((unused)) /* internal helper */
@@ -7023,7 +7023,7 @@ typedef struct {
 #define FIO_MAP_KEY fio___cli_cstr_s
 #define FIO_MAP_KEY_CMP(o1, o2)                                                \
   (o1.len == o2.len && (o1.buf == o2.buf || !memcmp(o1.buf, o2.buf, o1.len)))
-#define FIO_MAP_NAME fio_cli_hash
+#define FIO_MAP_NAME fio___cli_hash
 #ifndef FIO_STL_KEEP__
 #define FIO_STL_KEEP__ 1
 #endif
@@ -7032,9 +7032,9 @@ typedef struct {
 #undef FIO_STL_KEEP__
 #endif
 
-static fio_cli_hash_s fio_cli__aliases = FIO_MAP_INIT;
-static fio_cli_hash_s fio_cli__values = FIO_MAP_INIT;
-static size_t fio_cli__unnamed_count = 0;
+static fio___cli_hash_s fio___cli_aliases = FIO_MAP_INIT;
+static fio___cli_hash_s fio___cli_values = FIO_MAP_INIT;
+static size_t fio___cli_unnamed_count = 0;
 
 typedef struct {
   int unnamed_min;
@@ -7061,8 +7061,8 @@ HSFUNC void fio___cli_map_line2alias(char const *line) {
       ++n.len;
     }
     const char *old = NULL;
-    fio_cli_hash_set(&fio_cli__aliases, FIO_CLI_HASH_VAL(n), n, (void *)line,
-                     &old);
+    fio___cli_hash_set(&fio___cli_aliases, FIO_CLI_HASH_VAL(n), n, (void *)line,
+                       &old);
 #ifdef FIO_LOG_ERROR
     if (old) {
       FIO_LOG_ERROR("CLI argument name conflict detected\n"
@@ -7125,7 +7125,7 @@ HSFUNC void fio___cli_set_arg(fio___cli_cstr_s arg, char const *value,
       goto print_help;
     }
     fio___cli_cstr_s n = {.len = ++parser->unnamed_count};
-    fio_cli_hash_set(&fio_cli__values, n.len, n, value, NULL);
+    fio___cli_hash_set(&fio___cli_values, n.len, n, value, NULL);
     if (parser->unnamed_max >= 0 &&
         parser->unnamed_count > parser->unnamed_max) {
       arg.len = 0;
@@ -7167,7 +7167,8 @@ HSFUNC void fio___cli_set_arg(fio___cli_cstr_s arg, char const *value,
       while (n.buf[n.len] && n.buf[n.len] != ' ' && n.buf[n.len] != ',') {
         ++n.len;
       }
-      fio_cli_hash_set(&fio_cli__values, FIO_CLI_HASH_VAL(n), n, value, NULL);
+      fio___cli_hash_set(&fio___cli_values, FIO_CLI_HASH_VAL(n), n, value,
+                         NULL);
       while (n.buf[n.len] && (n.buf[n.len] == ' ' || n.buf[n.len] == ',')) {
         ++n.len;
       }
@@ -7322,7 +7323,7 @@ SFUNC void fio_cli_start FIO_NOOP(int argc, char const *argv[], int unnamed_min,
       .pos = 0,
   };
 
-  if (fio_cli_hash_count(&fio_cli__values)) {
+  if (fio___cli_hash_count(&fio___cli_values)) {
     fio_cli_end();
   }
 
@@ -7355,8 +7356,8 @@ SFUNC void fio_cli_start FIO_NOOP(int argc, char const *argv[], int unnamed_min,
       value = argv[parser.pos + 1];
     }
     const char *l = NULL;
-    while (n.len &&
-           !(l = fio_cli_hash_get(&fio_cli__aliases, FIO_CLI_HASH_VAL(n), n))) {
+    while (n.len && !(l = fio___cli_hash_get(&fio___cli_aliases,
+                                             FIO_CLI_HASH_VAL(n), n))) {
       --n.len;
       value = n.buf + n.len;
     }
@@ -7368,8 +7369,8 @@ SFUNC void fio_cli_start FIO_NOOP(int argc, char const *argv[], int unnamed_min,
   }
 
   /* Cleanup and save state for API */
-  fio_cli_hash_destroy(&fio_cli__aliases);
-  fio_cli__unnamed_count = parser.unnamed_count;
+  fio___cli_hash_destroy(&fio___cli_aliases);
+  fio___cli_unnamed_count = parser.unnamed_count;
   /* test for required unnamed arguments */
   if (parser.unnamed_count < parser.unnamed_min)
     fio___cli_set_arg((fio___cli_cstr_s){.len = 0}, NULL, NULL, &parser);
@@ -7380,9 +7381,9 @@ CLI Destruction
 ***************************************************************************** */
 
 SFUNC void __attribute__((destructor)) fio_cli_end(void) {
-  fio_cli_hash_destroy(&fio_cli__values);
-  fio_cli_hash_destroy(&fio_cli__aliases);
-  fio_cli__unnamed_count = 0;
+  fio___cli_hash_destroy(&fio___cli_values);
+  fio___cli_hash_destroy(&fio___cli_aliases);
+  fio___cli_unnamed_count = 0;
 }
 /* *****************************************************************************
 CLI Data Access API
@@ -7391,10 +7392,11 @@ CLI Data Access API
 /** Returns the argument's value as a NUL terminated C String. */
 SFUNC char const *fio_cli_get(char const *name) {
   fio___cli_cstr_s n = {.buf = name, .len = strlen(name)};
-  if (!fio_cli_hash_count(&fio_cli__values)) {
+  if (!fio___cli_hash_count(&fio___cli_values)) {
     return NULL;
   }
-  char const *val = fio_cli_hash_get(&fio_cli__values, FIO_CLI_HASH_VAL(n), n);
+  char const *val =
+      fio___cli_hash_get(&fio___cli_values, FIO_CLI_HASH_VAL(n), n);
   return val;
 }
 
@@ -7406,16 +7408,16 @@ SFUNC int fio_cli_get_i(char const *name) {
 
 /** Returns the number of unrecognized argument. */
 SFUNC unsigned int fio_cli_unnamed_count(void) {
-  return (unsigned int)fio_cli__unnamed_count;
+  return (unsigned int)fio___cli_unnamed_count;
 }
 
 /** Returns the unrecognized argument using a 0 based `index`. */
 SFUNC char const *fio_cli_unnamed(unsigned int index) {
-  if (!fio_cli_hash_count(&fio_cli__values) || !fio_cli__unnamed_count) {
+  if (!fio___cli_hash_count(&fio___cli_values) || !fio___cli_unnamed_count) {
     return NULL;
   }
   fio___cli_cstr_s n = {.buf = NULL, .len = index + 1};
-  return fio_cli_hash_get(&fio_cli__values, index + 1, n);
+  return fio___cli_hash_get(&fio___cli_values, index + 1, n);
 }
 
 /**
@@ -7426,7 +7428,7 @@ SFUNC char const *fio_cli_unnamed(unsigned int index) {
  */
 SFUNC void fio_cli_set(char const *name, char const *value) {
   fio___cli_cstr_s n = (fio___cli_cstr_s){.buf = name, .len = strlen(name)};
-  fio_cli_hash_set(&fio_cli__values, FIO_CLI_HASH_VAL(n), n, value, NULL);
+  fio___cli_hash_set(&fio___cli_values, FIO_CLI_HASH_VAL(n), n, value, NULL);
 }
 
 /* *****************************************************************************
@@ -8860,14 +8862,14 @@ FIOBJ_HIFUNC fio_str_info_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
  *
  * String data might be allocated dynamically.
  */
-#define FIOBJ_TEMP_STRING_VAR(str_name)                                        \
+#define FIOBJ_STR_TEMP_VAR(str_name)                                           \
   FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), s)                            \
   FIO_NAME(str_name, __tmp) = FIO_STRING_INIT;                                 \
   FIOBJ str_name =                                                             \
-      (FIOBJ)(((uintptr_t)&FIO_NAME(str_name, ____tmp)) | FIOBJ_T_STRING);
+      (FIOBJ)(((uintptr_t)&FIO_NAME(str_name, __tmp)) | FIOBJ_T_STRING);
 
 /** Resets a temporary FIOBJ String, freeing and any resources allocated. */
-#define FIOBJ_TEMP_STRING_DESTROY(str_name)                                    \
+#define FIOBJ_STR_TEMP_DESTROY(str_name)                                       \
   FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), destroy)(str_name);
 
 /* *****************************************************************************
@@ -10045,6 +10047,13 @@ FIOBJ cleanup
 #undef FIO_TEST_CSTL
 #define FIO_FIO_TEST_CSTL_ONLY_ONCE 1
 
+#ifdef FIO_EXTERN_TEST
+void fio_test_dynamic_types(void);
+#else
+FIO_SFUNC void fio_test_dynamic_types(void);
+#endif
+#if !defined(FIO_EXTERN_TEST) || defined(FIO_EXTERN_COMPLETE)
+
 /* Common testing values / Macros */
 #define TEST_FUNC static __attribute__((unused))
 #define TEST_REPEAT 4096
@@ -10065,6 +10074,14 @@ FIOBJ cleanup
 #define FIO_FIOBJ
 #endif
 #define FIO_FIOBJ
+
+/* Add non-type options to minimize `#include` instructions */
+#define FIO_ATOL
+#define FIO_BITWISE 1
+#define FIO_BITMAP 1
+#define FIO_RAND
+#define FIO_ATOMIC 1
+#define FIO_RISKY_HASH 1
 #include __FILE__
 
 TEST_FUNC uintptr_t fio___dynamic_types_test_tag(uintptr_t *pp) {
@@ -10075,18 +10092,8 @@ TEST_FUNC uintptr_t fio___dynamic_types_test_untag(uintptr_t *pp) {
 }
 
 /* *****************************************************************************
-Memory copy - test
-***************************************************************************** */
-
-#define FIO_MEMCOPY
-#include __FILE__
-
-/* *****************************************************************************
 String <=> Number - test
 ***************************************************************************** */
-
-#define FIO_ATOL
-#include __FILE__
 
 TEST_FUNC void fio___dynamic_types_test___atol(void) {
   fprintf(stderr, "* Testing fio_atol and fio_ltoa.\n");
@@ -10371,10 +10378,6 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
 Bit-Byte operations - test
 ***************************************************************************** */
 
-#define FIO_BITWISE 1
-#define FIO_BITMAP 1
-#include __FILE__
-
 TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
   fprintf(stderr, "* Testing fio_bswapX macros.\n");
   TEST_ASSERT(fio_bswap16(0x0102) == 0x0201, "fio_bswap16 failed");
@@ -10506,10 +10509,6 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
 Psedo Random Generator - test
 ***************************************************************************** */
 
-#define FIO_RAND
-#include __FILE__
-#include "math.h"
-
 TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
                                                         size_t len,
                                                         const char *name,
@@ -10608,9 +10607,6 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
 /* *****************************************************************************
 Atomic operations - test
 ***************************************************************************** */
-
-#define FIO_ATOMIC 1
-#include __FILE__
 
 TEST_FUNC void fio___dynamic_types_test___atomic(void) {
   fprintf(stderr, "* Testing atomic operation macros.\n");
@@ -11005,10 +11001,6 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
 /* *****************************************************************************
 Hash Map / Set - test
 ***************************************************************************** */
-
-/* Ensure Risky Hash is available, for hashing data */
-#define FIO_RISKY_HASH 1
-#include __FILE__
 
 /* a simple set of numbers */
 #define FIO_MAP_NAME set_____test
@@ -11811,9 +11803,6 @@ TEST_FUNC void fio___dynamic_types_test___mem(void) {
 Hashing speed test
 ***************************************************************************** */
 
-#define FIO_RISKY_HASH
-#include __FILE__
-
 typedef uintptr_t (*fio__hashing_func_fn)(char *, size_t);
 
 TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h, char *name) {
@@ -12145,6 +12134,8 @@ Testing cleanup
 #undef TEST_REPEAT
 #undef TEST_FUNC
 #undef TEST_ASSERT
+
+#endif /* FIO_EXTERN_COMPLETE */
 #endif
 /* *****************************************************************************
 
