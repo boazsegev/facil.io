@@ -5,7 +5,7 @@ License: MIT
 #ifndef H_FIOBJ_MUSTACHE_H
 #define H_FIOBJ_MUSTACHE_H
 
-#include <fiobject.h>
+#include <fio.h>
 
 #include <mustache_parser.h>
 
@@ -57,6 +57,10 @@ FIOBJ fiobj_mustache_build2(FIOBJ dest, mustache_s *mustache, FIOBJ data);
 
 #if DEBUG
 void fiobj_mustache_test(void);
+#else
+#define fiobj_mustache_test()                                                  \
+  fprintf(stderr, "* FIOBJ mustache template testing reqiures DEBUG mode.\n")
+
 #endif
 
 #endif /* H_FIOBJ_MUSTACHE_H */
