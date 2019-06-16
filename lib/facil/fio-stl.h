@@ -1981,7 +1981,7 @@ Memory Allocation - cleanup
 Memory management macros
 ***************************************************************************** */
 
-#if FIO_MALLOC_TMP_USE_SYSTEM /* force malloc */
+#ifdef FIO_MALLOC_TMP_USE_SYSTEM /* force malloc */
 #define FIO_MEM_CALLOC_(size, units) calloc((size), (units))
 #define FIO_MEM_REALLOC_(ptr, old_size, new_size, copy_len)                    \
   realloc((ptr), (new_size))
@@ -5985,7 +5985,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, write_i)(FIO_STRING_PTR s_,
   }
   char buf[22];
   uint64_t l = 0;
-  uint8_t neg;
+  uint8_t neg = 0;
   int64_t t = num / 10;
   if (num < 0) {
     num = 0 - num; /* might fail due to overflow, but fixed with tail (t) */
@@ -8421,6 +8421,7 @@ Common cleanup
 #undef FIO_MEM_CALLOC_
 #undef FIO_MEM_REALLOC_
 #undef FIO_MEM_FREE_
+#undef FIO_MALLOC_TMP_USE_SYSTEM
 
 /* undefine FIO_EXTERN_COMPLETE only if it was defined locally */
 #if FIO_EXTERN_COMPLETE == 2
@@ -8530,16 +8531,17 @@ General Requirements / Macros
 #define FIO_ATOMIC 1
 #include __FILE__
 
-#if !FIOBJ_EXTERN
+#ifdef FIOBJ_EXTERN
+#define FIOBJ_FUNC
+#define FIOBJ_IFUNC
+
+#else /* FIO_EXTERN */
 #define FIOBJ_FUNC static __attribute__((unused))
 #define FIOBJ_IFUNC static inline __attribute__((unused))
 #ifndef FIOBJ_EXTERN_COMPLETE /* force implementation, emitting static data */
 #define FIOBJ_EXTERN_COMPLETE 2
-#endif
+#endif /* FIOBJ_EXTERN_COMPLETE */
 
-#else /* FIO_EXTERN */
-#define FIOBJ_FUNC
-#define FIOBJ_IFUNC
 #endif /* FIO_EXTERN */
 
 #define FIOBJ_HFUNC static __attribute__((unused))
@@ -9498,7 +9500,7 @@ FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
 /* *****************************************************************************
 FIOBJ - Implementation
 ***************************************************************************** */
-#if FIOBJ_EXTERN_COMPLETE
+#ifdef FIOBJ_EXTERN_COMPLETE
 
 /* *****************************************************************************
 FIOBJ Basic Object vtable
@@ -10008,6 +10010,8 @@ FIOBJ cleanup
 #undef FIOBJ_IFUNC
 #undef FIOBJ_HFUNC
 #undef FIOBJ_HIFUNC
+#undef FIOBJ_EXTERN
+#undef FIOBJ_EXTERN_COMPLETE
 #endif /* FIO_FIOBJ */
 #undef FIO_FIOBJ
 
@@ -10073,7 +10077,6 @@ FIO_SFUNC void fio_test_dynamic_types(void);
 #ifndef FIO_FIOBJ
 #define FIO_FIOBJ
 #endif
-#define FIO_FIOBJ
 
 /* Add non-type options to minimize `#include` instructions */
 #define FIO_ATOL
