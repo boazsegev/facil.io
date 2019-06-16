@@ -150,7 +150,7 @@ Basic macros and included files
 
 #if defined(__unix__) || defined(__linux__) || defined(__APPLE__) ||           \
     defined(__CYGWIN__)
-#define H___FIO_UNIX_TOOLS_H 1
+#define FIO_HAVE_UNIX_TOOLS 1
 #endif
 
 /* *****************************************************************************
@@ -1184,7 +1184,7 @@ Memory Allocation - forced bypass
 
 #elif defined(FIO_EXTERN_COMPLETE)
 
-#if H___FIO_UNIX_TOOLS_H
+#if FIO_HAVE_UNIX_TOOLS
 #include <unistd.h>
 #endif /* H___FIO_UNIX_TOOLS4STR_INCLUDED_H */
 
@@ -1273,7 +1273,7 @@ Big memory allocation macros and helpers (page allocation / mmap)
 #define FIO_MEM_PAGE_SIZE_LOG 12 /* 4096 bytes per page */
 #endif
 
-#if H___FIO_UNIX_TOOLS_H || __has_include("sys/mman.h")
+#if FIO_HAVE_UNIX_TOOLS || __has_include("sys/mman.h")
 #include <sys/mman.h>
 
 /* Mitigates MAP_ANONYMOUS not being defined on older versions of MacOS */
@@ -2208,7 +2208,7 @@ Random - Implementation
 
 #ifdef FIO_EXTERN_COMPLETE
 
-#if H___FIO_UNIX_TOOLS_H ||                                                    \
+#if FIO_HAVE_UNIX_TOOLS ||                                                     \
     (__has_include("sys/resource.h") && __has_include("sys/time.h"))
 #include <sys/resource.h>
 #include <sys/time.h>
@@ -5282,7 +5282,7 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, vprintf)(FIO_STRING_PTR s,
 SFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, printf)(FIO_STRING_PTR s,
                                                        const char *format, ...);
 
-#if H___FIO_UNIX_TOOLS_H
+#if FIO_HAVE_UNIX_TOOLS
 /**
  * Opens the file `filename` and pastes it's contents (or a slice ot it) at
  * the end of the String. If `limit == 0`, than the data will be read until
@@ -6688,7 +6688,7 @@ s.length.times {|i| a[s[i]] = (i << 1) | 1 }; a.map!{ |i| i.to_i }; a
 String - read file
 ***************************************************************************** */
 
-#if H___FIO_UNIX_TOOLS_H
+#if FIO_HAVE_UNIX_TOOLS
 #ifndef H___FIO_UNIX_TOOLS4STR_INCLUDED_H
 #define H___FIO_UNIX_TOOLS4STR_INCLUDED_H
 #include <fcntl.h>
@@ -6807,7 +6807,7 @@ finish:
   return state;
 }
 
-#endif /* H___FIO_UNIX_TOOLS_H */
+#endif /* FIO_HAVE_UNIX_TOOLS */
 
 /* *****************************************************************************
 String Cleanup
