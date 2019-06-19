@@ -145,7 +145,7 @@ Import STL
 #define FIO_LOG_LENGTH_LIMIT 2048
 #endif
 
-#define FIO_MALLOC_FORCE_SYSTEM 1
+// #define FIO_MALLOC_FORCE_SYSTEM 1
 
 /* Backwards support for version 0.7.x memory allocator behavior */
 #ifdef FIO_OVERRIDE_MALLOC
@@ -155,22 +155,24 @@ Import STL
 #endif
 
 /* Enable CLI extension before enabling the custom memory allocator. */
-#define FIO_EXTERN 1
-#define FIO_CLI 1
+#define FIO_MALLOC_TMP_USE_SYSTEM
+#define FIO_EXTERN
+#define FIO_CLI
 #include "fio-stl.h"
 
 /* Enable custom memory allocator. */
-#define FIO_MALLOC 1
-#define FIO_EXTERN 1
+#define FIO_EXTERN
+#define FIO_MALLOC
 #include "fio-stl.h"
 
-#define FIO_EXTERN 1
-#define FIOBJ_EXTERN 1
-#define FIO_ATOMIC 1
-#define FIO_BITWISE 1
-#define FIO_ATOL 1
-#define FIO_NTOL 1
-#define FIO_RAND 1
+/* Enable required extensions and FIOBJ types. */
+#define FIOBJ_EXTERN
+#define FIO_EXTERN
+#define FIO_ATOMIC
+#define FIO_BITWISE
+#define FIO_ATOL
+#define FIO_NTOL
+#define FIO_RAND
 #define FIO_FIOBJ
 #include "fio-stl.h"
 

@@ -3495,6 +3495,7 @@ static void fio_on_fork(void) {
   fio_defer_on_fork();
   fio_malloc_after_fork();
   fio_poll_init();
+  fio_rand_reseed();
   fio_state_callback_on_fork();
 
   const size_t limit = fio_data->capa;
@@ -8008,11 +8009,13 @@ FIO_SFUNC void sched_sample_task(void *count, void *i_count) {
 }
 
 FIO_SFUNC void fio_defer_test(void) {
+  fprintf(stderr, "===============\n");
+  fprintf(stderr, "* Testing facil.io task scheduling (fio_defer)\n");
+
   const size_t cpu_cores = fio_detect_cpu_cores();
   FIO_ASSERT(cpu_cores, "couldn't detect CPU cores!");
   uintptr_t i_count;
   clock_t start, end;
-  fprintf(stderr, "=== Testing facil.io task scheduling (fio_defer)\n");
   FIO_ASSERT(!fio_defer_has_queue(), "facil.io queue always active.")
   i_count = 0;
   start = clock();
