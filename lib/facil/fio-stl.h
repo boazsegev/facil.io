@@ -1192,7 +1192,8 @@ Memory Allocation - forced bypass
 Aligned memory copying
 ***************************************************************************** */
 #define FIO_MEMCOPY_HFUNC_ALIGNED(type, size)                                  \
-  HFUNC void fio____memcpy_##size##b(void *dest_, void *src_, size_t units) {  \
+  HFUNC void fio___memcpy_##size##b(void *restrict dest_,                      \
+                                    const void *restrict src_, size_t units) { \
     type *dest = (type *)dest_;                                                \
     type *src = (type *)src_;                                                  \
     while (units >= 16) {                                                      \
@@ -1254,13 +1255,13 @@ FIO_MEMCOPY_HFUNC_ALIGNED(uint32_t, 4)
 FIO_MEMCOPY_HFUNC_ALIGNED(uint64_t, 8)
 
 /** Copies 16 byte `units` of size_t aligned memory blocks */
-HFUNC void fio____memcpy_16byte(void *dest_, void *src_, size_t units) {
+HFUNC void fio___memcpy_16byte(void *dest_, const void *src_, size_t units) {
 #if SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
-  fio____memcpy_8b(dest_, src_, units << 1);
+  fio___memcpy_8b(dest_, src_, units << 1);
 #elif SIZE_MAX == 0xFFFFFFFF       /* 32 bit size_t */
-  fio____memcpy_4b(dest_, src_, units << 2);
+  fio___memcpy_4b(dest_, src_, units << 2);
 #else                              /* unknown... assume 16 bit? */
-  fio____memcpy_2b(dest_, src_, units << 3);
+  fio___memcpy_2b(dest_, src_, units << 3);
 #endif
 }
 
@@ -1353,7 +1354,7 @@ HSFUNC void *FIO_MEM_PAGE_REALLOC_def_func(void *mem, size_t prev_pages,
       if (!result) {
         return NULL;
       }
-      fio____memcpy_16byte(result, mem, prev_len >> 4); /* copy data */
+      fio___memcpy_16byte(result, mem, prev_len >> 4); /* copy data */
       // memcpy(result, mem, prev_len);
       munmap(mem, prev_len); /* free original memory */
     }
@@ -1862,7 +1863,7 @@ SFUNC void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size,
   if (!mem) {
     return NULL;
   }
-  fio____memcpy_16byte(mem, ptr, ((copy_len + 15) >> 4));
+  fio___memcpy_16byte(mem, ptr, ((copy_len + 15) >> 4));
   fio___mem_block_free(b);
   return mem;
 
@@ -1877,7 +1878,7 @@ big_realloc:
     if (!mem) {
       return NULL;
     }
-    fio____memcpy_16byte(mem, ptr, (copy_len >> 4));
+    fio___memcpy_16byte(mem, ptr, (copy_len >> 4));
     FIO_MEM_PAGE_FREE(b, b->reserved);
     return mem;
   }
@@ -2214,29 +2215,38 @@ Random - Implementation
 #include <sys/time.h>
 #endif
 
+static __thread uint64_t fio___rand_state[2]; /* random state */
+static __thread uint32_t fio___rand_counter;  /* seed counter */
+
+IFUNC void fio_rand_reseed(void) {
+#ifdef RUSAGE_SELF
+  struct rusage rusage;
+  getrusage(RUSAGE_SELF, &rusage);
+  fio___rand_state[0] =
+      fio_risky_hash(&rusage, sizeof(rusage), fio___rand_state[0]);
+  fio___rand_state[1] = fio_risky_hash(
+      fio___rand_state, sizeof(fio___rand_state[0]), fio___rand_state[1]);
+#else
+  struct timespec clk;
+  clock_gettime(CLOCK_REALTIME, &clk);
+  fio___rand_state[0] = fio_risky_hash(&clk, sizeof(clk), fio___rand_state[0]);
+  fio___rand_state[1] = fio_risky_hash(
+      fio___rand_state, sizeof(fio___rand_state[0]), fio___rand_state[1]);
+#endif
+}
 /* tested for randomness using code from: http://xoshiro.di.unimi.it/hwd.php */
 SFUNC uint64_t fio_rand64(void) {
   /* modeled after xoroshiro128+, by David Blackman and Sebastiano Vigna */
-  static __thread uint64_t s[2]; /* random state */
-  static __thread uint16_t c;    /* seed counter */
   const uint64_t P[] = {0x37701261ED6C16C7ULL, 0x764DBBB75F3B3E0DULL};
-  if (c++ == 0) {
-    /* re-seed state every 65,536 requests */
-#ifdef RUSAGE_SELF
-    struct rusage rusage;
-    getrusage(RUSAGE_SELF, &rusage);
-    s[0] = fio_risky_hash(&rusage, sizeof(rusage), s[0]);
-    s[1] = fio_risky_hash(&rusage, sizeof(rusage), s[0]);
-#else
-    struct timespec clk;
-    clock_gettime(CLOCK_REALTIME, &clk);
-    s[0] = fio_risky_hash(&clk, sizeof(clk), s[0]);
-    s[1] = fio_risky_hash(&clk, sizeof(clk), s[0]);
-#endif
+  if (((fio___rand_counter++) & (((uint32_t)1 << 19) - 1)) == 0) {
+    /* re-seed state every 524,288 requests */
+    fio_rand_reseed();
   }
-  s[0] += fio_lrot64(s[0], 33) * P[0];
-  s[1] += fio_lrot64(s[1], 33) * P[1];
-  return fio_lrot64(s[0], 31) + fio_lrot64(s[1], 29);
+  fio___rand_state[0] +=
+      (fio_lrot64(fio___rand_state[0], 33) + fio___rand_counter) * P[0];
+  fio___rand_state[1] += fio_lrot64(fio___rand_state[1], 33) * P[1];
+  return fio_lrot64(fio___rand_state[0], 31) +
+         fio_lrot64(fio___rand_state[1], 29);
 }
 
 /* copies 64 bits of randomness (8 bytes) repeatedly. */
@@ -8561,8 +8571,8 @@ Debugging / Leak Detection
 #endif
 
 #if FIOBJ_MARK_MEMORY
-size_t __attribute__((weak)) FIOBJ_MARK_MEMORY_ALLOC_COUNTER = 0;
-size_t __attribute__((weak)) FIOBJ_MARK_MEMORY_FREE_COUNTER = 0;
+size_t __attribute__((weak)) FIOBJ_MARK_MEMORY_ALLOC_COUNTER;
+size_t __attribute__((weak)) FIOBJ_MARK_MEMORY_FREE_COUNTER;
 #define FIOBJ_MARK_MEMORY_ALLOC()                                              \
   fio_atomic_add(&FIOBJ_MARK_MEMORY_ALLOC_COUNTER, 1)
 #define FIOBJ_MARK_MEMORY_FREE()                                               \
