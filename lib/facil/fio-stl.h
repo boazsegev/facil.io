@@ -9990,7 +9990,7 @@ FIOBJ_FUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
 /** Returns a JSON valid FIOBJ String, representing the object. */
 FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_str_info_s str, size_t *consumed_p) {
   fiobj_json_parser_s p = {.top = FIOBJ_INVALID};
-  const size_t register consumed = fio_json_parse(&p.p, str.buf, str.len);
+  register const size_t consumed = fio_json_parse(&p.p, str.buf, str.len);
   if (consumed_p) {
     *consumed_p = consumed;
   }
@@ -10544,8 +10544,8 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
   hemming /= len;
   fprintf(stderr, "\n");
 #if DEBUG
-  fprintf(stderr, "\t- \x1B[1m%s\x1B[0m:\n", name);
-  (void)clk;
+  fprintf(stderr, "\t- \x1B[1m%s\x1B[0m (%zu CPU cycles NOT OPTIMIZED):\n",
+          name, clk);
 #else
   fprintf(stderr, "\t- \x1B[1m%s\x1B[0m (%zu CPU cycles):\n", name, clk);
 #endif
@@ -10587,15 +10587,17 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
   uint64_t *rs = FIO_MEM_CALLOC(sizeof(*rs), test_len);
   clock_t start, end;
   FIO_ASSERT_ALLOC(rs);
+  rand(); /* warmup */
   start = clock();
   for (size_t i = 0; i < test_len; ++i) {
-    rs[i] = ((uint64_t)rand() << 32) | rand();
+    rs[i] = ((uint64_t)rand() << 32) | (uint64_t)rand();
   }
   end = clock();
   fio___dynamic_types_test___random_buffer(rs, test_len, "rand (system)",
                                            end - start);
 
   memset(rs, 0, sizeof(*rs) * test_len);
+  fio_rand64(); /* warmup */
   start = clock();
   for (size_t i = 0; i < test_len; ++i) {
     rs[i] = fio_rand64();
@@ -10609,6 +10611,7 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
   end = clock();
   fio___dynamic_types_test___random_buffer(rs, test_len, "fio_rand_bytes",
                                            end - start);
+
   FIO_MEM_FREE(rs, sizeof(*rs) * test_len);
   fprintf(stderr, "\n");
 #if DEBUG
