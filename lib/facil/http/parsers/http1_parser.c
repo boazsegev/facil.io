@@ -445,13 +445,13 @@ re_eval:
                                               : args->on_request)(args->parser))
       goto error;
     args->parser->state =
-        (struct http1_parser_protected_read_only_state_s){0, 0, 0};
+        (struct http1_parser_protected_read_only_state_s){0, 0, 0, 0};
   }
   return CONSUMED;
 error:
   args->on_error(args->parser);
   args->parser->state =
-      (struct http1_parser_protected_read_only_state_s){0, 0, 0};
+      (struct http1_parser_protected_read_only_state_s){0, 0, 0, 0};
   return args->length;
 }
 
