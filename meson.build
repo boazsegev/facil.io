@@ -42,12 +42,12 @@ project('facil.io', 'c',
     meson_version   : '>=0.50.0',
     default_options : 
     [ 
+        'werror=true',
         'optimization=3', 
         'warning_level=3', 
         'b_sanitize=undefined', 
         'b_lto=true', 
-        'b_lundef=true', 
-        'c_std=c17' 
+        'b_lundef=true' 
     ]
 )
 cc = meson.get_compiler('c')
@@ -58,29 +58,7 @@ args_for_langs = 'c'
 threads_dep = dependency('threads')
 m_dep = cc.find_library('m', required : false)
 
-
-facil_src = files(
-    [
-        join_paths('lib', 'facil', 'fio.c'),
-        join_paths('lib', 'facil', 'tls', 'fio_tls_missing.c'),
-        join_paths('lib', 'facil', 'tls', 'fio_tls_openssl.c'),
-        join_paths('lib', 'facil', 'fiobj', 'fio_siphash.c'),
-        join_paths('lib', 'facil', 'fiobj', 'fiobj_ary.c'),
-        join_paths('lib', 'facil', 'fiobj', 'fiobj_data.c'),
-        join_paths('lib', 'facil', 'fiobj', 'fiobj_hash.c'),
-        join_paths('lib', 'facil', 'fiobj', 'fiobj_json.c'),
-        join_paths('lib', 'facil', 'fiobj', 'fiobj_mustache.c'),
-        join_paths('lib', 'facil', 'fiobj', 'fiobj_numbers.c'),
-        join_paths('lib', 'facil', 'fiobj', 'fiobj_str.c'),
-        join_paths('lib', 'facil', 'fiobj', 'fiobject.c'),
-        join_paths('lib', 'facil', 'cli', 'fio_cli.c'),
-        join_paths('lib', 'facil', 'http', 'http.c'),
-        join_paths('lib', 'facil', 'http', 'http1.c'),
-        join_paths('lib', 'facil', 'http', 'http_internal.c'),
-        join_paths('lib', 'facil', 'http', 'websockets.c'),
-        join_paths('lib', 'facil', 'http', 'parsers', 'http1_parser.c'),
-        join_paths('lib', 'facil', 'redis', 'redis_engine.c'),
-    ])
+subdir('lib')
 
 facil_dir = include_directories(
     [
