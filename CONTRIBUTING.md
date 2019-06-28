@@ -129,7 +129,7 @@ These are the features that have been requested so far. Even if any of them are 
 |   Documentation   |     🙏 Help 🙏    | Placed at [`docs/_SOURCE`](docs/_SOURCE) |
 |       Tests       |    Never enough    | run through [`tests.c`](tests/tests.c) but implement in source files. |
 | Early Hints HTTP/1.1 |               |                            |
-|      SSL/TLS      |                    | See [`fio_tls_missing.c`](lib/facil/tls/fio_tls_missing.c) for example. |
+|      SSL/TLS      |                    | See [TLS in `fio.c`](lib/facil/fio.c) for example. |
 |  WebSocket Client |                    | Missing cookie retention.  |
 |    HTTP Client    |                    | Missing SSL/TLS, cookie retention and auto-redirect(?)  |
 |      HTTP/2       |                    |                            |
