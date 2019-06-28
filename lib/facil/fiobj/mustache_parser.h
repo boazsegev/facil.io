@@ -579,7 +579,7 @@ static int mustache__write_escaped(mustache__builder_stack_s *s, char *text,
       memcpy(buffer + pos, html_escape_strs[(uint8_t)text[0]],
              html_escape_len[(uint8_t)text[0]]);
       pos += html_escape_len[(uint8_t)text[0]];
-      if (pos >= (MUSTACHE_ESCAPE_BUFFER_SIZE - 6)) {
+      if (pos >= (MUSTACHE_ESCAPE_BUFFER_SIZE - 7)) {
         buffer[pos] = 0;
         if (mustache_on_text(&s->stack[s->index].sec, buffer, pos) == -1)
           return -1;
@@ -605,7 +605,6 @@ static inline int mustache_write_text(mustache_section_s *section, char *text,
   mustache__builder_stack_s *s = mustache___section2stack(section);
   if (escape)
     return mustache__write_escaped(s, text, len);
-    /* TODO */
 #if MUSTACHE_USE_DYNAMIC_PADDING
   char *end = memchr(text, '\n', len);
   while (len && end) {

@@ -5,7 +5,7 @@ License: MIT
 #ifndef H_FIOBJ_MUSTACHE_H
 #define H_FIOBJ_MUSTACHE_H
 
-#include <fio.h>
+#include <fiobj.h> /* fio.h might not be available in FIOBJ_STANDALONE */
 
 #include <mustache_parser.h>
 

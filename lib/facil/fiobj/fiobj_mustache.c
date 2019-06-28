@@ -83,8 +83,7 @@ static inline FIOBJ fiobj_mustache_find_obj_absolute(FIOBJ parent, FIOBJ key) {
 static inline FIOBJ fiobj_mustache_find_obj_tree(mustache_section_s *section,
                                                  const char *name,
                                                  uint32_t name_len) {
-  fiobj_str_s tmp_key = FIO_STRING_INIT;
-  FIOBJ key = ((FIOBJ)&tmp_key) | FIOBJ_T_STRING;
+  FIOBJ_STR_TEMP_VAR(key)
   fiobj_str_write(key, name, name_len);
   do {
     FIOBJ tmp = fiobj_mustache_find_obj_absolute((FIOBJ)section->udata2, key);
@@ -92,7 +91,7 @@ static inline FIOBJ fiobj_mustache_find_obj_tree(mustache_section_s *section,
       return tmp;
     }
   } while ((section = mustache_section_parent(section)));
-  fiobj_str_destroy(key);
+  FIOBJ_STR_TEMP_DESTROY(key);
   return FIOBJ_INVALID;
 }
 
@@ -269,15 +268,13 @@ void fiobj_mustache_test(void) {
   FIOBJ ary = fiobj_array_new();
   fiobj_hash_set2(data, tmp, ary);
   fiobj_free(tmp);
-  for (int i = 0; i < 4; ++i) {
+  for (uint8_t i = 0; i < 4; ++i) {
     FIOBJ id = fiobj_str_new();
     fiobj_str_write_i(id, i);
-    FIOBJ name = fiobj_str_new();
-    fiobj_str_write(name, "User ", 5);
+    FIOBJ name = fiobj_str_new_cstr("User ", 5);
     fiobj_str_write_i(name, i);
     FIOBJ usr = fiobj_hash_new();
-    tmp = fiobj_str_new();
-    fiobj_str_write(tmp, "id", 2);
+    tmp = fiobj_str_new_cstr("id", 2);
     fiobj_hash_set2(usr, tmp, id);
     fiobj_free(tmp);
     tmp = fiobj_str_new_cstr("name", 4);
@@ -299,7 +296,8 @@ void fiobj_mustache_test(void) {
     fprintf(stderr, "* Manual review:\n%s\n", fiobj2cstr(tmp).buf);
   }
   FIO_ASSERT(fiobj2cstr(tmp).len == 135,
-             "FIOBJ mustache rendering error (length)");
+             "FIOBJ mustache rendering error (length) %u != %u\n%s",
+             fiobj2cstr(tmp).len, 135, fiobj2cstr(tmp).buf);
   FIO_ASSERT(!memcmp(fiobj2cstr(tmp).buf,
                      "* Users:\r\n"
                      "0. User 0 (User&#32;0)\r\n"

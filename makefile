@@ -595,7 +595,7 @@ test_add_flags:
 
 .PHONY : test_add_speed_flags
 test_add_speed_flags:
-	$(eval CFLAGS:=$(CFLAGS) -DDEBUG=1)
+	$(eval CFLAGS:=$(CFLAGS) -DDEBUG=1 -DFIO_LOG_LEVEL_DEFAULT=4)
 	$(eval LINKER_FLAGS:=-DDEBUG=1 $(LINKER_FLAGS))
 
 

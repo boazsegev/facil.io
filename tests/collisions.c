@@ -90,8 +90,7 @@ int main(int argc, char const *argv[]) {
   initialize_hash_names();
   if (fio_cli_get("-t")) {
     fio_str_s tmp = FIO_STR_INIT_STATIC(fio_cli_get("-t"));
-    hashing_func_fn h =
-        hash_name_find(&hash_names, fio_str_hash(&tmp, 0), NULL);
+    hashing_func_fn h = hash_name_get(&hash_names, fio_str_hash(&tmp, 0), NULL);
     if (h) {
       test_hash_function(h);
       find_bit_collisions(h, 8, fio_cli_get_i("-b"));
@@ -351,7 +350,7 @@ struct hash_fn_names_s {
 static void initialize_hash_names(void) {
   for (size_t i = 0; hash_fn_list[i].name; ++i) {
     fio_str_s tmp = FIO_STR_INIT_STATIC(hash_fn_list[i].name);
-    hash_name_insert(&hash_names, fio_str_hash(&tmp, 0), hash_fn_list[i].fn);
+    hash_name_set(&hash_names, fio_str_hash(&tmp, 0), hash_fn_list[i].fn);
     FIO_LOG_DEBUG("Registered %s hashing function.\n\t\t(%zu registered)",
                   hash_fn_list[i].name, hash_name_count(&hash_names));
   }
@@ -431,7 +430,7 @@ static void test_hash_function(hashing_func_fn h) {
     fio_str_info_s i = fio_str_info(w);
     // fprintf(stderr, "%s\n", i.data);
     printf("\33[2K [%zu] %s\r", ++count, i.data);
-    collisions_overwrite(&c, h(i.data, i.len), w, NULL);
+    collisions_set(&c, h(i.data, i.len), w, NULL);
     test_for_best();
   }
   printf("\33[2K\r\n");

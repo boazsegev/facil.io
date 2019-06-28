@@ -1,45 +1,27 @@
-/*
-Copyright: Boaz Segev, 2017-2019
-License: MIT
-*/
 #ifndef H_FIOBJ_H
 #define H_FIOBJ_H
-#define H___FHIOBJ_H
 
-#include <fiobj_ary.h>
-#include <fiobj_data.h>
-#include <fiobj_hash.h>
-#include <fiobj_json.h>
-#include <fiobj_mustache.h>
-#include <fiobj_numbers.h>
-#include <fiobj_str.h>
-#include <fiobject.h>
-
-#include <fio_siphash.h>
-
-#ifdef H_FACIL_IO_H
-#include <fiobj4fio.h>
-#endif
-
-#if DEBUG
-FIO_INLINE void fiobj_test(void) {
-  fprintf(stderr, "\n=== FIOBJ Tests ===\n\n");
-  fiobj_test_string();
-  fiobj_test_numbers();
-  fiobj_test_array();
-  fiobj_test_hash();
-  fiobj_test_core();
-  fiobj_data_test();
-  fiobj_test_json();
-  fiobj_mustache_test();
-  fiobj_siphash_test();
-  fprintf(stderr, "=== FIOBJ Done ===\n\n");
-}
+/*
+ * For using FIOBJ extensions in a stand-alone omplementation, one translation
+ * unit (C file) in MUST define `FIOBJ_EXTERN_COMPLETE` **before** including
+ * this file. Also, the `fio-stl.h` file is also required (for the core FIOBJ
+ * types).
+ */
+#ifdef FIOBJ_STANDALONE
+#define FIO_FIOBJ
+#define FIOBJ_EXTERN
+#include "fio-stl.h"
 #else
-FIO_INLINE void fiobj_test(void) {
-  fprintf(stderr, "ERROR: tesing functions only defined with DEBUG=1\n");
-  exit(-1);
-}
+#include <fio.h>
 #endif
-#undef FIO_INLINE
+
+#include <fiobj_io.h>
+#include <fiobj_mustache.h>
+
+#define fiobj_test()                                                           \
+  do {                                                                         \
+    fiobj_mustache_test();                                                     \
+    fiobj_io_test();                                                           \
+  } while (0);
+
 #endif

@@ -1,25 +1,27 @@
 
-#include "tests/mustache.c.h"
+// #include "tests/mustache.c.h"
 
+#define FIOBJ_MEMORY_MARK 1
 #include <fio.h>
-#include <fiobj.h>
-#include <http.h>
-
-#include "resp_parser.h"
-
 #define FIO_TEST_CSTL 1
-#include "fio-stl.h"
+#include <fio-stl.h>
+#include <fiobj.h>
+// #include <http.h>
+
+// #include "resp_parser.h"
 
 void resp_test(void);
 
 int main(void) {
+  // mustache_test();
+  fiobj_test();
   fio_test_dynamic_types();
   fio_test();
-  mustache_test();
-  fiobj_test();
-  http_tests();
-  resp_test();
+  // http_tests();
+  // resp_test();
 }
+
+#if 0
 
 void resp_test(void) {
   const char OK[] = "+OK\r\n";
@@ -89,3 +91,5 @@ static int resp_on_parser_error(resp_parser_s *parser) {
   (void)parser;
   return 0;
 }
+
+#endif
