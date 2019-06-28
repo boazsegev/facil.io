@@ -37,13 +37,13 @@
 
 
 project('facil.io', 'c',
-    version         : '0.2.4',
+    version         : '0.7.2',
     license         : 'MIT',
     meson_version   : '>=0.50.0',
     default_options : 
     [ 
         'werror=true',
-        'optimization=3', 
+        'optimization=2', 
         'warning_level=3', 
         'b_sanitize=undefined', 
         'b_lto=true', 
