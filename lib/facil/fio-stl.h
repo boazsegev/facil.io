@@ -78,6 +78,10 @@ define all available macros.
   To create an externally visible API, define the `FIO_EXTERN`. Define the
   `FIO_EXTERN_COMPLETE` macro to include the API's implementation as well.
 
+- To implement a library style version guard, define the `FIO_VERSION_GUARD`
+macro in a single translation unit (.c file) **before** including this STL
+library for the first time.
+
 ***************************************************************************** */
 
 /* *****************************************************************************
@@ -154,7 +158,7 @@ Basic macros and included files
 #endif
 
 /* *****************************************************************************
-Version macros and Macro Stringifier
+Macro Stringifier
 ***************************************************************************** */
 
 /* Automatically convert version data to a string constant - ignore these two */
@@ -162,6 +166,10 @@ Version macros and Macro Stringifier
 #define FIO_MACRO2STR_STEP2(macro) #macro
 #define FIO_MACRO2STR(macro) FIO_MACRO2STR_STEP2(macro)
 #endif
+
+/* *****************************************************************************
+Version Macros
+***************************************************************************** */
 
 #define FIO_VERSION_MAJOR 0
 #define FIO_VERSION_MINOR 8
@@ -178,6 +186,33 @@ Version macros and Macro Stringifier
 #define FIO_VERSION_STRING                                                     \
   FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
   "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(FIO_VERSION_PATCH)
+#endif
+
+/*** If implemented, returns the major version number. */
+size_t fio_version_major();
+/*** If implemented, returns the minor version number. */
+size_t fio_version_minor();
+/*** If implemented, returns the patch version number. */
+size_t fio_version_patch();
+/*** If implemented, returns the beta version number. */
+size_t fio_version_beta();
+/*** If implemented, returns the version number as a string. */
+char *fio_version_string();
+
+#define FIO_VERSION_VALIDATE()                                                 \
+  FIO_ASSERT(fio_version_major() == FIO_VERSION_MAJOR &&                       \
+                 fio_version_minor() == FIO_VERSION_MINOR &&                   \
+                 fio_version_patch() == FIO_VERSION_PATCH &&                   \
+                 fio_version_beta() == FIO_VERSION_BETA,                       \
+             "facil.io version mismatch, not %s", fio_version_string())
+
+#ifdef FIO_VERSION_GUARD
+size_t __attribute__((weak)) fio_version_major() { return FIO_VERSION_MAJOR; }
+size_t __attribute__((weak)) fio_version_minor() { return FIO_VERSION_MINOR; }
+size_t __attribute__((weak)) fio_version_patch() { return FIO_VERSION_PATCH; }
+size_t __attribute__((weak)) fio_version_beta() { return FIO_VERSION_BETA; }
+char *__attribute__((weak)) fio_version_string() { return FIO_VERSION_STRING; }
+#undef FIO_VERSION_GUARD
 #endif
 
 /* *****************************************************************************
