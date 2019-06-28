@@ -1366,7 +1366,7 @@ void fio_reap_children(void) {
   sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
   if (sigaction(SIGCHLD, &sa, &fio_old_sig_chld) == -1) {
     perror("Child reaping initialization failed");
-    kill(0, SIGINT);
+    kill(0, SIGTERM);
     exit(errno);
   }
 }
@@ -3800,7 +3800,7 @@ static void fio_worker_cleanup(void) {
   fio_state_callback_force(FIO_CALL_ON_FINISH);
   fio_defer_perform();
   if (!fio_data->is_worker) {
-    kill(0, SIGINT);
+    fio_cluster_signal_children();
     while (wait(NULL) != -1)
       ;
   }
@@ -3836,7 +3836,7 @@ static void *fio_sentinel_worker_thread(void *arg) {
       } else {
         FIO_LOG_FATAL("Child worker (%d) shutdown. Stopping services.", child);
       }
-      kill(0, SIGINT);
+      fio_stop();
     }
 #else
     if (fio_data->active) {
@@ -5527,7 +5527,7 @@ static void fio_cluster_on_close(intptr_t uuid, fio_protocol_s *pr_) {
       fio_state_callback_force(FIO_CALL_ON_PARENT_CRUSH);
       fio_state_callback_clear(FIO_CALL_ON_PARENT_CRUSH);
       fio_cluster_data_cleanup(1);
-      kill(getpid(), SIGINT);
+      fio_stop();
     }
   }
   if (c->msg)
@@ -5690,7 +5690,7 @@ static void fio_cluster_listen_on_close(intptr_t uuid,
                   (int)getpid());
 #endif
     if (fio_data->active)
-      kill(0, SIGINT);
+      fio_stop();
   }
   (void)uuid;
 }
@@ -5732,7 +5732,6 @@ static void fio_cluster_client_handler(struct cluster_pr_s *pr) {
     break;
   case FIO_CLUSTER_MSG_SHUTDOWN:
     fio_stop();
-    kill(getpid(), SIGINT);
   case FIO_CLUSTER_MSG_ERROR:         /* fallthrough */
   case FIO_CLUSTER_MSG_PING:          /* fallthrough */
   case FIO_CLUSTER_MSG_ROOT:          /* fallthrough */
@@ -5981,7 +5980,7 @@ static void fio_pubsub_on_fork(void) {
 /** Signals children (or self) to shutdown) - NOT signal safe. */
 static void fio_cluster_signal_children(void) {
   if (fio_master_pid() != getpid()) {
-    kill(getpid(), SIGINT);
+    fio_stop();
     return;
   }
   fio_cluster_server_sender(fio_msg_internal_create(0, FIO_CLUSTER_MSG_SHUTDOWN,
