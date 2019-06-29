@@ -60,19 +60,8 @@ args_for_langs = 'c'
 threads_dep = dependency('threads')
 m_dep = cc.find_library('m', required : false)
 
-subdir('lib')
 
-facil_dir = include_directories(
-    [
-        join_paths('lib'),
-        join_paths('lib', 'facil'),
-        join_paths('lib', 'facil', 'tls'),
-        join_paths('lib', 'facil', 'fiobj'),
-        join_paths('lib', 'facil', 'cli'),
-        join_paths('lib', 'facil', 'http'),
-        join_paths('lib', 'facil', 'http', 'parsers'),
-        join_paths('lib', 'facil', 'redis')
-    ])
+subdir('lib')
 
 
 facil_lib = library(meson.project_name(), 
