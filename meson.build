@@ -73,5 +73,6 @@ facil_lib = library(meson.project_name(),
 
 facil_dep = declare_dependency(
     link_with: facil_lib, 
+    version: meson.project_version(),
     include_directories: facil_dir,
     dependencies: [ threads_dep, m_dep ])
