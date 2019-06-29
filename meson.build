@@ -13,7 +13,6 @@
 
 
 project('facil.io', 'c',
-    version         : '0.7.2',
     license         : 'MIT',
     meson_version   : '>=0.50.0',
     default_options : 
@@ -46,7 +45,6 @@ facil_lib = library(meson.project_name(),
 
 
 facil_dep = declare_dependency(
-    link_with: facil_lib, 
-    version: meson.project_version(),
+    link_with: facil_lib,
     include_directories: facil_dir,
     dependencies: [ threads_dep, m_dep ])
