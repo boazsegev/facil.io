@@ -2,7 +2,9 @@
 #                                                                                 #
 # NAME: meson.build                                                               #
 #                                                                                 #
-# AUTHOR: Michael Brockus.                                                        #
+# AUTHOR: Boaz Segev.                                                             #
+#                                                                                 #
+# WRITTEN BY: Michael Brockus.                                                     #
 #                                                                                 #
 # CONTACT: <mailto:michael@squidfarts.com>                                        #
 #                                                                                 #
