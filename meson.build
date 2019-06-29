@@ -4,7 +4,7 @@
 #                                                                                 #
 # AUTHOR: Boaz Segev.                                                             #
 #                                                                                 #
-# WRITEN BY: Michael Brockus.                                                     #
+# WRITTEN BY: Michael Brockus.                                                     #
 #                                                                                 #
 # CONTACT: <mailto:michael@squidfarts.com>                                        #
 #                                                                                 #
