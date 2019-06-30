@@ -1,10 +1,10 @@
 
-#define FIO_STR_NAME fio_str
+#define FIO_STRING_NAME fio_str
 #define FIO_CLI 1
 #define FIO_LOG 1
 #include <fio-stl.h>
 
-#include <fio.h>
+// #include <fio.h>
 
 #include <errno.h>
 #include <time.h>
@@ -558,7 +558,7 @@ int main(int argc, char const **argv) {
   size_t func_pos = 0;
 
   uint8_t char2find = fio_cli_get("-c")[0];
-  fio_str_s str = FIO_STR_INIT;
+  fio_str_s str = FIO_STRING_INIT;
   fio_str_info_s data = fio_str_readfile(&str, fio_cli_get("-f"), 0, 0);
   if (!data.len) {
     fprintf(stderr, "ERROR: Couldn't open file %s\n", fio_cli_get("-f"));
@@ -576,9 +576,9 @@ int main(int argc, char const **argv) {
       size_t to_write = 1 << 22;
       if (to_write > d.len)
         to_write = d.len;
-      write(f, d.data, to_write);
+      write(f, d.buf, to_write);
       d.len -= to_write;
-      d.data += to_write;
+      d.buf += to_write;
     }
     close(f);
   }
@@ -592,7 +592,7 @@ int main(int argc, char const **argv) {
     fprintf(stderr, "\nTesting %s:\n  (", seek_funcs[func_pos].name);
     size_t avrg = 0;
     for (size_t i = 0; i < RUNS; i++) {
-      pos = data.data;
+      pos = data.buf;
       stop = data.len;
 
       count = 0;
@@ -601,7 +601,7 @@ int main(int argc, char const **argv) {
 
       start = clock();
       while ((pos = seek_funcs[func_pos].func(pos, char2find, stop))) {
-        stop = (data.len - 1) - (pos - data.data);
+        stop = (data.len - 1) - (pos - data.buf);
         ++count;
         ++pos;
       }

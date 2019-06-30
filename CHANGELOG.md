@@ -32,7 +32,7 @@ I though about it as a small STL, much like C++ has, only for C, and moved the b
 
     This updates make FIOBJ types dynamically extendible, allowing new types to be added, removed or altered during both compilation and runtime stages.
 
-    This update simplifies some behavior (some FIOBJ algorithms are now recursive), making FIOBJ nesting slightly more dangerous (could explode the stack). Nesting limits should be enforced.
+    This update simplifies some behavior (some FIOBJ algorithms are now recursive), making FIOBJ nesting slightly more dangerous (could explode the stack). Nesting limits should be enforced and cyclic nesting should be avoided.
 
     Also, this update **should** improve type recognition performance for primitive types (`true`, `false`, `null`, numbers, floats, Arrays, Strings and Hash Maps), increasing pointer tagging usage (at the expense of the number range that optimizes away memory allocation).
 

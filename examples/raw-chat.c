@@ -20,8 +20,6 @@ Interface API in the core STL (fio-stl.h).
 ***************************************************************************** */
 
 #include <fio.h>
-#define FIO_CLI
-#include <fio-stl.h>
 
 /* *****************************************************************************
 Chat connection callbacks

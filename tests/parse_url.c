@@ -14,9 +14,9 @@ int main(int argc, char const *argv[]) {
           "\tpath:\t%.*s\n"
           "\tquery:\t%.*s\n"
           "\ttarget:\t%.*s\n",
-          (int)u.scheme.len, u.scheme.data, (int)u.user.len, u.user.data,
-          (int)u.password.len, u.password.data, (int)u.host.len, u.host.data,
-          (int)u.port.len, u.port.data, (int)u.path.len, u.path.data,
-          (int)u.query.len, u.query.data, (int)u.target.len, u.target.data);
+          (int)u.scheme.len, u.scheme.buf, (int)u.user.len, u.user.buf,
+          (int)u.password.len, u.password.buf, (int)u.host.len, u.host.buf,
+          (int)u.port.len, u.port.buf, (int)u.path.len, u.path.buf,
+          (int)u.query.len, u.query.buf, (int)u.target.len, u.target.buf);
   return 0;
 }

@@ -213,7 +213,7 @@ size_t __attribute__((weak)) fio_version_patch() { return FIO_VERSION_PATCH; }
 size_t __attribute__((weak)) fio_version_beta() { return FIO_VERSION_BETA; }
 char *__attribute__((weak)) fio_version_string() { return FIO_VERSION_STRING; }
 #undef FIO_VERSION_GUARD
-#endif
+#endif /* FIO_VERSION_GUARD */
 
 /* *****************************************************************************
 Pointer Arithmatics
