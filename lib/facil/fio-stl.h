@@ -8579,23 +8579,31 @@ General Requirements / Macros
 #ifdef FIOBJ_EXTERN
 #define FIOBJ_FUNC
 #define FIOBJ_IFUNC
+#define FIOBJ_EXTERN_OBJ extern
+#define FIOBJ_EXTERN_OBJ_IMP __attribute__((weak))
 
 #else /* FIO_EXTERN */
 #define FIOBJ_FUNC static __attribute__((unused))
 #define FIOBJ_IFUNC static inline __attribute__((unused))
+#define FIOBJ_EXTERN_OBJ static __attribute__((unused))
+#define FIOBJ_EXTERN_OBJ_IMP static __attribute__((unused))
 #ifndef FIOBJ_EXTERN_COMPLETE /* force implementation, emitting static data */
 #define FIOBJ_EXTERN_COMPLETE 2
 #endif /* FIOBJ_EXTERN_COMPLETE */
 
 #endif /* FIO_EXTERN */
 
-#define FIOBJ_HFUNC static __attribute__((unused))
-#define FIOBJ_HIFUNC static inline __attribute__((unused))
-
-#ifdef FIO_LOG_DEBUG
+#ifdef FIO_LOG_PRINT__
 #define FIOBJ_LOG_PRINT__(...) FIO_LOG_PRINT__(__VA_ARGS__)
 #else
 #define FIOBJ_LOG_PRINT__(...)
+#endif
+
+#ifdef __cplusplus /* C++ doesn't allow declarations for static variables */
+#undef FIOBJ_EXTERN_OBJ
+#undef FIOBJ_EXTERN_OBJ_IMP
+#define FIOBJ_EXTERN_OBJ extern
+#define FIOBJ_EXTERN_OBJ_IMP __attribute__((weak))
 #endif
 
 /* *****************************************************************************
@@ -8669,33 +8677,33 @@ typedef enum {
 #define FIOBJ_TYPE_CLASS(o) ((fiobj_class_en)((o)&7UL))
 
 /** Returns an objects type. This isn't limited to known types. */
-FIOBJ_HIFUNC size_t fiobj_type(FIOBJ o);
+FIO_IFUNC size_t fiobj_type(FIOBJ o);
 
 /* *****************************************************************************
 FIOBJ Memory Management
 ***************************************************************************** */
 
 /** Increases an object's reference count (or copies) and returns it. */
-FIOBJ_HIFUNC FIOBJ fiobj_dup(FIOBJ o);
+FIO_IFUNC FIOBJ fiobj_dup(FIOBJ o);
 
 /** Decreases an object's reference count or frees it. */
-FIOBJ_HIFUNC void fiobj_free(FIOBJ o);
+FIO_IFUNC void fiobj_free(FIOBJ o);
 
 /* *****************************************************************************
 FIOBJ Data / Info
 ***************************************************************************** */
 
 /** Compares two objects. */
-FIOBJ_HIFUNC unsigned char FIO_NAME_BL(fiobj, eq)(FIOBJ a, FIOBJ b);
+FIO_IFUNC unsigned char FIO_NAME_BL(fiobj, eq)(FIOBJ a, FIOBJ b);
 
 /** Returns a temporary String representation for any FIOBJ object. */
-FIOBJ_HIFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o);
+FIO_IFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o);
 
 /** Returns an integer representation for any FIOBJ object. */
-FIOBJ_HIFUNC intptr_t FIO_NAME2(fiobj, i)(FIOBJ o);
+FIO_IFUNC intptr_t FIO_NAME2(fiobj, i)(FIOBJ o);
 
 /** Returns a float (double) representation for any FIOBJ object. */
-FIOBJ_HIFUNC double FIO_NAME2(fiobj, f)(FIOBJ o);
+FIO_IFUNC double FIO_NAME2(fiobj, f)(FIOBJ o);
 
 /* *****************************************************************************
 FIOBJ Containers (iteration)
@@ -8708,9 +8716,8 @@ FIOBJ Containers (iteration)
  *
  * Returns the "stop" position - the number of elements processed + `start_at`.
  */
-FIOBJ_HFUNC uint32_t fiobj_each1(FIOBJ o, int32_t start_at,
-                                 int (*task)(FIOBJ child, void *arg),
-                                 void *arg);
+FIO_SFUNC uint32_t fiobj_each1(FIOBJ o, int32_t start_at,
+                               int (*task)(FIOBJ child, void *arg), void *arg);
 
 /**
  * Performs a task for the object itself and each element held by the FIOBJ
@@ -8731,17 +8738,17 @@ FIOBJ Primitives (NULL, True, False)
 ***************************************************************************** */
 
 /** Returns the `true` primitive. */
-FIOBJ_HIFUNC FIOBJ FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(void) {
+FIO_IFUNC FIOBJ FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(void) {
   return (FIOBJ)(FIOBJ_T_TRUE);
 }
 
 /** Returns the `false` primitive. */
-FIOBJ_HIFUNC FIOBJ FIO_NAME(fiobj, FIOBJ___NAME_FALSE)(void) {
+FIO_IFUNC FIOBJ FIO_NAME(fiobj, FIOBJ___NAME_FALSE)(void) {
   return (FIOBJ)(FIOBJ_T_FALSE);
 }
 
 /** Returns the `nil` / `null` primitive. */
-FIOBJ_HIFUNC FIOBJ FIO_NAME(fiobj, FIOBJ___NAME_NULL)(void) {
+FIO_IFUNC FIOBJ FIO_NAME(fiobj, FIOBJ___NAME_NULL)(void) {
   return (FIOBJ)(FIOBJ_T_NULL);
 }
 
@@ -8780,7 +8787,7 @@ typedef struct {
   int (*free2)(FIOBJ o);
 } FIOBJ_class_vtable_s;
 
-extern FIOBJ_class_vtable_s FIOBJ___OBJECT_CLASS_VTBL;
+FIOBJ_EXTERN_OBJ FIOBJ_class_vtable_s FIOBJ___OBJECT_CLASS_VTBL;
 
 #define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_NAME fiobj_object
@@ -8805,47 +8812,44 @@ FIOBJ Integers
 ***************************************************************************** */
 
 /** Creates a new Number object. */
-FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
-                            new)(intptr_t i);
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), new)(intptr_t i);
 
 /** Reads the number from a FIOBJ Number. */
-FIOBJ_HIFUNC intptr_t FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
-                                i)(FIOBJ i);
+FIO_IFUNC intptr_t FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), i)(FIOBJ i);
 
 /** Reads the number from a FIOBJ Number, fitting it in a double. */
-FIOBJ_HIFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), f)(FIOBJ i);
+FIO_IFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), f)(FIOBJ i);
 
 /** Returns a String representation of the number (in base 10). */
 FIOBJ_FUNC fio_str_info_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
                                     cstr)(FIOBJ i);
 
 /** Frees a FIOBJ number. */
-FIOBJ_HIFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), free)(FIOBJ i);
+FIO_IFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), free)(FIOBJ i);
 
-extern FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL;
+FIOBJ_EXTERN_OBJ FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL;
 
 /* *****************************************************************************
 FIOBJ Floats
 ***************************************************************************** */
 
 /** Creates a new Float (double) object. */
-FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), new)(double i);
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), new)(double i);
 
 /** Reads the number from a FIOBJ Float rounnding it to an interger. */
-FIOBJ_HIFUNC intptr_t FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT),
-                                i)(FIOBJ i);
+FIO_IFUNC intptr_t FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), i)(FIOBJ i);
 
 /** Reads the value from a FIOBJ Float, as a double. */
-FIOBJ_HIFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), f)(FIOBJ i);
+FIO_IFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), f)(FIOBJ i);
 
 /** Returns a String representation of the float. */
 FIOBJ_FUNC fio_str_info_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT),
                                     cstr)(FIOBJ i);
 
 /** Frees a FIOBJ Float. */
-FIOBJ_HIFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), free)(FIOBJ i);
+FIO_IFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), free)(FIOBJ i);
 
-extern FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL;
+FIOBJ_EXTERN_OBJ FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL;
 
 /* *****************************************************************************
 FIOBJ Strings
@@ -8871,8 +8875,8 @@ FIOBJ Strings
 #include __FILE__
 
 /* Creates a new FIOBJ string object, copying the data to the new string. */
-FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
-                            new_cstr)(const char *ptr, uint32_t len) {
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
+                         new_cstr)(const char *ptr, uint32_t len) {
   FIOBJ s = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
   FIO_ASSERT_ALLOC(s);
   FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(s, ptr, len);
@@ -8880,8 +8884,8 @@ FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
 }
 
 /* Creates a new FIOBJ string object with (at least) the requested capacity. */
-FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
-                            new_buf)(uint32_t capa) {
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
+                         new_buf)(uint32_t capa) {
   FIOBJ s = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
   FIO_ASSERT_ALLOC(s);
   FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), reserve)(s, capa);
@@ -8889,8 +8893,8 @@ FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
 }
 
 /* Creates a new FIOBJ string object, copying the origin (`fiobj2cstr`). */
-FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
-                            new_copy)(FIOBJ original) {
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
+                         new_copy)(FIOBJ original) {
   FIOBJ s = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
   FIO_ASSERT_ALLOC(s);
   fio_str_info_s i = FIO_NAME2(fiobj, cstr)(original);
@@ -8899,8 +8903,8 @@ FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
 }
 
 /** Returns information about the string. Same as fiobj_str_info(). */
-FIOBJ_HIFUNC fio_str_info_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
-                                      cstr)(FIOBJ s) {
+FIO_IFUNC fio_str_info_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
+                                   cstr)(FIOBJ s) {
   return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), info)(s);
 }
 
@@ -8976,16 +8980,15 @@ FIOBJ Hash Maps
 
 /** Inserts a value to a hash map, automatically calculating the hash value.
  */
-FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
-                            set2)(FIOBJ hash, FIOBJ key, FIOBJ value);
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                         set2)(FIOBJ hash, FIOBJ key, FIOBJ value);
 
 /** Finds a value in a hash map, automatically calculating the hash value. */
-FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
-                            get2)(FIOBJ hash, FIOBJ key);
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), get2)(FIOBJ hash,
+                                                                   FIOBJ key);
 
 /** Calculates an object's hash value for a specific hash map object. */
-FIOBJ_HIFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash,
-                                             FIOBJ object_key);
+FIO_IFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ object_key);
 
 /* *****************************************************************************
 FIOBJ JSON support
@@ -9006,16 +9009,14 @@ fiobj___json_format_internal__(fiobj___json_format_internal__s *, FIOBJ);
  * If `dest` is an existing String, the formatted JSON data will be appended to
  * the existing string.
  */
-FIOBJ_HIFUNC FIOBJ FIO_NAME2(fiobj, json)(FIOBJ dest, FIOBJ o,
-                                          uint8_t beautify);
+FIO_IFUNC FIOBJ FIO_NAME2(fiobj, json)(FIOBJ dest, FIOBJ o, uint8_t beautify);
 /**
  * Returns a JSON valid FIOBJ String, representing the object.
  *
  * If `dest` is an existing String, the formatted JSON data will be appended to
  * the existing string.
  */
-FIOBJ_HIFUNC FIOBJ FIO_NAME2(fiobj, json)(FIOBJ dest, FIOBJ o,
-                                          uint8_t beautify) {
+FIO_IFUNC FIOBJ FIO_NAME2(fiobj, json)(FIOBJ dest, FIOBJ o, uint8_t beautify) {
   fiobj___json_format_internal__s args =
       (fiobj___json_format_internal__s){.json = dest, .beautify = beautify};
   if (FIOBJ_TYPE_CLASS(dest) != FIOBJ_T_STRING)
@@ -9040,8 +9041,8 @@ FIOBJ_FUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                            update_json)(FIOBJ hash, fio_str_info_s str);
 
 /** Helper function, calls `fiobj_hash_update_json` with string information */
-FIOBJ_HIFUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
-                             update_json2)(FIOBJ hash, char *ptr, size_t len) {
+FIO_IFUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                          update_json2)(FIOBJ hash, char *ptr, size_t len) {
   return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                   update_json)(hash, (fio_str_info_s){.buf = ptr, .len = len});
 }
@@ -9085,7 +9086,7 @@ The FIOBJ Type
 ***************************************************************************** */
 
 /** Returns an objects type. This isn't limited to known types. */
-FIOBJ_HIFUNC size_t fiobj_type(FIOBJ o) {
+FIO_IFUNC size_t fiobj_type(FIOBJ o) {
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
     switch (o) {
@@ -9120,7 +9121,7 @@ FIOBJ Memory Management
 ***************************************************************************** */
 
 /** Increases an object's reference count (or copies) and returns it. */
-FIOBJ_HIFUNC FIOBJ fiobj_dup(FIOBJ o) {
+FIO_IFUNC FIOBJ fiobj_dup(FIOBJ o) {
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE: /* fallthrough */
   case FIOBJ_T_NUMBER:    /* fallthrough */
@@ -9142,7 +9143,7 @@ FIOBJ_HIFUNC FIOBJ fiobj_dup(FIOBJ o) {
 }
 
 /** Decreases an object's reference count or frees it. */
-FIOBJ_HIFUNC void fiobj_free(FIOBJ o) {
+FIO_IFUNC void fiobj_free(FIOBJ o) {
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE: /* fallthrough */
   case FIOBJ_T_NUMBER:    /* fallthrough */
@@ -9168,7 +9169,7 @@ FIOBJ Data / Info
 ***************************************************************************** */
 
 /** Compares two objects. */
-FIOBJ_HIFUNC unsigned char FIO_NAME_BL(fiobj, eq)(FIOBJ a, FIOBJ b) {
+FIO_IFUNC unsigned char FIO_NAME_BL(fiobj, eq)(FIOBJ a, FIOBJ b) {
   if (a == b)
     return 1;
   if (FIOBJ_TYPE_CLASS(a) != FIOBJ_TYPE_CLASS(b))
@@ -9197,7 +9198,7 @@ __thread char __attribute__((weak))
 fiobj___2cstr___buffer__perthread[FIOBJ2CSTR_BUFFER_LIMIT];
 
 /** Returns a temporary String representation for any FIOBJ object. */
-FIOBJ_HIFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
+FIO_IFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
     switch (o) {
@@ -9240,7 +9241,7 @@ FIOBJ_HIFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
 }
 
 /** Returns an integer representation for any FIOBJ object. */
-FIOBJ_HIFUNC intptr_t FIO_NAME2(fiobj, i)(FIOBJ o) {
+FIO_IFUNC intptr_t FIO_NAME2(fiobj, i)(FIOBJ o) {
   fio_str_info_s tmp;
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
@@ -9275,7 +9276,7 @@ FIOBJ_HIFUNC intptr_t FIO_NAME2(fiobj, i)(FIOBJ o) {
 }
 
 /** Returns a float (double) representation for any FIOBJ object. */
-FIOBJ_HIFUNC double FIO_NAME2(fiobj, f)(FIOBJ o) {
+FIO_IFUNC double FIO_NAME2(fiobj, f)(FIOBJ o) {
   fio_str_info_s tmp;
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
@@ -9337,8 +9338,8 @@ FIOBJ Integers
                 ((uintptr_t)3 << ((sizeof(uintptr_t) * 8) - 3))))))
 
 /** Creates a new Number object. */
-FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
-                            new)(intptr_t i) {
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
+                         new)(intptr_t i) {
   FIOBJ o = FIO_NUMBER_ENCODE(i);
   if (FIO_NUMBER_REVESE(o) == i)
     return o;
@@ -9348,22 +9349,19 @@ FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
 }
 
 /** Reads the number from a FIOBJ number. */
-FIOBJ_HIFUNC intptr_t FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
-                                i)(FIOBJ i) {
+FIO_IFUNC intptr_t FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), i)(FIOBJ i) {
   if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_NUMBER)
     return FIO_NUMBER_REVESE(i);
   return FIO_PTR_MATH_RMASK(intptr_t, i, 3)[0];
 }
 
 /** Reads the number from a FIOBJ number, fitting it in a double. */
-FIOBJ_HIFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
-                              f)(FIOBJ i) {
+FIO_IFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), f)(FIOBJ i) {
   return (double)FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), i)(i);
 }
 
 /** Frees a FIOBJ number. */
-FIOBJ_HIFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
-                           free)(FIOBJ i) {
+FIO_IFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), free)(FIOBJ i) {
   if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_NUMBER)
     return;
   fiobj___bignum_free(i);
@@ -9395,8 +9393,7 @@ FIOBJ Floats
 #include __FILE__
 
 /** Creates a new Float object. */
-FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT),
-                            new)(double i) {
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), new)(double i) {
   FIOBJ ui;
   if (sizeof(double) <= sizeof(FIOBJ)) {
     union {
@@ -9415,13 +9412,12 @@ FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT),
 }
 
 /** Reads the integer part from a FIOBJ Float. */
-FIOBJ_HIFUNC intptr_t FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT),
-                                i)(FIOBJ i) {
+FIO_IFUNC intptr_t FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), i)(FIOBJ i) {
   return (intptr_t)floor(FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), f)(i));
 }
 
 /** Reads the number from a FIOBJ number, fitting it in a double. */
-FIOBJ_HIFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), f)(FIOBJ i) {
+FIO_IFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), f)(FIOBJ i) {
   if (sizeof(double) <= sizeof(FIOBJ) && FIOBJ_TYPE_CLASS(i) == FIOBJ_T_FLOAT) {
     union {
       double d;
@@ -9436,7 +9432,7 @@ FIOBJ_HIFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), f)(FIOBJ i) {
 }
 
 /** Frees a FIOBJ number. */
-FIOBJ_HIFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), free)(FIOBJ i) {
+FIO_IFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), free)(FIOBJ i) {
   if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_FLOAT)
     return;
   fiobj___bignum_free(i);
@@ -9454,9 +9450,8 @@ FIOBJ Basic Iteration
  *
  * Returns the "stop" position - the number of elements processed + `start_at`.
  */
-FIOBJ_HFUNC uint32_t fiobj_each1(FIOBJ o, int32_t start_at,
-                                 int (*task)(FIOBJ child, void *arg),
-                                 void *arg) {
+FIO_SFUNC uint32_t fiobj_each1(FIOBJ o, int32_t start_at,
+                               int (*task)(FIOBJ child, void *arg), void *arg) {
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE: /* fallthrough */
   case FIOBJ_T_NUMBER:    /* fallthrough */
@@ -9480,7 +9475,7 @@ FIOBJ Hash Maps
 ***************************************************************************** */
 
 /** Calculates an object's hash value for a specific hash map object. */
-FIOBJ_HIFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ o) {
+FIO_IFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ o) {
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
     return fio_risky_hash(&o, sizeof(o), target_hash + o);
@@ -9529,15 +9524,15 @@ FIOBJ_HIFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ o) {
 }
 
 /** Inserts a value to a hash map, automatically calculating the hash value. */
-FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
-                            set2)(FIOBJ hash, FIOBJ key, FIOBJ value) {
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                         set2)(FIOBJ hash, FIOBJ key, FIOBJ value) {
   return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), set)(
       hash, FIO_NAME2(fiobj, hash)(hash, key), key, value, NULL);
 }
 
 /** Finds a value in a hash map, automatically calculating the hash value. */
-FIOBJ_HIFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
-                            get2)(FIOBJ hash, FIOBJ key) {
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), get2)(FIOBJ hash,
+                                                                   FIOBJ key) {
   return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                   get)(hash, FIO_NAME2(fiobj, hash)(hash, key), key);
 }
@@ -9551,7 +9546,7 @@ FIOBJ - Implementation
 FIOBJ Basic Object vtable
 ***************************************************************************** */
 
-FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___OBJECT_CLASS_VTBL = {
+FIOBJ_EXTERN_OBJ_IMP FIOBJ_class_vtable_s FIOBJ___OBJECT_CLASS_VTBL = {
     .type_id = 99, /* type IDs below 100 are reserved. */
 };
 
@@ -9588,7 +9583,7 @@ typedef struct {
   uint8_t stop;
 } fiobj_____each2_data_s;
 
-FIOBJ_HFUNC uint32_t fiobj____each2_element_count(FIOBJ o) {
+FIO_SFUNC uint32_t fiobj____each2_element_count(FIOBJ o) {
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE: /* fallthrough */
   case FIOBJ_T_NUMBER:    /* fallthrough */
@@ -9604,7 +9599,7 @@ FIOBJ_HFUNC uint32_t fiobj____each2_element_count(FIOBJ o) {
   }
   return 0;
 }
-FIOBJ_HFUNC int fiobj____each2_wrapper_task(FIOBJ child, void *arg) {
+FIO_SFUNC int fiobj____each2_wrapper_task(FIOBJ child, void *arg) {
   fiobj_____each2_data_s *d = (fiobj_____each2_data_s *)arg;
   d->stop = (d->task(child, d->arg) == -1);
   ++d->count;
@@ -9673,9 +9668,9 @@ FIOBJ_FUNC uint32_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ child, void *arg),
 /* *****************************************************************************
 FIOBJ general helpers
 ***************************************************************************** */
-FIOBJ_HFUNC __thread char fiobj___tmp_buffer[256];
+FIO_SFUNC __thread char fiobj___tmp_buffer[256];
 
-FIOBJ_HFUNC uint32_t fiobj___count_noop(FIOBJ o) {
+FIO_SFUNC uint32_t fiobj___count_noop(FIOBJ o) {
   return 0;
   (void)o;
 }
@@ -9698,7 +9693,7 @@ FIOBJ_FUNC fio_str_info_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
   return (fio_str_info_s){.buf = fiobj___tmp_buffer, .len = len};
 }
 
-FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___NUMBER_CLASS_VTBL = {
+FIOBJ_EXTERN_OBJ_IMP FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL = {
     /**
      * MUST return a unique number to identify object type.
      *
@@ -9739,7 +9734,7 @@ FIOBJ_FUNC fio_str_info_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT),
   return (fio_str_info_s){.buf = fiobj___tmp_buffer, .len = len};
 }
 
-FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___FLOAT_CLASS_VTBL = {
+FIOBJ_EXTERN_OBJ_IMP FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL = {
     /**
      * MUST return a unique number to identify object type.
      *
@@ -9766,8 +9761,8 @@ FIOBJ_class_vtable_s __attribute__((weak)) FIOBJ___FLOAT_CLASS_VTBL = {
 FIOBJ JSON support - output
 ***************************************************************************** */
 
-FIOBJ_HIFUNC void fiobj___json_format_internal_beauty_pad(FIOBJ json,
-                                                          size_t level) {
+FIO_IFUNC void fiobj___json_format_internal_beauty_pad(FIOBJ json,
+                                                       size_t level) {
   uint32_t pos = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(json);
   fio_str_info_s tmp = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
                                 resize)(json, (level << 1) + pos + 2);
@@ -10053,10 +10048,10 @@ FIOBJ cleanup
 #endif /* FIOBJ_EXTERN_COMPLETE */
 #undef FIOBJ_FUNC
 #undef FIOBJ_IFUNC
-#undef FIOBJ_HFUNC
-#undef FIOBJ_HIFUNC
 #undef FIOBJ_EXTERN
 #undef FIOBJ_EXTERN_COMPLETE
+#undef FIOBJ_EXTERN_OBJ
+#undef FIOBJ_EXTERN_OBJ_IMP
 #endif /* FIO_FIOBJ */
 #undef FIO_FIOBJ
 

@@ -21,12 +21,12 @@ The `facil.io` parser will parse any C string until it either consumes the whole
 For example, the following program will minify (or prettify) JSON data:
 
 ```c
-// include the `fiobj` module from `facil.io`
-#include "fiobj.h"
-#include <string.h>
-// this is passed as an argument to `fiobj_obj2json`
-// change this to 1 to prettify.
-#define PRETTY 1
+// #include "fio.h" // when using fio.c, use fio.h instead of:
+#define FIO_FIOBJ
+#include "fio-stl.h"
+
+// Prettyfy JSON? this is passed as an argument to `fiobj2json`
+#define PRETTY 0
 
 int main(int argc, char const *argv[]) {
   // a default string to demo
@@ -41,34 +41,33 @@ int main(int argc, char const *argv[]) {
                      "\t\"symbols\":[\"id\","
                      "\"number\",\"float\",\"string\",\"hash\",\"symbols\"]\n}";
   if (argc == 2) {
-    // accept command line JSON data
     json = argv[1];
   }
+
   printf("\nattempting to parse:\n%s\n", json);
 
   // Parsing the JSON
-  FIOBJ obj = FIOBJ_INVALID;
-  size_t consumed = fiobj_json2obj(&obj, json, strlen(json));
+  size_t consumed = 0;
+  FIOBJ obj = fiobj_json_parse2((char *)json, strlen(json), &consumed);
   // test for errors
-  if (!consumed || !obj) {
+  if (!obj) {
     printf("\nERROR, couldn't parse data.\n");
     exit(-1);
   }
 
   // Example use - printing some JSON data
-  FIOBJ key = fiobj_str_new("number", 6);
+  FIOBJ key = fiobj_str_new_cstr("number", 6);
   if (FIOBJ_TYPE_IS(obj, FIOBJ_T_HASH) // make sure the JSON object is a Hash
-      && fiobj_hash_get(obj, key)) {   // test for the existence of "number"
+      && fiobj_hash_get2(obj, key)) {  // test for the existence of "number"
     printf("JSON print example - the meaning of life is %zu",
-           (size_t)fiobj_obj2num(fiobj_hash_get(obj, key)));
+           (size_t)fiobj2i(fiobj_hash_get2(obj, key)));
   }
   fiobj_free(key);
 
   // Formatting the JSON back to a String object and printing it up
-  FIOBJ str = fiobj_obj2json(obj, PRETTY);
-  printf("\nParsed JSON input was: %zu bytes"
-         "\nJSON output is %zu bytes:\n\n%s\n\n",
-         consumed, (size_t)fiobj_obj2cstr(str).len, fiobj_obj2cstr(str).data);
+  FIOBJ str = fiobj2json(FIOBJ_INVALID, obj, PRETTY);
+  printf("\nJSON input was %zu bytes\nJSON output is %zu bytes:\n\n%s\n\n",
+         consumed, (size_t)fiobj_str_len(str), fiobj_str2ptr(str));
   // cleanup
   fiobj_free(str);
   fiobj_free(obj);
