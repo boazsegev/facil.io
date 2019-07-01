@@ -77,11 +77,9 @@ int main(int argc, char const *argv[]) {
 
 ## Constants
 
-`JSON_MAX_DEPTH` is the maximum depth for nesting. The default value is 32 (should be set during compile time).
+`JSON_MAX_DEPTH` is the maximum depth for nesting. The default value is 512 (should be set during compile time).
 
-Since bit mapping is used, the maximum available nesting value is 32 (32 nested levels use 32 bits in a `uint32_t` type).
-
-Note that facil.io avoids recursion to protect against DoS attacks that attempt stack exploding techniques. 
+Note that it's important to limit the maximum depth for JSON structures since objects might be recursively traversed by some functions (such as the `fiobj_free` or `fiobj2json` functions). 
 
 ## Types
 
@@ -89,7 +87,7 @@ Note that facil.io avoids recursion to protect against DoS attacks that attempt 
 
 The JSON parser returns a `FIOBJ` dynamic object of any type (depending on the JSON data).
 
-No assumptions should be made 
+No assumptions should be made as to the returned data type, but it could easily be tested for, using the `FIOBJ_TYPE(o)` and the `FIOBJ_TYPE_IS(o, type)` macros.
 
 ### Formating result type
 
@@ -97,43 +95,43 @@ The JSON formatter returns a `FIOBJ` dynamic String, always.
 
 ## Functions
 
-### `fiobj_json2obj`
+### `fiobj_json_parse`
 
 ```c
-size_t fiobj_json2obj(FIOBJ *pobj, const void *data, size_t len);
+FIOBJ fiobj_json_parse(fio_str_info_s str, size_t *consumed);
 ```
 
-Parses JSON, setting `pobj` to point to the new Object.
+Parses a buffer for JSON data.
 
-Returns the number of bytes consumed. On Error, 0 is returned and no data is consumed.
+If `consumed` is not NULL, the `size_t` variable will contain the number of bytes consumed before the parser stopped (due to either error or end of a valid JSON data segment).
+
+Returns a FIOBJ object matching the JSON valid buffer `str`.
+
+If the parsing failed (no complete valid JSON data) `FIOBJ_INVALID` is returned.
  
-
-### `fiobj_obj2json`
+### `fiobj_json_parse2`
 
 ```c
-FIOBJ fiobj_obj2json(FIOBJ, uint8_t pretty);
+#define fiobj_json_parse2(data_, len_, consumed)                               \
+  fiobj_json_parse((fio_str_info_s){.buf = data_, .len = len_}, consumed)
 ```
 
-Stringify an object into a JSON string. Remember to `fiobj_free`.
+Helper macro, calls `fiobj_json_parse` with string information.
 
-Note that only the following basic fiobj types are supported: Primitives (True / False / NULL), Numbers (Number / Float), Strings, Hashes and Arrays.
- 
-Some objects (such as the POSIX specific IO type) are unsupported and may be formatted incorrectly.
-
-### `fiobj_obj2json2`
+### `fiobj2json`
 
 ```c
-FIOBJ fiobj_obj2json2(FIOBJ dest, FIOBJ object, uint8_t pretty);
+FIOBJ fiobj2json(FIOBJ destination, FIOBJ object, uint8_t beautify);
 ```
 
-Formats an object into a JSON string, appending the JSON string to an existing String. Remember to `fiobj_free` as usual.
+Stringify an object into a JSON string.
 
-Note that only the foloowing basic fiobj types are supported: Primitives (True / False / NULL), Numbers (Number / Float), Strings, Hashes and Arrays.
+If `destination` is a `FIOBJ_T_STRING`, the JSON data will be appended to the end of the string. Otherwise, a new FIOBJ String will be initialized and the data will be written to the new String object (remember to `fiobj_free`).
+
+Note that only the following basic FIOBJ types are supported: Primitives (True / False / NULL), Numbers (Number / Float), Strings, Hashes and Arrays.
  
-Some objects (such as the POSIX specific IO type) are unsupported and may be formatted incorrectly.
+Some objects (such as the POSIX specific IO type) are unsupported and may be formatted incorrectly (an attempt to convert these types to strings will be made before formatting them).
  
 ## Important Notes
 
-The parser assumes the whole JSON data is present in the data's buffer. A streaming parser is coded into the [`fiobj_json.c` source file](https://github.com/boazsegev/facil.io/blob/master/lib/facil/core/types/fiobj/fiobj_json.c) but no external API is exposed.
-
-The [`fiobj_json.h` header file](https://github.com/boazsegev/facil.io/blob/master/lib/facil/core/types/fiobj/fiobj_json.h) might include more data.
+The parser assumes the whole JSON data is present in the data's buffer. A streaming parser is available in the [`fio-stl.h` library](https://github.com/boazsegev/facil.io/blob/master/lib/facil/fio-stl.h), but isn't implemented for FIOBJ types.
