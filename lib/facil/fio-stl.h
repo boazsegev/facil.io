@@ -216,7 +216,7 @@ char *__attribute__((weak)) fio_version_string() { return FIO_VERSION_STRING; }
 #endif /* FIO_VERSION_GUARD */
 
 /* *****************************************************************************
-Pointer Arithmatics
+Pointer Arithmetics
 ***************************************************************************** */
 
 /** Masks a pointer's left-most bits, returning the right bits. */
@@ -8093,7 +8093,7 @@ Reference Counter (Wrapper) Cleanup
 typedef struct {
   /** level of nesting. */
   uint32_t depth;
-  /** expectataion bit flag: 0=key, 1=colon, 2=value, 4=comma/closure . */
+  /** expectation bit flag: 0=key, 1=colon, 2=value, 4=comma/closure . */
   uint8_t expect;
   /** nesting bit flags - dictionary bit = 0, array bit = 1. */
   uint8_t nesting[(JSON_MAX_DEPTH + 7) >> 3];
@@ -8111,7 +8111,7 @@ typedef struct {
  * the resulting data-structure by calling static callbacks for JSON related
  * events.
  *
- * Returns the number of bytes consumed before parsing stoped (due to either
+ * Returns the number of bytes consumed before parsing stopped (due to either
  * error or end of data). Stops as close as possible to the end of the buffer or
  * once an object parsing was completed.
  */
@@ -8136,7 +8136,7 @@ FIO_JSON_CB void fio_json_on_null(fio_json_parser_s *p);
 static inline void fio_json_on_true(fio_json_parser_s *p);
 /** a FALSE object was detected */
 FIO_JSON_CB void fio_json_on_false(fio_json_parser_s *p);
-/** a Numberl was detected (long long). */
+/** a Number was detected (long long). */
 FIO_JSON_CB void fio_json_on_number(fio_json_parser_s *p, long long i);
 /** a Float was detected (double). */
 FIO_JSON_CB void fio_json_on_float(fio_json_parser_s *p, double f);
@@ -8153,7 +8153,7 @@ FIO_JSON_CB int fio_json_on_start_array(fio_json_parser_s *p);
 FIO_JSON_CB void fio_json_on_end_array(fio_json_parser_s *p);
 /** the JSON parsing is complete */
 FIO_JSON_CB void fio_json_on_json(fio_json_parser_s *p);
-/** the JSON parsing is complete */
+/** the JSON parsing encountered an error */
 FIO_JSON_CB void fio_json_on_error(fio_json_parser_s *p);
 
 /* *****************************************************************************

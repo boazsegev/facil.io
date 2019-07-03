@@ -59,6 +59,27 @@ In addition, the core library includes helpers for common tasks, such as:
 * Custom JSON Parser - defined by `FIO_JSON`
 
 -------------------------------------------------------------------------------
+## Version and Common Helper Macros
+
+The facil.io C STL (Simple Type Library) offers a number of common helper macros that are also used internally. These are automatically included once the `fio-stl.h` is included.
+
+### Version Macros
+
+The facil.io C STL library follows [semantic versioning](https://semver.org) and supports macros that will help detect and validate it's version.
+
+- `FIO_VERSION_MAJOR`: translates to the STL's major version number.
+- `FIO_VERSION_MINOR`: translates to the STL's minor version number.
+- `FIO_VERSION_PATCH`: translates to the STL's patch version number.
+- `FIO_VERSION_BETA`: translates to the STL's beta version number.
+- `FIO_VERSION_STRING`: translates to the STL's version as a String (i.e., 0.8.0.beta1.
+
+If the `FIO_VERSION_GUARD` macro is defined in **a single** translation unit (C file) **before** including `fio-stl.h` for the first time, then the version macros become available using functions as well: `fio_version_major`, `fio_version_minor`, etc'.
+
+By adding the `FIO_VERSION_GUARD` functions, a version test could be performed during runtime (which can be used for static libraries), using the macro `FIO_VERSION_VALIDATE()`.
+
+### Pointer Arithmetics
+
+-------------------------------------------------------------------------------
 
 ## Linked Lists
 
@@ -1836,3 +1857,182 @@ allocation system. The risk is more relevant for child processes.
 However, if a multi-threaded process, calling this function from the child
 process would perform a best attempt at mitigating any arising issues (at the
 expense of possible leaks).
+
+-------------------------------------------------------------------------------
+
+## Custom JSON Parser
+
+The facil.io JSON parser is a non-strict parser, with support for trailing commas in collections, new-lines in strings, extended escape characters and octal, hex and binary numbers, and comments.
+
+The parser allows for streaming data and decouples the parsing process from the resulting data-structure by calling static callbacks for JSON related events.
+
+To use the JSON parser, define `FIO_JSON` before including the `fio-slt.h` file and later define the static callbacks required by the parser (see list of callbacks).
+
+**Note**: the JSON parser and the FIOBJ soft types can't be implemented in the same translation unit, since the FIOBJ soft types already define JSON callbacks and use the JSON parser to provide JSON support.
+
+#### `JSON_MAX_DEPTH`
+
+```c
+#ifndef JSON_MAX_DEPTH
+/** Maximum allowed JSON nesting level. Values above 64K might fail. */
+#define JSON_MAX_DEPTH 512
+#endif
+```
+The JSON parser isn't recursive, but it allocates a nesting bitmap on the stack, which consumes stack memory.
+
+To ensure the stack isn't abused, the parser will limit JSON nesting levels to a customizable `JSON_MAX_DEPTH` number of nesting levels.
+
+#### `fio_json_parser_s`
+
+```c
+typedef struct {
+  /** level of nesting. */
+  uint32_t depth;
+  /** expectation bit flag: 0=key, 1=colon, 2=value, 4=comma/closure . */
+  uint8_t expect;
+  /** nesting bit flags - dictionary bit = 0, array bit = 1. */
+  uint8_t nesting[(JSON_MAX_DEPTH + 7) >> 3];
+} fio_json_parser_s;
+```
+
+The JSON parser type. Memory must be initialized to 0 before first uses (see `FIO_JSON_INIT`).
+
+The type should be considered opaque. To add user data to the parser, use C-style inheritance and pointer mathematics or simple type casting.
+
+i.e.:
+
+```c
+typedef struct {
+  fio_json_parser_s private;
+  int my_data;
+} my_json_parser_s;
+// void use_in_callback (fio_json_parser_s * p) {
+//    my_json_parser_s *my = (my_json_parser_s *)p;
+// }
+```
+
+#### `FIO_JSON_INIT`
+
+```c
+#define FIO_JSON_INIT                                                          \
+  { .depth = 0 }
+```
+
+A convenient macro that could be used to initialize the parser's memory to 0.
+
+### JSON parser API
+ 
+#### `fio_json_parse`
+
+```c
+size_t fio_json_parse(fio_json_parser_s *parser,
+                      const char *buffer,
+                      const size_t len);
+```
+
+Returns the number of bytes consumed before parsing stopped (due to either error or end of data). Stops as close as possible to the end of the buffer or once an object parsing was completed.
+
+Zero (0) is a valid number and may indicate that the buffer's memory contains a partial object that can't be fully parsed just yet.
+
+**Note!**: partial Numeral objects may be result in errors, as the number 1234 may be fragmented as 12 and 34 when streaming data. facil.io doesn't protect against this possible error.
+
+### JSON Required Callbacks
+
+The JSON parser requires the following callbacks to be defined as static functions.
+
+#### `fio_json_on_null`
+
+```c
+static void fio_json_on_null(fio_json_parser_s *p);
+```
+
+A NULL object was detected
+
+#### `fio_json_on_true`
+
+```c
+static void fio_json_on_true(fio_json_parser_s *p);
+```
+
+A TRUE object was detected
+
+#### `fio_json_on_false`
+
+```c
+static void fio_json_on_false(fio_json_parser_s *p);
+```
+
+A FALSE object was detected
+
+#### `fio_json_on_number`
+
+```c
+static void fio_json_on_number(fio_json_parser_s *p, long long i);
+```
+
+A Number was detected (long long).
+
+#### `fio_json_on_float`
+
+```c
+static void fio_json_on_float(fio_json_parser_s *p, double f);
+```
+
+A Float was detected (double).
+
+#### `fio_json_on_string`
+
+```c
+static void fio_json_on_string(fio_json_parser_s *p, const void *start, size_t len);
+```
+
+A String was detected (int / float). update `pos` to point at ending
+
+
+#### `fio_json_on_start_object`
+
+```c
+static int fio_json_on_start_object(fio_json_parser_s *p);
+```
+
+A dictionary object was detected, should return 0 unless error occurred.
+
+#### `fio_json_on_end_object`
+
+```c
+static void fio_json_on_end_object(fio_json_parser_s *p);
+```
+
+A dictionary object closure detected
+
+#### `fio_json_on_start_array`
+
+```c
+static int fio_json_on_start_array(fio_json_parser_s *p);
+```
+An array object was detected, should return 0 unless error occurred.
+
+#### `fio_json_on_end_array`
+
+```c
+static void fio_json_on_end_array(fio_json_parser_s *p);
+```
+
+An array closure was detected
+
+#### `fio_json_on_json`
+
+```c
+static void fio_json_on_json(fio_json_parser_s *p);
+```
+
+The JSON parsing is complete (JSON data parsed so far contains a valid JSON object).
+
+#### `void`
+
+```c
+static void fio_json_on_error(fio_json_parser_s *p);
+```
+
+The JSON parsing should stop with an error.
+
