@@ -59,6 +59,7 @@ In addition, the core library includes helpers for common tasks, such as:
 * Custom JSON Parser - defined by `FIO_JSON`
 
 -------------------------------------------------------------------------------
+
 ## Version and Common Helper Macros
 
 The facil.io C STL (Simple Type Library) offers a number of common helper macros that are also used internally. These are automatically included once the `fio-stl.h` is included.
@@ -67,17 +68,153 @@ The facil.io C STL (Simple Type Library) offers a number of common helper macros
 
 The facil.io C STL library follows [semantic versioning](https://semver.org) and supports macros that will help detect and validate it's version.
 
-- `FIO_VERSION_MAJOR`: translates to the STL's major version number.
-- `FIO_VERSION_MINOR`: translates to the STL's minor version number.
-- `FIO_VERSION_PATCH`: translates to the STL's patch version number.
-- `FIO_VERSION_BETA`: translates to the STL's beta version number.
-- `FIO_VERSION_STRING`: translates to the STL's version as a String (i.e., 0.8.0.beta1.
+#### `FIO_VERSION_MAJOR`
+
+Translates to the STL's major version number.
+
+#### `FIO_VERSION_MINOR`
+
+Translates to the STL's minor version number.
+
+#### `FIO_VERSION_PATCH`
+
+Translates to the STL's patch version number.
+
+#### `FIO_VERSION_BETA`
+
+Translates to the STL's beta version number.
+
+#### `FIO_VERSION_STRING`
+
+Translates to the STL's version as a String (i.e., 0.8.0.beta1.
+
+#### `FIO_VERSION_GUARD`
 
 If the `FIO_VERSION_GUARD` macro is defined in **a single** translation unit (C file) **before** including `fio-stl.h` for the first time, then the version macros become available using functions as well: `fio_version_major`, `fio_version_minor`, etc'.
+
+#### `FIO_VERSION_VALIDATE`
 
 By adding the `FIO_VERSION_GUARD` functions, a version test could be performed during runtime (which can be used for static libraries), using the macro `FIO_VERSION_VALIDATE()`.
 
 ### Pointer Arithmetics
+
+#### `FIO_PTR_MATH_LMASK`
+
+```c
+#define FIO_PTR_MATH_LMASK(T_type, ptr, bits)                                  \
+  ((T_type *)((uintptr_t)(ptr) & (((uintptr_t)1 << (bits)) - 1)))
+```
+
+Masks a pointer's left-most bits, returning the right bits.
+
+#### `FIO_PTR_MATH_RMASK`
+
+```c
+#define FIO_PTR_MATH_RMASK(T_type, ptr, bits)                                  \
+  ((T_type *)((uintptr_t)(ptr) & ((~(uintptr_t)0) << bits)))
+```
+
+Masks a pointer's right-most bits, returning the left bits.
+
+#### `FIO_PTR_MATH_ADD`
+
+```c
+#define FIO_PTR_MATH_ADD(T_type, ptr, offset)                                  \
+  ((T_type *)((uintptr_t)(ptr) + (uintptr_t)(offset)))
+```
+
+Add offset bytes to pointer, updating the pointer's type.
+
+#### `FIO_PTR_MATH_SUB`
+
+```c
+#define FIO_PTR_MATH_SUB(T_type, ptr, offset)                                  \
+  ((T_type *)((uintptr_t)(ptr) - (uintptr_t)(offset)))
+```
+
+Subtract X bytes from pointer, updating the pointer's type.
+
+#### `FIO_PTR_FROM_FIELD`
+
+```c
+#define FIO_PTR_FROM_FIELD(T_type, field, ptr)                                 \
+  FIO_PTR_MATH_SUB(T_type, ptr, (&((T_type *)0)->field))
+```
+
+Find the root object (of a `struct`) from it's field.
+
+### Default Memory Allocation
+
+By setting these macros, the default (system's) memory allocator could be set.
+
+When facil.io's memory allocator is defined (using `FIO_MALLOC`), these macros will be automatically overwritten to use the custom memory allocator.
+
+#### `FIO_MEM_CALLOC`
+
+```c
+#define FIO_MEM_CALLOC(size, units) calloc((size), (units))
+```
+
+Allocates size X units of bytes, where all bytes equal zero.
+
+#### `FIO_MEM_REALLOC`
+
+```c
+#define FIO_MEM_REALLOC(ptr, old_size, new_size, copy_len) realloc((ptr), (new_size))
+```
+
+Reallocates memory, copying (at least) `copy_len` if neccessary.
+
+#### `FIO_MEM_FREE`
+
+```c
+#define FIO_MEM_FREE(ptr, size) free((ptr))
+```
+
+Frees allocated memory.
+
+### Naming and Misc. Macros
+
+#### `FIO_IFUNC`
+
+```c
+#define FIO_IFUNC static inline __attribute__((unused))
+```
+
+Marks a function as `static`, `inline` and possibly unused.
+
+#### `FIO_SFUNC`
+
+```c
+#define FIO_SFUNC static __attribute__((unused))
+```
+
+Marks a function as `static` and possibly unused.
+
+#### `FIO_NAME`
+
+```c
+#define FIO_NAME(prefix, postfix)
+```
+
+Used for naming functions and variables resulting in: prefix_postfix
+
+#### `FIO_NAME2`
+
+```c
+#define FIO_NAME2(prefix, postfix)
+```
+
+Sets naming convention for conversion functions, i.e.: foo2bar
+
+#### `FIO_NAME_BL`
+
+```c
+#define FIO_NAME_BL(prefix, postfix) 
+```
+
+Sets naming convention for boolean testing functions, i.e.: foo_is_true
+
 
 -------------------------------------------------------------------------------
 
@@ -1496,7 +1633,6 @@ Reports an error unless condition is met, printing out `msg` using
 
 In addition, a `SIGINT` will be sent to the process and any of it's children
 before aborting the application, because consistency is important.
-
 
 **Note**: `msg` MUST be a string literal.
 
