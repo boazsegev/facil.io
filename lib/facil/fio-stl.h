@@ -344,7 +344,7 @@ Miscellaneous helper macros
 #endif
 
 #ifdef DEBUG
-/** If `DEBUG` is defined, acts as `FIO_ASSERT`, otherwaise a NOOP. */
+/** If `DEBUG` is defined, acts as `FIO_ASSERT`, otherwise a NOOP. */
 #define FIO_ASSERT_DEBUG(cond, ...) FIO_ASSERT(cond, __VA_ARGS__)
 #else
 #define FIO_ASSERT_DEBUG(...)
