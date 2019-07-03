@@ -301,9 +301,9 @@ Naming macros
   FIO_NAME_FROM_MACRO_STEP2(prefix, postfix, div)
 /** Used for naming functions and variables resulting in: prefix_postfix */
 #define FIO_NAME(prefix, postfix) FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, _)
-/** Sents naming convention for conversion functions, i.e.: foo2bar */
+/** Sets naming convention for conversion functions, i.e.: foo2bar */
 #define FIO_NAME2(prefix, postfix) FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, 2)
-/** Sents naming convention for boolean testing functions, i.e.: foo_is_true */
+/** Sets naming convention for boolean testing functions, i.e.: foo_is_true */
 #define FIO_NAME_BL(prefix, postfix)                                           \
   FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, _is_)
 
