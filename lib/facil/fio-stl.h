@@ -3118,6 +3118,20 @@ void example(void) {
 #define FIO_ARRAY_TYPE_CMP_SIMPLE 1
 #endif
 
+/**
+ * The FIO_ARRAY_DESTROY_AFTER_COPY macro should be set if
+ * FIO_ARRAY_TYPE_DESTROY should be called after FIO_ARRAY_TYPE_COPY when an
+ * object is removed from the array after being copied to an external container
+ * (an `old` pointer)
+ */
+#ifndef FIO_ARRAY_DESTROY_AFTER_COPY
+#if !FIO_ARRAY_TYPE_DESTROY_SIMPLE && !FIO_ARRAY_TYPE_COPY_SIMPLE
+#define FIO_ARRAY_DESTROY_AFTER_COPY 1
+#else
+#define FIO_ARRAY_DESTROY_AFTER_COPY 0
+#endif
+#endif
+
 /* Extra empty slots when allocating memory. */
 #ifndef FIO_ARRAY_PADDING
 #define FIO_ARRAY_PADDING 4
@@ -3568,12 +3582,18 @@ IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME,
 #endif
     }
   }
-  /* copy object */
-  if (old)
+  /* copy / clear object */
+  if (old) {
     FIO_ARRAY_TYPE_COPY((*old), ary->ary[index]);
-  if (pre_existing) {
+#if FIO_ARRAY_DESTROY_AFTER_COPY
+    if (pre_existing) {
+      FIO_ARRAY_TYPE_DESTROY(ary->ary[index]);
+    }
+#endif
+  } else if (pre_existing) {
     FIO_ARRAY_TYPE_DESTROY(ary->ary[index]);
   }
+
   ary->ary[index] = FIO_ARRAY_TYPE_INVALID;
   FIO_ARRAY_TYPE_COPY(ary->ary[index], data);
   return ary->ary + index;
@@ -3645,9 +3665,14 @@ IFUNC int FIO_NAME(FIO_ARRAY_NAME, remove)(FIO_ARRAY_PTR ary_, int32_t index,
     FIO_ARRAY_TYPE_COPY(*old, FIO_ARRAY_TYPE_INVALID);
     return -1;
   }
-  if (old)
+  if (old) {
     FIO_ARRAY_TYPE_COPY(*old, ary->ary[index]);
-  FIO_ARRAY_TYPE_DESTROY(ary->ary[index]);
+#if FIO_ARRAY_DESTROY_AFTER_COPY
+    FIO_ARRAY_TYPE_DESTROY(ary->ary[index]);
+#endif
+  } else {
+    FIO_ARRAY_TYPE_DESTROY(ary->ary[index]);
+  }
   if ((uint32_t)index == ary->start) {
     /* unshift */
     ++ary->start;
@@ -3756,9 +3781,14 @@ IFUNC int FIO_NAME(FIO_ARRAY_NAME, pop)(FIO_ARRAY_PTR ary_,
     return -1;
   }
   --ary->end;
-  if (old)
+  if (old) {
     FIO_ARRAY_TYPE_COPY(*old, ary->ary[ary->end]);
-  FIO_ARRAY_TYPE_DESTROY(ary->ary[ary->end]);
+#if FIO_ARRAY_DESTROY_AFTER_COPY
+    FIO_ARRAY_TYPE_DESTROY(ary->ary[ary->end]);
+#endif
+  } else {
+    FIO_ARRAY_TYPE_DESTROY(ary->ary[ary->end]);
+  }
   return 0;
 }
 
@@ -3797,9 +3827,14 @@ IFUNC int FIO_NAME(FIO_ARRAY_NAME, shift)(FIO_ARRAY_PTR ary_,
     FIO_ARRAY_TYPE_COPY(*old, FIO_ARRAY_TYPE_INVALID);
     return -1;
   }
-  if (old)
+  if (old) {
     FIO_ARRAY_TYPE_COPY(*old, ary->ary[ary->start]);
-  FIO_ARRAY_TYPE_DESTROY(ary->ary[ary->start]);
+#if FIO_ARRAY_DESTROY_AFTER_COPY
+    FIO_ARRAY_TYPE_DESTROY(ary->ary[ary->start]);
+#endif
+  } else {
+    FIO_ARRAY_TYPE_DESTROY(ary->ary[ary->start]);
+  }
   ++ary->start;
   return 0;
 }
@@ -3848,6 +3883,7 @@ Dynamic Arrays - cleanup
 #undef FIO_ARRAY_TYPE_COPY_SIMPLE
 #undef FIO_ARRAY_TYPE_DESTROY
 #undef FIO_ARRAY_TYPE_DESTROY_SIMPLE
+#undef FIO_ARRAY_DESTROY_AFTER_COPY
 #undef FIO_ARRAY_TYPE_CMP
 #undef FIO_ARRAY_TYPE_CMP_SIMPLE
 #undef FIO_ARRAY_PADDING
@@ -3988,6 +4024,19 @@ Hash Map / Set - type and hash macros
 #define FIO_MAP_TYPE_CMP_SIMPLE 0
 #endif
 
+/**
+ * The FIO_MAP_DESTROY_AFTER_COPY macro should be set if FIO_MAP_TYPE_DESTROY
+ * should be called after FIO_MAP_TYPE_COPY when an object is removed from the
+ * array after being copied to an external container (an `old` pointer)
+ */
+#ifndef FIO_MAP_DESTROY_AFTER_COPY
+#if !FIO_MAP_TYPE_DESTROY_SIMPLE && !FIO_MAP_TYPE_COPY_SIMPLE
+#define FIO_MAP_DESTROY_AFTER_COPY 1
+#else
+#define FIO_MAP_DESTROY_AFTER_COPY 0
+#endif
+#endif
+
 #ifndef FIO_MAP_HASH
 /** The type for map hash value (usually an X bit integer) */
 #define FIO_MAP_HASH uintptr_t
@@ -4121,7 +4170,13 @@ IFUNC void FIO_NAME(FIO_MAP_NAME,
     FIO_MAP_KEY_DISCARD(((o).key));                                            \
   } while (0);
 
+#if FIO_MAP_DESTROY_AFTER_COPY
+#define FIO_MAP_OBJ_DESTROY_AFTER FIO_MAP_OBJ_DESTROY
 #else
+#define FIO_MAP_OBJ_DESTROY_AFTER(obj) FIO_MAP_KEY_DESTROY((obj).key);
+#endif /* FIO_MAP_DESTROY_AFTER_COPY */
+
+#else /* FIO_MAP_KEY */
 
 #define FIO_MAP_OBJ FIO_MAP_TYPE
 #define FIO_MAP_OBJ_INVALID FIO_MAP_TYPE_INVALID
@@ -4132,7 +4187,13 @@ IFUNC void FIO_NAME(FIO_MAP_NAME,
 #define FIO_MAP_OBJ2TYPE(o) (o)
 #define FIO_MAP_OBJ_DISCARD FIO_MAP_TYPE_DISCARD
 
-#endif
+#if FIO_MAP_DESTROY_AFTER_COPY
+#define FIO_MAP_OBJ_DESTROY_AFTER FIO_MAP_TYPE_DESTROY
+#else
+#define FIO_MAP_OBJ_DESTROY_AFTER(obj)
+#endif /* FIO_MAP_DESTROY_AFTER_COPY */
+
+#endif /* FIO_MAP_KEY */
 
 /* *****************************************************************************
 Hash Map / Set - types
@@ -4288,7 +4349,7 @@ IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, last)(FIO_MAP_PTR m);
  * Allows the Hash to be momentarily used as a stack, destroying the last
  * object added (`FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
  */
-IFUNC void FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m);
+IFUNC int FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m, FIO_MAP_TYPE *old);
 
 /** Rehashes the Hash Map / Set. Usually this is performed automatically. */
 SFUNC int FIO_NAME(FIO_MAP_NAME, rehash)(FIO_MAP_PTR m);
@@ -4529,17 +4590,25 @@ found_pos:
   }
   if (overwrite) { /* overwrite existing object */
 #ifdef FIO_MAP_KEY
-    if (old)
+    if (old) {
       FIO_MAP_TYPE_COPY((*old), (pos->obj.value));
-    FIO_MAP_TYPE_DESTROY((pos->obj).value);
+#if FIO_MAP_DESTROY_AFTER_COPY
+      FIO_MAP_TYPE_DESTROY((pos->obj).value);
+#endif
+    } else {
+      FIO_MAP_TYPE_DESTROY((pos->obj).value);
+    }
     FIO_MAP_TYPE_COPY((pos->obj.value), obj.value);
     FIO_MAP_KEY_DISCARD(obj.key);
-#else
-    if (old)
+#else  /* !FIO_MAP_KEY */
+    if (old) {
       FIO_MAP_TYPE_COPY((*old), (pos->obj));
-    FIO_MAP_OBJ_DESTROY((pos->obj));
+      FIO_MAP_OBJ_DESTROY_AFTER((pos->obj));
+    } else {
+      FIO_MAP_OBJ_DESTROY((pos->obj));
+    }
     FIO_MAP_OBJ_COPY((pos->obj), obj);
-#endif
+#endif /* FIO_MAP_KEY */
   } else {
     /* destroy incoming data? */
     FIO_MAP_OBJ_DISCARD(obj);
@@ -4589,8 +4658,10 @@ HFUNC int FIO_NAME(FIO_MAP_NAME, __remove)(FIO_NAME(FIO_MAP_NAME, s) * m,
   }
   if (old) {
     FIO_MAP_TYPE_COPY((*old), FIO_MAP_OBJ2TYPE(pos->obj));
+    FIO_MAP_OBJ_DESTROY_AFTER((pos->obj));
+  } else {
+    FIO_MAP_OBJ_DESTROY((pos->obj));
   }
-  FIO_MAP_OBJ_DESTROY((pos->obj));
   FIO_NAME(FIO_MAP_NAME, __unlink_node)(m, pos);
   --m->count;
   m->has_collisions |= (m->has_collisions << 1);
@@ -4866,15 +4937,21 @@ IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, last)(FIO_MAP_PTR m_) {
  * Allows the Hash to be momentarily used as a stack, destroying the last
  * object added (`FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
  */
-IFUNC void FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m_) {
+IFUNC int FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m_, FIO_MAP_TYPE *old) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   if (!m->count || m->head == (uint32_t)-1)
-    return;
+    return -1;
   FIO_NAME(FIO_MAP_NAME, __map_s) *n = (m->map + ((m->map + m->head)->prev));
-  FIO_MAP_OBJ_DESTROY(n->obj);
+  if (old) {
+    FIO_MAP_TYPE_COPY(*old, FIO_MAP_OBJ2TYPE(n->obj));
+    FIO_MAP_OBJ_DESTROY_AFTER(n->obj);
+  } else {
+    FIO_MAP_OBJ_DESTROY(n->obj);
+  }
   FIO_NAME(FIO_MAP_NAME, __unlink_node)(m, n);
   --m->count;
+  return 0;
 }
 
 /* *****************************************************************************
@@ -5013,6 +5090,8 @@ Hash Map / Set - cleanup
 #undef FIO_MAP_OBJ_CMP_SIMPLE
 #undef FIO_MAP_OBJ_DISCARD
 #undef FIO_MAP_OBJ2TYPE
+#undef FIO_MAP_DESTROY_AFTER_COPY
+#undef FIO_MAP_OBJ_DESTROY_AFTER
 #undef FIO_MAP_PTR
 #endif /* FIO_MAP_NAME */
 
@@ -8987,6 +9066,11 @@ FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
 FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), get2)(FIOBJ hash,
                                                                    FIOBJ key);
 
+/** Removes a value from a hash map, automatically calculating the hash value.
+ */
+FIO_IFUNC int FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                       remove2)(FIOBJ hash, FIOBJ key, FIOBJ *old);
+
 /** Calculates an object's hash value for a specific hash map object. */
 FIO_IFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ object_key);
 
@@ -9535,6 +9619,14 @@ FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), get2)(FIOBJ hash,
                                                                    FIOBJ key) {
   return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                   get)(hash, FIO_NAME2(fiobj, hash)(hash, key), key);
+}
+
+/** Removes a value from a hash map, automatically calculating the hash value.
+ */
+FIO_IFUNC int FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                       remove2)(FIOBJ hash, FIOBJ key, FIOBJ *old) {
+  return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                  remove)(hash, FIO_NAME2(fiobj, hash)(hash, key), key, old);
 }
 
 /* *****************************************************************************
@@ -11288,7 +11380,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
       TEST_ASSERT(map_____test_last(m) == TEST_REPEAT,
                   "last object value retrival error. got %zu",
                   map_____test_last(m));
-      map_____test_pop(m);
+      map_____test_pop(m, NULL);
       TEST_ASSERT(map_____test_count(m) == TEST_REPEAT - 1,
                   "popping an object should have decreased object count.");
       char buffer[64];
@@ -12047,6 +12139,126 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
     fiobj_free(j);
     o = FIOBJ_INVALID;
   }
+  {
+    fprintf(stderr, "* Testing FIOBJ array ownership.\n");
+    FIOBJ a = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
+    for (int i = 1; i <= TEST_REPEAT; ++i) {
+      FIOBJ tmp = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
+                           new_cstr)("number: ", 8);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write_i)(tmp, i);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(a, tmp);
+    }
+    FIOBJ unshifted = FIOBJ_INVALID;
+    FIOBJ popped = FIOBJ_INVALID;
+    FIOBJ removed = FIOBJ_INVALID;
+    FIOBJ set = FIOBJ_INVALID;
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), shift)(a, &unshifted);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), pop)(a, &popped);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), set)
+    (a, 0, FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(), &set);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), remove)(a, 1, &removed);
+    fiobj_free(a);
+    TEST_ASSERT(
+        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(popped) ==
+                strlen("number: " FIO_MACRO2STR(TEST_REPEAT)) &&
+            !memcmp(
+                "number: " FIO_MACRO2STR(TEST_REPEAT),
+                FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(popped),
+                FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(popped)),
+        "Object popped from Array lost it's value %s",
+        FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(popped));
+    TEST_ASSERT(
+        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(unshifted) == 9 &&
+            !memcmp(
+                "number: 1",
+                FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(unshifted),
+                9),
+        "Object unshifted from Array lost it's value %s",
+        FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(unshifted));
+    TEST_ASSERT(
+        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(set) == 9 &&
+            !memcmp("number: 2",
+                    FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(set),
+                    9),
+        "Object retrieved from Array using fiobj_array_set() lost it's "
+        "value %s",
+        FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(set));
+    TEST_ASSERT(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(removed) ==
+                        9 &&
+                    !memcmp("number: 3",
+                            FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
+                                      ptr)(removed),
+                            9),
+                "Object retrieved from Array using fiobj_array_set() lost it's "
+                "value %s",
+                FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(removed));
+    fiobj_free(unshifted);
+    fiobj_free(popped);
+    fiobj_free(set);
+    fiobj_free(removed);
+  }
+  {
+    fprintf(stderr, "* Testing FIOBJ hash ownership.\n");
+    o = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), new)();
+    for (int i = 1; i <= TEST_REPEAT; ++i) {
+      FIOBJ tmp = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
+                           new_cstr)("number: ", 8);
+      FIOBJ k = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), new)(i);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write_i)(tmp, i);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), set2)(o, k, tmp);
+      fiobj_free(k);
+    }
+
+    FIOBJ set = FIOBJ_INVALID;
+    FIOBJ popped = FIOBJ_INVALID;
+    FIOBJ removed = FIOBJ_INVALID;
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), pop)(o, &popped);
+    FIOBJ k = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), new)(1);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), remove2)(o, k, &removed);
+    fiobj_free(k);
+    k = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), new)(2);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), set)
+    (o, fiobj2hash(o, k), k, FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(), &set);
+    fiobj_free(k);
+    TEST_ASSERT(popped,
+                "fiobj_hash_pop didn't copy information to old pointer?");
+    TEST_ASSERT(set, "fiobj_hash_set2 didn't copy information to old pointer?");
+    TEST_ASSERT(removed,
+                "fiobj_hash_remove2 didn't copy information to old pointer?");
+    // fiobj_hash_set(o, uintptr_t hash, FIOBJ key, FIOBJ value, FIOBJ *old)
+    TEST_ASSERT(
+        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(popped) ==
+                strlen("number: " FIO_MACRO2STR(TEST_REPEAT)) &&
+            !memcmp(
+                "number: " FIO_MACRO2STR(TEST_REPEAT),
+                FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(popped),
+                FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(popped)),
+        "Object popped from Hash lost it's value %s",
+        FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(popped));
+    TEST_ASSERT(
+        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(removed) ==
+                strlen("number: 1") &&
+            !memcmp(
+                "number: 1",
+                FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(removed),
+                FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(removed)),
+        "Object removed from Hash lost it's value %s",
+        FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(removed));
+    TEST_ASSERT(
+        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(set) ==
+                strlen("number: 2") &&
+            !memcmp("number: 2",
+                    FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(set),
+                    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(set)),
+        "Object removed from Hash lost it's value %s",
+        FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(set));
+
+    fiobj_free(popped);
+    fiobj_free(removed);
+    fiobj_free(set);
+    fiobj_free(o);
+  }
+
 #if FIOBJ_MARK_MEMORY
   {
     fprintf(stderr, "* Testing FIOBJ for memory leaks.\n");
