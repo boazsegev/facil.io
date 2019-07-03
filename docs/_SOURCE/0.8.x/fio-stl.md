@@ -62,7 +62,7 @@ In addition, the core library includes helpers for common tasks, such as:
 
 ## Version and Common Helper Macros
 
-The facil.io C STL (Simple Type Library) offers a number of common helper macros that are also used internally. These are automatically included once the `fio-stl.h` is included.
+The facil.io C STL (Simple Template Library) offers a number of common helper macros that are also used internally. These are automatically included once the `fio-stl.h` is included.
 
 ### Version Macros
 
@@ -1481,7 +1481,7 @@ Writes decoded Base64 data to the end of the String.
 
 ## Reference Counting / Type Wrapping
 
-If the `FIO_REF_NAME` macro is defined, then referece counting helpers can be
+If the `FIO_REF_NAME` macro is defined, then reference counting helpers can be
 defined for any named type.
 
 By default, `FIO_REF_TYPE` will equal `FIO_REF_NAME_s`, using the naming
@@ -1497,7 +1497,13 @@ Note: requires the atomic operations to be defined (`FIO_ATOMIC`).
 
 Reference counting adds the following functions:
 
-#### `FIO_REF_TYPE * FIO_REF_NAME_new2(void)`
+#### `REF_new` / `REF_new2`
+
+```c
+FIO_REF_TYPE * REF_new2(void)
+// or, if FIO_REF_CONSTRUCTOR_ONLY is defined
+FIO_REF_TYPE * REF_new(void)
+```
 
 Allocates a new reference counted object, initializing it using the
 `FIO_REF_INIT(object)` macro.
@@ -1505,11 +1511,21 @@ Allocates a new reference counted object, initializing it using the
 If `FIO_REF_METADATA` is defined, than the metadata is initialized using the
 `FIO_REF_METADATA_INIT(metadata)` macro.
 
-#### `FIO_REF_TYPE * FIO_REF_NAME_up_ref(FIO_REF_TYPE * object)`
+#### `REF_up_ref`
+
+```c
+FIO_REF_TYPE * REF_up_ref(FIO_REF_TYPE * object)
+```
 
 Increases an object's reference count (an atomic operation, thread-safe).
 
-#### `FIO_REF_NAME_free2(FIO_REF_TYPE * object)`
+#### `REF_free` / `REF_free2`
+
+```c
+void REF_free2(FIO_REF_TYPE * object)
+// or, if FIO_REF_CONSTRUCTOR_ONLY is defined
+void REF_free(FIO_REF_TYPE * object)
+```
 
 Frees an object or decreases it's reference count (an atomic operation,
 thread-safe).
@@ -1520,7 +1536,11 @@ If `FIO_REF_METADATA` is defined, than the metadata is also destroyed using the
 `FIO_REF_METADATA_DESTROY(metadata)` macro.
 
 
-#### `FIO_REF_METADATA * FIO_REF_NAME_metadata(FIO_REF_TYPE * object)`
+#### `REF_metadata`
+
+```c
+FIO_REF_METADATA * REF_metadata(FIO_REF_TYPE * object)
+```
 
 If `FIO_REF_METADATA` is defined, than the metadata is accessible using this
 inlined function.
@@ -2033,7 +2053,7 @@ typedef struct {
 
 The JSON parser type. Memory must be initialized to 0 before first uses (see `FIO_JSON_INIT`).
 
-The type should be considered opaque. To add user data to the parser, use C-style inheritance and pointer mathematics or simple type casting.
+The type should be considered opaque. To add user data to the parser, use C-style inheritance and pointer arithmetics or simple type casting.
 
 i.e.:
 
