@@ -308,11 +308,22 @@ Next (usually), define the `FIO_ARRAY_TYPE` macro with the element type. The def
 For complex types, define any (or all) of the following macros:
 
 ```c
-#define FIO_ARRAY_TYPE_COPY(dest, src)  // set to adjust element copying 
-#define FIO_ARRAY_TYPE_DESTROY(obj)     // set for element cleanup 
-#define FIO_ARRAY_TYPE_CMP(a, b)        // set to adjust element comparison 
-#define FIO_ARRAY_TYPE_INVALID 0 // to be returned when `index` is out of bounds / holes 
-#define FIO_ARRAY_TYPE_INVALID_SIMPLE 1 // set ONLY if the invalid element is all zero bytes 
+// set to adjust element copying 
+#define FIO_ARRAY_TYPE_COPY(dest, src)  
+// set for element cleanup 
+#define FIO_ARRAY_TYPE_DESTROY(obj)     
+// set to adjust element comparison 
+#define FIO_ARRAY_TYPE_CMP(a, b)        
+// to be returned when `index` is out of bounds / holes 
+#define FIO_ARRAY_TYPE_INVALID 0 
+// set ONLY if the invalid element is all zero bytes 
+#define FIO_ARRAY_TYPE_INVALID_SIMPLE 1     
+// should the object be destroyed when copied to an `old` pointer?
+#define FIO_ARRAY_DESTROY_AFTER_COPY 1 
+// when array memory grows, how many extra "spaces" should be allocated?
+#define FIO_ARRAY_PADDING 4 
+// should the array growth be exponential? (ignores FIO_ARRAY_PADDING)
+#define FIO_ARRAY_EXPONENTIAL 0 
 ```
 
 To create the type and helper functions, include the Simple Template Library header.
@@ -328,7 +339,7 @@ typedef struct {
 #define FIO_ARRAY_NAME ary
 #define FIO_ARRAY_TYPE foo_s
 #define FIO_ARRAY_TYPE_CMP(a,b) (a.i == b.i && a.f == b.f)
-#include "fio_cstl.h"
+#include "fio-stl.h"
 
 void example(void) {
   ary_s a = FIO_ARRAY_INIT;
@@ -628,6 +639,7 @@ Other helpful macros to define might include:
 - `FIO_MAP_MAX_FULL_COLLISIONS`, which defaults to `96`
 
 
+- `FIO_MAP_DESTROY_AFTER_COPY` - uses "smart" defaults to decide if to destroy an object after it was copied (when using `set` / `remove` / `pop` with a pointer to contain `old` object)
 - `FIO_MAP_TYPE_DISCARD(obj)` - Handles discarded element data (i.e., insert without overwrite in a Set).
 - `FIO_MAP_KEY_DISCARD(obj)` - Handles discarded element data (i.e., when overwriting an existing value in a hash map).
 - `FIO_MAP_MAX_ELEMENTS` - The maximum number of elements allowed before removing old data (FIFO).
@@ -809,10 +821,12 @@ Remember that objects might be destroyed if the Set is altered (`FIO_MAP_TYPE_DE
 #### `MAP_pop`
 
 ```c
-void MAP_pop(FIO_MAP_PTR m);
+void MAP_pop(FIO_MAP_PTR m, FIO_MAP_TYPE * old);
 ```
 
-Allows the Hash to be momentarily used as a stack, destroying the last object added (`FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
+Allows the Hash to be momentarily used as a stack, destroying the last object added (using `FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
+
+If `old` is given, existing data will be copied to that location.
 
 #### `MAP_compact`
 

@@ -147,18 +147,19 @@ Import STL
 
 // #define FIO_MALLOC_FORCE_SYSTEM 1
 
-/* Backwards support for version 0.7.x memory allocator behavior */
-#ifdef FIO_OVERRIDE_MALLOC
-#define FIO_MALLOC_OVERRIDE_SYSTEM
-#elif defined(FIO_FORCE_MALLOC)
-#define FIO_MALLOC_FORCE_SYSTEM
-#endif
-
 /* Enable CLI extension before enabling the custom memory allocator. */
 #define FIO_MALLOC_TMP_USE_SYSTEM
 #define FIO_EXTERN
 #define FIO_CLI
 #include "fio-stl.h"
+
+/* Backwards support for version 0.7.x memory allocator behavior */
+#ifdef FIO_OVERRIDE_MALLOC
+#warning FIO_OVERRIDE_MALLOC is deprecated, use FIO_MALLOC_OVERRIDE_SYSTEM
+#define FIO_MALLOC_OVERRIDE_SYSTEM
+#elif defined(FIO_FORCE_MALLOC)
+#define FIO_MALLOC_FORCE_SYSTEM
+#endif
 
 /* Enable custom memory allocator. */
 #define FIO_EXTERN

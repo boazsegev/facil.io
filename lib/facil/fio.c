@@ -5889,7 +5889,7 @@ static void fio_cluster_at_exit(void *ignore) {
     while (subscriptions_any(&ch->subscriptions)) {
       fio_unsubscribe(subscriptions_root(ch->subscriptions.next));
     }
-    fio_ch_set_pop(&fio_postoffice.patterns.channels);
+    fio_ch_set_pop(&fio_postoffice.patterns.channels, NULL);
   }
 
   while (fio_ch_set_count(&fio_postoffice.pubsub.channels)) {
@@ -5897,7 +5897,7 @@ static void fio_cluster_at_exit(void *ignore) {
     while (subscriptions_any(&ch->subscriptions)) {
       fio_unsubscribe(subscriptions_root(ch->subscriptions.next));
     }
-    fio_ch_set_pop(&fio_postoffice.pubsub.channels);
+    fio_ch_set_pop(&fio_postoffice.pubsub.channels, NULL);
   }
 
   while (fio_ch_set_count(&fio_postoffice.filters.channels)) {
@@ -5905,7 +5905,7 @@ static void fio_cluster_at_exit(void *ignore) {
     while (subscriptions_any(&ch->subscriptions)) {
       fio_unsubscribe(subscriptions_root(ch->subscriptions.next));
     }
-    fio_ch_set_pop(&fio_postoffice.filters.channels);
+    fio_ch_set_pop(&fio_postoffice.filters.channels, NULL);
   }
   fio_ch_set_destroy(&fio_postoffice.filters.channels);
   fio_ch_set_destroy(&fio_postoffice.patterns.channels);
