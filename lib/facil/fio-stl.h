@@ -8726,7 +8726,10 @@ The FIOBJ Type
 ***************************************************************************** */
 
 /** Use the FIOBJ type for dynamic types. */
-typedef uintptr_t FIOBJ;
+typedef struct {
+  uintptr_t compiler_validation_type;
+} * FIOBJ;
+// typedef uintptr_t FIOBJ;
 
 /** FIOBJ type enum for common / primitive types. */
 typedef enum {
@@ -8752,8 +8755,8 @@ typedef enum {
 /** Identifies an invalid object */
 #define FIOBJ_INVALID 0
 /** Tests if the object is (probably) a valid FIOBJ */
-#define FIOBJ_IS_INVALID(o) ((o & 7UL) == 0)
-#define FIOBJ_TYPE_CLASS(o) ((fiobj_class_en)((o)&7UL))
+#define FIOBJ_IS_INVALID(o) (((uintptr_t)(o)&7UL) == 0)
+#define FIOBJ_TYPE_CLASS(o) ((fiobj_class_en)(((uintptr_t)o) & 7UL))
 
 /** Returns an objects type. This isn't limited to known types. */
 FIO_IFUNC size_t fiobj_type(FIOBJ o);
@@ -9173,7 +9176,7 @@ The FIOBJ Type
 FIO_IFUNC size_t fiobj_type(FIOBJ o) {
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
-    switch (o) {
+    switch ((uintptr_t)(o)) {
     case FIOBJ_T_NULL:
       return FIOBJ_T_NULL;
     case FIOBJ_T_TRUE:
@@ -9285,7 +9288,7 @@ fiobj___2cstr___buffer__perthread[FIOBJ2CSTR_BUFFER_LIMIT];
 FIO_IFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
-    switch (o) {
+    switch ((uintptr_t)(o)) {
     case FIOBJ_T_NULL:
       return (fio_str_info_s){.buf = "null", .len = 4};
     case FIOBJ_T_TRUE:
@@ -9329,7 +9332,7 @@ FIO_IFUNC intptr_t FIO_NAME2(fiobj, i)(FIOBJ o) {
   fio_str_info_s tmp;
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
-    switch (o) {
+    switch ((uintptr_t)(o)) {
     case FIOBJ_T_NULL:
       return 0;
     case FIOBJ_T_TRUE:
@@ -9364,7 +9367,7 @@ FIO_IFUNC double FIO_NAME2(fiobj, f)(FIOBJ o) {
   fio_str_info_s tmp;
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
-    switch (o) {
+    switch ((uintptr_t)(o)) {
     case FIOBJ_T_FALSE: /* fallthrough */
     case FIOBJ_T_NULL:
       return 0.0;
@@ -9424,7 +9427,7 @@ FIOBJ Integers
 /** Creates a new Number object. */
 FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
                          new)(intptr_t i) {
-  FIOBJ o = FIO_NUMBER_ENCODE(i);
+  FIOBJ o = (FIOBJ)FIO_NUMBER_ENCODE(i);
   if (FIO_NUMBER_REVESE(o) == i)
     return o;
   o = fiobj___bignum_new();
@@ -9482,7 +9485,7 @@ FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), new)(double i) {
   if (sizeof(double) <= sizeof(FIOBJ)) {
     union {
       double d;
-      FIOBJ i;
+      uintptr_t i;
     } punned;
     punned.i = 0; /* dead code, but leave it, just in case */
     punned.d = i;
@@ -9505,11 +9508,11 @@ FIO_IFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), f)(FIOBJ i) {
   if (sizeof(double) <= sizeof(FIOBJ) && FIOBJ_TYPE_CLASS(i) == FIOBJ_T_FLOAT) {
     union {
       double d;
-      FIOBJ i;
+      uintptr_t i;
     } punned;
     punned.d = 0; /* dead code, but leave it, just in case */
-    punned.i = i;
-    punned.i = (i & (~(FIOBJ)7));
+    punned.i = (uintptr_t)i;
+    punned.i = ((uintptr_t)i & (~(uintptr_t)7ULL));
     return punned.d;
   }
   return FIO_PTR_MATH_RMASK(double, i, 3)[0];
@@ -9562,23 +9565,24 @@ FIOBJ Hash Maps
 FIO_IFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ o) {
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE:
-    return fio_risky_hash(&o, sizeof(o), target_hash + o);
+    return fio_risky_hash(&o, sizeof(o), (uint64_t)target_hash + (uintptr_t)o);
   case FIOBJ_T_NUMBER: {
     uintptr_t tmp = FIO_NAME2(fiobj, i)(o);
-    return fio_risky_hash(&tmp, sizeof(tmp), target_hash);
+    return fio_risky_hash(&tmp, sizeof(tmp), (uint64_t)target_hash);
   }
   case FIOBJ_T_FLOAT: {
     double tmp = FIO_NAME2(fiobj, f)(o);
-    return fio_risky_hash(&tmp, sizeof(tmp), target_hash);
+    return fio_risky_hash(&tmp, sizeof(tmp), (uint64_t)target_hash);
   }
   case FIOBJ_T_STRING: /* fallthrough */
-    return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), hash)(o, target_hash);
+    return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
+                    hash)(o, (uint64_t)target_hash);
   case FIOBJ_T_ARRAY: {
     uint64_t h = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), count)(o);
     size_t c = 0;
-    h += fio_risky_hash(&h, sizeof(h), target_hash + FIOBJ_T_ARRAY);
+    h += fio_risky_hash(&h, sizeof(h), (uint64_t)target_hash + FIOBJ_T_ARRAY);
     FIO_ARRAY_EACH(((FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY),
-                              s) *)(o & (~(uintptr_t)7))),
+                              s) *)((uintptr_t)o & (~(uintptr_t)7))),
                    pos) {
       h += FIO_NAME2(fiobj, hash)(target_hash + FIOBJ_T_ARRAY + (c++), *pos);
     }
@@ -9587,9 +9591,9 @@ FIO_IFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ o) {
   case FIOBJ_T_HASH: {
     uint64_t h = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), count)(o);
     size_t c = 0;
-    h += fio_risky_hash(&h, sizeof(h), target_hash + FIOBJ_T_HASH);
+    h += fio_risky_hash(&h, sizeof(h), (uint64_t)target_hash + FIOBJ_T_HASH);
     FIO_MAP_EACH(((FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
-                            s) *)(o & (~(uintptr_t)7))),
+                            s) *)((uintptr_t)o & (~(uintptr_t)7))),
                  pos) {
       h += FIO_NAME2(fiobj, hash)(target_hash + FIOBJ_T_HASH + (c++),
                                   pos->obj.key);
@@ -9601,7 +9605,7 @@ FIO_IFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ o) {
   case FIOBJ_T_OTHER: {
     /* FIXME? */
     fio_str_info_s tmp = (*fiobj_object_metadata(o))->to_s(o);
-    return fio_risky_hash(tmp.buf, tmp.len, target_hash);
+    return fio_risky_hash(tmp.buf, tmp.len, (uint64_t)target_hash);
   }
   }
   return 0;
@@ -9929,7 +9933,7 @@ fiobj___json_format_internal__(fiobj___json_format_internal__s *args, FIOBJ o) {
       uint32_t i = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), count)(o);
       if (i) {
         FIO_MAP_EACH(((FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
-                                s) *)(o & (~(FIOBJ)7))),
+                                s) *)((uintptr_t)o & (~(uintptr_t)7))),
                      couplet) {
           if (args->beautify) {
             fiobj___json_format_internal_beauty_pad(args->json, args->level);
