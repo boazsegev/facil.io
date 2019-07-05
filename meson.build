@@ -29,10 +29,15 @@ cc = meson.get_compiler('c')
 args_for_langs = 'c'
 
 
+openssl = dependency('openssl', required: cc.get_id() != 'msvc')
 
+if not openssl.found()
+        libcrypto = cc.find_library('libcrypto', required: false)
+        libssl = cc.find_library('libssl')
+        openssl = [libcrypto, libssl]
+endif
 threads_dep = dependency('threads')
 m_dep = cc.find_library('m', required : false)
-
 
 subdir('lib')
 
