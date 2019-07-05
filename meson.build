@@ -41,14 +41,6 @@ m_dep = cc.find_library('m', required : false)
 
 subdir('lib')
 
-
-facil_lib = library(meson.project_name(), 
-    sources: facil_src,
-    include_directories: facil_dir,
-    dependencies: [ threads_dep, m_dep ],
-    install: true)
-
-
 facil_dep = declare_dependency(
     link_with: facil_lib,
     include_directories: facil_dir,
