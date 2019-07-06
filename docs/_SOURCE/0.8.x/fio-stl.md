@@ -30,6 +30,8 @@ The core library includes a Simple Template Library for common types, such as:
 
 * Binary Safe Dynamic Strings - defined by `FIO_STRING_NAME`
 
+* Binary Safe Small (non-dynamic) Strings - defined by `FIO_SMALL_STR_NAME`
+
 * Reference counting / Type wrapper - defined by `FIO_REF_NAME`
 
 * Soft / Dynamic Types (FIOBJ) - defined by `FIO_FIOBJ`
@@ -1063,8 +1065,6 @@ macro.
 
 The type (`FIO_STRING_NAME_s`) and the functions will be automatically defined.
 
-For the full list of functions see: Dynamic Strings
-
 ### String Type information
 
 #### `STR_s`
@@ -1476,6 +1476,151 @@ fio_str_info_s STR_write_b64dec(FIO_STRING_PTR s,
 ```
 
 Writes decoded Base64 data to the end of the String.
+
+
+-------------------------------------------------------------------------------
+
+## Small (non-dynamic) Strings
+
+To create a small, non-dynamic, string type, define the type name using the `FIO_SMALL_STR_NAME`
+macro.
+
+The type (`FIO_SMALL_STR_NAME_s`) and the functions will be automatically defined.
+
+This type was designed to store string information for Hash Maps where most strings are very short (less than 16 chars on 64 bit systems or less than 8 chars on 32 bit systems).
+
+This approach minimizes memory allocation and improves locality by copying the string data onto the bytes normally used to store the string pointer and it's length.
+
+```c
+#define FIO_SMALL_STR_NAME key
+#include "../../facilio/lib/facil/fio-stl.h"
+
+#define FIO_MAP_NAME map
+#define FIO_MAP_TYPE uintptr_t
+#define FIO_MAP_KEY key_s
+#define FIO_MAP_KEY_INVALID (key_s)FIO_SMALL_STR_INIT
+#define FIO_MAP_KEY_DESTROY(k) key_destroy(&k)
+/* destroy discarded keys when overwriting existing data (duplicate keys aren't copied): */
+#define FIO_MAP_KEY_DISCARD(k) key_destroy(&k)
+#include "../../facilio/lib/facil/fio-stl.h"
+
+void example(void) {
+  map_s m = FIO_MAP_INIT;
+  for (int i = 0; i < 10; ++i) {
+    char buf[128] = "a long key will require memory allocation: ";
+    size_t len = fio_ltoa(buf + 43, i, 16) + 43;
+    key_s k;
+    key_set_copy(&k, buf, len);
+    map_set(&m, key_hash(&k, (uint64_t)&m), k, (uintptr_t)i, NULL);
+  }
+  for (int i = 0; i < 10; ++i) {
+    char buf[128] = "embeded: "; /* short keys fit in pointer + length type */
+    size_t len = fio_ltoa(buf + 9, i, 16) + 9;
+    key_s k;
+    key_set_copy(&k, buf, len);
+    map_set(&m, key_hash(&k, (uint64_t)&m), k, (uintptr_t)i, NULL);
+  }
+  int counter = 0;
+  FIO_MAP_EACH(&m, pos) {
+    fprintf(stderr, "[%d] %s - memory allocated: %s\n", (int)pos->obj.value,
+            key2ptr(&pos->obj.key),
+            (key_is_allocated(&pos->obj.key) ? "yes" : "no"));
+  }
+  map_destroy(&m);
+}
+```
+
+### Small String Initialization
+
+The small string object fits perfectly in one `char * ` pointer and one `size_t` value, meaning it takes as much memory as storing a string's location and length.
+
+However, the type information isn't stored as simply as one might imagine, allowing short strings to be stored within the object itself, improving locality.
+
+small strings aren't dynamically allocated and their initialization is performed using the `FIO_SMALL_STR_INIT` macro (for empty strings) or the `SMALL_STR_set_const` and `SMALL_STR_set_copy` functions (see example above).
+
+### Small String API
+
+#### `SMALL_STR_set_const`
+
+```c
+void SMALL_STR_set_const(FIO_SMALL_STR_PTR s, const char *str, size_t len);
+```
+
+Initializes the container with the provided static / constant string.
+
+The string will be copied to the container **only** if it will fit in the
+container itself. Otherwise, the supplied pointer will be used as is and it
+should remain valid until the string is destroyed.
+
+#### `SMALL_STR_set_copy`
+
+```c
+void SMALL_STR_set_copy(FIO_SMALL_STR_PTR s, const char *str, size_t len);
+```
+
+Initializes the container with the provided dynamic string.
+
+The string is always copied and the final string must be destoryed (using the
+`destroy` function).
+
+#### `SMALL_STR_destroy`
+
+```c
+void SMALL_STR_destroy(FIO_SMALL_STR_PTR s);
+```
+
+Frees the String's resources and reinitializes the container.
+
+Note: if the container isn't allocated on the stack, it should be freed
+separately using the appropriate `free` function.
+
+#### `SMALL_STR_info`
+
+```c
+fio_str_info_s SMALL_STR_info(const FIO_SMALL_STR_PTR s);
+```
+
+Returns information regarding the embedded string.
+
+#### `SMALL_STR2ptr`
+
+```c
+const char *SMALL_STR2ptr(const FIO_SMALL_STR_PTR s);
+```
+
+Returns a pointer (`char *`) to the String's content.
+
+#### `SMALL_STR_len`
+
+```c
+size_t SMALL_STR_len(const FIO_SMALL_STR_PTR s);
+```
+
+Returns the String's length in bytes.
+
+#### `SMALL_STR_allocated`
+
+```c
+int SMALL_STR_allocated(const FIO_SMALL_STR_PTR s);
+```
+
+Returns 1 if memory was allocated and (the String must be destroyed).
+
+#### `SMALL_STR_hash`
+
+```c
+uint64_t SMALL_STR_hash(const FIO_SMALL_STR_PTR s, uint64_t seed);
+```
+
+Returns the String's Risky Hash.
+
+#### `SMALL_STR_eq`
+
+```c
+int SMALL_STR_eq(const FIO_SMALL_STR_PTR str1, const FIO_SMALL_STR_PTR str2);
+```
+
+Binary comparison returns `1` if both strings are equal and `0` if not.
 
 -------------------------------------------------------------------------------
 

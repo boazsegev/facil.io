@@ -272,6 +272,11 @@ typedef struct fio_str_info_s {
   char *buf;
 } fio_str_info_s;
 
+/** Compares two `fio_str_info_s` objects for content equality. */
+#define FIO_STR_INFO_IS_EQ(s1, s2)                                             \
+  ((s1).len == (s2).len && (!(s1).len || (s1).buf == (s2).buf ||               \
+                            !memcmp((s1).buf, (s2).buf, (s1).len)))
+
 /* *****************************************************************************
 Linked Lists Persistent Macros and Types
 ***************************************************************************** */
@@ -1662,7 +1667,7 @@ static size_t fio___mem_block_count;
 #define FIO_MEMORY_PRINT_BLOCK_STAT_END()                                      \
   FIO_LOG_INFO("(fio) Total memory blocks allocated "                          \
                "after cleanup%s %zu\n",                                        \
-               (fio___mem_block_count ? "(possible leak):" : ":"),             \
+               (fio___mem_block_count ? " (possible leaks!):" : ":"),          \
                fio___mem_block_count)
 #else /* FIO_LOG_INFO */
 #define FIO_MEMORY_PRINT_BLOCK_STAT()
@@ -2053,7 +2058,7 @@ Memory management macros
 ***************************************************************************** */
 
 #if (defined(FIO_RISKY_HASH) || defined(FIO_STRING_NAME) ||                    \
-     defined(FIO_RAND)) &&                                                     \
+     defined(FIO_SMALL_STR_NAME) || defined(FIO_RAND)) &&                      \
     !defined(H___FIO_RISKY_HASH_H)
 #define H___FIO_RISKY_HASH_H
 
@@ -5680,7 +5685,7 @@ IFUNC int FIO_NAME_BL(FIO_STRING_NAME, eq)(const FIO_STRING_PTR str1_,
     return 0;
   fio_str_info_s s1 = FIO_NAME(FIO_STRING_NAME, info)(str1_);
   fio_str_info_s s2 = FIO_NAME(FIO_STRING_NAME, info)(str2_);
-  return (s1.len == s2.len && !memcmp(s1.buf, s2.buf, s1.len));
+  return FIO_STR_INFO_IS_EQ(s1, s2);
 }
 
 #ifdef H___FIO_RISKY_HASH_H
@@ -6950,6 +6955,405 @@ String Cleanup
 #undef FIO_STRING_PTR
 #undef FIO_STRING_NO_ALIGN
 #endif /* FIO_STRING_NAME */
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+                        Small Strings (binary safe)
+                      minimal footprint and unmutable
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if defined(FIO_SMALL_STR_NAME)
+
+/* *****************************************************************************
+Small String API
+***************************************************************************** */
+
+/**
+ * The mini-string object fits perfectly in one fio_str_info_s structure.
+ *
+ * The type's attributes should be accessed ONLY through the accessor
+ * functions.
+ */
+typedef struct {
+  /** All data */
+  uint8_t data[sizeof(char *)];
+  const char *aligned;
+} FIO_NAME(FIO_SMALL_STR_NAME, s);
+
+#ifndef FIO_SMALL_STR_INIT
+#define FIO_SMALL_STR_INIT                                                     \
+  { .aligned = NULL }
+#endif
+
+#ifdef FIO_PTR_TAG_TYPE
+#define FIO_SMALL_STR_PTR FIO_PTR_TAG_TYPE
+#else
+#define FIO_SMALL_STR_PTR FIO_NAME(FIO_SMALL_STR_NAME, s) *
+#endif
+
+/**
+ * Initializes the container with the provided static / constant string.
+ *
+ * The string will be copied to the container **only** if it will fit in the
+ * container itself. Otherwise, the supplied pointer will be used as is and it
+ * should remain valid until the string is destroyed.
+ */
+IFUNC void FIO_NAME(FIO_SMALL_STR_NAME, set_const)(FIO_SMALL_STR_PTR s,
+                                                   const char *str, size_t len);
+
+/**
+ * Initializes the container with the provided dynamic string.
+ *
+ * The string is always copied and the final string must be destoryed (using the
+ * `destroy` function).
+ */
+IFUNC void FIO_NAME(FIO_SMALL_STR_NAME, set_copy)(FIO_SMALL_STR_PTR s,
+                                                  const char *str, size_t len);
+
+/**
+ * Frees the String's resources and reinitializes the container.
+ *
+ * Note: if the container isn't allocated on the stack, it should be freed
+ * separately using the appropriate `free` function.
+ */
+IFUNC void FIO_NAME(FIO_SMALL_STR_NAME, destroy)(FIO_SMALL_STR_PTR s);
+
+/**
+ * Returns information regarding the embeded string.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_SMALL_STR_NAME,
+                              info)(const FIO_SMALL_STR_PTR s);
+
+/** Returns a pointer (`char *`) to the String's content. */
+IFUNC const char *FIO_NAME2(FIO_SMALL_STR_NAME, ptr)(const FIO_SMALL_STR_PTR s);
+
+/** Returns the String's length in bytes. */
+IFUNC size_t FIO_NAME(FIO_SMALL_STR_NAME, len)(const FIO_SMALL_STR_PTR s);
+
+/** Returns 1 if memory was allocated and (the String must be destroyed). */
+IFUNC int FIO_NAME_BL(FIO_SMALL_STR_NAME, allocated)(const FIO_SMALL_STR_PTR s);
+
+/** Returns the String's Risky Hash. */
+IFUNC uint64_t FIO_NAME(FIO_SMALL_STR_NAME, hash)(const FIO_SMALL_STR_PTR s,
+                                                  uint64_t seed);
+
+/**
+ * Binary comparison returns `1` if both strings are equal and `0` if not.
+ */
+IFUNC int FIO_NAME_BL(FIO_SMALL_STR_NAME, eq)(const FIO_SMALL_STR_PTR str1,
+                                              const FIO_SMALL_STR_PTR str2);
+
+/* *****************************************************************************
+
+
+                        Small Strings (binary safe)
+
+                               IMPLEMENTATION
+
+
+***************************************************************************** */
+#ifdef FIO_EXTERN_COMPLETE
+
+/* *****************************************************************************
+Small String Helpers
+***************************************************************************** */
+
+#define FIO_SMALL_STR_SMALL_DATA(s) ((char *)((&(s)->data[0]) + 1))
+#define FIO_SMALL_STR_IS_SMALL(s) (((s)->data[0] & 1))
+#define FIO_SMALL_STR_IS_DYNAMIC(s) (((s)->data[0] & 2))
+#define FIO_SMALL_STR_SET_DYNAMIC(s) (s)->data[0] = 2
+#define FIO_SMALL_STR_SMALL_LEN(s) ((size_t)((s)->data[0] >> 2))
+#define FIO_SMALL_STR_SMALL_LEN_SET(s, l)                                      \
+  ((s)->data[0] = (((uint8_t)(l) << 2) | 1) & 0xFF)
+#define FIO_SMALL_STR_SMALL_CAPA(s) (sizeof(*s) - 1)
+
+/* 32 bit systems */
+#define FIO_SMALL_STR_BIG_LEN32(s)                                             \
+  (((size_t)(s)->data[1]) | ((size_t)(s)->data[2] << 8) |                      \
+   ((size_t)(s)->data[3] << 16))
+#define FIO_SMALL_STR_BIG_LEN_SET32(s, l)                                      \
+  do {                                                                         \
+    (s)->data[1] = l & 0xff;                                                   \
+    (s)->data[2] = ((size_t)(l) >> 8) & 0xff;                                  \
+    (s)->data[3] = ((size_t)(l) >> 16) & 0xff;                                 \
+  } while (0)
+#define FIO_SMALL_STR_BIG_BUF32(s) ((s)->aligned)
+/* 64 bit systems */
+#define FIO_SMALL_STR_BIG_LEN64(s)                                             \
+  (((size_t)(s)->data[1]) | ((size_t)(s)->data[2] << 8) |                      \
+   ((size_t)(s)->data[3] << 16) | ((size_t)(s)->data[4] << 24) |               \
+   ((size_t)(s)->data[5] << 32) | ((size_t)(s)->data[6] << 40) |               \
+   ((size_t)(s)->data[7] << 48))
+#define FIO_SMALL_STR_BIG_LEN_SET64(s, l)                                      \
+  do {                                                                         \
+    (s)->data[1] = l & 0xff;                                                   \
+    (s)->data[2] = ((size_t)(l) >> 8) & 0xff;                                  \
+    (s)->data[3] = ((size_t)(l) >> 16) & 0xff;                                 \
+    (s)->data[4] = ((size_t)(l) >> 24) & 0xff;                                 \
+    (s)->data[5] = ((size_t)(l) >> 32) & 0xff;                                 \
+    (s)->data[6] = ((size_t)(l) >> 40) & 0xff;                                 \
+    (s)->data[7] = ((size_t)(l) >> 48) & 0xff;                                 \
+  } while (0)
+#define FIO_SMALL_STR_BIG_BUF64(s) ((s)->aligned)
+
+/* *****************************************************************************
+Small String Implementation
+***************************************************************************** */
+
+/**
+ * Initializes the container with the provided static / constant string.
+ *
+ * The string will be copied to the container **only** if it will fit in the
+ * container itself. Otherwise, the supplied pointer will be used as is and it
+ * should remain valid until the string is destroyed.
+ */
+IFUNC void FIO_NAME(FIO_SMALL_STR_NAME, set_const)(FIO_SMALL_STR_PTR s_,
+                                                   const char *str,
+                                                   size_t len) {
+  FIO_NAME(FIO_SMALL_STR_NAME, s) *s =
+      (FIO_NAME(FIO_SMALL_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  *s = (FIO_NAME(FIO_SMALL_STR_NAME, s)){.aligned = NULL};
+  if (len < FIO_SMALL_STR_SMALL_CAPA(s)) {
+    FIO_SMALL_STR_SMALL_LEN_SET(s, len);
+    if (len)
+      memcpy(FIO_SMALL_STR_SMALL_DATA(s), str, len);
+    FIO_SMALL_STR_SMALL_DATA(s)[len] = 0;
+    return;
+  }
+  if (sizeof(char *) == 4) {
+    /* 32 bit systems */
+    if ((len >> 24)) {
+      FIO_LOG_ERROR(
+          "facil.io small string intialization failed - data too long");
+      return; /* too big */
+    }
+    FIO_SMALL_STR_BIG_LEN_SET32(s, len);
+    FIO_SMALL_STR_BIG_BUF32(s) = str;
+  } else {
+    /* 64 bit systems */
+    if ((len >> 48)) {
+      FIO_LOG_ERROR(
+          "facil.io small string intialization failed - data too long");
+      return; /* too big */
+    }
+    FIO_SMALL_STR_BIG_LEN_SET64(s, len);
+    FIO_SMALL_STR_BIG_BUF64(s) = str;
+  }
+}
+
+/**
+ * Initializes the container with the provided dynamic string.
+ *
+ * The string is always copied and the final string must be destoryed (using the
+ * `destroy` function).
+ */
+IFUNC void FIO_NAME(FIO_SMALL_STR_NAME, set_copy)(FIO_SMALL_STR_PTR s_,
+                                                  const char *str, size_t len) {
+  FIO_NAME(FIO_SMALL_STR_NAME, s) *s =
+      (FIO_NAME(FIO_SMALL_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  *s = (FIO_NAME(FIO_SMALL_STR_NAME, s)){.aligned = NULL};
+  if (len < FIO_SMALL_STR_SMALL_CAPA(s)) {
+    FIO_SMALL_STR_SMALL_LEN_SET(s, len);
+    if (len)
+      memcpy(FIO_SMALL_STR_SMALL_DATA(s), str, len);
+    FIO_SMALL_STR_SMALL_DATA(s)[len] = 0;
+    return;
+  }
+  if (sizeof(char *) == 4) {
+    /* 32 bit systems */
+    if ((len >> 24)) {
+      FIO_LOG_ERROR(
+          "facil.io small string intialization failed - data too long");
+      return; /* too big */
+    }
+    char *buf = FIO_MEM_CALLOC_(1, len + 1);
+    memcpy(buf, str, len);
+    buf[len] = 0;
+    FIO_SMALL_STR_SET_DYNAMIC(s);
+    FIO_SMALL_STR_BIG_LEN_SET32(s, len);
+    FIO_SMALL_STR_BIG_BUF32(s) = buf;
+  } else {
+    /* 64 bit systems */
+    if ((len >> 48)) {
+      FIO_LOG_ERROR(
+          "facil.io small string intialization failed - data too long");
+      return; /* too big */
+    }
+    char *buf = FIO_MEM_CALLOC_(1, len + 1);
+    memcpy(buf, str, len);
+    buf[len] = 0;
+    FIO_SMALL_STR_SET_DYNAMIC(s);
+    FIO_SMALL_STR_BIG_LEN_SET64(s, len);
+    FIO_SMALL_STR_BIG_BUF64(s) = buf;
+  }
+}
+
+/**
+ * Frees the String's resources and reinitializes the container.
+ *
+ * Note: if the container isn't allocated on the stack, it should be freed
+ * separately using the appropriate `free` function.
+ */
+IFUNC void FIO_NAME(FIO_SMALL_STR_NAME, destroy)(FIO_SMALL_STR_PTR s_) {
+  FIO_NAME(FIO_SMALL_STR_NAME, s) *s =
+      (FIO_NAME(FIO_SMALL_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (FIO_SMALL_STR_IS_DYNAMIC(s)) {
+    if (sizeof(char *) == 4) {
+      /* 32 bit systems */
+      FIO_MEM_FREE((void *)FIO_SMALL_STR_BIG_BUF32(s),
+                   FIO_SMALL_STR_BIG_LEN32(s));
+    } else {
+      /* 64 bit systems */
+      FIO_MEM_FREE((void *)FIO_SMALL_STR_BIG_BUF64(s),
+                   FIO_SMALL_STR_BIG_LEN64(s));
+    }
+  }
+  *s = (FIO_NAME(FIO_SMALL_STR_NAME, s)){.aligned = NULL};
+}
+
+/**
+ * Returns information regarding the embeded string.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_SMALL_STR_NAME,
+                              info)(const FIO_SMALL_STR_PTR s_) {
+  FIO_NAME(FIO_SMALL_STR_NAME, s) *s =
+      (FIO_NAME(FIO_SMALL_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (FIO_SMALL_STR_IS_SMALL(s)) {
+    return (fio_str_info_s){.len = FIO_SMALL_STR_SMALL_LEN(s),
+                            .buf = FIO_SMALL_STR_SMALL_DATA(s)};
+  }
+  if (sizeof(char *) == 4) {
+    /* 32 bit systems */
+    return (fio_str_info_s){
+        .len = FIO_SMALL_STR_BIG_LEN32(s),
+        .buf = (char *)FIO_SMALL_STR_BIG_BUF32(s),
+    };
+  }
+  /* 64 bit systems */
+  return (fio_str_info_s){
+      .len = FIO_SMALL_STR_BIG_LEN64(s),
+      .buf = (char *)FIO_SMALL_STR_BIG_BUF64(s),
+  };
+}
+
+/** Returns a pointer (`char *`) to the String's content. */
+IFUNC const char *FIO_NAME2(FIO_SMALL_STR_NAME,
+                            ptr)(const FIO_SMALL_STR_PTR s_) {
+  FIO_NAME(FIO_SMALL_STR_NAME, s) *s =
+      (FIO_NAME(FIO_SMALL_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (FIO_SMALL_STR_IS_SMALL(s)) {
+    return FIO_SMALL_STR_SMALL_DATA(s);
+  }
+  if (sizeof(char *) == 4) {
+    /* 32 bit systems */
+    return FIO_SMALL_STR_BIG_BUF32(s);
+  }
+  /* 64 bit systems */
+  return FIO_SMALL_STR_BIG_BUF64(s);
+}
+
+/** Returns the String's length in bytes. */
+IFUNC size_t FIO_NAME(FIO_SMALL_STR_NAME, len)(const FIO_SMALL_STR_PTR s_) {
+  FIO_NAME(FIO_SMALL_STR_NAME, s) *s =
+      (FIO_NAME(FIO_SMALL_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (FIO_SMALL_STR_IS_SMALL(s)) {
+    return FIO_SMALL_STR_SMALL_LEN(s);
+  }
+  if (sizeof(char *) == 4) {
+    /* 32 bit systems */
+    return FIO_SMALL_STR_BIG_LEN32(s);
+  }
+  /* 64 bit systems */
+  return FIO_SMALL_STR_BIG_LEN64(s);
+}
+
+/** Returns 1 if memory was allocated and (the String must be destroyed). */
+IFUNC int FIO_NAME_BL(FIO_SMALL_STR_NAME,
+                      allocated)(const FIO_SMALL_STR_PTR s_) {
+  FIO_NAME(FIO_SMALL_STR_NAME, s) *s =
+      (FIO_NAME(FIO_SMALL_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  return (int)(s->data[0] >> 1) & 1U;
+}
+
+/** Returns the String's Risky Hash. */
+IFUNC uint64_t FIO_NAME(FIO_SMALL_STR_NAME, hash)(const FIO_SMALL_STR_PTR s_,
+                                                  uint64_t seed) {
+  FIO_NAME(FIO_SMALL_STR_NAME, s) *s =
+      (FIO_NAME(FIO_SMALL_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (FIO_SMALL_STR_IS_SMALL(s)) {
+    return fio_risky_hash(FIO_SMALL_STR_SMALL_DATA(s),
+                          FIO_SMALL_STR_SMALL_LEN(s), seed);
+  }
+  if (sizeof(char *) == 4) {
+    /* 32 bit systems */
+    return fio_risky_hash(FIO_SMALL_STR_BIG_BUF32(s),
+                          FIO_SMALL_STR_BIG_LEN32(s), seed);
+  }
+  return fio_risky_hash(FIO_SMALL_STR_BIG_BUF64(s), FIO_SMALL_STR_BIG_LEN64(s),
+                        seed);
+}
+
+/**
+ * Binary comparison returns `1` if both strings are equal and `0` if not.
+ */
+IFUNC int FIO_NAME_BL(FIO_SMALL_STR_NAME, eq)(const FIO_SMALL_STR_PTR str1_,
+                                              const FIO_SMALL_STR_PTR str2_) {
+  FIO_NAME(FIO_SMALL_STR_NAME, s) *str1 =
+      (FIO_NAME(FIO_SMALL_STR_NAME, s) *)FIO_PTR_UNTAG(str1_);
+  FIO_NAME(FIO_SMALL_STR_NAME, s) *str2 =
+      (FIO_NAME(FIO_SMALL_STR_NAME, s) *)FIO_PTR_UNTAG(str2_);
+  if (str1 == str2)
+    return 1;
+  if (!str1 || !str2)
+    return 0;
+  if (((uintptr_t *)str1->data)[0] == ((uintptr_t *)str2->data)[0] &&
+      ((uintptr_t *)str1->data)[1] == ((uintptr_t *)str2->data)[1])
+    return 1;
+  if (FIO_SMALL_STR_IS_SMALL(str1))
+    return 0;
+  /* big strings */
+  fio_str_info_s s1 = FIO_NAME(FIO_SMALL_STR_NAME, info)(str1_);
+  fio_str_info_s s2 = FIO_NAME(FIO_SMALL_STR_NAME, info)(str2_);
+  return FIO_STR_INFO_IS_EQ(s1, s2);
+}
+
+/* *****************************************************************************
+Small String Cleanup
+***************************************************************************** */
+#undef FIO_SMALL_STR_SMALL_DATA
+#undef FIO_SMALL_STR_IS_SMALL
+#undef FIO_SMALL_STR_SMALL_LEN
+#undef FIO_SMALL_STR_SMALL_LEN_SET
+#undef FIO_SMALL_STR_SMALL_CAPA
+#undef FIO_SMALL_STR_IS_DYNAMIC
+#undef FIO_SMALL_STR_SET_DYNAMIC
+#undef FIO_SMALL_STR_BIG_LEN32
+#undef FIO_SMALL_STR_BIG_LEN_SET32
+#undef FIO_SMALL_STR_BIG_BUF32
+#undef FIO_SMALL_STR_BIG_LEN64
+#undef FIO_SMALL_STR_BIG_LEN_SET64
+#undef FIO_SMALL_STR_BIG_BUF64
+#endif /* FIO_EXTERN_COMPLETE */
+#undef FIO_SMALL_STR_NAME
+#undef FIO_SMALL_STR_PTR
+#endif /* FIO_SMALL_STR_NAME */
 
 /* *****************************************************************************
 
@@ -11856,6 +12260,82 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
 #undef FIO__STR_SMALL_CAPA
 
 /* *****************************************************************************
+Small (non-dynamic) String test
+***************************************************************************** */
+#define FIO_SMALL_STR_NAME fio___smallstr_test
+#include __FILE__
+
+TEST_FUNC void fio___dynamic_types_test___small_str(void) {
+  fio___smallstr_test_s s;
+  fprintf(stderr, "* Testing small (non-dynamic) string type\n");
+  fio___smallstr_test_set_const(&s, "short", 5);
+  FIO_ASSERT(fio___smallstr_test_len(&s) == 5,
+             "short const string length error");
+  FIO_ASSERT(fio___smallstr_test2ptr(&s) >= (char *)&s &&
+                 fio___smallstr_test2ptr(&s) < (char *)(&s + 1),
+             "Short const string not copied");
+  fio___smallstr_test_destroy(&s);
+  FIO_ASSERT(!s.aligned && !(*(uintptr_t *)s.data),
+             "data in short string after cleanup");
+  fio___smallstr_test_set_copy(&s, "short", 5);
+  FIO_ASSERT(fio___smallstr_test_len(&s) == 5,
+             "short string (copy) length error");
+  FIO_ASSERT(fio___smallstr_test2ptr(&s) >= (char *)&s &&
+                 fio___smallstr_test2ptr(&s) < (char *)(&s + 1),
+             "Short string not copied");
+  fio___smallstr_test_destroy(&s);
+  FIO_ASSERT(!s.aligned && !(*(uintptr_t *)s.data),
+             "data in short string after cleanup");
+  const char *const_str = "a longer string that should, hopefully, overflow "
+                          "the struct and require dynamic memory allocation";
+  fio___smallstr_test_set_const(&s, const_str, 97);
+  FIO_ASSERT(fio___smallstr_test_len(&s) == 97,
+             "long const string length error");
+  FIO_ASSERT(fio___smallstr_test2ptr(&s) == const_str,
+             "const string allocated?");
+  fio___smallstr_test_destroy(&s);
+  FIO_ASSERT(!s.aligned && !(*(uintptr_t *)s.data),
+             "data in short string after cleanup");
+  fio___smallstr_test_set_copy(
+      &s,
+      "a longer string that should, hopefully, overflow the struct and require "
+      "dynamic memory allocation",
+      97);
+  FIO_ASSERT(fio___smallstr_test_len(&s) == 97,
+             "long string (copy) length error");
+  FIO_ASSERT(!(fio___smallstr_test2ptr(&s) >= (char *)&s &&
+               fio___smallstr_test2ptr(&s) <= (char *)(&s + 1)),
+             "long string (copy) allocation error");
+  FIO_ASSERT(fio___smallstr_test_info(&s).len == fio___smallstr_test_len(&s),
+             "str_info.len and str_len not equal");
+  FIO_ASSERT(fio___smallstr_test_info(&s).buf == fio___smallstr_test2ptr(&s),
+             "str_info.buf and str2ptr not equal");
+  fio___smallstr_test_destroy(&s);
+  FIO_ASSERT(!s.aligned && !(*(uintptr_t *)s.data),
+             "data in short string after cleanup");
+  {
+    const char *const_str2 = "A longer string that should, hopefully, overflow "
+                             "the struct and require dynamic memory allocation";
+    fio___smallstr_test_s s2;
+    fio___smallstr_test_set_const(&s, const_str, 97);
+    fio___smallstr_test_set_const(&s2, const_str2, 97);
+    FIO_ASSERT(!fio___smallstr_test_is_eq(&s, &s2),
+               "strings shouldn't be equal");
+    fio___smallstr_test_destroy(&s2);
+    fio___smallstr_test_set_copy(&s2, const_str, 97);
+    FIO_ASSERT(fio___smallstr_test_is_eq(&s, &s2), "strings should be equal");
+    fio___smallstr_test_destroy(&s);
+    fio___smallstr_test_destroy(&s2);
+    fio___smallstr_test_set_const(&s, "short", 5);
+    fio___smallstr_test_set_const(&s2, "short", 5);
+    FIO_ASSERT(fio___smallstr_test_is_eq(&s, &s2),
+               "short strings should be equal");
+    fio___smallstr_test_destroy(&s);
+    fio___smallstr_test_destroy(&s2);
+  }
+}
+
+/* *****************************************************************************
 CLI - test
 ***************************************************************************** */
 
@@ -12377,6 +12857,8 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fio___dynamic_types_test___hmap_test();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___str();
+  fprintf(stderr, "===============\n");
+  fio___dynamic_types_test___small_str();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___cli();
   fprintf(stderr, "===============\n");
