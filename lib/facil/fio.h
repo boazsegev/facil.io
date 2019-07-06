@@ -1035,8 +1035,41 @@ size_t fio_flush_all(void);
 intptr_t fio_fd2uuid(int fd);
 
 /* *****************************************************************************
-Connection Object Links
+Connection Object Links / Environment
 ***************************************************************************** */
+
+/** Named arguments for the `fio_uuid_env` function. */
+typedef struct {
+  /** A numerical type filter. Defaults to 0. Negative values are reserved. */
+  intptr_t type;
+  /** The name for the link. The name and type uniquely identify the object. */
+  fio_str_info_s name;
+  /** The object's data. */
+  void *data;
+  /** A callback that will be called once the connection is closed. */
+  void (*on_close)(void *data);
+  /** Set to 1 if the name for the link will be valid (at least) until the
+   * object is destroyed. */
+  uint8_t const_name;
+} fio_uuid_env_args_s;
+
+/** Named arguments for the `fio_uuid_env_unset` function. */
+typedef struct {
+  intptr_t type;
+  fio_str_info_s name;
+} fio_uuid_env_unset_args_s;
+
+/**
+ * Links an object to a connection's lifetime / environment.
+ *
+ * The `on_close` callback will be called once the connection has died.
+ *
+ * If the `uuid` is invalid, the `on_close` callback will be called immediately.
+ *
+ * NOTE: the `on_close` callback will be called within a high priority lock.
+ * Long tasks should be deferred so they are performed outside the lock.
+ */
+void fio_uuid_env_set(intptr_t uuid, fio_uuid_env_args_s);
 
 /**
  * Links an object to a connection's lifetime, calling the `on_close` callback
@@ -1044,10 +1077,14 @@ Connection Object Links
  *
  * If the `uuid` is invalid, the `on_close` callback will be called immediately.
  *
- * NOTE: the `on_close` callback will be called with high priority. Long tasks
- * should be deferred.
+ * This is a helper MACRO that allows the function to be called using named
+ * arguments.
+ *
+ * NOTE: the `on_close` callback will be called within a high priority lock.
+ * Long tasks should be deferred so they are performed outside the lock.
  */
-void fio_uuid_link(intptr_t uuid, void *obj, void (*on_close)(void *obj));
+#define fio_uuid_env_set(uuid, ...)                                            \
+  fio_uuid_env_set(uuid, (fio_uuid_env_args_s){__VA_ARGS__})
 
 /**
  * Un-links an object from the connection's lifetime, so it's `on_close`
@@ -1060,7 +1097,46 @@ void fio_uuid_link(intptr_t uuid, void *obj, void (*on_close)(void *obj));
  * NOTICE: a failure likely means that the object's `on_close` callback was
  * already called!
  */
-int fio_uuid_unlink(intptr_t uuid, void *obj);
+fio_uuid_env_args_s fio_uuid_env_unset(intptr_t uuid,
+                                       fio_uuid_env_unset_args_s);
+
+/**
+ * Un-links an object from the connection's lifetime, so it's `on_close`
+ * callback will NOT be called.
+ *
+ * On error, all fields in the returned `fio_uuid_env_args_s` struct will be
+ * equal to zero (or `NULL`).
+ *
+ * This is a helper MACRO that allows the function to be called using named
+ * arguments.
+ *
+ * NOTICE: a failure likely means that the object's `on_close` callback was
+ * already called!
+ */
+#define fio_uuid_env_unset(uuid, ...)                                          \
+  fio_uuid_env_unset(uuid, (fio_uuid_env_unset_args_s){__VA_ARGS__})
+
+/**
+ * Removes an object from the connection's lifetime / environment, calling it's
+ * `on_close` callback as if the connection was closed.
+ *
+ * NOTE: the `on_close` callback will be called within a high priority lock.
+ * Long tasks should be deferred so they are performed outside the lock.
+ */
+void fio_uuid_env_delete(intptr_t uuid, fio_uuid_env_unset_args_s);
+
+/**
+ * Removes an object from the connection's lifetime / environment, calling it's
+ * `on_close` callback as if the connection was closed.
+ *
+ * This is a helper MACRO that allows the function to be called using named
+ * arguments.
+ *
+ * NOTE: the `on_close` callback will be called within a high priority lock.
+ * Long tasks should be deferred so they are performed outside the lock.
+ */
+#define fio_uuid_env_delete(uuid, ...)                                         \
+  fio_uuid_env_delete(uuid, (fio_uuid_env_unset_args_s){__VA_ARGS__})
 
 /* *****************************************************************************
 Connection Read / Write Hooks, for overriding the system calls

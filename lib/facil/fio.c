@@ -112,10 +112,28 @@ Section Start Marker
 
 ***************************************************************************** */
 
-typedef void (*fio_uuid_link_fn)(void *);
-#define FIO_MAP_NAME fio_uuid_links
-#define FIO_MAP_TYPE fio_uuid_link_fn
-#define FIO_MAP_TYPE_CMP(o1, o2) 1
+/** An object that can be linked to any facil.io connection (uuid). */
+typedef struct {
+  void *data;
+  void (*on_close)(void *data);
+} fio_uuid_env_obj_s;
+
+#define FIO_SMALL_STR_NAME fio_uuid_env_name
+#include <fio-stl.h>
+
+#define FIO_MAP_NAME fio___uuid_env
+#define FIO_MAP_TYPE fio_uuid_env_obj_s
+#define FIO_MAP_TYPE_DESTROY(o)                                                \
+  do {                                                                         \
+    if (o.on_close)                                                            \
+      o.on_close(o.data);                                                      \
+  } while (0)
+#define FIO_MAP_KEY fio_uuid_env_name_s
+#define FIO_MAP_KEY_INVALID (fio_uuid_env_name_s) FIO_SMALL_STR_INIT
+#define FIO_MAP_KEY_DESTROY(k) fio_uuid_env_name_destroy(&k)
+/* destroy discarded keys when overwriting existing data (duplicate keys aren't
+ * copied): */
+#define FIO_MAP_KEY_DISCARD(k) fio_uuid_env_name_destroy(&k)
 #include <fio-stl.h>
 
 /** User-space socket buffer data */
@@ -169,7 +187,7 @@ typedef struct {
   /** RW udata. */
   void *rw_udata;
   /* Objects linked to the UUID */
-  fio_uuid_links_s links;
+  fio___uuid_env_s env;
 } fio_fd_data_s;
 
 typedef struct {
@@ -280,9 +298,9 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
   fio_protocol_s *protocol;
   fio_rw_hook_s *rw_hooks;
   void *rw_udata;
-  fio_uuid_links_s links;
+  fio___uuid_env_s env;
   fio_lock(&(fd_data(fd).sock_lock));
-  links = fd_data(fd).links;
+  env = fd_data(fd).env;
   packet = fd_data(fd).packet;
   protocol = fd_data(fd).protocol;
   rw_hooks = fd_data(fd).rw_hooks;
@@ -303,13 +321,7 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
     packet = packet->next;
     fio_packet_free(tmp);
   }
-  if (fio_uuid_links_count(&links)) {
-    FIO_MAP_EACH(&links, pos) {
-      if (pos->hash)
-        pos->obj((void *)pos->hash);
-    }
-  }
-  fio_uuid_links_destroy(&links);
+  fio___uuid_env_destroy(&env);
   if (protocol && protocol->on_close) {
     fio_defer(deferred_on_close, (void *)fd2uuid(fd), protocol);
   }
@@ -480,42 +492,96 @@ size_t fio_local_addr(char *dest, size_t limit) {
 UUID attachments (linking objects to the UUID's lifetime)
 ***************************************************************************** */
 
+void fio_uuid_env_set___(void); /* for sublime text function listing */
 /* public API. */
-void fio_uuid_link(intptr_t uuid, void *obj, void (*on_close)(void *obj)) {
-  if (!uuid_is_valid(uuid))
+void fio_uuid_env_set FIO_NOOP(intptr_t uuid, fio_uuid_env_args_s args) {
+  if ((!args.data && !args.on_close) || !uuid_is_valid(uuid))
     goto invalid;
+  fio_uuid_env_name_s n = FIO_SMALL_STR_INIT;
+  fio_uuid_env_obj_s i = {.data = NULL};
+  if (args.name.buf && args.name.len) {
+    if (args.const_name) {
+      fio_uuid_env_name_set_const(&n, args.name.buf, args.name.len);
+    } else {
+      fio_uuid_env_name_set_copy(&n, args.name.buf, args.name.len);
+    }
+  }
   fio_lock(&uuid_data(uuid).sock_lock);
   if (!uuid_is_valid(uuid))
     goto locked_invalid;
-  fio_uuid_links_set(&uuid_data(uuid).links, (uintptr_t)obj, on_close, NULL);
+  fio___uuid_env_set(
+      &uuid_data(uuid).env, fio_uuid_env_name_hash(&n, args.type), n,
+      (fio_uuid_env_obj_s){.on_close = args.on_close, .data = args.data}, &i);
   fio_unlock(&uuid_data(uuid).sock_lock);
+  if (i.on_close)
+    i.on_close(i.data);
   return;
 locked_invalid:
   fio_unlock(&uuid_data(uuid).sock_lock);
 invalid:
   errno = EBADF;
-  on_close(obj);
+  if (args.on_close)
+    args.on_close(args.data);
 }
 
+void fio_uuid_env_delete____(void); /* for sublime text function listing */
 /* public API. */
-int fio_uuid_unlink(intptr_t uuid, void *obj) {
+void fio_uuid_env_delete FIO_NOOP(intptr_t uuid,
+                                  fio_uuid_env_unset_args_s args) {
+  fio_uuid_env_name_s n = FIO_SMALL_STR_INIT;
+  fio_uuid_env_obj_s i = {.data = NULL};
+  fio_uuid_env_name_set_const(&n, args.name.buf, args.name.len);
   if (!uuid_is_valid(uuid))
     goto invalid;
   fio_lock(&uuid_data(uuid).sock_lock);
   if (!uuid_is_valid(uuid))
     goto locked_invalid;
-  /* default object comparison is always true */
-  int ret =
-      fio_uuid_links_remove(&uuid_data(uuid).links, (uintptr_t)obj, NULL, NULL);
-  if (ret)
-    errno = ENOTCONN;
+  fio___uuid_env_remove(&uuid_data(uuid).env,
+                        fio_uuid_env_name_hash(&n, args.type), n, &i);
+locked_invalid:
   fio_unlock(&uuid_data(uuid).sock_lock);
-  return ret;
+  if (i.on_close)
+    i.on_close(i.data);
+invalid:
+  errno = EBADF;
+  return;
+}
+
+void fio_uuid_env_unset___(void); /* for sublime text function listing */
+/* public API. */
+fio_uuid_env_args_s fio_uuid_env_unset
+FIO_NOOP(intptr_t uuid, fio_uuid_env_unset_args_s args) {
+
+  fio_uuid_env_name_s n = FIO_SMALL_STR_INIT;
+  fio_uuid_env_name_set_const(&n, args.name.buf, args.name.len);
+  if (!uuid_is_valid(uuid))
+    goto invalid;
+  fio_lock(&uuid_data(uuid).sock_lock);
+  if (!uuid_is_valid(uuid))
+    goto locked_invalid;
+  fio_uuid_env_obj_s i = {.data = NULL};
+  /* default object comparison is always true */
+  int test = fio___uuid_env_remove(
+      &uuid_data(uuid).env, fio_uuid_env_name_hash(&n, args.type), n, &i);
+  if (test) {
+    goto remove_error;
+  }
+  fio_unlock(&uuid_data(uuid).sock_lock);
+  return (fio_uuid_env_args_s){
+      .on_close = i.on_close,
+      .data = i.data,
+      .type = args.type,
+      .name = args.name,
+  };
 locked_invalid:
   fio_unlock(&uuid_data(uuid).sock_lock);
 invalid:
   errno = EBADF;
-  return -1;
+  return (fio_uuid_env_args_s){.type = 0};
+remove_error:
+  fio_unlock(&uuid_data(uuid).sock_lock);
+  errno = ENOTCONN;
+  return (fio_uuid_env_args_s){.type = 0};
 }
 
 /* *****************************************************************************
@@ -8535,26 +8601,40 @@ FIO_SFUNC void fio_poll_test(void) {
 Test UUID Linking
 ***************************************************************************** */
 
-FIO_SFUNC void fio_uuid_link_test_on_close(void *obj) {
+FIO_SFUNC void fio_uuid_env_test_on_close(void *obj) {
   fio_atomic_add((uintptr_t *)obj, 1);
 }
 
-FIO_SFUNC void fio_uuid_link_test(void) {
-  fprintf(stderr, "=== Testing fio_uuid_link\n");
+FIO_SFUNC void fio_uuid_env_test(void) {
+  fprintf(stderr, "=== Testing fio_uuid_env\n");
   uintptr_t called = 0;
   uintptr_t removed = 0;
+  uintptr_t overwritten = 0;
   intptr_t uuid = fio_socket(NULL, "8765", 1);
-  FIO_ASSERT(uuid != -1, "fio_uuid_link_test failed to create a socket!");
-  fio_uuid_link(uuid, &called, fio_uuid_link_test_on_close);
+  FIO_ASSERT(uuid != -1, "fio_uuid_env_test failed to create a socket!");
+  fio_uuid_env_set(uuid, .data = &called,
+                   .on_close = fio_uuid_env_test_on_close, .type = 1);
   FIO_ASSERT(called == 0,
-             "fio_uuid_link failed - on_close callback called too soon!");
-  fio_uuid_link(uuid, &removed, fio_uuid_link_test_on_close);
-  fio_uuid_unlink(uuid, &removed);
+             "fio_uuid_env_set failed - on_close callback called too soon!");
+  fio_uuid_env_set(uuid, .data = &removed,
+                   .on_close = fio_uuid_env_test_on_close, .type = 0);
+  fio_uuid_env_set(uuid, .data = &overwritten,
+                   .on_close = fio_uuid_env_test_on_close, .type = 0,
+                   .name.buf = "a", .name.len = 1);
+  fio_uuid_env_set(uuid, .data = &overwritten,
+                   .on_close = fio_uuid_env_test_on_close, .type = 0,
+                   .name.buf = "a", .name.len = 1);
+  fio_uuid_env_unset(uuid, .type = 0);
   fio_close(uuid);
   fio_defer_perform();
-  FIO_ASSERT(called, "fio_uuid_link failed - on_close callback wasn't called!");
-  FIO_ASSERT(called, "fio_uuid_unlink failed - on_close callback was called "
-                     "(wasn't removed)!");
+  FIO_ASSERT(called,
+             "fio_uuid_env_set failed - on_close callback wasn't called!");
+  FIO_ASSERT(!removed,
+             "fio_uuid_env_unset failed - on_close callback was called "
+             "(wasn't removed)!");
+  FIO_ASSERT(
+      overwritten == 2,
+      "fio_uuid_env_set overwrite failed - on_close callback wasn't called!");
   fprintf(stderr, "* passed.\n");
 }
 
@@ -8678,7 +8758,7 @@ void fio_test(void) {
   fio_timer_test();
   fio_poll_test();
   fio_socket_test();
-  fio_uuid_link_test();
+  fio_uuid_env_test();
   fio_cycle_test();
   fio_pubsub_test();
   (void)fio_sentinel_task;
