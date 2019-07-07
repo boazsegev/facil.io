@@ -1053,32 +1053,143 @@ This is not an issue, since the use of an invalid fd will result in the registry
 
 Returns -1 on error. Returns a valid socket (non-random) UUID.
 
-### Connection Object Links
+### Connection Object Environment
 
-Connection object links can links an object to a connection's lifetime rather than it's Protocol's lifetime.
+The connection `uuid` has a connection bound environment that allows information and data to be linked to the connection's lifetime (_previously Connection Object Links_).
 
-This is can be useful and is used internally by the `fio_subscribe` function to attach subscriptions to connections (when requested).
+The `fio_uuid_env` links an object to a connection's lifetime rather than it's Protocol's lifetime.
 
+A good example for using the `fio_uuid_env` is the way it's used internally by the `fio_subscribe` function to attach subscriptions to connections (when requested).
 
-#### `fio_uuid_link`
+#### `fio_uuid_env_set`
 
 ```c
-void fio_uuid_link(intptr_t uuid, void *obj, void (*on_close)(void *obj));
+typedef struct {
+  /** A numerical type filter. Defaults to 0. Negative values are reserved. */
+  intptr_t type;
+  /** The name for the link. The name and type uniquely identify the object. */
+  fio_str_info_s name;
+  /** The object being linked to the connection. */
+  void *data;
+  /** A callback that will be called once the connection is closed. */
+  void (*on_close)(void *data);
+  /** Set to 1 if the name for the link will be valid (at least) until the
+   * object is destroyed. */
+  uint8_t const_name;
+} fio_uuid_env_args_s;
+
+void fio_uuid_env_set(intptr_t uuid, fio_uuid_env_args_s);
+/** MACRO enabling named arguments. */
+#define fio_uuid_env_set(uuid, ...)                                            \
+  fio_uuid_env_set(uuid, (fio_uuid_env_args_s){__VA_ARGS__})
 ```
+
+The `fio_uuid_env_set` function is shadowed by the `fio_uuid_env_set` macro, which allows the function to accept the following "named arguments" (see `fio_listen` example):
+
+* `type`:
+
+    A numerical object type filter. Defaults to 0. Negative values are reserved.
+
+    The `name` and `type` together uniquely identify the object.
+
+        // callback example:
+        void on_open(intptr_t uuid, void *udata);
+
+* `name`:
+
+    The name for the link. The name and type together uniquely identify the object.
+
+        // note that this is a structure, defined as:
+        fio_str_info_s name;
+        // fio_str_info_s is similar to the following struct: 
+        struct { char * buf; size_t len; size_t capa; /* capa is ignored */ };
+
+* `const_name`:
+
+    A flag indicating if the `name`'s buffer can be stored for the object's lifetime.
+
+    By default, `const_name` is zero and the name will be copied to a new buffer.
+
+* `data`:
+
+    The object being linked to the connection.
+
+        void * data;
+
+* `on_close`:
+
+    A callback that will be called once the connection is closed or the environment object is deleted.
+
+        // callback example:
+        void on_close(void *data);
+
 
 Links an object to a connection's lifetime, calling the `on_close` callback once the connection has died.
 
 If the `uuid` is invalid, the `on_close` callback will be called immediately.
 
-**Note**: the `on_close` callback will be called with high priority. Long tasks should be deferred using [`fio_defer`](#fio_defer).
+**Note**: the `on_close` callback might be called within a high priority lock. Long tasks should be deferred so they are performed outside the lock.
 
-#### `fio_uuid_unlink`
+
+#### `fio_uuid_env_unset`
 
 ```c
-void fio_uuid_unlink(intptr_t uuid, void *obj);
+/** Named arguments for the `fio_uuid_env_unset` function. */
+typedef struct {
+  intptr_t type;
+  fio_str_info_s name;
+} fio_uuid_env_unset_args_s;
+
+fio_uuid_env_args_s fio_uuid_env_unset(intptr_t uuid,
+                                       fio_uuid_env_unset_args_s);
+/** MACRO enabling named arguments. */
+#define fio_uuid_env_unset(uuid, ...)                                          \
+  fio_uuid_env_unset(uuid, (fio_uuid_env_unset_args_s){__VA_ARGS__})
 ```
 
+The `fio_uuid_env_unset` function is shadowed by the `fio_uuid_env_unset` macro, which allows the function to accept the following "named arguments" (see `fio_listen` example):
+
+* `type`:
+
+    A numerical object type filter. Defaults to 0. Negative values are reserved.
+
+    The `name` and `type` together uniquely identify the object.
+
+        // callback example:
+        void on_open(intptr_t uuid, void *udata);
+
+* `name`:
+
+    The name for the link. The name and type together uniquely identify the object.
+
+        // note that this is a structure, defined as:
+        fio_str_info_s name;
+        // fio_str_info_s is similar to the following struct: 
+        struct { char * buf; size_t len; size_t capa; /* capa is ignored */ };
+
+
 Un-links an object from the connection's lifetime, so it's `on_close` callback will NOT be called.
+
+Returns 0 on success and -1 if the object couldn't be found, setting `errno` to `EBADF` if the `uuid` was invalid and `ENOTCONN` if the object wasn't found (wasn't linked).
+
+**Notice**: a failure likely means that the object's `on_close` callback was already called!
+
+**Note**: since a connection may be closed at any moment (when multi-threading), the only safe way to access an environment object (so it isn't destroyed while being accessed) is to use `fio_uuid_env_unset` to retrieve the object and then use `fio_uuid_env_set` to re-attach the object.
+
+#### `fio_uuid_env_remove`
+
+```c
+void fio_uuid_env_remove(intptr_t uuid, fio_uuid_env_unset_args_s);
+/** MACRO enabling named arguments. */
+#define fio_uuid_env_remove(uuid, ...)                                         \
+  fio_uuid_env_remove(uuid, (fio_uuid_env_unset_args_s){__VA_ARGS__})
+```
+
+The `fio_uuid_env_remove` function is shadowed by the `fio_uuid_env_remove` macro, which allows the function to accept the "named arguments" listen for the `fio_uuid_env_unset` function.
+
+Removes an object from the connection's lifetime / environment, **calling it's `on_close` callback as if the connection was closed**.
+
+**Note**: the `on_close` callback will be called within a high priority lock. Long tasks should be deferred so they are performed outside the lock.
 
 ### Lower-Level: Read / Write / Close Hooks
 

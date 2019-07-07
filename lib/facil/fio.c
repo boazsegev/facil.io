@@ -524,9 +524,9 @@ invalid:
     args.on_close(args.data);
 }
 
-void fio_uuid_env_delete____(void); /* for sublime text function listing */
+void fio_uuid_env_remove____(void); /* for sublime text function listing */
 /* public API. */
-void fio_uuid_env_delete FIO_NOOP(intptr_t uuid,
+void fio_uuid_env_remove FIO_NOOP(intptr_t uuid,
                                   fio_uuid_env_unset_args_s args) {
   fio_uuid_env_name_s n = FIO_SMALL_STR_INIT;
   fio_uuid_env_obj_s i = {.data = NULL};
@@ -538,6 +538,10 @@ void fio_uuid_env_delete FIO_NOOP(intptr_t uuid,
     goto locked_invalid;
   fio___uuid_env_remove(&uuid_data(uuid).env,
                         fio_uuid_env_name_hash(&n, args.type), n, &i);
+  fio_unlock(&uuid_data(uuid).sock_lock);
+  if (i.on_close)
+    i.on_close(i.data);
+  return;
 locked_invalid:
   fio_unlock(&uuid_data(uuid).sock_lock);
   if (i.on_close)
@@ -546,6 +550,29 @@ invalid:
   errno = EBADF;
   return;
 }
+
+#if 0 /* UNSAFE don't enable unless single threaded mode is ensured */
+/* public API. */
+void *fio_uuid_env_get FIO_NOOP(intptr_t uuid, fio_uuid_env_unset_args_s args) {
+  fio_uuid_env_name_s n = FIO_SMALL_STR_INIT;
+  fio_uuid_env_obj_s i = {.data = NULL};
+  fio_uuid_env_name_set_const(&n, args.name.buf, args.name.len);
+  if (!uuid_is_valid(uuid))
+    goto invalid;
+  fio_lock(&uuid_data(uuid).sock_lock);
+  if (!uuid_is_valid(uuid))
+    goto locked_invalid;
+  i = fio___uuid_env_get(&uuid_data(uuid).env,
+                         fio_uuid_env_name_hash(&n, args.type), n);
+  fio_unlock(&uuid_data(uuid).sock_lock);
+  return i.data;
+locked_invalid:
+  fio_unlock(&uuid_data(uuid).sock_lock);
+invalid:
+  errno = EBADF;
+  return NULL;
+}
+#endif
 
 void fio_uuid_env_unset___(void); /* for sublime text function listing */
 /* public API. */
@@ -5115,7 +5142,7 @@ void fio_unsubscribe_uuid FIO_NOOP(subscribe_args_s args) {
         .len = sizeof(args.filter),
     };
   }
-  fio_uuid_env_delete(args.uuid, .name = args.channel,
+  fio_uuid_env_remove(args.uuid, .name = args.channel,
                       .type = (-1 - ((uintptr_t)args.match >> 8) -
                                ((uintptr_t)((uint32_t)args.filter) << 1)));
 }
