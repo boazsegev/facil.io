@@ -917,7 +917,7 @@ static fio_task_queue_s task_queue_urgent = {
 Internal Task API
 ***************************************************************************** */
 
-#if DEBUG
+#if TEST || DEBUG
 static size_t fio_defer_count_alloc, fio_defer_count_dealloc;
 #define COUNT_ALLOC fio_atomic_add(&fio_defer_count_alloc, 1)
 #define COUNT_DEALLOC fio_atomic_add(&fio_defer_count_dealloc, 1)
@@ -7800,7 +7800,7 @@ Section Start Marker
 
 ***************************************************************************** */
 
-#if DEBUG
+#if TEST || DEBUG
 
 // clang-format off
 #if defined(HAVE_OPENSSL)
@@ -8191,7 +8191,7 @@ FIO_SFUNC void fio_siphash_speed_test(void) {
 
 FIO_SFUNC void fio_siphash_test(void) {
   fprintf(stderr, "===================================\n");
-#if NODEBUG
+#if NDEBUG
   fio_siphash_speed_test();
 #else
   fprintf(stderr, "fio SipHash speed test skipped (debug mode is slow)\n");
@@ -8313,7 +8313,7 @@ FIO_SFUNC void fio_sha1_test(void) {
     i++;
   }
   fprintf(stderr, " SHA-1 passed.\n");
-#if NODEBUG
+#if NDEBUG
   fio_sha1_speed_test();
 #else
   fprintf(stderr, "fio SHA1 speed test skipped (debug mode is slow)\n");
@@ -8322,7 +8322,7 @@ FIO_SFUNC void fio_sha1_test(void) {
 
 #ifdef HAVE_OPENSSL
 
-#if NODEBUG
+#if NDEBUG
   fio_sha1_open_ssl_speed_test();
 #else
   fprintf(stderr, "OpenSSL SHA1 speed test skipped (debug mode is slow)\n");
@@ -8507,7 +8507,7 @@ FIO_SFUNC void fio_sha2_test(void) {
     goto error;
   fprintf(stderr, " SHA-2 passed.\n");
 
-#if NODEBUG
+#if NDEBUG
   fio_sha2_speed_test(SHA_224, "fio SHA-224");
   fio_sha2_speed_test(SHA_256, "fio SHA-256");
   fio_sha2_speed_test(SHA_384, "fio SHA-384");
@@ -8518,7 +8518,7 @@ FIO_SFUNC void fio_sha2_test(void) {
 
 #ifdef HAVE_OPENSSL
 
-#if NODEBUG
+#if NDEBUG
   {
     SHA512_CTX s2;
     SHA256_CTX s3;
@@ -8766,4 +8766,4 @@ void fio_test(void) {
   (void)fio_poll;
 }
 
-#endif /* DEBUG */
+#endif /* TEST || DEBUG */

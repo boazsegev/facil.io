@@ -2112,7 +2112,7 @@ FIO_IFUNC char *fio_sha2_384(fio_sha2_s *s, const void *data, size_t len) {
 Testing
 ***************************************************************************** */
 
-#if DEBUG
+#if TEST || DEBUG
 void fio_test(void);
 #else
 #define fio_test()

@@ -9092,7 +9092,7 @@ General Requirements / Macros
 /* *****************************************************************************
 Debugging / Leak Detection
 ***************************************************************************** */
-#if DEBUG && !defined(FIOBJ_MARK_MEMORY)
+#if (TEST || DEBUG) && !defined(FIOBJ_MARK_MEMORY)
 #define FIOBJ_MARK_MEMORY 1
 #endif
 
