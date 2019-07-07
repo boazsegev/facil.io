@@ -64,12 +64,17 @@ The main chat pub/sub callback
 ***************************************************************************** */
 
 static void chat_message(fio_msg_s *msg) {
-  fio_write((intptr_t)msg->udata1, msg->msg.buf, msg->msg.len);
+  fio_write((intptr_t)msg->uuid, msg->msg.buf, msg->msg.len);
 }
 
 /* *****************************************************************************
 The main chat protocol creation callback
 ***************************************************************************** */
+
+static void subscription_removed(void *uuid, void *udata_) {
+  fprintf(stderr, "Subscription removed for %p\n", uuid);
+  (void)udata_;
+}
 
 // A callback called for new connections
 static void chat_on_open(intptr_t uuid, void *udata) {
@@ -90,11 +95,12 @@ static void chat_on_open(intptr_t uuid, void *udata) {
              .after.dealloc = FIO_DEALLOC_NOOP);
 
   /* Subscribe client to chat channel */
-  subscription_s *s =
-      fio_subscribe(.on_message = chat_message, .udata1 = (void *)uuid,
-                    .channel = {.buf = "chat", .len = 4});
-  /* Link the subscription's life-time to the connection */
-  fio_uuid_link(uuid, s, (void (*)(void *))fio_unsubscribe);
+  subscription_s *s = fio_subscribe(.uuid = uuid, .on_message = chat_message,
+                                    .on_unsubscribe = subscription_removed,
+                                    .udata1 = (void *)uuid,
+                                    .channel = {.buf = "chat", .len = 4});
+  FIO_ASSERT(!s, "Why s == NULL? When binding a subscription to a connection, "
+                 "the subscription is owned by the connection (not returned).");
   (void)udata; // ignore this
 }
 

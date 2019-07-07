@@ -116,7 +116,7 @@ static fio_protocol_s client_protocol = {
 
 /* Forward REPL messages to the socket - pub/sub callback */
 static void on_repl_message(fio_msg_s *msg) {
-  fio_write((intptr_t)msg->udata1, msg->msg.buf, msg->msg.len);
+  fio_write(msg->uuid, msg->msg.buf, msg->msg.len);
 }
 
 static void on_connect(intptr_t uuid, void *udata) {
@@ -125,13 +125,9 @@ static void on_connect(intptr_t uuid, void *udata) {
 
   fio_attach(uuid, &client_protocol);
 
-  /* subscribe to REPL */
-  subscription_s *sub =
-      fio_subscribe(.channel = {.buf = "repl", .len = 4},
-                    .on_message = on_repl_message, .udata1 = (void *)uuid);
-
-  /* link subscription lifetime to the connection's UUID */
-  fio_uuid_link(uuid, sub, (void (*)(void *))fio_unsubscribe);
+  /* subscribe to REPL, linking the subscription with the connection's UUID  */
+  fio_subscribe(.channel = {.buf = "repl", .len = 4},
+                .on_message = on_repl_message, .uuid = uuid);
 
   /* start REPL */
   // void *repl = fio_thread_new(repl_thread, (void *)uuid);

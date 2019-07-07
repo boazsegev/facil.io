@@ -1609,6 +1609,13 @@ typedef struct fio_msg_s {
    *field might be used for internal data.
    **/
   fio_str_info_s msg;
+  /**
+   * A connection (if any) to which the subscription belongs.
+   *
+   * The connection uuid 0 marks an un-bound (non-connection related)
+   * subscription.
+   */
+  intptr_t uuid;
   /** The `udata1` argument associated with the subscription. */
   void *udata1;
   /** The `udata1` argument associated with the subscription. */
@@ -1665,6 +1672,12 @@ typedef struct {
    */
   fio_match_fn match;
   /**
+   * A connection (if any) to which the subscription should be bound.
+   *
+   * The connection uuid 0 isn't a valid uuid for subscriptions.
+   */
+  intptr_t uuid;
+  /**
    * The callback will be called for each message forwarded to the subscription.
    */
   void (*on_message)(fio_msg_s *msg);
@@ -1701,7 +1714,12 @@ subscription_s *fio_subscribe(subscribe_args_s args);
 /**
  * Subscribes to either a filter OR a channel (never both).
  *
- * Returns a subscription pointer on success or NULL on failure.
+ * Returns a subscription pointer on success or NULL on failure. Returns NULL on
+ * success when the subscription is bound to a connnection's uuid.
+ *
+ * Note: since ownership of the subscription is transferred to a connection's
+ * UUID when the subscription is linked to a connection, the caller will not
+ * receive a link to the subscription object.
  *
  * See `subscribe_args_s` for details.
  */
@@ -1712,6 +1730,27 @@ subscription_s *fio_subscribe(subscribe_args_s args);
  * example, if the subscription's callback is running in another thread.
  */
 void fio_unsubscribe(subscription_s *subscription);
+
+/**
+ * Cancels an existing subscriptions that was bound to a connection's UUID. See
+ * `fio_subscribe` and `fio_unsubscribe` for more deatils.
+ *
+ * Accepts the same arguments as `fio_subscribe`, except the `udata` and
+ * callback details are ignored (no need to provide `udata` or callback
+ * details).
+ */
+void fio_unsubscribe_uuid(subscribe_args_s args);
+
+/**
+ * Cancels an existing subscriptions that was bound to a connection's UUID. See
+ * `fio_subscribe` and `fio_unsubscribe` for more deatils.
+ *
+ * Accepts the same arguments as `fio_subscribe`, except the `udata` and
+ * callback details are ignored (no need to provide `udata` or callback
+ * details).
+ */
+#define fio_unsubscribe_uuid(...)                                              \
+  fio_unsubscribe_uuid((subscribe_args_s){__VA_ARGS__})
 
 /**
  * This helper returns a temporary String with the subscription's channel (or a

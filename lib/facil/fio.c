@@ -4680,6 +4680,7 @@ typedef struct {
 struct subscription_s {
   FIO_LIST_NODE node;
   channel_s *parent;
+  intptr_t uuid;
   void (*on_message)(fio_msg_s *msg);
   void (*on_unsubscribe)(void *udata1, void *udata2);
   void *udata1;
@@ -5011,12 +5012,17 @@ subscription_s *fio_subscribe___(subscribe_args_s args);
 subscription_s *fio_subscribe FIO_NOOP(subscribe_args_s args) {
   if (!args.on_message)
     goto error;
+  if (args.uuid < 0)
+    args.uuid = 0;
+  if (args.uuid && !uuid_is_valid(args.uuid))
+    goto error;
   channel_s *ch;
   subscription_s *s = fio_malloc(sizeof(*s));
   FIO_ASSERT_ALLOC(s);
   *s = (subscription_s){
       .on_message = args.on_message,
       .on_unsubscribe = args.on_unsubscribe,
+      .uuid = args.uuid,
       .udata1 = args.udata1,
       .udata2 = args.udata2,
       .ref = 1,
@@ -5032,20 +5038,33 @@ subscription_s *fio_subscribe FIO_NOOP(subscribe_args_s args) {
   s->parent = ch;
   subscriptions_push(&ch->subscriptions, s);
   fio_unlock((&ch->lock));
-  return s;
+  if (!args.uuid)
+    return s;
+  fio_uuid_env_set(
+      args.uuid, .data = s, .on_close = (void (*)(void *))fio_unsubscribe,
+      .name = {.buf = ch->name, .len = ch->name_len}, .const_name = 1,
+      .type = (-1 - ((uintptr_t)args.match >> 8) -
+               ((uintptr_t)((uint32_t)args.filter) << 1)));
+  errno = 0;
+  return NULL;
 error:
   if (args.on_unsubscribe)
     args.on_unsubscribe(args.udata1, args.udata2);
   return NULL;
 }
 
+void fio___unsubscribe_deferred(void *s, void *udata_) {
+  fio_unsubscribe(s);
+  (void)udata_;
+}
 /** Unsubscribes from a filter, pub/sub channle or patten */
 void fio_unsubscribe(subscription_s *s) {
   if (!s)
     return;
   if (fio_trylock(&s->unsubscribed))
     goto finish;
-  fio_lock(&s->lock);
+  if (fio_trylock(&s->lock))
+    goto try_again_later;
   channel_s *ch = s->parent;
   uint8_t removed = 0;
   fio_lock(&ch->lock);
@@ -5074,6 +5093,31 @@ void fio_unsubscribe(subscription_s *s) {
   fio_unlock(&s->lock);
 finish:
   fio_subscription_free(s);
+  return;
+try_again_later:
+  fio_unlock(&s->unsubscribed);
+  fio_defer(fio___unsubscribe_deferred, s, NULL);
+}
+
+/** SublimeText 3 marker */
+void fio_unsubscribe_uuid___(void);
+/**
+ * Cancels an existing subscriptions that was bound to a connection's UUID. See
+ * `fio_subscribe` and `fio_unsubscribe` for more deatils.
+ *
+ * Accepts the same arguments as `fio_subscribe`, except the `udata` and
+ * callback details are ignored.
+ */
+void fio_unsubscribe_uuid FIO_NOOP(subscribe_args_s args) {
+  if (args.filter) {
+    args.channel = (fio_str_info_s){
+        .buf = (char *)&args.filter,
+        .len = sizeof(args.filter),
+    };
+  }
+  fio_uuid_env_delete(args.uuid, .name = args.channel,
+                      .type = (-1 - ((uintptr_t)args.match >> 8) -
+                               ((uintptr_t)((uint32_t)args.filter) << 1)));
 }
 
 /**
@@ -5277,6 +5321,7 @@ static void fio_perform_subscription_callback(void *s_, void *msg_) {
       .msg =
           {
               .channel = msg->channel,
+              .uuid = s->uuid,
               .msg = msg->data,
               .filter = msg->filter,
               .udata1 = s->udata1,
@@ -5286,9 +5331,22 @@ static void fio_perform_subscription_callback(void *s_, void *msg_) {
       .meta = msg->meta,
       .marker = 0,
   };
-  if (s->on_message) {
+  if (s->on_message && (!s->uuid || uuid_is_valid(s->uuid))) {
     /* the on_message callback is removed when a subscription is canceled. */
-    s->on_message(&m.msg);
+    if (!s->uuid) {
+      s->on_message(&m.msg);
+    } else if (uuid_is_valid(s->uuid)) {
+      /* UUID bound subscriptions perform within a protocol's task lock */
+      fio_protocol_s *p =
+          protocol_try_lock(fio_uuid2fd(s->uuid), FIO_PR_LOCK_TASK);
+      if (!p) {
+        if (errno == EWOULDBLOCK)
+          m.marker = 1;
+      } else {
+        s->on_message(&m.msg);
+        protocol_unlock(p, FIO_PR_LOCK_TASK);
+      }
+    }
   }
   fio_unlock(&s->lock);
   if (m.marker) {
