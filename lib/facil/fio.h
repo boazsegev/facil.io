@@ -1044,12 +1044,11 @@ typedef struct {
   intptr_t type;
   /** The name for the link. The name and type uniquely identify the object. */
   fio_str_info_s name;
-  /** The object's data. */
+  /** The object being linked to the connection. */
   void *data;
   /** A callback that will be called once the connection is closed. */
   void (*on_close)(void *data);
-  /** Set to 1 if the name for the link will be valid (at least) until the
-   * object is destroyed. */
+  /** Set to 1 if the name's buffer can be stored for the life of the object. */
   uint8_t const_name;
 } fio_uuid_env_args_s;
 
@@ -1123,7 +1122,7 @@ fio_uuid_env_args_s fio_uuid_env_unset(intptr_t uuid,
  * NOTE: the `on_close` callback will be called within a high priority lock.
  * Long tasks should be deferred so they are performed outside the lock.
  */
-void fio_uuid_env_delete(intptr_t uuid, fio_uuid_env_unset_args_s);
+void fio_uuid_env_remove(intptr_t uuid, fio_uuid_env_unset_args_s);
 
 /**
  * Removes an object from the connection's lifetime / environment, calling it's
@@ -1135,8 +1134,8 @@ void fio_uuid_env_delete(intptr_t uuid, fio_uuid_env_unset_args_s);
  * NOTE: the `on_close` callback will be called within a high priority lock.
  * Long tasks should be deferred so they are performed outside the lock.
  */
-#define fio_uuid_env_delete(uuid, ...)                                         \
-  fio_uuid_env_delete(uuid, (fio_uuid_env_unset_args_s){__VA_ARGS__})
+#define fio_uuid_env_remove(uuid, ...)                                         \
+  fio_uuid_env_remove(uuid, (fio_uuid_env_unset_args_s){__VA_ARGS__})
 
 /* *****************************************************************************
 Connection Read / Write Hooks, for overriding the system calls
