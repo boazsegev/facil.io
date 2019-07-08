@@ -1497,6 +1497,7 @@ facil.io supports a [Publish–Subscribe Pattern](https://en.wikipedia.org/wiki/
 
 ```c
 subscription_s *fio_subscribe(subscribe_args_s args);
+/** MACRO enabling named arguments. */
 #define fio_subscribe(...) fio_subscribe((subscribe_args_s){__VA_ARGS__})
 ```
 
@@ -1514,6 +1515,18 @@ subscription_s * s = fio_subscribe(.channel = {.data="name", .len = 4},
 
 The function accepts the following named arguments:
 
+* `uuid`
+
+    If `uuid` is set, the subscription will be attached (and owned) by a connection.
+
+    T function will return `NULL` since the subscription ownership will be transferred to the connection's environment instead of returned to the caller.
+
+    The `on_message` callback will be called within a connection's task lock (`FIO_PR_LOCK_TASK`).
+
+    If `uuid` is `<= 0`, the subscription will be considered as a global subscription, owned by the calling function, as if `uuid` wasn't set. A pointer to the subscription will be returned to the calling function.
+
+        // type:
+        intptr_t uuid;
 
 * `filter`:
 
@@ -1528,9 +1541,9 @@ The function accepts the following named arguments:
 
 * `channel`:
 
-    If `filter == 0` (or unset), than the subscription will be made using `channel` binary name matching. Note that and empty string (NULL pointer and 0 length) is a valid channel name.
+    If `filter == 0` (or unset), than the subscription will be made using `channel` binary name matching. Note that and empty string (`NULL` pointer and 0 length) is a valid channel name.
 
-    Subscriptions can either require a match by filter or match by channel. This will match the subscription by channel (only messages with no `filter` will be received).
+    Subscriptions can either require to be matched by filter or matched by channel. This will match the subscription by channel (only messages with no `filter` and the same `channel` value will be forwarded to the subscription).
 
         // type:
         fio_str_info_s channel;
@@ -1635,9 +1648,40 @@ void fio_unsubscribe(subscription_s *subscription);
 
 Cancels an existing subscription.
 
-This function will block if a subscription task is running on a different thread.
+This function will be automatically deferred if a subscription task is running on a different thread, which might delay the effects of the function.
 
-The subscription task won't be called after the function returns.
+The subscription task won't be called again once the function completes it's task.
+
+#### `fio_unsubscribe_uuid`
+
+```c
+void fio_unsubscribe_uuid(subscribe_args_s args);
+/** MACRO enabling named arguments. */
+#define fio_unsubscribe_uuid(...)                                              \
+  fio_unsubscribe_uuid((subscribe_args_s){__VA_ARGS__})
+```
+
+Cancels an existing subscriptions that was bound to a connection's `uuid`. See `fio_subscribe` and `fio_unsubscribe` for more details.
+
+Accepts the same arguments as `fio_subscribe`, except the `udata` and callback details are ignored (no need to provide `udata` or callback details).
+
+The `fio_unsubscribe_uuid` function is shadowed by the `fio_unsubscribe_uuid` macro, which allows the function to accept the following "named arguments" (see `fio_subscribe` example):
+
+* `uuid`
+
+    Use this function only if a `uuid` value was provided to the `fio_subscribe` function. The same value should be provided here, to make sure the correct subscription is found and removed.
+
+* `filter`:
+
+    If a `filter` value was provided to the `fio_subscribe` function, it should be provided here as well, to make sure the correct subscription is found and removed.
+
+* `channel`:
+
+    If a `channel` name was provided to the `fio_subscribe` function, it should be provided here as well, to make sure the correct subscription is found and removed.
+
+* `match`:
+
+    If an optional `match` callback was provided to the `fio_subscribe` function, it should be provided here as well, to make sure the correct subscription is found and removed.
 
 ### Publishing messages
 

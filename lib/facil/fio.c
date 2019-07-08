@@ -5130,7 +5130,7 @@ try_again_later:
 void fio_unsubscribe_uuid___(void);
 /**
  * Cancels an existing subscriptions that was bound to a connection's UUID. See
- * `fio_subscribe` and `fio_unsubscribe` for more deatils.
+ * `fio_subscribe` and `fio_unsubscribe` for more details.
  *
  * Accepts the same arguments as `fio_subscribe`, except the `udata` and
  * callback details are ignored.

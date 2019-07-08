@@ -1732,7 +1732,7 @@ void fio_unsubscribe(subscription_s *subscription);
 
 /**
  * Cancels an existing subscriptions that was bound to a connection's UUID. See
- * `fio_subscribe` and `fio_unsubscribe` for more deatils.
+ * `fio_subscribe` and `fio_unsubscribe` for more details.
  *
  * Accepts the same arguments as `fio_subscribe`, except the `udata` and
  * callback details are ignored (no need to provide `udata` or callback
@@ -1742,7 +1742,7 @@ void fio_unsubscribe_uuid(subscribe_args_s args);
 
 /**
  * Cancels an existing subscriptions that was bound to a connection's UUID. See
- * `fio_subscribe` and `fio_unsubscribe` for more deatils.
+ * `fio_subscribe` and `fio_unsubscribe` for more details.
  *
  * Accepts the same arguments as `fio_subscribe`, except the `udata` and
  * callback details are ignored (no need to provide `udata` or callback
