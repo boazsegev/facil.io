@@ -96,7 +96,8 @@ The main function (listens to the `echo` connections and handles CLI)
 // The main function starts listening to echo connections
 int main(int argc, char const *argv[]) {
   /* Setup CLI arguments */
-  fio_cli_start(argc, argv, 0, 0, "this example accepts the following options:",
+  fio_cli_start(argc, argv, 0, 0,
+                "this tcp/ip echo example accepts the following options:",
                 FIO_CLI_INT("-t -thread number of threads to run."),
                 FIO_CLI_INT("-w -workers number of workers to run."),
                 "-b, -address the address to bind to.",
