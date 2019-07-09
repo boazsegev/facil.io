@@ -126,9 +126,11 @@ Called when the connection was closed, but will not run concurrently with other 
 uint8_t ping(intptr_t uuid, fio_protocol_s *protocol);
 ```
 
-Called when a connection's timeout was reached.
+Called when a connection's timeout was reached (see [`fio_timeout_set`](#fio_timeout_set)).
 
 This callback is called outside of the protocol's normal locks to support pinging in cases where the `on_data` callback is running in the background (which shouldn't happen, but we know it sometimes does).
+
+By default (if no `ping` callback is specified), the connection will disconnect when timeout occurred. To keep the connection alive eternally, set the `ping` callback to `FIO_PING_ETERNAL`.
 
 #### `fio_protocol_s->rsv`
 
@@ -1597,6 +1599,8 @@ The `on_message` should accept a pointer to the `fio_msg_s` type:
 typedef struct fio_msg_s {
  int32_t filter;
  fio_str_info_s channel;
+ intptr_t uuid;
+ fio_protocol_s * pr;
  fio_str_info_s msg;
  void *udata1;
  void *udata2;
@@ -1607,6 +1611,14 @@ typedef struct fio_msg_s {
 * `filter` is the numerical filter (if any) used in the `fio_subscribe` and `fio_publish` functions. Negative values are reserved and 0 == channel name matching.
 
 * `channel` is an immutable binary string containing the channel name given to `fio_publish`. See the [`fio_str_info_s` return value](`#the-fio_str_info_s-return-value`) for details.
+
+* `uuid` is the connection's identifier (if any) to which the subscription belongs.
+
+  A connection `uuid` 0 marks an un-bound (non-connection related) subscription.
+
+* `pr` is the connection's protocol (if any).
+
+  If the subscription is bound to a connection, the protocol will be locked using a task lock and will be available using this pointer.
 
 * `msg` is an immutable binary string containing the message data given to `fio_publish`. See the [`fio_str_info_s` return value](`#the-fio_str_info_s-return-value`) for details.
 

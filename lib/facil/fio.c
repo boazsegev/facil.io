@@ -2188,7 +2188,8 @@ static void mock_ping2(intptr_t uuid, fio_protocol_s *protocol) {
   fio_close(uuid);
 }
 
-FIO_SFUNC void mock_ping_eternal(intptr_t uuid, fio_protocol_s *protocol) {
+/** A ping function that does nothing except keeping the connection alive. */
+void FIO_PING_ETERNAL(intptr_t uuid, fio_protocol_s *protocol) {
   (void)protocol;
   fio_touch(uuid);
 }
@@ -4182,7 +4183,7 @@ intptr_t fio_listen FIO_NOOP(struct fio_listen_args args) {
       .pr =
           {
               .on_close = fio_listen_on_close,
-              .ping = mock_ping_eternal,
+              .ping = FIO_PING_ETERNAL,
               .on_data = (args.tls ? (fio_tls_alpn_count(args.tls)
                                           ? fio_listen_on_data_tls_alpn
                                           : fio_listen_on_data_tls)
@@ -5364,14 +5365,12 @@ static void fio_perform_subscription_callback(void *s_, void *msg_) {
       s->on_message(&m.msg);
     } else if (uuid_is_valid(s->uuid)) {
       /* UUID bound subscriptions perform within a protocol's task lock */
-      fio_protocol_s *p =
-          protocol_try_lock(fio_uuid2fd(s->uuid), FIO_PR_LOCK_TASK);
-      if (!p) {
-        if (errno == EWOULDBLOCK)
-          m.marker = 1;
-      } else {
+      m.msg.pr = protocol_try_lock(fio_uuid2fd(s->uuid), FIO_PR_LOCK_TASK);
+      if (m.msg.pr) {
         s->on_message(&m.msg);
-        protocol_unlock(p, FIO_PR_LOCK_TASK);
+        protocol_unlock(m.msg.pr, FIO_PR_LOCK_TASK);
+      } else if (errno == EWOULDBLOCK) {
+        m.marker = 1;
       }
     }
   }
@@ -5861,7 +5860,7 @@ static void fio_listen2cluster(void *ignore) {
   *p = (fio_protocol_s){
       .on_data = fio_cluster_listen_accept,
       .on_shutdown = mock_on_shutdown_eternal,
-      .ping = mock_ping_eternal,
+      .ping = FIO_PING_ETERNAL,
       .on_close = fio_cluster_listen_on_close,
   };
   FIO_LOG_DEBUG("(%d) Listening to cluster: %s", (int)getpid(),

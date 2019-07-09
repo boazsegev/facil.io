@@ -420,6 +420,9 @@ struct fio_listen_args {
  */
 intptr_t fio_listen(struct fio_listen_args args);
 
+/** A ping function that does nothing except keeping the connection alive. */
+void FIO_PING_ETERNAL(intptr_t, fio_protocol_s *);
+
 /************************************************************************ */ /**
 Listening to Incoming Connections
 ===
@@ -1602,19 +1605,26 @@ typedef struct fio_msg_s {
    */
   fio_str_info_s channel;
   /**
-   * The actual message.
-   *
-   * NOTE: the channel and msg strings should be considered immutable. The .capa
-   *field might be used for internal data.
-   **/
-  fio_str_info_s msg;
-  /**
    * A connection (if any) to which the subscription belongs.
    *
    * The connection uuid 0 marks an un-bound (non-connection related)
    * subscription.
    */
   intptr_t uuid;
+  /**
+   * The connection's (if any), belonging to the connection's uuid (if any).
+   *
+   * If the subscription is bound to a connection, the protocol will be locked
+   * using a task lock and will be available using this pointer.
+   */
+  fio_protocol_s *pr;
+  /**
+   * The actual message.
+   *
+   * NOTE: the channel and msg strings should be considered immutable. The .capa
+   *field might be used for internal data.
+   **/
+  fio_str_info_s msg;
   /** The `udata1` argument associated with the subscription. */
   void *udata1;
   /** The `udata1` argument associated with the subscription. */
