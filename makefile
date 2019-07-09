@@ -111,12 +111,6 @@ endif
 # facil.io compilation flag helpers
 #############################################################################
 
-# add FIO_PRINT_STATE flag if requested
-ifdef FIO_PRINT
-  $(warning FIO_PRINT_STATE is deprecated. FIO_PRINT support will be removed soon.)
-	FLAGS:=$(FLAGS) FIO_PRINT_STATE=$(FIO_PRINT)
-endif
-
 # add FIO_PUBSUB_SUPPORT flag if requested
 ifdef FIO_PUBSUB_SUPPORT
 	FLAGS:=$(FLAGS) FIO_PUBSUB_SUPPORT=$(FIO_PUBSUB_SUPPORT)
@@ -553,7 +547,7 @@ $(TMP_ROOT)/%.d: ;
 
 
 .PHONY : test
-test: | clean
+test: | clean cmake
 	@DEBUG=1 $(MAKE) test_build_and_run
 	-@rm $(BIN) 2> /dev/null
 	-@rm -R $(TMP_ROOT) 2> /dev/null
@@ -590,13 +584,13 @@ test_build_and_run: | create_tree test_add_flags test/build
 
 .PHONY : test_add_flags
 test_add_flags:
-	$(eval CFLAGS:=-coverage $(CFLAGS) -DDEBUG=1 -Werror)
+	$(eval CFLAGS:=-coverage $(CFLAGS) -DDEBUG=1 -DTEST=1 -Werror)
 	$(eval LINKER_FLAGS:=-coverage -DDEBUG=1 $(LINKER_FLAGS))
 
 .PHONY : test_add_speed_flags
 test_add_speed_flags:
-	$(eval CFLAGS:=$(CFLAGS) -DDEBUG=1 -DFIO_LOG_LEVEL_DEFAULT=4)
-	$(eval LINKER_FLAGS:=-DDEBUG=1 $(LINKER_FLAGS))
+	$(eval CFLAGS:=$(CFLAGS) -DTEST=1 -DFIO_LOG_LEVEL_DEFAULT=4)
+	$(eval LINKER_FLAGS:=-DTEST=1 $(LINKER_FLAGS))
 
 
 .PHONY : test/build

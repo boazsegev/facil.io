@@ -3,11 +3,11 @@ This is a simple echo server example.
 
 To try it out, compile using (avoids server state printout):
 
-    FIO_PRINT=0 NAME=char make
+    NAME=chat make
 
 Than run:
 
-    ./tmp/char
+    ./tmp/chat
 
 To connect to this server run telnet, netcat or the client example, using:
 

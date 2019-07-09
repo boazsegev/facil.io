@@ -6,7 +6,7 @@ the EOL (end of line) character(s).
 
 To try it out, compile using (avoids server state printout):
 
-    FIO_PRINT=0 NAME=client make
+    NAME=client make
 
 Than run:
 
@@ -17,7 +17,6 @@ Than run:
 
 /* add the fio_str_s helpers */
 #define FIO_STRING_NAME fio_str
-#define FIO_CLI 1
 #include "fio-stl.h"
 
 #define MAX_BYTES_RAPEL_PER_CYCLE 256

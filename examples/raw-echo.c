@@ -3,7 +3,7 @@ This is a simple echo server example.
 
 To try it out, compile using (avoids server state printout):
 
-    FIO_PRINT=0 NAME=echo make
+    NAME=echo make
 
 Than run:
 
@@ -20,8 +20,6 @@ Interface API in the core STL (fio-stl.h).
 ***************************************************************************** */
 
 #include <fio.h>
-#define FIO_CLI
-#include <fio-stl.h>
 
 /* *****************************************************************************
 Echo connection callbacks
