@@ -2274,6 +2274,7 @@ IFUNC void fio_rand_reseed(void) {
       fio___rand_state, sizeof(fio___rand_state[0]), fio___rand_state[1]);
 #endif
 }
+
 /* tested for randomness using code from: http://xoshiro.di.unimi.it/hwd.php */
 SFUNC uint64_t fio_rand64(void) {
   /* modeled after xoroshiro128+, by David Blackman and Sebastiano Vigna */
@@ -2293,7 +2294,7 @@ SFUNC uint64_t fio_rand64(void) {
 SFUNC void fio_rand_bytes(void *data_, size_t len) {
   if (!data_ || !len)
     return;
-  uint8_t *data = data_;
+  uint8_t *data = (uint8_t *)data_;
 
   if (len < 8)
     goto small_random;
@@ -10698,6 +10699,7 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
                "%s != %s (%zd)",                                               \
                buf, ((char *)(s)), (size_t)((p = buf), fio_atol(&p)));         \
   } while (0)
+
   TEST_ATOL("0x1", 1);
   TEST_ATOL("-0x1", -1);
   TEST_ATOL("-0xa", -10);                                /* sign before hex */
@@ -10756,6 +10758,7 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
   } while (0)
 
   fprintf(stderr, "* Testing fio_atof samples.\n");
+
   /* A few hex-float examples  */
   TEST_DOUBLE("0x10.1p0", 0x10.1p0, 0);
   TEST_DOUBLE("0x1.8p1", 0x1.8p1, 0);
@@ -10885,7 +10888,6 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
   TEST_DOUBLE("5708990770823839207320493820740630171355185152001e-3",
               5708990770823839524233143877797980545530986496.0, 0);
 #undef TEST_DOUBLE
-#endif /* FIO_ATOF_ALT */
 #if !DEBUG
   {
     clock_t start, stop;
@@ -10914,7 +10916,8 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
     fprintf(stderr, "* system atol speed test completed in %zu cycles\n",
             stop - start);
   }
-#endif
+#endif /* !DEBUG */
+#endif /* FIO_ATOF_ALT */
 }
 
 /* *****************************************************************************
@@ -11117,15 +11120,30 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
   uint64_t *rs = FIO_MEM_CALLOC(sizeof(*rs), test_len);
   clock_t start, end;
   FIO_ASSERT_ALLOC(rs);
-  rand(); /* warmup */
-  start = clock();
-  for (size_t i = 0; i < test_len; ++i) {
-    rs[i] = ((uint64_t)rand() << 32) | (uint64_t)rand();
+  {
+    // rand(); /* warmup */
+    /* test RAND_MAX value */
+    uint8_t rand_bits = 63;
+    while (rand_bits) {
+      if (RAND_MAX <= (~(0ULL)) >> rand_bits)
+        break;
+      --rand_bits;
+    }
+    rand_bits = 64 - rand_bits;
+    /* start rand testing */
+    start = clock();
+    for (size_t i = 0; i < test_len; ++i) {
+      int8_t need = 64;
+      while (need > 0) {
+        rs[i] <<= rand_bits;
+        rs[i] |= (uint64_t)rand();
+        need -= rand_bits;
+      }
+    }
+    end = clock();
+    fio___dynamic_types_test___random_buffer(rs, test_len, "rand (system)",
+                                             end - start);
   }
-  end = clock();
-  fio___dynamic_types_test___random_buffer(rs, test_len, "rand (system)",
-                                           end - start);
-
   memset(rs, 0, sizeof(*rs) * test_len);
   fio_rand64(); /* warmup */
   start = clock();

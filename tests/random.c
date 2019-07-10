@@ -2,7 +2,9 @@
 #include "fio-stl.h"
 
 // #define HWD_BITS 32
-// static uint32_t next(void) { return rand(); }
+// static uint32_t next(void) {
+//   return ((uint32_t)rand() << 16) ^ (uint32_t)rand();
+// }
 #define HWD_BITS 64
 static uint64_t next(void) { return fio_rand64(); }
 
