@@ -11082,8 +11082,8 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
 #else
   fprintf(stderr, "\t- \x1B[1m%s\x1B[0m (%zu CPU cycles):\n", name, clk);
 #endif
-  fprintf(stderr, "\t  zeros / ones (bit frequency)\t%.05f (%zu / %zu)\n",
-          ((float)1.0 * totals[0]) / totals[1], totals[0], totals[1]);
+  fprintf(stderr, "\t  zeros / ones (bit frequency)\t%.05f\n",
+          ((float)1.0 * totals[0]) / totals[1]);
   TEST_ASSERT(totals[0] < totals[1] + (total_bits / 20) &&
                   totals[1] < totals[0] + (total_bits / 20),
               "randomness isn't random?");
@@ -11120,8 +11120,58 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
   uint64_t *rs = FIO_MEM_CALLOC(sizeof(*rs), test_len);
   clock_t start, end;
   FIO_ASSERT_ALLOC(rs);
+
+  rand(); /* warmup */
+  if (sizeof(int) < sizeof(uint64_t)) {
+    start = clock();
+    for (size_t i = 0; i < test_len; ++i) {
+      rs[i] = ((uint64_t)rand() << 32) | (uint64_t)rand();
+    }
+    end = clock();
+  } else {
+    start = clock();
+    for (size_t i = 0; i < test_len; ++i) {
+      rs[i] = (uint64_t)rand();
+    }
+    end = clock();
+  }
+  fio___dynamic_types_test___random_buffer(
+      rs, test_len, "rand (system-normal ignoring missing bits)", end - start);
+
+  memset(rs, 0, sizeof(*rs) * test_len);
   {
-    // rand(); /* warmup */
+    if (RAND_MAX == ~(uint64_t)0ULL) {
+      /* RAND_MAX fills all bits */
+      start = clock();
+      for (size_t i = 0; i < test_len; ++i) {
+        rs[i] = (uint64_t)rand();
+      }
+      end = clock();
+    } else if (RAND_MAX >= (~(uint32_t)0UL)) {
+      /* RAND_MAX fill at least 32 bits per call */
+      uint32_t *rs_adjusted = (uint32_t *)rs;
+      start = clock();
+      for (size_t i = 0; i < (test_len << 1); ++i) {
+        rs_adjusted[i] = (uint32_t)rand();
+      }
+      end = clock();
+    } else if (RAND_MAX >= (~(uint16_t)0U)) {
+      /* RAND_MAX fill at least 16 bits per call */
+      uint16_t *rs_adjusted = (uint16_t *)rs;
+      start = clock();
+      for (size_t i = 0; i < (test_len << 2); ++i) {
+        rs_adjusted[i] = (uint16_t)rand();
+      }
+      end = clock();
+    } else {
+      /* assume RAND_MAX fill at least 8 bits per call */
+      uint8_t *rs_adjusted = (uint8_t *)rs;
+      start = clock();
+      for (size_t i = 0; i < (test_len << 2); ++i) {
+        rs_adjusted[i] = (uint8_t)rand();
+      }
+      end = clock();
+    }
     /* test RAND_MAX value */
     uint8_t rand_bits = 63;
     while (rand_bits) {
@@ -11130,20 +11180,12 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
       --rand_bits;
     }
     rand_bits = 64 - rand_bits;
-    /* start rand testing */
-    start = clock();
-    for (size_t i = 0; i < test_len; ++i) {
-      int8_t need = 64;
-      while (need > 0) {
-        rs[i] <<= rand_bits;
-        rs[i] |= (uint64_t)rand();
-        need -= rand_bits;
-      }
-    }
-    end = clock();
-    fio___dynamic_types_test___random_buffer(rs, test_len, "rand (system)",
-                                             end - start);
+    char buffer[128] = {0};
+    snprintf(buffer, 128 - 14, "rand (system-fixed returns %d random bits)",
+             (int)rand_bits);
+    fio___dynamic_types_test___random_buffer(rs, test_len, buffer, end - start);
   }
+
   memset(rs, 0, sizeof(*rs) * test_len);
   fio_rand64(); /* warmup */
   start = clock();

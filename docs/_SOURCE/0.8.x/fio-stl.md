@@ -1506,21 +1506,22 @@ This approach minimizes memory allocation and improves locality by copying the s
 
 void example(void) {
   map_s m = FIO_MAP_INIT;
+  for (int overwrite = 0; overwrite < 2; ++overwrite) {
+    for (int i = 0; i < 10; ++i) {
+      char buf[128] = "a long key will require memory allocation: ";
+      size_t len = fio_ltoa(buf + 43, i, 16) + 43;
+      key_s k;
+      key_set_copy(&k, buf, len);
+      map_set(&m, key_hash(&k, (uint64_t)&m), k, (uintptr_t)i, NULL);
+    }
+  }
   for (int i = 0; i < 10; ++i) {
-    char buf[128] = "a long key will require memory allocation: ";
-    size_t len = fio_ltoa(buf + 43, i, 16) + 43;
+    char buf[128] = "embed: "; /* short keys fit in pointer + length type */
+    size_t len = fio_ltoa(buf + 7, i, 16) + 7;
     key_s k;
     key_set_copy(&k, buf, len);
     map_set(&m, key_hash(&k, (uint64_t)&m), k, (uintptr_t)i, NULL);
   }
-  for (int i = 0; i < 10; ++i) {
-    char buf[128] = "embeded: "; /* short keys fit in pointer + length type */
-    size_t len = fio_ltoa(buf + 9, i, 16) + 9;
-    key_s k;
-    key_set_copy(&k, buf, len);
-    map_set(&m, key_hash(&k, (uint64_t)&m), k, (uintptr_t)i, NULL);
-  }
-  int counter = 0;
   FIO_MAP_EACH(&m, pos) {
     fprintf(stderr, "[%d] %s - memory allocated: %s\n", (int)pos->obj.value,
             key2ptr(&pos->obj.key),
@@ -1560,7 +1561,7 @@ void SMALL_STR_set_copy(FIO_SMALL_STR_PTR s, const char *str, size_t len);
 
 Initializes the container with the provided dynamic string.
 
-The string is always copied and the final string must be destoryed (using the
+The string is always copied and the final string must be destroyed (using the
 `destroy` function).
 
 #### `SMALL_STR_destroy`
@@ -1944,17 +1945,21 @@ psedo-random generator functions will be defined.
 The random generator functions are automatically re-seeded with either data from
 the system's clock or data from `getrusage` (when available).
 
+The facil.io random generator functions are both faster and more random then the standard `rand` on my computer (you can test it for yours).
+
+I designed it in the hopes of achieving a cryptographically safe PRNG, but it wasn't cryptographically analyzed and should be considered as a non-cryptographic PRNG.
+
 **Note**: bitwise operations (`FIO_BITWISE`) and Risky Hash (`FIO_RISKY_HASH`)
 are automatically defined along with `FIO_RAND`, since they are required by the
 algorithm.
 
 #### `uint64_t fio_rand64(void)`
 
-Returns 64 random bits. Probably not cryptographically safe.
+Returns 64 random bits. Probably **not** cryptographically safe.
 
 #### `void fio_rand_bytes(void *data_, size_t len)`
 
-Writes `len` random Bytes to the buffer pointed to by `data`. Probably not
+Writes `len` random Bytes to the buffer pointed to by `data`. Probably **not**
 cryptographically safe.
 
 -------------------------------------------------------------------------------
