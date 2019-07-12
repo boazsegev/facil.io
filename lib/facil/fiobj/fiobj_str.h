@@ -161,7 +161,7 @@ API: String Values
  */
 uint64_t fiobj_str_hash(FIOBJ o);
 
-#if DEBUG
+#ifdef DEBUG
 void fiobj_test_string(void);
 #endif
 

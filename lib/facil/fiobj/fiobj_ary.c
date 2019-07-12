@@ -255,7 +255,7 @@ void fiobj_ary_compact(FIOBJ ary) {
 Simple Tests
 ***************************************************************************** */
 
-#if DEBUG
+#ifdef DEBUG
 void fiobj_test_array(void) {
   fprintf(stderr, "=== Testing Array\n");
 #define TEST_ASSERT(cond, ...)                                                 \

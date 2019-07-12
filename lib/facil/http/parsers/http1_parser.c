@@ -358,7 +358,7 @@ inline static int consume_body(struct http1_fio_parser_args_s *args,
 /* *****************************************************************************
 HTTP/1.1 parsre function
 ***************************************************************************** */
-#if DEBUG
+#ifdef DEBUG
 #include <assert.h>
 #else
 #define DEBUG 0
@@ -445,13 +445,13 @@ re_eval:
                                               : args->on_request)(args->parser))
       goto error;
     args->parser->state =
-        (struct http1_parser_protected_read_only_state_s){0, 0, 0};
+        (struct http1_parser_protected_read_only_state_s){0, 0, 0, 0};
   }
   return CONSUMED;
 error:
   args->on_error(args->parser);
   args->parser->state =
-      (struct http1_parser_protected_read_only_state_s){0, 0, 0};
+      (struct http1_parser_protected_read_only_state_s){0, 0, 0, 0};
   return args->length;
 }
 

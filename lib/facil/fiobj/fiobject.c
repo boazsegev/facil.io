@@ -59,7 +59,7 @@ fio_realloc2(void *ptr, size_t new_size, size_t valid_len) {
 void *__attribute__((weak)) fio_mmap(size_t size) { return fio_malloc(size); }
 
 /** The logging level */
-#if DEBUG
+#ifdef DEBUG
 #pragma weak FIO_LOG_LEVEL
 int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
 #else
@@ -521,7 +521,7 @@ double fiobject___noop_to_f(const FIOBJ o) {
   return 0;
 }
 
-#if DEBUG
+#ifdef DEBUG
 
 #include <fiobj_ary.h>
 #include <fiobj_numbers.h>

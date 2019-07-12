@@ -1014,7 +1014,7 @@ intptr_t fiobj_data_puts(FIOBJ io, void *buffer, uintptr_t length) {
   return t1 + t2;
 }
 
-#if DEBUG
+#ifdef DEBUG
 
 void fiobj_data_test(void) {
   char *filename = NULL;

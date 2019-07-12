@@ -990,7 +990,7 @@ typedef fio_url_s http_url_s
  */
 #define http_url_parse(url, len) fio_url_parse((url), (len))
 
-#if DEBUG
+#ifdef DEBUG
 void http_tests(void);
 #endif
 

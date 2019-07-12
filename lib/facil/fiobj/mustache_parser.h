@@ -107,7 +107,7 @@ REQUIRED: Define INCLUDE_MUSTACHE_IMPLEMENTATION only in the implementation file
  * Before including the header within an implementation faile, define
  * INCLUDE_MUSTACHE_IMPLEMENTATION as 1.
  */
-#if INCLUDE_MUSTACHE_IMPLEMENTATION
+#ifdef INCLUDE_MUSTACHE_IMPLEMENTATION
 
 /* *****************************************************************************
 Mustache API Functions and Arguments

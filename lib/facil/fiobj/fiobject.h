@@ -642,7 +642,7 @@ FIO_INLINE size_t fiobj_each1(FIOBJ o, size_t start_at,
   return 0;
 }
 
-#if DEBUG
+#ifdef DEBUG
 void fiobj_test_core(void);
 #endif
 

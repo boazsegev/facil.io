@@ -197,7 +197,7 @@ fio_str_info_s fio_ftocstr(double f) {
 Tests
 ***************************************************************************** */
 
-#if DEBUG
+#ifdef DEBUG
 void fiobj_test_numbers(void) {
 #define NUMTEST_ASSERT(cond, ...)                                              \
   if (!(cond)) {                                                               \

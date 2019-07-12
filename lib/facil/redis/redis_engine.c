@@ -336,7 +336,7 @@ static void redis_attach_cmd(redis_engine_s *r, redis_commands_s *cmd) {
 /** a local static callback, called when the RESP message is complete. */
 static void resp_on_pub_message(struct redis_engine_internal_s *i, FIOBJ msg) {
   redis_engine_s *r = pub2redis(i);
-  // #if DEBUG
+  // #ifdef DEBUG
   if (FIO_LOG_LEVEL >= FIO_LOG_LEVEL_DEBUG) {
     FIOBJ json = fiobj_obj2json(msg, 1);
     FIO_LOG_DEBUG("Redis reply:\n%s\n", fiobj_obj2cstr(json).data);

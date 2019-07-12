@@ -57,7 +57,7 @@ FIOBJ fiobj_obj2json(FIOBJ, uint8_t pretty);
  */
 FIOBJ fiobj_obj2json2(FIOBJ dest, FIOBJ object, uint8_t pretty);
 
-#if DEBUG
+#ifdef DEBUG
 void fiobj_test_json(void);
 #endif
 

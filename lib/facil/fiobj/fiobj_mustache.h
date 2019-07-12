@@ -55,7 +55,7 @@ FIOBJ fiobj_mustache_build(mustache_s *mustache, FIOBJ data);
  */
 FIOBJ fiobj_mustache_build2(FIOBJ dest, mustache_s *mustache, FIOBJ data);
 
-#if DEBUG
+#ifdef DEBUG
 void fiobj_mustache_test(void);
 #endif
 

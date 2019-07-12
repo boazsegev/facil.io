@@ -116,7 +116,7 @@ FIO_INLINE FIOBJ fiobj_num_new(intptr_t num) {
   return fiobj_num_new_bignum(num);
 }
 
-#if DEBUG
+#ifdef DEBUG
 void fiobj_test_numbers(void);
 #endif
 

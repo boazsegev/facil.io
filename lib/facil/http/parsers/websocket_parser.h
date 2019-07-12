@@ -18,7 +18,7 @@ must be implemented by the including file (the callbacks).
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#if DEBUG
+#ifdef DEBUG
 #include <stdio.h>
 #endif
 /* *****************************************************************************
@@ -426,7 +426,7 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
   volatile struct websocket_packet_info_s info =
       websocket_buffer_peek(buffer, len);
   if (!info.head_length) {
-#if DEBUG
+#ifdef DEBUG
     fprintf(stderr, "ERROR: WebSocket protocol error - malicious header.\n");
 #endif
     websocket_on_protocol_error(udata);
@@ -449,7 +449,7 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
       ((uint8_t *)(&mask))[3] = ((uint8_t *)(payload))[-1];
       websocket_xmask(payload, info.packet_length, mask);
     } else if (require_masking && info.packet_length) {
-#if DEBUG
+#ifdef DEBUG
       fprintf(stderr, "ERROR: WebSocket protocol error - unmasked data.\n");
 #endif
       websocket_on_protocol_error(udata);
@@ -484,7 +484,7 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
       websocket_on_protocol_pong(udata, payload, info.packet_length);
       break;
     default:
-#if DEBUG
+#ifdef DEBUG
       fprintf(stderr, "ERROR: WebSocket protocol error - unknown opcode %u\n",
               (unsigned int)(pos[0] & 15));
 #endif

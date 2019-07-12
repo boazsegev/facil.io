@@ -155,7 +155,7 @@ intptr_t fiobj_data_puts(FIOBJ io, void *buffer, uintptr_t length);
  */
 void fiobj_data_assert_dynamic(FIOBJ io);
 
-#if DEBUG
+#ifdef DEBUG
 void fiobj_data_test(void);
 #endif
 

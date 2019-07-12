@@ -128,7 +128,7 @@ Array compacting (untested)
  */
 void fiobj_ary_compact(FIOBJ ary);
 
-#if DEBUG
+#ifdef DEBUG
 void fiobj_test_array(void);
 #endif
 

@@ -335,7 +335,7 @@ void fiobj_hash_clear(const FIOBJ hash) {
 Simple Tests
 ***************************************************************************** */
 
-#if DEBUG
+#ifdef DEBUG
 void fiobj_test_hash(void) {
   fprintf(stderr, "=== Testing Hash\n");
 #define TEST_ASSERT(cond, ...)                                                 \

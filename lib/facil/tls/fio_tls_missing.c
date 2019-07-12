@@ -27,7 +27,7 @@ Feel free to copy, use and enjoy according to the license provided.
 /* TODO: delete me! */
 #undef FIO_TLS_WEAK
 #define FIO_TLS_WEAK __attribute__((weak))
-#if !FIO_IGNORE_TLS_IF_MISSING
+#ifndef FIO_IGNORE_TLS_IF_MISSING
 #undef REQUIRE_LIBRARY
 #define REQUIRE_LIBRARY()                                                      \
   FIO_LOG_FATAL("No supported SSL/TLS library available.");                    \

@@ -190,7 +190,7 @@ int http_set_header2(http_s *r, fio_str_info_s n, fio_str_info_s v) {
  */
 #undef http_set_cookie
 int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
-#if DEBUG
+#ifdef DEBUG
   FIO_ASSERT(h, "Can't set cookie for NULL HTTP handler!");
 #endif
   if (HTTP_INVALID_HANDLE(h) || cookie.name_len >= 32768 ||
@@ -2688,7 +2688,7 @@ fio_str_info_s http_status2str(uintptr_t status) {
 }
 #undef HTTP_SET_STATUS_STR
 
-#if DEBUG
+#ifdef DEBUG
 void http_tests(void) {
   fprintf(stderr, "=== Testing HTTP helpers\n");
   FIOBJ html_mime = http_mimetype_find("html", 4);

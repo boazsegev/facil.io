@@ -28,7 +28,7 @@ uint64_t fio_siphash13(const void *data, size_t len, uint64_t key1,
 #define fio_siphash(data, length, k1, k2)                                      \
   fio_siphash13((data), (length), (k1), (k2))
 
-#if DEBUG
+#ifdef DEBUG
 void fiobj_siphash_test(void);
 #else
 #define fiobj_siphash_test()

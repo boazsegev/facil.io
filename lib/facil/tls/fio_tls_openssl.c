@@ -14,7 +14,7 @@ Feel free to copy, use and enjoy according to the license provided.
  */
 #include "fio_tls.h"
 
-#if HAVE_OPENSSL
+#ifdef HAVE_OPENSSL
 #include <openssl/bio.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>

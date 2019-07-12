@@ -150,7 +150,7 @@ static void fio_json_on_json(json_parser_s *p) {
 /** the JSON parsing is complete */
 static void fio_json_on_error(json_parser_s *p) {
   fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
-#if DEBUG
+#ifdef DEBUG
   FIO_LOG_DEBUG("JSON on error called.");
 #endif
   fiobj_free((FIOBJ)fio_json_stack_get(&pr->stack, 0));
@@ -446,7 +446,7 @@ FIOBJ fiobj_obj2json(FIOBJ obj, uint8_t pretty) {
 Test
 ***************************************************************************** */
 
-#if DEBUG
+#ifdef DEBUG
 void fiobj_test_json(void) {
   fprintf(stderr, "=== Testing JSON parser (simple test)\n");
 #define TEST_ASSERT(cond, ...)                                                 \

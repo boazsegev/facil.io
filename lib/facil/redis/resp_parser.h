@@ -99,7 +99,7 @@ static int resp_on_parser_error(resp_parser_s *parser);
 Seeking the new line...
 ***************************************************************************** */
 
-#if FIO_MEMCHAR
+#ifdef FIO_MEMCHAR
 
 /**
  * This seems to be faster on some systems, especially for smaller distances.

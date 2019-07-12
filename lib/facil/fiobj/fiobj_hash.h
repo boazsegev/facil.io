@@ -165,7 +165,7 @@ int fiobj_hash_haskey(const FIOBJ hash, FIOBJ key);
  */
 void fiobj_hash_clear(const FIOBJ hash);
 
-#if DEBUG
+#ifdef DEBUG
 void fiobj_test_hash(void);
 #endif
 
