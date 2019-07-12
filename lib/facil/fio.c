@@ -220,7 +220,7 @@ typedef struct {
 } fio_data_s;
 
 /** The logging level */
-#if DEBUG
+#ifdef DEBUG
 int FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
 #else
 int FIO_LOG_LEVEL = FIO_LOG_LEVEL_INFO;
@@ -869,7 +869,7 @@ static fio_task_queue_s task_queue_urgent = {
 Internal Task API
 ***************************************************************************** */
 
-#if DEBUG
+#ifdef DEBUG
 static size_t fio_defer_count_alloc, fio_defer_count_dealloc;
 #define COUNT_ALLOC fio_atomic_add(&fio_defer_count_alloc, 1)
 #define COUNT_DEALLOC fio_atomic_add(&fio_defer_count_dealloc, 1)
@@ -1352,7 +1352,7 @@ static struct sigaction fio_old_sig_chld;
 static struct sigaction fio_old_sig_pipe;
 static struct sigaction fio_old_sig_term;
 static struct sigaction fio_old_sig_int;
-#if !FIO_DISABLE_HOT_RESTART
+#ifndef FIO_DISABLE_HOT_RESTART
 static struct sigaction fio_old_sig_usr1;
 #endif
 
@@ -1391,7 +1391,7 @@ void fio_reap_children(void) {
 static void sig_int_handler(int sig) {
   struct sigaction *old = NULL;
   switch (sig) {
-#if !FIO_DISABLE_HOT_RESTART
+#ifndef FIO_DISABLE_HOT_RESTART
   case SIGUSR1:
     fio_signal_children_flag = 1;
     old = &fio_old_sig_usr1;
@@ -1441,7 +1441,7 @@ static void fio_signal_handler_setup(void) {
     perror("couldn't set signal handler");
     return;
   };
-#if !FIO_DISABLE_HOT_RESTART
+#ifndef FIO_DISABLE_HOT_RESTART
   if (sigaction(SIGUSR1, &act, &fio_old_sig_usr1)) {
     perror("couldn't set signal handler");
     return;
@@ -1465,7 +1465,7 @@ void fio_signal_handler_reset(void) {
   sigaction(SIGPIPE, &fio_old_sig_pipe, &old);
   if (fio_old_sig_chld.sa_handler)
     sigaction(SIGCHLD, &fio_old_sig_chld, &old);
-#if !FIO_DISABLE_HOT_RESTART
+#ifndef FIO_DISABLE_HOT_RESTART
   sigaction(SIGUSR1, &fio_old_sig_usr1, &old);
   memset(&fio_old_sig_usr1, 0, sizeof(fio_old_sig_usr1));
 #endif
@@ -1622,7 +1622,7 @@ Section Start Marker
 
 
 ***************************************************************************** */
-#if FIO_ENGINE_EPOLL
+#ifdef FIO_ENGINE_EPOLL
 #include <sys/epoll.h>
 
 /**
@@ -2680,7 +2680,7 @@ read_error:
   return -1;
 }
 
-#if USE_SENDFILE_LINUX /* linux sendfile API */
+#ifdef USE_SENDFILE_LINUX /* linux sendfile API */
 #include <sys/sendfile.h>
 
 static int fio_sock_sendfile_from_fd(int fd, fio_packet_s *packet) {
@@ -3583,7 +3583,7 @@ static void __attribute__((constructor)) fio_lib_init(void) {
     fio_poll_init();
     /* initialize the cluster engine */
     fio_pubsub_initialize();
-#if DEBUG
+#ifdef DEBUG
 #if FIO_ENGINE_POLL
     FIO_LOG_INFO("facil.io " FIO_VERSION_STRING " capacity initialization:\n"
                  "*    Meximum open files %zu out of %zu\n"
@@ -3717,7 +3717,7 @@ static void fio_cycle_schedule_events(void) {
     fio_signal_children_flag = 0;
     fio_cluster_signal_children();
   }
-  int events = fio_poll();
+  int events = (int)fio_poll();
   if (events < 0) {
     return;
   }
@@ -3843,7 +3843,7 @@ static void *fio_sentinel_worker_thread(void *arg) {
   } else if (child) {
     int status;
     waitpid(child, &status, 0);
-#if DEBUG
+#ifdef DEBUG
     if (fio_data->active) { /* !WIFEXITED(status) || WEXITSTATUS(status) */
       if (!WIFEXITED(status) || WEXITSTATUS(status)) {
         FIO_LOG_FATAL("Child worker (%d) crashed. Stopping services.", child);
@@ -5850,7 +5850,7 @@ static struct cluster_data_s {
 
 static void fio_cluster_data_cleanup(int delete_file) {
   if (delete_file && cluster_data.name[0]) {
-#if DEBUG
+#ifdef DEBUG
     FIO_LOG_DEBUG("(%d) unlinking cluster's Unix socket.", (int)getpid());
 #endif
     unlink(cluster_data.name);
@@ -6197,7 +6197,7 @@ static void fio_cluster_listen_on_close(intptr_t uuid,
   free(protocol);
   cluster_data.uuid = -1;
   if (fio_parent_pid() == getpid()) {
-#if DEBUG
+#ifdef DEBUG
     FIO_LOG_DEBUG("(%d) stopped listening for cluster connections",
                   (int)getpid());
 #endif
@@ -6357,7 +6357,7 @@ static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
     return;
   fio_str_info_s ch_name = {.data = ch->name, .len = ch->name_len};
   fio_str_info_s msg = {.data = NULL, .len = 0};
-#if DEBUG
+#ifdef DEBUG
   FIO_LOG_DEBUG("(%d) informing root about: %s (%zu) msg type %d",
                 (int)getpid(), ch_name.data, ch_name.len,
                 (ch->match ? (add ? FIO_CLUSTER_MSG_PATTERN_SUB
@@ -6772,7 +6772,7 @@ Allocator default settings
 FIO_FORCE_MALLOC handler
 ***************************************************************************** */
 
-#if FIO_FORCE_MALLOC
+#ifdef FIO_FORCE_MALLOC
 
 void *fio_malloc(size_t size) { return calloc(size, 1); }
 
@@ -7014,7 +7014,7 @@ static arena_s *arenas;
 /* The per-CPU arena array. */
 static long double on_malloc_zero;
 
-#if DEBUG
+#ifdef DEBUG
 /* The per-CPU arena array. */
 static size_t fio_mem_block_count_max;
 /* The per-CPU arena array. */
@@ -7254,7 +7254,7 @@ error:
 Allocator Initialization (initialize arenas and allocate a block for each CPU)
 ***************************************************************************** */
 
-#if DEBUG
+#ifdef DEBUG
 void fio_memory_dump_missing(void) {
   fprintf(stderr, "\n ==== Attempting Memory Dump (will crash) ====\n");
   if (fio_ls_embd_is_empty(&memory.available)) {
@@ -7322,7 +7322,7 @@ static void fio_mem_destroy(void) {
     FIO_LS_EMBD_FOR(&memory.available, node) { ++count; }
     FIO_LOG_DEBUG("Memory blocks in pool: %zu (%zu blocks per allocation).",
                   count, (size_t)FIO_MEMORY_BLOCKS_PER_ALLOCATION);
-#if FIO_MEM_DUMP
+#ifdef FIO_MEM_DUMP
     fio_memory_dump_missing();
 #endif
   }
@@ -7334,7 +7334,7 @@ Memory allocation / deacclocation API
 ***************************************************************************** */
 
 void *fio_malloc(size_t size) {
-#if FIO_OVERRIDE_MALLOC
+#ifdef FIO_OVERRIDE_MALLOC
   if (!arenas)
     fio_mem_init();
 #endif
@@ -7426,7 +7426,7 @@ void *fio_mmap(size_t size) {
 /* *****************************************************************************
 FIO_OVERRIDE_MALLOC - override glibc / library malloc
 ***************************************************************************** */
-#if FIO_OVERRIDE_MALLOC
+#ifdef FIO_OVERRIDE_MALLOC
 void *malloc(size_t size) { return fio_malloc(size); }
 void *calloc(size_t size, size_t count) { return fio_calloc(size, count); }
 void free(void *ptr) { fio_free(ptr); }
@@ -7575,7 +7575,7 @@ Section Start Marker
 SipHash
 ***************************************************************************** */
 
-#if __BIG_ENDIAN__ /* SipHash is Little Endian */
+#ifdef __BIG_ENDIAN__ /* SipHash is Little Endian */
 #define sip_local64(i) fio_bswap64((i))
 #else
 #define sip_local64(i) (i)
@@ -8314,7 +8314,7 @@ char *fio_sha2_result(fio_sha2_s *s) {
     s->length.words[0] = fio_lton64(s->length.words[0]);
     s->length.words[1] = fio_lton64(s->length.words[1]);
 
-#if !__BIG_ENDIAN__
+#ifndef __BIG_ENDIAN__
     {
       uint_fast64_t tmp = s->length.words[0];
       s->length.words[0] = s->length.words[1];
@@ -8700,7 +8700,7 @@ Section Start Marker
 
 ***************************************************************************** */
 
-#if DEBUG
+#ifdef DEBUG
 
 // clang-format off
 #if defined(HAVE_OPENSSL)

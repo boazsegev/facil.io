@@ -22,7 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if DEBUG
+#ifdef DEBUG
 #include <stdio.h>
 #endif
 
@@ -345,7 +345,7 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
     }
     case '{':
       if (parser->key) {
-#if DEBUG
+#ifdef DEBUG
         fprintf(stderr, "ERROR: JSON key can't be a Hash.\n");
 #endif
         goto error;
@@ -360,13 +360,13 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
       break;
     case '}':
       if ((parser->dict & 1) == 0) {
-#if DEBUG
+#ifdef DEBUG
         fprintf(stderr, "ERROR: JSON dictionary closure error.\n");
 #endif
         goto error;
       }
       if (!parser->key) {
-#if DEBUG
+#ifdef DEBUG
         fprintf(stderr, "ERROR: JSON dictionary closure missing key value.\n");
         goto error;
 #endif
@@ -379,7 +379,7 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
       break;
     case '[':
       if (parser->key) {
-#if DEBUG
+#ifdef DEBUG
         fprintf(stderr, "ERROR: JSON key can't be an array.\n");
 #endif
         goto error;

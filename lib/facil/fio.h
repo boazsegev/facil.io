@@ -317,7 +317,7 @@ Memory pool / custom allocator for short lived objects
 ***************************************************************************** */
 
 /* inform the compiler that the returned value is aligned on 16 byte marker */
-#if FIO_FORCE_MALLOC
+#ifdef FIO_FORCE_MALLOC
 #define FIO_ALIGN
 #define FIO_ALIGN_NEW
 #elif __clang__ || __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ > 8)
@@ -494,7 +494,7 @@ int __attribute__((weak)) FIO_LOG_LEVEL;
   }
 #endif
 
-#if DEBUG
+#ifdef DEBUG
 #define FIO_ASSERT_DEBUG(cond, ...)                                            \
   if (!(cond)) {                                                               \
     FIO_LOG_DEBUG(__VA_ARGS__);                                                \
@@ -2191,7 +2191,7 @@ FIO_FUNC inline uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
 #error Could not detect byte order on this system.
 #endif
 
-#if __BIG_ENDIAN__
+#ifdef __BIG_ENDIAN__
 
 /** Local byte order to Network byte order, 16 bit integer */
 #define fio_lton16(i) (i)
@@ -2428,7 +2428,7 @@ uint8_t __attribute__((weak)) fio_hash_secret_marker2;
 #define FIO_HASH_SECRET_SEED64_2 ((uintptr_t)&fio_hash_secret_marker2)
 #endif
 
-#if FIO_USE_RISKY_HASH
+#ifdef FIO_USE_RISKY_HASH
 #define FIO_HASH_FN(data, length, key1, key2)                                  \
   fio_risky_hash((data), (length),                                             \
                  ((uint64_t)(key1) >> 19) | ((uint64_t)(key2) << 27))
@@ -2810,7 +2810,7 @@ int fio_base64_decode(char *target, char *encoded, int base64_len);
 Testing
 ***************************************************************************** */
 
-#if DEBUG
+#ifdef DEBUG
 void fio_test(void);
 #else
 #define fio_test()
@@ -3014,7 +3014,7 @@ FIO_FUNC inline void fio_lock(fio_lock_i *lock) {
   }
 }
 
-#if DEBUG_SPINLOCK
+#ifdef DEBUG_SPINLOCK
 /** Busy waits for a lock, reports contention. */
 FIO_FUNC inline void fio_lock_dbg(fio_lock_i *lock, const char *file,
                                   int line) {
@@ -4970,7 +4970,7 @@ FIO_FUNC inline void FIO_NAME(concat)(FIO_NAME(s) * dest, FIO_NAME(s) * src) {
   if (!added || !dest)
     return;
   FIO_NAME(__require_on_top)(dest, added);
-#if FIO_ARY_COPY_IS_SIMPLE
+#ifdef FIO_ARY_COPY_IS_SIMPLE
   memcpy(dest->arry + dest->end, src->arry + src->start,
          added * sizeof(*dest->arry));
 #else
@@ -5217,7 +5217,7 @@ FIO_FUNC inline void FIO_NAME(compact)(FIO_NAME(s) * ary) {
 Array Testing
 ***************************************************************************** */
 
-#if DEBUG
+#ifdef DEBUG
 #include <stdio.h>
 #define TEST_LIMIT 1016
 /**

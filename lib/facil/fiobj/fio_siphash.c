@@ -135,7 +135,7 @@ fio_siphash13(const void *data, size_t len, uint64_t key1, uint64_t key2) {
   return fio_siphash_xy(data, len, 1, 3, key1, key2);
 }
 
-#if DEBUG
+#ifdef DEBUG
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
