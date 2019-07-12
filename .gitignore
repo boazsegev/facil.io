@@ -5,6 +5,8 @@ Dockerfile
 libdump
 docs/_site
 lib/bearssl/
+build/
+build_dir/
 
 /src/
 
