@@ -11136,7 +11136,8 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
     end = clock();
   }
   fio___dynamic_types_test___random_buffer(
-      rs, test_len, "rand (system-normal ignoring missing bits)", end - start);
+      rs, test_len, "rand (system - naive, ignoring missing bits)",
+      end - start);
 
   memset(rs, 0, sizeof(*rs) * test_len);
   {
@@ -11181,7 +11182,7 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
     }
     rand_bits = 64 - rand_bits;
     char buffer[128] = {0};
-    snprintf(buffer, 128 - 14, "rand (system-fixed returns %d random bits)",
+    snprintf(buffer, 128 - 14, "rand (system - fixed, testing %d random bits)",
              (int)rand_bits);
     fio___dynamic_types_test___random_buffer(rs, test_len, buffer, end - start);
   }

@@ -31,11 +31,8 @@ Benchmark with higher load:
 #include <fio.h>
 
 /* use the fio_str_s helpers */
-#define FIO_INCLUDE_STR
-#include <fio.h>
-
-/* use the CLI extension */
-#include <fio_cli.h>
+#define FIO_STRING_NAME fio_str
+#include <fio-stl.h>
 
 // #include "http.h" /* for date/time helper */
 #include "http1_parser.h"
@@ -92,16 +89,16 @@ int on_http_request(light_http_s *http) {
                                   "Content-Type: text/plain\r\n"
                                   "\r\n"
                                   "Hello Wolrld!";
-    fio_write2(http->uuid, .data.buffer = HTTP_RESPONSE,
-               .length = sizeof(HTTP_RESPONSE) - 1,
+    fio_write2(http->uuid, .data.buf = HTTP_RESPONSE,
+               .len = sizeof(HTTP_RESPONSE) - 1,
                .after.dealloc = FIO_DEALLOC_NOOP);
   } else {
     /* an allocated, dynamic, HTTP/1.1 response */
     light_http_send_response(
-        http->uuid, 200, (fio_str_info_s){.len = 2, .data = "OK"}, 1,
-        (fio_str_info_s[][2]){{{.len = 12, .data = "Content-Type"},
-                               {.len = 10, .data = "text/plain"}}},
-        (fio_str_info_s){.len = 13, .data = "Hello Wolrld!"});
+        http->uuid, 200, (fio_str_info_s){.len = 2, .buf = "OK"}, 1,
+        (fio_str_info_s[][2]){{{.len = 12, .buf = "Content-Type"},
+                               {.len = 10, .buf = "text/plain"}}},
+        (fio_str_info_s){.len = 13, .buf = "Hello Wolrld!"});
   }
   return 0;
 }
@@ -143,7 +140,7 @@ The HTTP/1.1 Parsing Callbacks - we need to implememnt everything for the parser
 /** called when a request was received. */
 int light_http1_on_request(http1_parser_s *parser) {
   int ret = on_http_request(parser2pr(parser));
-  fio_str_free(&parser2pr(parser)->body);
+  fio_str_destroy(&parser2pr(parser)->body);
   parser2pr(parser)->reset = 1;
   return ret;
 }
@@ -247,7 +244,7 @@ void light_http_on_open(intptr_t uuid, void *udata) {
       .protocol.on_data = light_http_on_data,   /* setting the data callback */
       .protocol.on_close = light_http_on_close, /* setting the close callback */
       .uuid = uuid,
-      .body = FIO_STR_INIT,
+      .body = FIO_STRING_INIT,
   };
   /* timeouts are important. timeouts are in seconds. */
   fio_timeout_set(uuid, 5);
@@ -318,7 +315,7 @@ void light_http_on_data(intptr_t uuid, fio_protocol_s *pr) {
 /* this will be called when the connection is closed. */
 void light_http_on_close(intptr_t uuid, fio_protocol_s *pr) {
   /* in case we lost connection midway */
-  fio_str_free(&((light_http_s *)pr)->body);
+  fio_str_destroy(&((light_http_s *)pr)->body);
   /* free our protocol data and resources */
   free(pr);
   (void)uuid;
@@ -341,11 +338,11 @@ void light_http_send_response(intptr_t uuid, int status,
   }
   if (status < 100 || status > 999)
     status = 500;
-  fio_str_s *response = fio_str_new2();
-  fio_str_capa_assert(response, total_len);
+  fio_str_s *response = fio_str_new();
+  fio_str_reserve(response, total_len);
   fio_str_write(response, "HTTP/1.1 ", 9);
   fio_str_write_i(response, status);
-  fio_str_write(response, status_str.data, status_str.len);
+  fio_str_write(response, status_str.buf, status_str.len);
   fio_str_write(response, "\r\nContent-Length:", 17);
   fio_str_write_i(response, body.len);
   fio_str_write(response, "\r\n", 2);
@@ -357,13 +354,15 @@ void light_http_send_response(intptr_t uuid, int status,
   // *pos++ = '\n';
 
   for (size_t i = 0; i < header_count; ++i) {
-    fio_str_write(response, headers[i][0].data, headers[i][0].len);
+    fio_str_write(response, headers[i][0].buf, headers[i][0].len);
     fio_str_write(response, ":", 1);
-    fio_str_write(response, headers[i][1].data, headers[i][1].len);
+    fio_str_write(response, headers[i][1].buf, headers[i][1].len);
     fio_str_write(response, "\r\n", 2);
   }
-  fio_str_write(response, "\r\n", 2);
-  if (body.len && body.data)
-    fio_str_write(response, body.data, body.len);
-  fio_str_send_free2(uuid, response);
+  fio_str_info_s final = fio_str_write(response, "\r\n", 2);
+  if (body.len && body.buf)
+    final = fio_str_write(response, body.buf, body.len);
+  fio_write2(uuid, .data.buf = response, .len = final.len,
+             .offset = (uintptr_t)final.buf - (uintptr_t)response,
+             .after.dealloc = (void (*)(void *))fio_str_free);
 }
