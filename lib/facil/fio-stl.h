@@ -3124,6 +3124,10 @@ void example(void) {
 #define FIO_ARRAY_TYPE_CMP_SIMPLE 1
 #endif
 
+#ifndef FIO_ARRAY_TYPE_CONCAT_COPY
+#define FIO_ARRAY_TYPE_CONCAT_COPY FIO_ARRAY_TYPE_COPY
+#define FIO_ARRAY_TYPE_CONCAT_SIMPLE FIO_ARRAY_TYPE_COPY_SIMPLE
+#endif
 /**
  * The FIO_ARRAY_DESTROY_AFTER_COPY macro should be set if
  * FIO_ARRAY_TYPE_DESTROY should be called after FIO_ARRAY_TYPE_COPY when an
@@ -3471,7 +3475,8 @@ SFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, concat)(FIO_ARRAY_PTR dest_,
       (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(src_));
   if (!dest || !src || !src->end || src->end - src->start == 0)
     return dest_;
-  if (dest->capa + src->start > src->end + dest->end) {
+  /* avoid '-' in (dest->capa < dest->end + src->end - src->start) */
+  if (dest->capa + src->start < src->end + dest->end) {
     /* insufficiant memory, (re)allocate */
     uint32_t new_capa = dest->end + (src->end - src->start);
     FIO_ARRAY_TYPE *tmp = (FIO_ARRAY_TYPE *)FIO_MEM_REALLOC_(
@@ -3483,12 +3488,12 @@ SFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, concat)(FIO_ARRAY_PTR dest_,
     dest->capa = new_capa;
   }
   /* copy data */
-#if FIO_ARRAY_TYPE_COPY_SIMPLE
+#if FIO_ARRAY_TYPE_COPY_SIMPLE && FIO_ARRAY_TYPE_CONCAT_SIMPLE
   memcpy(dest->ary + dest->end, src->ary + src->start, src->end - src->start);
 #else
   for (uint32_t i = 0; i + src->start < src->end; ++i) {
-    FIO_ARRAY_TYPE_COPY((dest->ary + dest->end + i)[0],
-                        (src->ary + i + src->start)[0]);
+    FIO_ARRAY_TYPE_CONCAT_COPY((dest->ary + dest->end + i)[0],
+                               (src->ary + i + src->start)[0]);
   }
 #endif
   /* update dest */
@@ -3892,6 +3897,8 @@ Dynamic Arrays - cleanup
 #undef FIO_ARRAY_DESTROY_AFTER_COPY
 #undef FIO_ARRAY_TYPE_CMP
 #undef FIO_ARRAY_TYPE_CMP_SIMPLE
+#undef FIO_ARRAY_TYPE_CONCAT_SIMPLE
+#undef FIO_ARRAY_TYPE_CONCAT_COPY
 #undef FIO_ARRAY_PADDING
 #undef FIO_ARRAY_SIZE2WORDS
 #undef FIO_ARRAY_POS2ABS
@@ -9431,6 +9438,10 @@ FIOBJ Arrays
 #define FIO_ARRAY_TYPE FIOBJ
 #define FIO_ARRAY_TYPE_CMP(a, b) FIO_NAME_BL(fiobj, eq)((a), (b))
 #define FIO_ARRAY_TYPE_DESTROY(o) fiobj_free(o)
+#define FIO_ARRAY_TYPE_CONCAT_COPY(dest, obj)                                  \
+  do {                                                                         \
+    dest = fiobj_dup(obj);                                                     \
+  } while (0)
 #define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_ARRAY)
 #define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
 #define FIO_PTR_TAG_TYPE FIOBJ
@@ -12741,6 +12752,35 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
     fiobj_free(popped);
     fiobj_free(set);
     fiobj_free(removed);
+  }
+  {
+    fprintf(stderr, "* Testing FIOBJ hash ownership after concat.\n");
+    FIOBJ a1, a2;
+    a1 = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
+    a2 = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
+    for (int i = 0; i < TEST_REPEAT; ++i) {
+      FIOBJ str = fiobj_str_new();
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write_i)(str, i);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(a1, str);
+    }
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), concat)(a2, a1);
+    fiobj_free(a1);
+    for (int i = 0; i < TEST_REPEAT; ++i) {
+      FIOBJ_STR_TEMP_VAR(tmp);
+      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write_i)(tmp, i);
+      TEST_ASSERT(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(FIO_NAME(
+                      FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), get)(a2, i)) ==
+                      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(tmp),
+                  "string length zeroed out - string freed?");
+      TEST_ASSERT(
+          !memcmp(FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(tmp),
+                  FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(FIO_NAME(
+                      FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), get)(a2, i)),
+                  FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(tmp)),
+          "string data error - string freed?");
+      FIOBJ_STR_TEMP_DESTROY(tmp);
+    }
+    fiobj_free(a2);
   }
   {
     fprintf(stderr, "* Testing FIOBJ hash ownership.\n");

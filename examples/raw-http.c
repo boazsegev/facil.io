@@ -30,7 +30,7 @@ Benchmark with higher load:
 /* include the core library, without any extensions */
 #include <fio.h>
 
-/* use the fio_str_s helpers */
+/* define String helpers for managing response and request body */
 #define FIO_STRING_NAME fio_str
 #include <fio-stl.h>
 
