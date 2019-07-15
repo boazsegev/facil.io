@@ -7,9 +7,9 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #define H_HTTP_H
 
-#include <fio.h>
-
 #include <fiobj.h>
+
+#include <fio.h>
 
 #include <time.h>
 

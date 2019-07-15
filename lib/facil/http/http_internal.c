@@ -1235,6 +1235,7 @@ static void http_lib_init(void *ignr_) {
   REGISTER_MIME("zir", "application/vnd.zul");
   REGISTER_MIME("zirz", "application/vnd.zul");
   REGISTER_MIME("zmm", "application/vnd.handheld-entertainment+xml");
+
 #undef REGISTER_MIME
   http_mimetype_stats();
 }

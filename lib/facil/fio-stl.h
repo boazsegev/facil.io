@@ -9370,7 +9370,7 @@ FIOBJ Strings
 
 /* Creates a new FIOBJ string object, copying the data to the new string. */
 FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
-                         new_cstr)(const char *ptr, uint32_t len) {
+                         new_cstr)(const char *ptr, size_t len) {
   FIOBJ s = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
   FIO_ASSERT_ALLOC(s);
   FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(s, ptr, len);
@@ -9379,7 +9379,7 @@ FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
 
 /* Creates a new FIOBJ string object with (at least) the requested capacity. */
 FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
-                         new_buf)(uint32_t capa) {
+                         new_buf)(size_t capa) {
   FIOBJ s = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
   FIO_ASSERT_ALLOC(s);
   FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), reserve)(s, capa);

@@ -510,28 +510,34 @@ lib_build: $(LIB_OBJS)
 #### no disassembler (normal / expected state)
 ifndef DISAMS
 $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
+	@echo "* Compiling $<"
 	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CFLAGS)
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
+	@echo "- compiling $<"
 	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
 
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
+	@echo "* Compiling $<"
 	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
 
 #### add diassembling stage (testing / slower)
 else
 $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
+	@echo "* Compiling $<"
 	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CFLAGS)
 	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
+	@echo "* Compiling $<"
 	@$(CPP) -o $@ -c $< $(CFLAGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
 	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
+	@echo "* Compiling $<"
 	@$(CPP) -o $@ -c $< $(CFLAGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
 	@$(DISAMS) $@ > $@.s
