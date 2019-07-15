@@ -48,7 +48,7 @@ Thank you for your interest in contributing to the facil.io website and document
 
 NOTICE: `_SOURCE` is the folder that contains the actual documentation files. Edits to the documentation should be placed in this folder.
 
-Anything outside the `_SOURCE` folder (including this file) is created automatically by the `server` script and shouldn't be edited.
+Anything outside the `_SOURCE` folder (including this file) is rendered by the `server` script and shouldn't be edited.
 
 If you want to contribute to the documentation, please do so by opening a Pull Request (PR) with updates to the files in the `_SOURCE` folder.
 
@@ -68,6 +68,14 @@ IO.binwrite(File.join(STATIC_ROOT, "README.md"), README)
 SCHEMA_ABOUT = "facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.".freeze
 
 # Schema JSON for the layout template
+SCHEMA_AUTHOR = {
+  '@type' => 'Person',
+  name: 'Bo (Myst)',
+  url: 'http://stackoverflow.com/users/4025095/myst',
+  email: 'bo(at)facil.io'
+}
+
+# Schema JSON for the layout template
 SCHEMA_ORG = {
   '@context' => 'http://schema.org',
   '@type' => 'WebSite',
@@ -81,31 +89,17 @@ SCHEMA_ORG = {
   #     target: "http://example.com/search?&q={query}",
   #     "query-input" => "required",
   #   },
-  author: [
-    {
-      '@type' => 'Person',
-      name: 'Bo (Myst)',
-      url: 'http://stackoverflow.com/users/4025095/myst',
-      email: 'bo(at)facil.io'
-    }
-  ],
+  author: [ SCHEMA_AUTHOR ],
   sourceOrganization: {
     '@context' => 'http://schema.org',
     '@type' => 'Organization',
-    name: 'Plezi',
+    name: 'facil.io',
     url: 'http://facil.io',
     description: SCHEMA_ABOUT,
     logo: 'http://facil.io/website/logo/facil-io.svg',
     image: 'http://facil.io/website/logo/facil-io.svg',
     email: 'bo(at)facil.io',
-    member: [
-      {
-        '@type' => 'Person',
-        name: 'Bo (Myst)',
-        url: 'http://stackoverflow.com/users/4025095/myst',
-        email: 'bo(at)facil.io'
-      }
-    ]
+    member: [ SCHEMA_AUTHOR ]
   }
 }.to_json
 
@@ -114,7 +108,7 @@ SCHEMA_ORG = {
 #
 # This module does it all - it "bakes" pages into static pages as well as allows Rack to serve the updated version.
 #
-# In production mode (which we don't need), the static pages will be served directly once they were baked (no live updates).
+# In production mode (which we don't really use), the static pages will be served directly once they were baked (no live updates).
 module APP
 
   # for the sitemap data
@@ -128,47 +122,42 @@ module APP
   # Converts templates to static pages and saves the pages to the static location.
   def self.bake_all
     @sitemap.clear
-    # things that need to be rendered
-    @extensions.keys.each do |k|
-      Dir[File.join SOURCE_ROOT, '**', "*#{k}"].each do |pt|
-      next if EXCLUDE.include?( File.basename(pt)) || File.basename(pt).start_with?('_')
+    # test each file in the SOURCE_ROOT folder and sub-folders. Should it be rendered or copied to the STATIC_ROOT tree?
+    Dir[File.join SOURCE_ROOT, '**', "*"].each do |pt|
+      file_basename = File.basename(pt)
+      file_extension = File.extname(pt)
+      # stuff we skip
+      next if file_basename.start_with?('_') || EXCLUDE.include?(file_basename) || File.directory?(pt) # || File.expand_path(pt) == File.expand_path(__FILE__)
+      if(@extensions[file_extension])
+        # should be rendered - route to application rendering path
         begin
-          env = {PATH_INFO => pt[SOURCE_ROOT.length..(-1-k.length)]}
-          APP.call(env)
+          env = {PATH_INFO => pt[SOURCE_ROOT.length..(-1-file_extension.length)]}
+          APP.call(env) # will create the file (in production, file is onnly created if missing)
           puts "INFO: pre-baked: #{env[PATH_INFO]}"
           @sitemap << env[PATH_INFO]
         rescue => e
           puts "WARN: couldn't pre-bake #{pt}: #{e.message}"
           raise e
         end
-      end
-    end
-    # things that need to be copied
-    Dir[File.join SOURCE_ROOT, '**', "*"].each do |pt|
-      next if EXCLUDE.include?( File.basename(pt))  || File.basename(pt).start_with?('_')
-      unless @extensions[File.extname(pt)] || File.directory?(pt) || (File.expand_path(pt) == File.expand_path(__FILE__))
+      else
+        # should be copied
         begin
           target = pt[SOURCE_ROOT.length..-1]
-          bake target, IO.binread(pt)
-          puts "INFO: copied #{pt} to #{target}"
+          save2static target, IO.binread(pt)
+          puts "INFO: copied #{target}"
           # @sitemap << target
         rescue => e
-          puts "WARN: bake copy failed at #{pt}: #{e.message}"
+          puts "WARN: copy failed at #{pt}: #{e.message}"
         end
       end
     end
-    # output sitemap
-    out = "".dup
-    @sitemap.each {|url| out << "http://facil.io#{url[0...-5]}\r\n" if File.extname(url) == ".html" }
-    out << "\r\n"
-    IO.binwrite File.join(STATIC_ROOT, "sitemap.txt"), out
   end
 
 # define different Rack application methods, depending on the environment.
 if ENV['RACK_ENV'] == 'production'
   # No live updates mean that this shouldn't have been called (maybe except to result in 404 errors)
   def self.call env
-    puts "WARN: render was requested for #{env[PATH_INFO]}" unless env.keys.length == 1
+    puts "WARN: render was requested for #{env[PATH_INFO]}" unless env.count == 1
     if (File.directory?( "#{STATIC_ROOT}#{env[PATH_INFO]}"))
       if (env[PATH_INFO][-1] == '/')
         env[PATH_INFO] << 'index.html'.freeze
@@ -177,6 +166,7 @@ if ENV['RACK_ENV'] == 'production'
       end
     end
     env[PATH_INFO] << ".html" if(File.extname(env[PATH_INFO]) == "")
+    # use iodine's X-Sendfile support
     [200, {X_SENDFILE => "#{STATIC_ROOT}#{env[PATH_INFO]}"}, ["".freeze]]
   end
 else
@@ -191,6 +181,7 @@ else
     end
     env[PATH_INFO] << ".html" if(File.extname(env[PATH_INFO]) == "".freeze)
     data = render(env[PATH_INFO]) if(@bakers.include?(File.extname(env[PATH_INFO])))
+    # use iodine's X-Sendfile support
     [200, {X_SENDFILE => "#{STATIC_ROOT}#{env[PATH_INFO]}"}, [data]]
   end
 
@@ -202,7 +193,7 @@ end
     base = name[0..(-1-(File.extname(path).length))]
     data = nil
     @extensions.keys.each { |k| data = try_name(name, k) || try_name(base, k); break if data }
-    bake path, data if data
+    save2static path, data if data
   end
 
   # Attempt rendering for a specific extension
@@ -213,7 +204,7 @@ end
   end
 
   # Save a (rendered) result
-  def self.bake path, data
+  def self.save2static path, data
     return unless data
     path = "#{STATIC_ROOT}#{path}"
     FileUtils.mkpath File.dirname(path)
@@ -221,7 +212,50 @@ end
     data
   end
 
-  # "Simple" markdown rendering
+  # slim rendering (support variables and code blocks)
+  @extensions['.slim'] = proc do |name, vars, block|
+    engine = (Slim::Template.new { IO.binread(name).force_encoding(::Encoding::UTF_8) })
+    if(block)
+      engine.render((vars || {}), &block)
+    else
+      engine.render((vars || {}))
+    end
+  end
+
+  # Common SASS options
+  SASS_OPTIONS = { cache_store: Sass::CacheStores::Memory.new, style: (ENV['SASS_STYLE'] || ((ENV['ENV'] || ENV['RACK_ENV']) == 'production' ? :compressed : :nested)) }.dup
+
+  # SASS rendering
+  @extensions['.scss'] = @extensions['.sass'] = proc do |name|
+    eng = Sass::Engine.for_file(name, SASS_OPTIONS)
+    map_name = name.gsub /s[ac]ss$/, 'map'
+    map_name.gsub! /^#{SOURCE_ROOT}/, ''
+    css, map = eng.render_with_sourcemap(File.basename(map_name))
+    save2static map_name, map.to_json(css_uri: File.basename(name))
+    css
+  end
+
+  # erb rendering (support variables and code blocks)
+  @extensions['.erb'] = proc do |name, vars, block|
+    vars ||= {}
+    engine = ::ERB.new(IO.binread(name).force_encoding(::Encoding::UTF_8))
+    if(block)
+      engine.result(vars.binding(&block), &block)
+    else
+      engine.result
+    end
+  end
+
+  # mustache rendering (supports variables and a single code blocks - but no embedded code)
+  @extensions['.mustache'] = proc do |name, vars, block|
+    vars ||= {}
+    vars[:yield] = block if(block)
+    Iodine::Mustache.render(name, vars)
+  end
+
+  # The rest of the code in this module is the Markdown rendering code,
+  # which gets more complicated to allow for mustache, fron-matter and layout options.
+
   MD_EXTENSIONS = { with_toc_data: true, strikethrough: true, autolink: true, fenced_code_blocks: true, no_intra_emphasis: true, tables: true, footnotes: true, underline: true, highlight: true }.freeze
   class RedcarpetWithRouge < ::Redcarpet::Render::HTML
     include Rouge::Plugins::Redcarpet
@@ -230,15 +264,15 @@ end
       super
     end
   end
-  # MD_RENDERER = ::Redcarpet::Markdown.new ::Redcarpet::Render::HTML.new(MD_EXTENSIONS.dup), MD_EXTENSIONS.dup
   MD_RENDERER = ::Redcarpet::Markdown.new RedcarpetWithRouge.new(MD_EXTENSIONS.dup), MD_EXTENSIONS.dup
   MD_RENDERER_TOC = Redcarpet::Markdown.new Redcarpet::Render::HTML_TOC.new(MD_EXTENSIONS.dup), MD_EXTENSIONS.dup
   YAML_FRONT_MATTER_REGEXP = /\A(---\s*\n.*?\n?)^((---|\.\.\.)\s*$\n?)/m.freeze
-
   SAFE_TYPES = [Symbol, Date, Time, Encoding, Struct, Regexp, Range, Set].freeze
+
   @extensions['.md'] = proc do |name|
     # read file
     data = IO.binread(name)
+
     # collect YAML front-matter
     vars = {}
     front = data.match YAML_FRONT_MATTER_REGEXP
@@ -246,12 +280,14 @@ end
       vars = YAML.safe_load(front[1], SAFE_TYPES) || {}
       data = front.post_match
     end
-    # some sane defaults, even if there's no fron matter
+
+    # some sane defaults, even if there's no front matter
     unless File.basename(name).start_with?('_')
       vars['layout'] ||= "layouts/layout.html.slim"
       vars['sidebar'] ||= "_versions.md"
       vars['toc'] = true unless vars.has_key?('toc')
     end
+
     # try mustache template rendering before rendering the Markdown
     begin
       data = Iodine::Mustache.render(name, vars, data)
@@ -284,40 +320,6 @@ end
     else
       # Return the data as is (no layout)
       data
-    end
-  end
-
-  # slim rendering (support variables and code blocks)
-  @extensions['.slim'] = proc do |name, vars, block|
-    engine = (Slim::Template.new { IO.binread(name).force_encoding(::Encoding::UTF_8) })
-    if(block)
-      engine.render((vars || {}), &block)
-    else
-      engine.render((vars || {}))
-    end
-  end
-
-  # Common SASS options
-  SASS_OPTIONS = { cache_store: Sass::CacheStores::Memory.new, style: (ENV['SASS_STYLE'] || ((ENV['ENV'] || ENV['RACK_ENV']) == 'production' ? :compressed : :nested)) }.dup
-
-  # SASS rendering
-  @extensions['.scss'] = @extensions['.sass'] = proc do |name|
-    eng = Sass::Engine.for_file(name, SASS_OPTIONS)
-    map_name = name.gsub /s[ac]ss$/, 'map'
-    map_name.gsub! /^#{SOURCE_ROOT}/, ''
-    css, map = eng.render_with_sourcemap(File.basename(map_name))
-    bake map_name, map.to_json(css_uri: File.basename(name))
-    css
-  end
-
-  # erb rendering (support variables and code blocks)
-  @extensions['.erb'] = proc do |name, vars, block|
-    vars ||= {}
-    engine = ::ERB.new(IO.binread(name).force_encoding(::Encoding::UTF_8))
-    if(block)
-      engine.result(vars.binding(&block), &block)
-    else
-      engine.result
     end
   end
 
