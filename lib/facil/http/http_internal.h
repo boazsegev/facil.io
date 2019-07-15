@@ -7,12 +7,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef H_HTTP_INTERNAL_H
 #define H_HTTP_INTERNAL_H
 
-#include <fio.h>
-/* subscription lists have a long lifetime */
-#define FIO_FORCE_MALLOC_TMP 1
-#define FIO_INCLUDE_LINKED_LIST
-#include <fio.h>
-
 #include <http.h>
 
 #include <arpa/inet.h>
@@ -153,13 +147,11 @@ EventSource Support (SSE)
 ***************************************************************************** */
 
 typedef struct http_sse_internal_s {
-  http_sse_s sse;         /* the user SSE settings */
-  intptr_t uuid;          /* the socket's uuid */
-  http_vtable_s *vtable;  /* the protocol's vtable */
-  uintptr_t id;           /* the SSE identifier */
-  fio_ls_s subscriptions; /* Subscription List */
-  fio_lock_i lock;        /* Subscription List lock */
-  size_t ref;             /* reference count */
+  http_sse_s sse;        /* the user SSE settings */
+  intptr_t uuid;         /* the socket's uuid */
+  http_vtable_s *vtable; /* the protocol's vtable */
+  uintptr_t id;          /* the SSE identifier */
+  size_t ref;            /* reference count */
 } http_sse_internal_s;
 
 static inline void http_sse_init(http_sse_internal_s *sse, intptr_t uuid,
@@ -167,7 +159,6 @@ static inline void http_sse_init(http_sse_internal_s *sse, intptr_t uuid,
   *sse = (http_sse_internal_s){
       .sse = *args,
       .uuid = uuid,
-      .subscriptions = FIO_LS_INIT(sse->subscriptions),
       .vtable = vtbl,
       .ref = 1,
   };
@@ -180,10 +171,6 @@ static inline void http_sse_try_free(http_sse_internal_s *sse) {
 }
 
 static inline void http_sse_destroy(http_sse_internal_s *sse) {
-  while (fio_ls_any(&sse->subscriptions)) {
-    void *sub = fio_ls_pop(&sse->subscriptions);
-    fio_unsubscribe(sub);
-  }
   if (sse->sse.on_close)
     sse->sse.on_close(&sse->sse);
   sse->uuid = -1;
@@ -196,40 +183,42 @@ Helpers
 
 /** sets an outgoing header only if it doesn't exist */
 static inline void set_header_if_missing(FIOBJ hash, FIOBJ name, FIOBJ value) {
-  FIOBJ old = fiobj_hash_replace(hash, name, value);
+  FIOBJ old = FIOBJ_INVALID;
+  const uintptr_t name_hash = fiobj2hash(hash, name);
+  /* look up hash only once (if object doesn't exist) */
+  fiobj_hash_set(hash, name_hash, name, value, &old);
   if (!old)
     return;
-  fiobj_hash_replace(hash, name, old);
-  fiobj_free(value);
+  fiobj_hash_set(hash, name_hash, name, old, NULL);
 }
 
-/** sets an outgoing header, collecting duplicates in an Array (i.e. cookies)
- */
+/** sets an outgoing header, collecting duplicates in an Array (i.e. cookies) */
 static inline void set_header_add(FIOBJ hash, FIOBJ name, FIOBJ value) {
-  FIOBJ old = fiobj_hash_replace(hash, name, value);
+  FIOBJ old = FIOBJ_INVALID;
+  const uintptr_t name_hash = fiobj2hash(hash, name);
+  if (value == FIOBJ_INVALID)
+    goto remove_val;
+  fiobj_hash_set(hash, name_hash, name, value, &old);
   if (!old)
     return;
-  if (!value) {
-    fiobj_free(old);
-    return;
-  }
   if (!FIOBJ_TYPE_IS(old, FIOBJ_T_ARRAY)) {
-    FIOBJ tmp = fiobj_ary_new();
-    fiobj_ary_push(tmp, old);
+    FIOBJ tmp = fiobj_array_new();
+    fiobj_array_push(tmp, old);
     old = tmp;
   }
   if (FIOBJ_TYPE_IS(value, FIOBJ_T_ARRAY)) {
-    for (size_t i = 0; i < fiobj_ary_count(value); ++i) {
-      fiobj_ary_push(old, fiobj_dup(fiobj_ary_index(value, i)));
-    }
+    fiobj_array_concat(old, value);
     /* frees `value` */
-    fiobj_hash_set(hash, name, old);
+    fiobj_hash_set(hash, name_hash, name, old, NULL);
     return;
   }
   /* value will be owned by both hash and array */
-  fiobj_ary_push(old, value);
+  fiobj_array_push(old, value);
   /* don't free `value` (leave in array) */
-  fiobj_hash_replace(hash, name, old);
+  fiobj_hash_set(hash, name_hash, name, old, &value);
+  return;
+remove_val:
+  fiobj_hash_remove(hash, name_hash, name, NULL);
 }
 
 #endif /* H_HTTP_INTERNAL_H */
