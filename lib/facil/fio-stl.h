@@ -135,7 +135,9 @@ Basic macros and included files
 
 #if defined(__GNUC__) && (__GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 5))
 /* GCC < 4.5 doesn't support deprecation reason string */
-#define deprecated(reason) deprecated
+#define DEPRECATED(reason) __attribute__((deprecated))
+#else
+#define DEPRECATED(reason) __attribute__((deprecated(reason)))
 #endif
 
 #if !defined(__clang__) && !defined(__GNUC__)
@@ -311,6 +313,35 @@ Naming macros
 /** Sets naming convention for boolean testing functions, i.e.: foo_is_true */
 #define FIO_NAME_BL(prefix, postfix)                                           \
   FIO_NAME_FROM_MACRO_STEP1(prefix, postfix, _is_)
+
+/* *****************************************************************************
+Sleep / Thread Scheduling Macros
+***************************************************************************** */
+
+#ifndef FIO_THREAD_RESCHEDULE
+/**
+ * Reschedules the thread by calling nanosleeps for a sinlge nano-second.
+ *
+ * In practice, the thread will probably sleep for 60ns or more.
+ */
+#define FIO_THREAD_RESCHEDULE()                                                \
+  do {                                                                         \
+    const struct timespec tm = {.tv_nsec = 1};                                 \
+    nanosleep(&tm, (struct timespec *)NULL);                                   \
+  } while (0)
+#endif
+
+#ifndef FIO_THREAD_WAIT
+/**
+ * Calls nonsleep with the requested nano-second count.
+ */
+#define FIO_THREAD_WAIT(nano_sec)                                              \
+  do {                                                                         \
+    const struct timespec tm = {.tv_nsec = ((nano_sec) % 1000000000),          \
+                                .tv_sec = ((nano_sec) / 1000000000)};          \
+    nanosleep(&tm, (struct timespec *)NULL);                                   \
+  } while (0)
+#endif
 
 /* *****************************************************************************
 Miscellaneous helper macros
@@ -659,31 +690,6 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 #error Required builtin "__sync_add_and_fetch" not found.
 #endif
 
-#ifndef FIO_THREAD_RESCHEDULE
-/**
- * Reschedules the thread by calling nanosleeps for a sinlge nano-second.
- *
- * In practice, the thread will probably sleep for 60ns or more.
- */
-#define FIO_THREAD_RESCHEDULE()                                                \
-  do {                                                                         \
-    const struct timespec tm = {.tv_nsec = 1};                                 \
-    nanosleep(&tm, NULL);                                                      \
-  } while (0)
-#endif
-
-#ifndef FIO_THREAD_WAIT
-/**
- * Calls nonsleep with the requested nano-second count.
- */
-#define FIO_THREAD_WAIT(nano_sec)                                              \
-  do {                                                                         \
-    const struct timespec tm = {.tv_nsec = ((nano_sec) % 1000000000),          \
-                                .tv_sec = ((nano_sec) / 1000000000)};          \
-    nanosleep(&tm, NULL);                                                      \
-  } while (0)
-#endif
-
 #define FIO_LOCK_INIT 0
 typedef volatile unsigned char fio_lock_i;
 
@@ -696,8 +702,7 @@ HFUNC uint8_t fio_trylock(fio_lock_i *lock) {
 /** Busy waits for a lock to become available - not recommended. */
 HFUNC void fio_lock(fio_lock_i *lock) {
   while (fio_trylock(lock)) {
-    struct timespec tm = {.tv_nsec = 1};
-    nanosleep(&tm, NULL);
+    FIO_THREAD_RESCHEDULE();
   }
 }
 
@@ -866,7 +871,6 @@ HFUNC void FIO_NAME2(fio_u, buf64)(void *buf, uint64_t i) { /* fio_u2buf64 */
   ((uint8_t *)(buf))[6] = ((i >> 8) & 0xFF);
   ((uint8_t *)(buf))[7] = ((i)&0xFF);
 }
-
 /* *****************************************************************************
 Constant-time selectors
 ***************************************************************************** */
@@ -1347,13 +1351,13 @@ HSFUNC void *FIO_MEM_PAGE_ALLOC_def_func(size_t len, uint8_t alignment_log) {
                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 #endif
   if (result == MAP_FAILED)
-    return NULL;
+    return (void *)NULL;
   if (((uintptr_t)result & alignment_mask)) {
     munmap(result, len);
     result = mmap(NULL, len + alignment_size, PROT_READ | PROT_WRITE,
                   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (result == MAP_FAILED) {
-      return NULL;
+      return (void *)NULL;
     }
     const uintptr_t offset =
         (alignment_size - ((uintptr_t)result & alignment_mask));
@@ -1392,7 +1396,7 @@ HSFUNC void *FIO_MEM_PAGE_REALLOC_def_func(void *mem, size_t prev_pages,
       result = FIO_MEM_PAGE_ALLOC_def_func(
           new_len, alignment_log); /* allocate new memory */
       if (!result) {
-        return NULL;
+        return (void *)NULL;
       }
       fio___memcpy_16byte(result, mem, prev_len >> 4); /* copy data */
       // memcpy(result, mem, prev_len);
@@ -1508,7 +1512,7 @@ typedef struct {
   fio___mem_arena_s arenas[];
 } fio___mem_state_s;
 /* The memory allocators persistent state */
-static fio___mem_state_s *fio___mem_state = NULL;
+static fio___mem_state_s *fio___mem_state = (fio___mem_state_s *)NULL;
 
 /* see destructor at: fio___mem_destroy */
 HSFUNC void __attribute__((constructor)) fio___mem_state_allocate(void) {
@@ -1545,7 +1549,7 @@ HSFUNC void fio___mem_state_deallocate(void) {
       FIO_MEM_BYTES2PAGES(sizeof(*fio___mem_state) +
                           (fio___mem_state->cores * sizeof(fio___mem_arena_s)));
   FIO_MEM_PAGE_FREE(fio___mem_state, pages);
-  fio___mem_state = NULL;
+  fio___mem_state = (fio___mem_state_s *)NULL;
 }
 
 /* *****************************************************************************
@@ -1553,7 +1557,8 @@ Memory arena management and selection
 ***************************************************************************** */
 
 /* Last available arena for thread. */
-static __thread volatile fio___mem_arena_s *fio___mem_arena = NULL;
+static __thread volatile fio___mem_arena_s *fio___mem_arena =
+    (fio___mem_arena_s *)NULL;
 
 HSFUNC void fio___mem_arena_aquire(void) {
   if (!fio___mem_state) {
@@ -1563,7 +1568,6 @@ HSFUNC void fio___mem_arena_aquire(void) {
     if (!fio_trylock(&fio___mem_arena->lock))
       return;
   for (;;) {
-    struct timespec tm = {.tv_nsec = 1};
     const size_t cores = fio___mem_state->cores;
     for (size_t i = 0; i < cores; ++i) {
       if (!fio_trylock(&fio___mem_state->arenas[i].lock)) {
@@ -1571,7 +1575,7 @@ HSFUNC void fio___mem_arena_aquire(void) {
         return;
       }
     }
-    nanosleep(&tm, NULL);
+    FIO_THREAD_RESCHEDULE();
   }
 }
 
@@ -1750,7 +1754,7 @@ HSFUNC void fio___mem_block_free(fio___mem_block_s *b) {
 /* rotates block in arena */
 HSFUNC void fio___mem_block_rotate(void) {
   fio___mem_block_s *to_free = fio___mem_arena->block; /* keep memory pool */
-  fio___mem_arena->block = NULL;
+  fio___mem_arena->block = (fio___mem_block_s *)NULL;
   fio_lock(&fio___mem_state->lock);
   fio___mem_arena->block = (fio___mem_block_s *)fio___mem_available_blocks_pop(
       &fio___mem_state->available);
@@ -2067,7 +2071,24 @@ Risky Hash - API
 ***************************************************************************** */
 
 /**  Computes a facil.io Risky Hash. */
-SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed);
+SFUNC uint64_t fio_risky_hash(const void *buf, size_t len, uint64_t seed);
+
+typedef struct {
+  uint64_t v[4];
+  size_t len;
+  uint8_t buf[32];
+} fio_risky_hash_s;
+
+/** Returns an initialized `fio_risky_hash_s` with stated seed. */
+SFUNC fio_risky_hash_s fio_risky_hash_init(uint64_t seed);
+/** Writes streamed data to the Risky Hash storage. */
+SFUNC void fio_risky_hash_stream(fio_risky_hash_s *risky, const void *buf,
+                                 size_t len);
+/**
+ * Returns a finalized Risky Hash value.
+ * The `fio_risky_hash_s` is still writable.
+ */
+SFUNC uint64_t fio_risky_hash_value(const fio_risky_hash_s *risky);
 
 /* *****************************************************************************
 Risky Hash - Implementation
@@ -2188,6 +2209,134 @@ SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
   result += v2 * RISKY_PRIME_1;
   result ^= FIO_RISKY_LROT64(result, 33);
   result += v3 * RISKY_PRIME_1;
+  result ^= FIO_RISKY_LROT64(result, 51);
+
+  /* irreversible avalanche... I think */
+  result ^= (result >> 29) * RISKY_PRIME_0;
+  return result;
+}
+
+/** Returns an initialized `fio_risky_hash_s` with stated seed. */
+SFUNC fio_risky_hash_s fio_risky_hash_init(uint64_t seed) {
+  fio_risky_hash_s r = {
+      .v =
+          {
+              (seed ^ RISKY_PRIME_1),
+              (~seed + RISKY_PRIME_1),
+              (FIO_RISKY_LROT64(seed, 17) ^ ((~RISKY_PRIME_1) + RISKY_PRIME_0)),
+              (FIO_RISKY_LROT64(seed, 33) + (~RISKY_PRIME_1)),
+          },
+      .len = 0};
+  return r;
+}
+/** Writes streamed data to the Risky Hash storage. */
+SFUNC void fio_risky_hash_stream(fio_risky_hash_s *r, const void *buf_,
+                                 size_t len) {
+  // TODO: implement
+  const uint8_t *buf = (const uint8_t *)buf_;
+  size_t old_len = r->len;
+  uint8_t leftover = (old_len & 31);
+  r->len += len;
+  if (len + leftover >= 32) {
+    if (leftover) {
+      uint8_t leftover_inv = (32 - leftover);
+      memcpy(r->buf + leftover, buf, leftover_inv);
+      len -= leftover_inv;
+      buf += leftover_inv;
+      FIO_RISKY_CONSUME(r->v[0], FIO_RISKY_STR2U64(r->buf));
+      FIO_RISKY_CONSUME(r->v[1], FIO_RISKY_STR2U64(r->buf + 8));
+      FIO_RISKY_CONSUME(r->v[2], FIO_RISKY_STR2U64(r->buf + 16));
+      FIO_RISKY_CONSUME(r->v[3], FIO_RISKY_STR2U64(r->buf + 24));
+    }
+    for (size_t i = len >> 5; i; --i) {
+      FIO_RISKY_CONSUME(r->v[0], FIO_RISKY_STR2U64(buf));
+      FIO_RISKY_CONSUME(r->v[1], FIO_RISKY_STR2U64(buf + 8));
+      FIO_RISKY_CONSUME(r->v[2], FIO_RISKY_STR2U64(buf + 16));
+      FIO_RISKY_CONSUME(r->v[3], FIO_RISKY_STR2U64(buf + 24));
+      buf += 32;
+    }
+  }
+  leftover = (len & 31);
+  if (leftover) {
+    memcpy(r->buf, buf, leftover);
+  }
+}
+/**
+ * Returns a finalized Risky Hash value.
+ * The `fio_risky_hash_s` is still writable.
+ */
+SFUNC uint64_t fio_risky_hash_value(const fio_risky_hash_s *r) {
+  uint64_t tmp = 0;
+  fio_risky_hash_s t = *r;
+  uint8_t *data = t.buf;
+
+  /* Consume any remaining 64 bit words. */
+  switch (t.len & 24) {
+  case 24:
+    FIO_RISKY_CONSUME(t.v[2], FIO_RISKY_STR2U64(data + 16));
+    /* fallthrough */
+  case 16:
+    FIO_RISKY_CONSUME(t.v[1], FIO_RISKY_STR2U64(data + 8));
+    /* fallthrough */
+  case 8:
+    FIO_RISKY_CONSUME(t.v[0], FIO_RISKY_STR2U64(data));
+    data += t.len & 24;
+  }
+
+  /* consume leftover bytes, if any */
+  switch ((t.len & 7)) {
+  case 7:
+    tmp |= ((uint64_t)data[6]) << 8;
+    /* fallthrough */
+  case 6:
+    tmp |= ((uint64_t)data[5]) << 16;
+    /* fallthrough */
+  case 5:
+    tmp |= ((uint64_t)data[4]) << 24;
+    /* fallthrough */
+  case 4:
+    tmp |= ((uint64_t)data[3]) << 32;
+    /* fallthrough */
+  case 3:
+    tmp |= ((uint64_t)data[2]) << 40;
+    /* fallthrough */
+  case 2:
+    tmp |= ((uint64_t)data[1]) << 48;
+    /* fallthrough */
+  case 1:
+    tmp |= ((uint64_t)data[0]) << 56;
+    /* ((t.len >> 3) & 3) is a 0...3 value indicating consumption vector */
+    switch ((t.len >> 3) & 3) {
+    case 3:
+      FIO_RISKY_CONSUME(t.v[3], tmp);
+      break;
+    case 2:
+      FIO_RISKY_CONSUME(t.v[2], tmp);
+      break;
+    case 1:
+      FIO_RISKY_CONSUME(t.v[1], tmp);
+      break;
+    case 0:
+      FIO_RISKY_CONSUME(t.v[0], tmp);
+      break;
+    }
+  }
+
+  /* merge and mix */
+  uint64_t result = FIO_RISKY_LROT64(t.v[0], 17) +
+                    FIO_RISKY_LROT64(t.v[1], 13) +
+                    FIO_RISKY_LROT64(t.v[2], 47) + FIO_RISKY_LROT64(t.v[3], 57);
+
+  t.len ^= (t.len << 33);
+  result += t.len;
+
+  result += t.v[0] * RISKY_PRIME_1;
+  result ^= FIO_RISKY_LROT64(result, 13);
+  result += t.v[1] * RISKY_PRIME_1;
+  result ^= FIO_RISKY_LROT64(result, 29);
+  result += t.v[2] * RISKY_PRIME_1;
+  result ^= FIO_RISKY_LROT64(result, 33);
+  result += t.v[3] * RISKY_PRIME_1;
   result ^= FIO_RISKY_LROT64(result, 51);
 
   /* irreversible avalanche... I think */
@@ -2700,9 +2849,10 @@ SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
       /* write the damn thing, high to low */
       while (i < 8) {
         uint8_t tmp = (n & 0xF000000000000000) >> 60;
-        dest[len++] = notation[tmp];
-        tmp = (n & 0x0F00000000000000) >> 56;
-        dest[len++] = notation[tmp];
+        uint8_t tmp2 = (n & 0x0F00000000000000) >> 56;
+        dest[len] = notation[tmp];
+        dest[len + 1] = notation[tmp2];
+        len += 2;
         i++;
         n = n << 8;
       }
@@ -2832,6 +2982,470 @@ is_nan:
 #endif /* FIO_EXTERN_COMPLETE */
 #endif /* FIO_ATOL */
 #undef FIO_ATOL
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+                        Basic Socket Helpers / IO Polling
+
+
+
+
+
+
+
+
+Example:
+********************************************************************************
+
+#define FIO_SOCK
+#define FIO_CLI
+#define FIO_LOG
+#include "../../facilio/lib/facil/fio-stl.h"
+
+typedef struct {
+  int fd;
+  unsigned char is_client;
+} state_s;
+
+static void on_data_server(int fd, void *udata) {
+  (void)udata; // unused for server
+  char buf[65536];
+  ssize_t len = 0;
+  struct sockaddr_storage peer;
+  socklen_t peer_addrlen = sizeof(peer);
+  len = recvfrom(fd, buf, 65535, 0, (struct sockaddr *)&peer, &peer_addrlen);
+  if (len <= 0)
+    return;
+  buf[len] = 0;
+  fprintf(stderr, "Recieved: %s", buf);
+  sendto(fd, "echo: ", 6, 0, (const struct sockaddr *)&peer, peer_addrlen);
+  sendto(fd, buf, len, 0, (const struct sockaddr *)&peer, peer_addrlen);
+}
+
+static void on_data_client(int fd, void *udata) {
+  state_s *state = (state_s *)udata;
+  if (fd == fileno(stdin))
+    goto is_stdin;
+  char buf[65536];
+  ssize_t len = 0;
+  struct sockaddr_storage peer;
+  socklen_t peer_addrlen = sizeof(peer);
+  len = recvfrom(fd, buf, 65535, 0, (struct sockaddr *)&peer, &peer_addrlen);
+  if (len <= 0)
+    return;
+  buf[len] = 0;
+  fprintf(stderr, "%s", buf);
+  return;
+is_stdin:
+  len = read(fd, buf, 65535);
+  if (len <= 0)
+    return;
+  buf[len] = 0;
+  len = send(state->fd, buf, len, 0);
+  fprintf(stderr, "Sent: %zd bytes\n", len);
+  if (len < 0)
+    perror("error");
+  return;
+  (void)udata;
+}
+
+int main(int argc, char const *argv[]) {
+  // Using CLI to set address, port and client/server mode.
+  fio_cli_start(
+      argc, argv, 0, 0, "UDP echo server / client example.",
+      FIO_CLI_PRINT_HEADER("Address Binding"),
+      FIO_CLI_STRING("-address -b address to listen / connect to."),
+      FIO_CLI_INT("-port -p port to listen / connect to. Defaults to 3030."),
+      FIO_CLI_PRINT_HEADER("Operation Mode"),
+      FIO_CLI_BOOL("-client -c Client mode."),
+      FIO_CLI_BOOL("-verbose -v verbose mode (debug messages on)."));
+
+  if (fio_cli_get_bool("-v"))
+    FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
+  fio_cli_set_default("-p", "3030");
+
+  // Using FIO_SOCK functions for setting up UDP server / client
+  state_s state = {.is_client = fio_cli_get_bool("-c")};
+  state.fd = fio_sock_new(
+      fio_cli_get("-b"), fio_cli_get("-p"),
+      FIO_SOCK_UDP | FIO_SOCK_NONBLOCK |
+          (fio_cli_get_bool("-c") ? FIO_SOCK_CLIENT : FIO_SOCK_SERVER));
+
+  if (state.fd == -1) {
+    FIO_LOG_FATAL("Couldn't open socket!");
+    exit(1);
+  }
+  FIO_LOG_DEBUG("UDP socket open on fd %d", state.fd);
+
+  if (state.is_client) {
+    int i =
+        send(state.fd, "Client hello... further data will be sent using REPL\n",
+             53, 0);
+    fprintf(stderr, "Sent: %d bytes\n", i);
+    if (i < 0)
+      perror("error");
+    while (fio_sock_poll(.on_data = on_data_client, .udata = (void *)&state,
+                         .timeout = 1000,
+                         .fds = FIO_SOCK_POLL_LIST(
+                             FIO_SOCK_POLL_R(state.fd),
+                             FIO_SOCK_POLL_R(fileno(stdin)))) >= 0)
+      ;
+  } else {
+    while (fio_sock_poll(.on_data = on_data_server, .udata = (void *)&state,
+                         .timeout = 1000,
+                         .fds = FIO_SOCK_POLL_LIST(
+                             FIO_SOCK_POLL_R(state.fd))) >= 0)
+      ;
+  }
+  // we should cleanup, though we'll exit with Ctrl+C, so it's won't matter.
+  fio_cli_end();
+  close(state.fd);
+  return 0;
+  (void)argv;
+}
+
+***************************************************************************** */
+#if defined(FIO_SOCK) && FIO_HAVE_UNIX_TOOLS && !defined(FIO_SOCK_POLL_LIST)
+#include <fcntl.h>
+#include <netdb.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+/* *****************************************************************************
+IO Poll - API
+***************************************************************************** */
+#define FIO_SOCK_POLL_RW(fd_)                                                  \
+  (struct pollfd) { .fd = fd_, .events = POLLIN | POLLOUT }
+#define FIO_SOCK_POLL_R(fd_)                                                   \
+  (struct pollfd) { .fd = fd_, .events = POLLIN }
+#define FIO_SOCK_POLL_W(fd_)                                                   \
+  (struct pollfd) { .fd = fd_, .events = POLLOUT }
+#define FIO_SOCK_POLL_LIST(...)                                                \
+  (struct pollfd[]) {                                                          \
+    __VA_ARGS__, (struct pollfd) { .fd = -1 }                                  \
+  }
+
+typedef struct {
+  void (*on_ready)(int fd, void *udata);
+  void (*on_data)(int fd, void *udata);
+  void (*on_error)(int fd, void *udata);
+  void *udata;
+  int timeout;
+  struct pollfd *fds;
+} fio_sock_poll_args;
+
+/**
+ * The `fio_sock_poll` function uses the `poll` system call to poll a simple IO
+ * list.
+ *
+ * The list must end with a `struct pollfd` with it's `events` set to zero. No
+ * other member of the list should have their `events` data set to zero.
+ *
+ * It is recommended to use the `FIO_SOCK_POLL_LIST(...)` and
+ * `FIO_SOCK_POLL_[RW](fd)` macros. i.e.:
+ *
+ *     int count = fio_sock_poll(.on_ready = on_ready,
+ *                         .on_data = on_data,
+ *                         .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(io_fd)));
+ *
+ * NOTE: The `poll` system call should perform reasonably well for light loads
+ * (short lists). However, for complex IO needs or heavier loads, use the
+ * system's native IO API, such as kqueue or epoll.
+ */
+HFUNC int fio_sock_poll(fio_sock_poll_args args);
+#define fio_sock_poll(...) fio_sock_poll((fio_sock_poll_args){__VA_ARGS__})
+
+typedef enum {
+  FIO_SOCK_SERVER = 0,
+  FIO_SOCK_CLIENT = 1,
+  FIO_SOCK_NONBLOCK = 2,
+  FIO_SOCK_TCP = 4,
+  FIO_SOCK_UDP = 8,
+  FIO_SOCK_UNIX = 16,
+} fio_sock_new_flags_e;
+
+/**
+ * Creates a new socket according to the provided flags.
+ *
+ * The `port` string will be ignored when `FIO_SOCK_UNIX` is set.
+ */
+HFUNC int fio_sock_new(const char *restrict address, const char *restrict port,
+                       uint16_t flags);
+
+/**
+ * Attempts to resolve an address to a valid IP6 / IP4 address pointer.
+ *
+ * The `sock_type` element should be a socket type, such as `SOCK_DGRAM` (UDP)
+ * or `SOCK_STREAM` (TCP/IP).
+ *
+ * The address should be freed using `fio_sock_address_free`.
+ */
+HFUNC struct addrinfo *fio_sock_address_new(const char *restrict address,
+                                            const char *restrict port,
+                                            int sock_type);
+
+/** Frees the pointer returned by `fio_sock_address_new`. */
+HFUNC void fio_sock_address_free(struct addrinfo *a);
+
+/** Creates a new network socket and binds it to a local address. */
+SFUNC int fio_sock_new_local(struct addrinfo *addr);
+
+/** Creates a new network socket and connects it to a remote address. */
+SFUNC int fio_sock_new_remote(struct addrinfo *addr, int nonblock);
+
+/** Creates a new Unix socket and binds it to a local address. */
+SFUNC int fio_sock_new_unix(const char *address, int is_client, int nonblock);
+
+/** Sets a file descriptor / socket to non blocking state. */
+SFUNC int fio_sock_set_non_block(int fd);
+
+/* *****************************************************************************
+IO Poll - Implementation (always static / inlined)
+***************************************************************************** */
+
+HFUNC int fio_sock_poll FIO_NOOP(fio_sock_poll_args args) {
+  int tmp = 0;
+  while (args.fds[tmp].events)
+    ++tmp;
+  if (!tmp) {
+    if (args.timeout)
+      FIO_THREAD_WAIT(args.timeout);
+    return 0;
+  }
+  tmp = poll(args.fds, tmp, args.timeout);
+  if (tmp <= 0)
+    return tmp;
+  for (int i = 0; args.fds[i].events; ++i) {
+    if (!args.fds[i].revents)
+      continue;
+    if (args.on_ready != NULL && (args.fds[i].revents | POLLOUT) == POLLOUT)
+      args.on_ready(args.fds[i].fd, args.udata);
+    if (args.on_data != NULL && (args.fds[i].revents | POLLIN) == POLLIN)
+      args.on_data(args.fds[i].fd, args.udata);
+    if (args.on_error != NULL && (args.fds[i].revents | POLLERR) == POLLERR)
+      args.on_error(args.fds[i].fd, args.udata);
+  }
+  return tmp;
+}
+
+/**
+ * Creates a new socket according to the provided flags.
+ *
+ * The `port` string will be ignored when `FIO_SOCK_UNIX` is set.
+ */
+HFUNC int fio_sock_new(const char *restrict address, const char *restrict port,
+                       uint16_t flags) {
+  struct addrinfo *addr = NULL;
+  int fd;
+  switch ((flags & ((uint16_t)FIO_SOCK_TCP | (uint16_t)FIO_SOCK_UDP |
+                    (uint16_t)FIO_SOCK_UNIX))) {
+  case FIO_SOCK_UDP:
+    addr = fio_sock_address_new(address, port, SOCK_DGRAM);
+    if (!addr) {
+      FIO_LOG_ERROR("(fio_sock_new) address error: %s", strerror(errno));
+      return -1;
+    }
+    /* fallthrough */
+  case FIO_SOCK_TCP:
+    if (!addr) {
+      addr = fio_sock_address_new(address, port, SOCK_STREAM);
+      if (!addr) {
+        FIO_LOG_ERROR("(fio_sock_new) address error: %s", strerror(errno));
+        return -1;
+      }
+    }
+    if ((flags & FIO_SOCK_CLIENT)) {
+      fd = fio_sock_new_remote(addr, (flags & FIO_SOCK_NONBLOCK));
+    } else {
+      fd = fio_sock_new_local(addr);
+      if (fd != -1 && (flags & FIO_SOCK_NONBLOCK) &&
+          fio_sock_set_non_block(fd) == -1) {
+        FIO_LOG_ERROR(
+            "(fio_sock_new) couldn't set socket to non-blocking mode: %s",
+            strerror(errno));
+        close(fd);
+        fd = -1;
+      }
+      if ((flags & FIO_SOCK_TCP) && listen(fd, SOMAXCONN) == -1) {
+        FIO_LOG_ERROR("(fio_sock_new) failed on call to listen: %s",
+                      strerror(errno));
+        close(fd);
+        fd = -1;
+      }
+    }
+    fio_sock_address_free(addr);
+    return fd;
+  case FIO_SOCK_UNIX:
+    return fio_sock_new_unix(address, (flags & FIO_SOCK_CLIENT),
+                             (flags & FIO_SOCK_NONBLOCK));
+  }
+  FIO_LOG_ERROR("(fio_sock_new) the FIO_SOCK_TCP, FIO_SOCK_UDP, and "
+                "FIO_SOCK_UNIX flags are exclisive");
+  return -1;
+}
+
+HFUNC struct addrinfo *
+fio_sock_address_new(const char *restrict address, const char *restrict port,
+                     int sock_type /*i.e., SOCK_DGRAM */) {
+  struct addrinfo addr_hints = (struct addrinfo){0}, *a;
+  int e;
+  addr_hints.ai_family = AF_UNSPEC; // set to AF_INET to force IPv4
+  addr_hints.ai_socktype = sock_type;
+  addr_hints.ai_flags = AI_PASSIVE; // use my IP
+
+  if ((e = getaddrinfo(address, (port ? port : "0"), &addr_hints, &a)) != 0) {
+    FIO_LOG_ERROR("(fio_sock_address_new) error: %s", gai_strerror(e));
+    return NULL;
+  }
+  return a;
+}
+
+HFUNC void fio_sock_address_free(struct addrinfo *a) { freeaddrinfo(a); }
+
+/* *****************************************************************************
+FIO_SOCK - Implementation
+***************************************************************************** */
+#if defined(FIO_EXTERN_COMPLETE)
+
+/** Sets a file descriptor / socket to non blocking state. */
+SFUNC int fio_sock_set_non_block(int fd) {
+/* If they have O_NONBLOCK, use the Posix way to do it */
+#if defined(O_NONBLOCK)
+  /* Fixme: O_NONBLOCK is defined but broken on SunOS 4.1.x and AIX 3.2.5. */
+  int flags;
+  if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
+    flags = 0;
+#ifdef O_CLOEXEC
+  return fcntl(fd, F_SETFL, flags | O_NONBLOCK | O_CLOEXEC);
+#else
+  return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+#endif
+#elif defined(FIONBIO)
+  /* Otherwise, use the old way of doing it */
+  static int flags = 1;
+  return ioctl(fd, FIONBIO, &flags);
+#else
+#error No functions / argumnet macros for non-blocking sockets.
+#endif
+}
+
+/** Creates a new network socket and binds it to a local address. */
+SFUNC int fio_sock_new_local(struct addrinfo *addr) {
+  int fd = -1;
+  for (struct addrinfo *p = addr; p != NULL; p = p->ai_next) {
+    if ((fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+      FIO_LOG_DEBUG("socket creation error %s", strerror(errno));
+      continue;
+    }
+    if (bind(fd, p->ai_addr, p->ai_addrlen) == -1) {
+      close(fd);
+      fd = -1;
+      continue;
+    }
+    break;
+  }
+  if (fd == -1) {
+    FIO_LOG_DEBUG("socket binding/creation error %s", strerror(errno));
+  }
+  return fd;
+}
+
+/** Creates a new network socket and connects it to a remote address. */
+SFUNC int fio_sock_new_remote(struct addrinfo *addr, int nonblock) {
+  int fd = -1;
+  for (struct addrinfo *p = addr; p != NULL; p = p->ai_next) {
+    if ((fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+      FIO_LOG_DEBUG("socket creation error %s", strerror(errno));
+      continue;
+    }
+
+    if (nonblock && fio_sock_set_non_block(fd) == -1) {
+      close(fd);
+      fd = -1;
+      continue;
+    }
+    if (connect(fd, p->ai_addr, p->ai_addrlen) == -1 && errno != EINPROGRESS) {
+      close(fd);
+      fd = -1;
+      continue;
+    }
+    break;
+  }
+  if (fd == -1) {
+    FIO_LOG_DEBUG("socket connection/creation error %s", strerror(errno));
+  }
+  return fd;
+}
+
+/** Creates a new Unix socket and binds it to a local address. */
+SFUNC int fio_sock_new_unix(const char *address, int is_client, int nonblock) {
+  /* Unix socket */
+  struct sockaddr_un addr = {0};
+  size_t addr_len = strlen(address);
+  if (addr_len >= sizeof(addr.sun_path)) {
+    FIO_LOG_ERROR(
+        "(fio_sock_new_unix) address too long (%zu bytes > %zu bytes).",
+        addr_len, sizeof(addr.sun_path) - 1);
+    errno = ENAMETOOLONG;
+    return -1;
+  }
+  addr.sun_family = AF_UNIX;
+  memcpy(addr.sun_path, address, addr_len + 1); /* copy the NUL byte. */
+#if defined(__APPLE__)
+  addr.sun_len = addr_len;
+#endif
+  // get the file descriptor
+  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (fd == -1) {
+    return -1;
+  }
+  if (nonblock && fio_sock_set_non_block(fd) == -1) {
+    close(fd);
+    return -1;
+  }
+  if (is_client) {
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1 &&
+        errno != EINPROGRESS) {
+      close(fd);
+      return -1;
+    }
+  } else {
+    unlink(addr.sun_path);
+    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+      FIO_LOG_DEBUG("couldn't bind unix socket to %s", address);
+      close(fd);
+      return -1;
+    }
+    if (listen(fd, SOMAXCONN) < 0) {
+      FIO_LOG_DEBUG("couldn't start listening to unix socket at %s", address);
+      close(fd);
+      return -1;
+    }
+    /* chmod for foreign connections */
+    fchmod(fd, 0777);
+  }
+  return fd;
+}
+
+#endif
+/* *****************************************************************************
+FIO_SOCK - cleanup
+***************************************************************************** */
+#endif
+#undef FIO_SOCK
 /* *****************************************************************************
 
 
@@ -5371,6 +5985,11 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, write_i)(FIO_STRING_PTR s,
                                                         int64_t num);
 
 /**
+ * Writes a number at the end of the String using Hex (base 16) notation.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, write_hex)(FIO_STRING_PTR s,
+                                                          int64_t num);
+/**
  * Appends the `src` String to the end of the `dest` String.
  *
  * If `dest` is empty, the resulting Strings will be equal.
@@ -6109,6 +6728,9 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, write)(FIO_STRING_PTR s_,
  */
 IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, write_i)(FIO_STRING_PTR s_,
                                                         int64_t num) {
+  /* because fio_ltoa uses an internal buffer, we "save" a `memcpy` loop and
+   * minimize memory allocations by re-implementing the same logic in a
+   * dedicated fasion. */
   FIO_NAME(FIO_STRING_NAME, s) *s =
       (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
   if (!s || FIO_STRING_IS_FROZEN(s))
@@ -6145,6 +6767,20 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, write_i)(FIO_STRING_PTR s_,
     i.buf[i.len - (l + 1)] = buf[l];
   }
   return i;
+}
+
+/**
+ * Writes a number at the end of the String using Hex (base 16) notation.
+ */
+IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, write_hex)(FIO_STRING_PTR s,
+                                                          int64_t num) {
+  /* using base 16, fio_ltoa writes directly to the destination, DRY. */
+  fio_str_info_s i = FIO_NAME(FIO_STRING_NAME, reserve)(
+      s, FIO_NAME(FIO_STRING_NAME, len)(s) + (sizeof(int64_t) * 2) + 2);
+  if (!i.capa)
+    return i;
+  size_t written = fio_ltoa(i.buf + i.len, num, 16);
+  return FIO_NAME(FIO_STRING_NAME, resize)(s, i.len + written);
 }
 
 /**
@@ -7478,7 +8114,7 @@ CLI API
  */
 #define fio_cli_start(argc, argv, unnamed_min, unnamed_max, description, ...)  \
   fio_cli_start((argc), (argv), (unnamed_min), (unnamed_max), (description),   \
-                (char const *[]){__VA_ARGS__, NULL})
+                (char const *[]){__VA_ARGS__, (char const *)NULL})
 /**
  * Never use the function directly, always use the MACRO, because the macro
  * attaches a NULL marker at the end of the `names` argument collection.
@@ -9409,9 +10045,9 @@ FIO_IFUNC fio_str_info_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
  */
 #define FIOBJ_STR_TEMP_VAR(str_name)                                           \
   FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), s)                            \
-  FIO_NAME(str_name, __tmp) = FIO_STRING_INIT;                                 \
-  FIOBJ str_name =                                                             \
-      (FIOBJ)(((uintptr_t)&FIO_NAME(str_name, __tmp)) | FIOBJ_T_STRING);
+  FIO_NAME(str_name, __tmp)[2] = {FIO_STRING_INIT, FIO_STRING_INIT};           \
+  FIOBJ str_name = (FIOBJ)(((uintptr_t) & (FIO_NAME(str_name, __tmp)[1])) |    \
+                           FIOBJ_T_STRING);
 
 /** Resets a temporary FIOBJ String, freeing and any resources allocated. */
 #define FIOBJ_STR_TEMP_DESTROY(str_name)                                       \
@@ -9476,6 +10112,9 @@ FIOBJ Hash Maps
 #define FIO_PTR_TAG_TYPE FIOBJ
 #include __FILE__
 
+/** Calculates an object's hash value for a specific hash map object. */
+FIO_IFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ object_key);
+
 /** Inserts a value to a hash map, automatically calculating the hash value.
  */
 FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
@@ -9490,8 +10129,28 @@ FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), get2)(FIOBJ hash,
 FIO_IFUNC int FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                        remove2)(FIOBJ hash, FIOBJ key, FIOBJ *old);
 
-/** Calculates an object's hash value for a specific hash map object. */
-FIO_IFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ object_key);
+/**
+ * Sets a String value in a hash map, allocating the String and automatically
+ * calculating the hash value.
+ */
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                         set3)(FIOBJ hash, const char *key, size_t len,
+                               FIOBJ value);
+
+/**
+ * Finds a String value in a hash map, using a temporary String and
+ * automatically calculating the hash value.
+ */
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                         get3)(FIOBJ hash, const char *buf, size_t len);
+
+/**
+ * Removes a String value in a hash map, using a temporary String and
+ * automatically calculating the hash value.
+ */
+FIO_IFUNC int FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                       remove3)(FIOBJ hash, const char *buf, size_t len,
+                                FIOBJ *old);
 
 /* *****************************************************************************
 FIOBJ JSON support
@@ -10049,6 +10708,54 @@ FIO_IFUNC int FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                   remove)(hash, FIO_NAME2(fiobj, hash)(hash, key), key, old);
 }
 
+/**
+ * Sets a String value in a hash map, allocating the String and automatically
+ * calculating the hash value.
+ */
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                         set3)(FIOBJ hash, const char *key, size_t len,
+                               FIOBJ value) {
+  FIOBJ tmp = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
+  FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(tmp, (char *)key, len);
+  FIOBJ v = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), set)(
+      hash, fio_risky_hash(key, len, (uint64_t)hash), tmp, value, NULL);
+  fiobj_free(tmp);
+  return v;
+}
+
+/**
+ * Finds a String value in a hash map, using a temporary String and
+ * automatically calculating the hash value.
+ */
+FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                         get3)(FIOBJ hash, const char *buf, size_t len) {
+  FIOBJ_STR_TEMP_VAR(tmp);
+  tmp___tmp[1] =
+      (FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
+                s))FIO_STRING_INIT_EXISTING((char *)buf, len, 0, NULL);
+  FIOBJ v = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                     get)(hash, fio_risky_hash(buf, len, (uint64_t)hash), tmp);
+  FIOBJ_STR_TEMP_DESTROY(tmp);
+  return v;
+}
+
+/**
+ * Removes a String value in a hash map, using a temporary String and
+ * automatically calculating the hash value.
+ */
+FIO_IFUNC int FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                       remove3)(FIOBJ hash, const char *buf, size_t len,
+                                FIOBJ *old) {
+  FIOBJ_STR_TEMP_VAR(tmp);
+  tmp___tmp[1] =
+      (FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
+                s))FIO_STRING_INIT_EXISTING((char *)buf, len, 0, NULL);
+  int r = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), remove)(
+      hash, fio_risky_hash(buf, len, (uint64_t)hash), tmp, old);
+  FIOBJ_STR_TEMP_DESTROY(tmp);
+  return r;
+}
+
 /* *****************************************************************************
 FIOBJ - Implementation
 ***************************************************************************** */
@@ -10519,7 +11226,7 @@ static inline void fio_json_on_error(fio_json_parser_s *p) {
  */
 FIOBJ_FUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                            update_json)(FIOBJ hash, fio_str_info_s str) {
-  if (!hash)
+  if (hash == FIOBJ_INVALID)
     return 0;
   fiobj_json_parser_s p = {.top = FIOBJ_INVALID, .target = hash};
   size_t consumed = fio_json_parse(&p.p, str.buf, str.len);
@@ -12545,9 +13252,35 @@ TEST_FUNC uintptr_t fio___dynamic_types_test___risky_wrapper(char *buf,
   return fio_risky_hash(buf, len, 0);
 }
 
+TEST_FUNC uintptr_t
+fio___dynamic_types_test___risky_stream_wrapper(char *buf, size_t len) {
+  fio_risky_hash_s r = fio_risky_hash_init(0);
+  __asm__ volatile("" ::: "memory");
+  fio_risky_hash_stream(&r, buf, len);
+  __asm__ volatile("" ::: "memory");
+  return fio_risky_hash_value(&r);
+}
+
 TEST_FUNC void fio___dynamic_types_test___risky(void) {
+  {
+    uint64_t h1, h2;
+    const char *buf =
+        "This is a small string consisting of 127 bytes (uneven data), meant "
+        "for testing that risky streaming == risky non-streaming.123";
+    const size_t len = 127;
+    fio_risky_hash_s r = fio_risky_hash_init(0);
+    // fio_risky_hash_stream(&r, buf, len);
+    fio_risky_hash_stream(&r, buf, 37);
+    fio_risky_hash_stream(&r, buf + 37, len - 37);
+    h1 = fio_risky_hash_value(&r);
+    h2 = fio_risky_hash(buf, len, 0);
+    TEST_ASSERT(h1 == h2, "Risky Hash Streaming != Non-Streaming %p != %p",
+                (void *)h1, (void *)h2);
+  }
   fio_test_hash_function(fio___dynamic_types_test___risky_wrapper,
                          "fio_risky_hash");
+  fio_test_hash_function(fio___dynamic_types_test___risky_wrapper,
+                         "fio_risky_hash (streaming)");
 }
 
 /* *****************************************************************************
@@ -12759,7 +13492,7 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
     a1 = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
     a2 = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
     for (int i = 0; i < TEST_REPEAT; ++i) {
-      FIOBJ str = fiobj_str_new();
+      FIOBJ str = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
       FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write_i)(str, i);
       FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(a1, str);
     }
@@ -12934,8 +13667,11 @@ Testing functiun
 ***************************************************************************** */
 
 TEST_FUNC void fio_test_dynamic_types(void) {
+  char *filename = __FILE__;
+  while (filename[0] == '.' && filename[1] == '/')
+    filename += 2;
   fprintf(stderr, "===============\n");
-  fprintf(stderr, "Testing Dynamic Types (" __FILE__ ")\n");
+  fprintf(stderr, "Testing Dynamic Types (%s)\n", filename);
   fprintf(stderr, "facil.io core: version " FIO_VERSION_STRING "\n");
   fprintf(stderr, "The facil.io library was originally coded by Boaz Segev.\n");
   fprintf(stderr, "===============\n");

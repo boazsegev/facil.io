@@ -58,6 +58,8 @@ In addition, the core library includes helpers for common tasks, such as:
 
 * Custom Memory Allocation - defined by `FIO_MALLOC`
 
+* Basic Socket / IO Helpers - defined by `FIO_SOCK`
+
 * Custom JSON Parser - defined by `FIO_JSON`
 
 -------------------------------------------------------------------------------
@@ -174,6 +176,10 @@ Reallocates memory, copying (at least) `copy_len` if neccessary.
 ```
 
 Frees allocated memory.
+
+#### `FIO_MALLOC_TMP_USE_SYSTEM`
+
+When defined, temporarily bypasses the `FIO_MEM_CALLOC` macros and uses the system's `calloc`, `realloc` and `free` functions.
 
 ### Naming and Misc. Macros
 
@@ -1478,6 +1484,31 @@ fio_str_info_s STR_write_b64dec(FIO_STRING_PTR s,
 Writes decoded Base64 data to the end of the String.
 
 
+### String API - escaping / JSON encoding support
+
+#### `STR_write_escape`
+
+```c
+fio_str_info_s STR_write_escape(FIO_STRING_PTR s,
+                                const void *data,
+                                size_t data_len);
+
+```
+
+Writes data at the end of the String, escaping the data using JSON semantics.
+
+The JSON semantic are common to many programming languages, promising a UTF-8 String while making it easy to read and copy the string during debugging.
+
+#### `STR_write_unescape`
+
+```c
+fio_str_info_s STR_write_unescape(FIO_STRING_PTR s,
+                                  const void *escaped,
+                                  size_t len);
+```
+
+Writes an escaped data into the string after unescaping the data.
+
 -------------------------------------------------------------------------------
 
 ## Small (non-dynamic) Strings
@@ -2163,6 +2194,176 @@ allocation system. The risk is more relevant for child processes.
 However, if a multi-threaded process, calling this function from the child
 process would perform a best attempt at mitigating any arising issues (at the
 expense of possible leaks).
+
+-------------------------------------------------------------------------------
+
+## Basic Socket / IO Helpers
+
+The facil.io standard library provides a few simple IO / Sockets helpers for POSIX systems.
+
+By defining `FIO_SOCK` on a POSIX system, the following functions will be defined.
+
+#### `fio_sock_new`
+
+```c
+int fio_sock_new(const char *restrict address,
+                 const char *restrict port,
+                 uint16_t flags);
+```
+
+Creates a new socket according to the provided flags.
+
+The `port` string will be ignored when `FIO_SOCK_UNIX` is set.
+
+The `address` can be NULL for Server sockets (`FIO_SOCK_SERVER`) when binding to all available interfaces (this is actually recommended unless network filtering is desired).
+
+The `flag` integer can be a combination of any of the following flags:
+
+*  `FIO_SOCK_TCP` - Creates a TCP/IP socket.
+
+*  `FIO_SOCK_UDP` - Creates a UDP socket.
+
+*  `FIO_SOCK_UNIX ` - Creates a Unix socket. If an existing file / Unix socket exists, they will be deleted and replaced.
+
+*  `FIO_SOCK_SERVER` - Initializes a Server socket. For TCP/IP and Unix sockets, the new socket will be listening for incoming connections (`listen` will be automatically called).
+
+*  `FIO_SOCK_CLIENT` - Initializes a Client socket, calling `connect` using the `address` and `port` arguments.
+
+*  `FIO_SOCK_NONBLOCK` - Sets the new socket to non-blocking mode.
+
+If neither `FIO_SOCK_SERVER` nor `FIO_SOCK_CLIENT` are specified, the function will default to a server socket.
+
+#### `fio_sock_poll`
+
+```c
+typedef struct {
+  void (*on_ready)(int fd, void *udata);
+  void (*on_data)(int fd, void *udata);
+  void (*on_error)(int fd, void *udata);
+  void *udata;
+  int timeout;
+  struct pollfd *fds;
+} fio_sock_poll_args;
+
+int fio_sock_poll(fio_sock_poll_args args);
+#define fio_sock_poll(...) fio_sock_poll((fio_sock_poll_args){__VA_ARGS__})
+```
+
+The `fio_sock_poll` function is shadowed by the `fio_sock_poll` MACRO, which allows the function to accept the following "named arguments":
+
+* `on_ready`:
+
+    This callback will be called if a socket can be written to and the socket is polled for the **W**rite event.
+
+        // callback example:
+        void on_ready(int fd, void *udata);
+
+* `on_data`:
+
+    This callback will be called if data is available to be read from a socket and the socket is polled for the **R**ead event.
+
+        // callback example:
+        void on_data(int fd, void *udata);
+
+* `on_error`:
+
+    This callback will be called if an error occurred when polling the file descriptor.
+
+        // callback example:
+        void on_error(int fd, void *udata);
+
+* `timeout`:
+
+    Polling timeout in milliseconds.
+
+        // type:
+        int timeout;
+
+* `udata`:
+
+    Opaque user data.
+
+        // type:
+        void *udata;
+
+* `fds`:
+
+    A list of `struct pollfd` with file descriptors to be polled. The list MUST end with a `struct pollfd` containing an empty `events` field (and no empty `events` field should appear in the middle of the list).
+
+    Use the `FIO_SOCK_POLL_LIST(...)`, `FIO_SOCK_POLL_RW(fd)`, `FIO_SOCK_POLL_R(fd)` and `FIO_SOCK_POLL_W(fd)` macros to build the list.
+
+
+The `fio_sock_poll` function uses the `poll` system call to poll a simple IO list.
+
+The list must end with a `struct pollfd` with it's `events` set to zero. No other member of the list should have their `events` data set to zero.
+
+It is recommended to use the `FIO_SOCK_POLL_LIST(...)` and
+`FIO_SOCK_POLL_[RW](fd)` macros. i.e.:
+
+```c
+int io_fd = fio_sock_new(NULL, "8888", FIO_SOCK_UDP | FIO_SOCK_NONBLOCK | FIO_SOCK_SERVER);
+int count = fio_sock_poll(.on_ready = on_ready,
+                    .on_data = on_data,
+                    .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(io_fd)));
+```
+
+**Note**: The `poll` system call should perform reasonably well for light loads (short lists). However, for complex IO needs or heavier loads, use the system's native IO API, such as `kqueue` or `epoll`.
+
+
+#### `fio_sock_address_new`
+
+```c
+struct addrinfo *fio_sock_address_new(const char *restrict address,
+                                      const char *restrict port,
+                                      int sock_type);
+```
+
+Attempts to resolve an address to a valid IP6 / IP4 address pointer.
+
+The `sock_type` element should be a socket type, such as `SOCK_DGRAM` (UDP) or `SOCK_STREAM` (TCP/IP).
+
+The address should be freed using `fio_sock_address_free`.
+
+#### `fio_sock_address_free`
+
+```c
+void fio_sock_address_free(struct addrinfo *a);
+```
+
+Frees the pointer returned by `fio_sock_address_new`.
+
+#### `fio_sock_set_non_block`
+
+```c
+int fio_sock_set_non_block(int fd);
+```
+
+Sets a file descriptor / socket to non blocking state.
+
+#### `fio_sock_new_local`
+
+```c
+int fio_sock_new_local(struct addrinfo *addr);
+```
+
+Creates a new network socket and binds it to a local address.
+
+#### `fio_sock_new_remote`
+
+```c
+int fio_sock_new_remote(struct addrinfo *addr, int nonblock);
+```
+
+Creates a new network socket and connects it to a remote address.
+
+#### `fio_sock_new_unix`
+
+```c
+int fio_sock_new_unix(const char *address, int is_client, int nonblock);
+```
+
+Creates a new Unix socket and binds it to a local address.
+
 
 -------------------------------------------------------------------------------
 
