@@ -44,6 +44,8 @@ typedef struct {
 
 #define FIOBJ_IO_INIT (fiobj_io_s){.buf = NULL, .fd = -1};
 
+#define FIOBJ2IO(io_) FIO_PTR_MATH_RMASK(fiobj_io_s, io_, 3)
+
 FIO_IFUNC void fiobj_io_init(fiobj_io_s *io) { *io = FIOBJ_IO_INIT; }
 /**
  * Destroys the fiobj_io_s data.
@@ -61,9 +63,29 @@ FIO_IFUNC void fiobj_io_destroy(fiobj_io_s *io) {
 Creating the Data Stream object
 ***************************************************************************** */
 
-// FIOBJ fiobj_io_mem_new_fd(int fd);
-
-// FIOBJ fiobj_io_mem_new_slice(FIOBJ src, size_t start_at, size_t limit);
+FIOBJ fiobj_io_mem_new_slice(fiobj_io_s *io, size_t start_at, size_t limit) {
+  if (!limit) {
+    if (start_at >= io->len)
+      return FIOBJ_INVALID;
+    limit = io->len - start_at;
+  }
+  if (!limit || start_at >= io->len)
+    return FIOBJ_INVALID;
+  if (limit + start_at > io->len)
+    limit = io->len - start_at;
+  FIOBJ io_ = fiobj_io_new();
+  FIO_ASSERT_ALLOC(FIOBJ2IO(io_));
+  *FIOBJ2IO(io_) = (fiobj_io_s){
+      .fd = -1,
+      .buf = FIO_MEM_CALLOC(1, limit + 1),
+      .capa = limit,
+      .pos = 0,
+      .len = limit,
+  };
+  FIO_ASSERT_ALLOC(FIOBJ2IO(io_)->buf);
+  memcpy(FIOBJ2IO(io_)->buf, io->buf + start_at, limit);
+  return io_;
+}
 
 /* *****************************************************************************
 Saving the Data Stream object
@@ -315,6 +337,41 @@ FIO_IFUNC void fiobj_io_fd_from_fd(fiobj_io_s *io, int fd) {
   io->fd = fd;
   lseek(fd, SEEK_SET, 0);
   return;
+}
+
+FIOBJ fiobj_io_fd_new_slice(fiobj_io_s *io, size_t start_at, size_t limit) {
+  struct stat s = {0};
+  if (fstat(io->fd, &s) == -1)
+    return FIOBJ_INVALID;
+
+  if (!limit) {
+    if ((long long)start_at >= s.st_size)
+      return FIOBJ_INVALID;
+    limit = s.st_size - start_at;
+  }
+  if (!limit || (long long)start_at >= s.st_size)
+    return FIOBJ_INVALID;
+  if (limit + start_at > (size_t)s.st_size)
+    limit = s.st_size - start_at;
+  FIOBJ io_ = fiobj_io_new2(limit);
+  FIO_ASSERT_ALLOC(FIOBJ2IO(io_));
+  char buffer[65536];
+  while (limit >= 65536) {
+    if (pread(io->fd, buffer, 65536, start_at) == -1)
+      goto read_error;
+    fiobj_io_write(io_, buffer, 65536);
+    limit -= 65536;
+    start_at += 65536;
+  }
+  if (limit) {
+    if (pread(io->fd, buffer, limit, start_at) == -1)
+      goto read_error;
+    fiobj_io_write(io_, buffer, limit);
+  }
+  return io_;
+read_error:
+  fiobj_io_free(io_);
+  return FIOBJ_INVALID;
 }
 
 /* *****************************************************************************
@@ -656,8 +713,6 @@ FIOBJ Type (VTable)
 
 ***************************************************************************** */
 
-#define FIOBJ2IO(io_) FIO_PTR_MATH_RMASK(fiobj_io_s, io_, 3)
-
 static unsigned char fiobj_io_is_eq(FIOBJ a, FIOBJ b) {
   if (FIOBJ2IO(a)->fd != -1 || FIOBJ2IO(b)->fd)
     return 0; /* can't compare files without deeply effecting the object */
@@ -777,7 +832,7 @@ External API
   return fiobj_io_mem_##function_name(__VA_ARGS__);
 
 #define ROUTE_FUNCTION_NO_RETURN(io_, function_name, ...)                      \
-  fiobj_io_fd_##function_name(__VA_ARGS__);
+  fiobj_io_mem_##function_name(__VA_ARGS__);
 
 #define fiobj_io_fd_tmpfile()
 #endif
@@ -831,7 +886,9 @@ FIOBJ fiobj_io_new_fd(int fd) {
  *
  * Returns FIOBJ_INVALID on error.
  */
-FIOBJ fiobj_io_new_slice(FIOBJ src, size_t start_at, size_t limit);
+FIOBJ fiobj_io_new_slice(FIOBJ src, size_t start_at, size_t limit) {
+  ROUTE_FUNCTION_AND_RETURN(src, new_slice, FIOBJ2IO(src), start_at, limit);
+}
 
 /* *****************************************************************************
 Saving the Data Stream object
@@ -956,10 +1013,10 @@ intptr_t fiobj_io_puts(FIOBJ io, const void *buf, uintptr_t len) {
   ROUTE_FUNCTION_AND_RETURN(io, puts, FIOBJ2IO(io), buf, len);
 }
 
-#if DEBUG
+#if TEST || DEBUG
 void fiobj_io_test FIO_NOOP(void) {
   fprintf(stderr, "===============\n");
-  fprintf(stderr, "* Testing FIOBJ IO extension (not for Socket IO.\n");
+  fprintf(stderr, "* Testing FIOBJ IO extension (not for Socket IO).\n");
 #if !FIO_HAVE_UNIX_TOOLS
   fprintf(stderr,
           "* WARNING: non-POSIX system, disk storage / API unavailable.\n");
@@ -972,6 +1029,21 @@ void fiobj_io_test FIO_NOOP(void) {
   FIO_ASSERT(fiobj_io_pos(o) == 20,
              "position error (%ld should be zero based).",
              (long)fiobj_io_pos(o));
+  if (0) {
+    FIOBJ s = fiobj_io_new_slice(o, fiobj_io_len(o), 0);
+    FIO_ASSERT(s == FIOBJ_INVALID, "zero length slice should fail");
+    s = fiobj_io_new_slice(o, fiobj_io_len(o), 30);
+    FIO_ASSERT(s == FIOBJ_INVALID, "zero length slice should fail (2)");
+    s = fiobj_io_new_slice(o, 0, 5);
+    FIO_ASSERT(s, "memory slice failed");
+    FIO_ASSERT(fiobj_io_len(s) == 5, "memory slice length error");
+    FIO_ASSERT(fiobj_io_read(s, -1).len == 5, "memory slice read length error");
+    fiobj_io_seek(s, 0);
+    FIO_ASSERT(!memcmp("Hello", fiobj_io_read(s, -1).buf, 5),
+               "memory slice copy error");
+    fiobj_io_free(s);
+  }
+
   fiobj_io_seek(o, 0);
   FIO_ASSERT(fiobj_io_pos(o) == 0, "position should be zero after seeking.");
   fiobj_io_seek(o, -1);
@@ -986,6 +1058,6 @@ void fiobj_io_test FIO_NOOP(void) {
              "fiobj_io_gets failed to retrieve second line (%zu).\n%s", i.len,
              i.buf);
   fiobj_free(o);
-  fprintf(stderr, "* WARNING: FIOBJ_IO not implemented just yet...\n");
+  fprintf(stderr, "* WARNING: FIOBJ_IO not fully implemented just yet...\n");
 }
 #endif

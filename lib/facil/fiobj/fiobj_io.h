@@ -192,7 +192,7 @@ intptr_t fiobj_io_write(FIOBJ io, const void *buf, uintptr_t len);
  */
 intptr_t fiobj_io_puts(FIOBJ io, const void *buf, uintptr_t len);
 
-#if DEBUG
+#if TEST || DEBUG
 void fiobj_io_test(void);
 #else
 #define fiobj_io_test()                                                        \

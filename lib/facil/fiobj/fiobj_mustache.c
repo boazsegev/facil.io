@@ -234,7 +234,7 @@ static void mustache_on_formatting_error(void *udata1, void *udata2) {
 Testing
 ***************************************************************************** */
 
-#if DEBUG
+#if TEST || DEBUG
 static inline void mustache_save2file(char const *filename, char const *data,
                                       size_t length) {
   int fd = open(filename, O_CREAT | O_RDWR, 0);
