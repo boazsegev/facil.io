@@ -63,13 +63,13 @@ define all available macros.
 - To make these functions safe for kernel authoring, the `FIO_MEM_CALLOC` /
 `FIO_MEM_FREE` / `FIO_MEM_REALLOC` macros should be (re)-defined.
 
-  These macros default to using the `malloc` and `free` functions calls. If
+  These macros default to using the `calloc` and `free` functions calls. If
   `FIO_MALLOC` was defined, these macros will default to the custom memory
   allocator.
 
 - To make the custom memory allocator safe for kernel authoring, the
   `FIO_MEM_PAGE_ALLOC`, `FIO_MEM_PAGE_REALLOC` and `FIO_MEM_PAGE_FREE` macros
-  should be defined. These macros default to using `mmap` and `munmap` (on
+  should be redefined. These macros default to using `mmap` and `munmap` (on
   linux, also `mremap`).
 
 - The functions defined using this file default to `static` or `static
@@ -871,6 +871,7 @@ HFUNC void FIO_NAME2(fio_u, buf64)(void *buf, uint64_t i) { /* fio_u2buf64 */
   ((uint8_t *)(buf))[6] = ((i >> 8) & 0xFF);
   ((uint8_t *)(buf))[7] = ((i)&0xFF);
 }
+
 /* *****************************************************************************
 Constant-time selectors
 ***************************************************************************** */
@@ -2086,6 +2087,7 @@ SFUNC void fio_risky_hash_stream(fio_risky_hash_s *risky, const void *buf,
                                  size_t len);
 /**
  * Returns a finalized Risky Hash value.
+ *
  * The `fio_risky_hash_s` is still writable.
  */
 SFUNC uint64_t fio_risky_hash_value(const fio_risky_hash_s *risky);
@@ -3075,7 +3077,7 @@ int main(int argc, char const *argv[]) {
 
   // Using FIO_SOCK functions for setting up UDP server / client
   state_s state = {.is_client = fio_cli_get_bool("-c")};
-  state.fd = fio_sock_new(
+  state.fd = fio_sock_open(
       fio_cli_get("-b"), fio_cli_get("-p"),
       FIO_SOCK_UDP | FIO_SOCK_NONBLOCK |
           (fio_cli_get_bool("-c") ? FIO_SOCK_CLIENT : FIO_SOCK_SERVER));
@@ -3175,15 +3177,15 @@ typedef enum {
   FIO_SOCK_TCP = 4,
   FIO_SOCK_UDP = 8,
   FIO_SOCK_UNIX = 16,
-} fio_sock_new_flags_e;
+} fio_sock_open_flags_e;
 
 /**
  * Creates a new socket according to the provided flags.
  *
  * The `port` string will be ignored when `FIO_SOCK_UNIX` is set.
  */
-HFUNC int fio_sock_new(const char *restrict address, const char *restrict port,
-                       uint16_t flags);
+HFUNC int fio_sock_open(const char *restrict address, const char *restrict port,
+                        uint16_t flags);
 
 /**
  * Attempts to resolve an address to a valid IP6 / IP4 address pointer.
@@ -3201,13 +3203,13 @@ HFUNC struct addrinfo *fio_sock_address_new(const char *restrict address,
 HFUNC void fio_sock_address_free(struct addrinfo *a);
 
 /** Creates a new network socket and binds it to a local address. */
-SFUNC int fio_sock_new_local(struct addrinfo *addr);
+SFUNC int fio_sock_open_local(struct addrinfo *addr);
 
 /** Creates a new network socket and connects it to a remote address. */
-SFUNC int fio_sock_new_remote(struct addrinfo *addr, int nonblock);
+SFUNC int fio_sock_open_remote(struct addrinfo *addr, int nonblock);
 
 /** Creates a new Unix socket and binds it to a local address. */
-SFUNC int fio_sock_new_unix(const char *address, int is_client, int nonblock);
+SFUNC int fio_sock_open_unix(const char *address, int is_client, int nonblock);
 
 /** Sets a file descriptor / socket to non blocking state. */
 SFUNC int fio_sock_set_non_block(int fd);
@@ -3246,8 +3248,8 @@ HFUNC int fio_sock_poll FIO_NOOP(fio_sock_poll_args args) {
  *
  * The `port` string will be ignored when `FIO_SOCK_UNIX` is set.
  */
-HFUNC int fio_sock_new(const char *restrict address, const char *restrict port,
-                       uint16_t flags) {
+HFUNC int fio_sock_open(const char *restrict address, const char *restrict port,
+                        uint16_t flags) {
   struct addrinfo *addr = NULL;
   int fd;
   switch ((flags & ((uint16_t)FIO_SOCK_TCP | (uint16_t)FIO_SOCK_UDP |
@@ -3255,7 +3257,7 @@ HFUNC int fio_sock_new(const char *restrict address, const char *restrict port,
   case FIO_SOCK_UDP:
     addr = fio_sock_address_new(address, port, SOCK_DGRAM);
     if (!addr) {
-      FIO_LOG_ERROR("(fio_sock_new) address error: %s", strerror(errno));
+      FIO_LOG_ERROR("(fio_sock_open) address error: %s", strerror(errno));
       return -1;
     }
     /* fallthrough */
@@ -3263,24 +3265,24 @@ HFUNC int fio_sock_new(const char *restrict address, const char *restrict port,
     if (!addr) {
       addr = fio_sock_address_new(address, port, SOCK_STREAM);
       if (!addr) {
-        FIO_LOG_ERROR("(fio_sock_new) address error: %s", strerror(errno));
+        FIO_LOG_ERROR("(fio_sock_open) address error: %s", strerror(errno));
         return -1;
       }
     }
     if ((flags & FIO_SOCK_CLIENT)) {
-      fd = fio_sock_new_remote(addr, (flags & FIO_SOCK_NONBLOCK));
+      fd = fio_sock_open_remote(addr, (flags & FIO_SOCK_NONBLOCK));
     } else {
-      fd = fio_sock_new_local(addr);
+      fd = fio_sock_open_local(addr);
       if (fd != -1 && (flags & FIO_SOCK_NONBLOCK) &&
           fio_sock_set_non_block(fd) == -1) {
         FIO_LOG_ERROR(
-            "(fio_sock_new) couldn't set socket to non-blocking mode: %s",
+            "(fio_sock_open) couldn't set socket to non-blocking mode: %s",
             strerror(errno));
         close(fd);
         fd = -1;
       }
       if ((flags & FIO_SOCK_TCP) && listen(fd, SOMAXCONN) == -1) {
-        FIO_LOG_ERROR("(fio_sock_new) failed on call to listen: %s",
+        FIO_LOG_ERROR("(fio_sock_open) failed on call to listen: %s",
                       strerror(errno));
         close(fd);
         fd = -1;
@@ -3289,10 +3291,10 @@ HFUNC int fio_sock_new(const char *restrict address, const char *restrict port,
     fio_sock_address_free(addr);
     return fd;
   case FIO_SOCK_UNIX:
-    return fio_sock_new_unix(address, (flags & FIO_SOCK_CLIENT),
-                             (flags & FIO_SOCK_NONBLOCK));
+    return fio_sock_open_unix(address, (flags & FIO_SOCK_CLIENT),
+                              (flags & FIO_SOCK_NONBLOCK));
   }
-  FIO_LOG_ERROR("(fio_sock_new) the FIO_SOCK_TCP, FIO_SOCK_UDP, and "
+  FIO_LOG_ERROR("(fio_sock_open) the FIO_SOCK_TCP, FIO_SOCK_UDP, and "
                 "FIO_SOCK_UNIX flags are exclisive");
   return -1;
 }
@@ -3343,7 +3345,7 @@ SFUNC int fio_sock_set_non_block(int fd) {
 }
 
 /** Creates a new network socket and binds it to a local address. */
-SFUNC int fio_sock_new_local(struct addrinfo *addr) {
+SFUNC int fio_sock_open_local(struct addrinfo *addr) {
   int fd = -1;
   for (struct addrinfo *p = addr; p != NULL; p = p->ai_next) {
     if ((fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
@@ -3364,7 +3366,7 @@ SFUNC int fio_sock_new_local(struct addrinfo *addr) {
 }
 
 /** Creates a new network socket and connects it to a remote address. */
-SFUNC int fio_sock_new_remote(struct addrinfo *addr, int nonblock) {
+SFUNC int fio_sock_open_remote(struct addrinfo *addr, int nonblock) {
   int fd = -1;
   for (struct addrinfo *p = addr; p != NULL; p = p->ai_next) {
     if ((fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
@@ -3391,13 +3393,13 @@ SFUNC int fio_sock_new_remote(struct addrinfo *addr, int nonblock) {
 }
 
 /** Creates a new Unix socket and binds it to a local address. */
-SFUNC int fio_sock_new_unix(const char *address, int is_client, int nonblock) {
+SFUNC int fio_sock_open_unix(const char *address, int is_client, int nonblock) {
   /* Unix socket */
   struct sockaddr_un addr = {0};
   size_t addr_len = strlen(address);
   if (addr_len >= sizeof(addr.sun_path)) {
     FIO_LOG_ERROR(
-        "(fio_sock_new_unix) address too long (%zu bytes > %zu bytes).",
+        "(fio_sock_open_unix) address too long (%zu bytes > %zu bytes).",
         addr_len, sizeof(addr.sun_path) - 1);
     errno = ENAMETOOLONG;
     return -1;

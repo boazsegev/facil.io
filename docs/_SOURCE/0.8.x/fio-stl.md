@@ -6,15 +6,19 @@ sidebar: 0.8.x/_sidebar.md
 
 At the core of the facil.io library is a single header Simple Template Library for C.
 
-The header could be included multiple times with different results, creating different types or helpers functions.
+The Simple Template Library is a "jack knife" library, that uses MACROS to generate code for different common types, such as Hash Maps, Arrays, Linked Lists, Binary-Safe Strings, etc'.
 
-This makes it east to perform common tasks for C projects - such as creating hash maps, dynamic arrays, linked lists etc'.
+The Simple Template Library also offers common functional primitives, such as bit operations, atomic operations, CLI parsing, JSON, and a custom memory allocator.
 
-## Lower Level API Notice
+In other words, all the common building blocks one could need in a C project are placed in this single header file.
 
->> **The core library is probably not the API most developers need to focus on** (although it's good to know and can be helpful).
+The header could be included multiple times with different results, creating different types or exposing different helper functions.
+
+## A Lower Level API Notice for facil.io Application Developers
+
+>> **The core library is probably not the API most facil.io application developers need to focus on**.
 >>
->> This API is used to power the higher level API offered by the [HTTP / WebSockts extension](./http) and the [dynamic FIOBJ types](./fiobj).
+>> This API is used to power the higher level API offered by the facil.io framework. If you're developing a facil.io application, use the higher level API when possible.
 
 ## Simple Template Library (STL) Overview
 
@@ -26,41 +30,41 @@ The core library includes a Simple Template Library for common types, such as:
 
 * [Dynamic Arrays](#dynamic-arrays) - defined by `FIO_ARRAY_NAME`
 
-* Hash Maps / Sets - defined by `FIO_MAP_NAME`
+* [Hash Maps / Sets](#hash-maps-sets) - defined by `FIO_MAP_NAME`
 
-* Binary Safe Dynamic Strings - defined by `FIO_STRING_NAME`
+* [Binary Safe Dynamic Strings](#dynamic-strings) - defined by `FIO_STRING_NAME`
 
-* Binary Safe Small (non-dynamic) Strings - defined by `FIO_SMALL_STR_NAME`
+* [Binary Safe Small (non-dynamic) Strings](#small-non-dynamic-strings) - defined by `FIO_SMALL_STR_NAME`
 
-* Reference counting / Type wrapper - defined by `FIO_REF_NAME`
+* [Reference counting / Type wrapper](#reference-counting-type-wrapping) - defined by `FIO_REF_NAME`
 
 * Soft / Dynamic Types (FIOBJ) - defined by `FIO_FIOBJ`
 
 In addition, the core library includes helpers for common tasks, such as:
 
-* Pointer Tagging - defined by `FIO_PTR_TAG(p)`/`FIO_PTR_UNTAG(p)`
+* [Pointer Tagging](#pointer-tagging-support) - defined by `FIO_PTR_TAG(p)`/`FIO_PTR_UNTAG(p)`
 
-* Logging and Assertion (without heap allocation) - defined by `FIO_LOG`
+* [Logging and Assertion (without heap allocation)](#logging-and-assertions) - defined by `FIO_LOG`
 
-* Atomic operations - defined by `FIO_ATOMIC`
+* [Atomic operations](#atomic-operations) - defined by `FIO_ATOMIC`
 
-* Bit-Byte Operations - defined by `FIO_BITWISE` and `FIO_BITMAP`
+* [Bit-Byte Operations](##bit-byte-operations) - defined by `FIO_BITWISE` and `FIO_BITMAP`
 
-* Network byte ordering macros - defined by `FIO_NTOL`
+* [Network Byte Ordering](#network-byte-ordering-helpers) - defined by `FIO_NTOL`
 
-* Data Hashing (using Risky Hash) - defined by `FIO_RISKY_HASH`
+* [Data Hashing (using Risky Hash)](#risky-hash-data-hashing) - defined by `FIO_RISKY_HASH`
 
-* Pseudo Random Generation - defined by `FIO_RAND`
+* [Pseudo Random Generation](#pseudo-random-generation) - defined by `FIO_RAND`
 
-* String / Number conversion - defined by `FIO_ATOL`
+* [String / Number conversion](#string-number-conversion) - defined by `FIO_ATOL`
 
-* Command Line Interface helpers - defined by `FIO_CLI`
+* [Command Line Interface helpers](#cli-command-line-interface) - defined by `FIO_CLI`
 
-* Custom Memory Allocation - defined by `FIO_MALLOC`
+* [Custom Memory Allocation](#memory-allocation) - defined by `FIO_MALLOC`
 
-* Basic Socket / IO Helpers - defined by `FIO_SOCK`
+* [Basic Socket / IO Helpers](#basic-socket-io-helpers) - defined by `FIO_SOCK`
 
-* Custom JSON Parser - defined by `FIO_JSON`
+* [Custom JSON Parser](#custom-json-parser) - defined by `FIO_JSON`
 
 -------------------------------------------------------------------------------
 
@@ -1513,14 +1517,15 @@ Writes an escaped data into the string after unescaping the data.
 
 ## Small (non-dynamic) Strings
 
-To create a small, non-dynamic, string type, define the type name using the `FIO_SMALL_STR_NAME`
-macro.
+The "Small" String helpers use a small **footprint** to store a binary safe string that doesn't change over time and can be destroyed.
 
-The type (`FIO_SMALL_STR_NAME_s`) and the functions will be automatically defined.
-
-This type was designed to store string information for Hash Maps where most strings are very short (less than 16 chars on 64 bit systems or less than 8 chars on 32 bit systems).
+This type was designed to store string information for Hash Maps where most strings might be very short (less than 16 chars on 64 bit systems or less than 8 chars on 32 bit systems).
 
 This approach minimizes memory allocation and improves locality by copying the string data onto the bytes normally used to store the string pointer and it's length.
+
+To create a small, non-dynamic, string type, define the type name using the `FIO_SMALL_STR_NAME` macro.
+
+The type (`FIO_SMALL_STR_NAME_s`) and the functions will be automatically defined.
 
 ```c
 #define FIO_SMALL_STR_NAME key
@@ -1962,9 +1967,45 @@ Network byte order to Local byte order, 62 bit integer
 If the `FIO_RISKY_HASH` macro is defined than the following static function will
 be defined:
 
-#### `uint64_t fio_risky_hash(const void *data, size_t len, uint64_t seed)`
+#### `fio_risky_hash`
+
+```c
+uint64_t fio_risky_hash(const void *data, size_t len, uint64_t seed)
+```
+
+This is a non-streaming implementation of the RiskyHash algorithm.
 
 This function will produce a 64 bit hash for X bytes of data.
+
+#### `fio_risky_hash_init`
+
+```c
+typedef struct { /*...*/ } fio_risky_hash_s;
+fio_risky_hash_s fio_risky_hash_init(uint64_t seed);
+```
+
+This function is part of a streaming implementation of the RiskyHash algorithm.
+
+Returns an initialized `fio_risky_hash_s` with stated seed.
+
+#### `fio_risky_hash_stream`
+
+```c
+void fio_risky_hash_stream(fio_risky_hash_s *risky,
+                           const void *buf, size_t len);
+```
+
+Writes streamed data to the streaming Risky Hash storage (`fio_risky_hash_s`).
+
+#### `fio_risky_hash_value`
+
+```c
+uint64_t fio_risky_hash_value(const fio_risky_hash_s *risky);
+```
+
+Returns a finalized Risky Hash value.
+
+The Risky Hash storage (`fio_risky_hash_s`) is still writable, allowing the hash to compute more data.
 
 -------------------------------------------------------------------------------
 
@@ -1995,7 +2036,7 @@ cryptographically safe.
 
 -------------------------------------------------------------------------------
 
-* String / Number conversion
+# String / Number conversion
 
 If the `FIO_ATOL` macro is defined, the following functions will be defined:
 
@@ -2203,10 +2244,10 @@ The facil.io standard library provides a few simple IO / Sockets helpers for POS
 
 By defining `FIO_SOCK` on a POSIX system, the following functions will be defined.
 
-#### `fio_sock_new`
+#### `fio_socket`
 
 ```c
-int fio_sock_new(const char *restrict address,
+int fio_socket(const char *restrict address,
                  const char *restrict port,
                  uint16_t flags);
 ```
@@ -2301,7 +2342,7 @@ It is recommended to use the `FIO_SOCK_POLL_LIST(...)` and
 `FIO_SOCK_POLL_[RW](fd)` macros. i.e.:
 
 ```c
-int io_fd = fio_sock_new(NULL, "8888", FIO_SOCK_UDP | FIO_SOCK_NONBLOCK | FIO_SOCK_SERVER);
+int io_fd = fio_socket(NULL, "8888", FIO_SOCK_UDP | FIO_SOCK_NONBLOCK | FIO_SOCK_SERVER);
 int count = fio_sock_poll(.on_ready = on_ready,
                     .on_data = on_data,
                     .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(io_fd)));
@@ -2340,36 +2381,35 @@ int fio_sock_set_non_block(int fd);
 
 Sets a file descriptor / socket to non blocking state.
 
-#### `fio_sock_new_local`
+#### `fio_sock_open_local`
 
 ```c
-int fio_sock_new_local(struct addrinfo *addr);
+int fio_sock_open_local(struct addrinfo *addr);
 ```
 
 Creates a new network socket and binds it to a local address.
 
-#### `fio_sock_new_remote`
+#### `fio_sock_open_remote`
 
 ```c
-int fio_sock_new_remote(struct addrinfo *addr, int nonblock);
+int fio_sock_open_remote(struct addrinfo *addr, int nonblock);
 ```
 
 Creates a new network socket and connects it to a remote address.
 
-#### `fio_sock_new_unix`
+#### `fio_sock_open_unix`
 
 ```c
-int fio_sock_new_unix(const char *address, int is_client, int nonblock);
+int fio_sock_open_unix(const char *address, int is_client, int nonblock);
 ```
 
 Creates a new Unix socket and binds it to a local address.
-
 
 -------------------------------------------------------------------------------
 
 ## Custom JSON Parser
 
-The facil.io JSON parser is a non-strict parser, with support for trailing commas in collections, new-lines in strings, extended escape characters and octal, hex and binary numbers, and comments.
+The facil.io JSON parser is a non-strict parser, with support for trailing commas in collections, new-lines in strings, extended escape characters, comments, and octal, hex and binary numbers.
 
 The parser allows for streaming data and decouples the parsing process from the resulting data-structure by calling static callbacks for JSON related events.
 
