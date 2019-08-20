@@ -261,6 +261,15 @@ Memory allocation macros
 #endif
 
 /* *****************************************************************************
+Security Related macros
+***************************************************************************** */
+#define FIO_MEM_STACK_WIPE(pages)                                              \
+  do {                                                                         \
+    volatile char stack_mem[(pages) << 12] = {0};                              \
+    (void)stack_mem;                                                           \
+  } while (0)
+
+/* *****************************************************************************
 String Information Helper Type
 ***************************************************************************** */
 
@@ -1842,6 +1851,8 @@ SFUNC void fio_free(void *ptr) {
 test_reserved:
   FIO_ASSERT(!(b->reserved & ((1UL << FIO_MEM_PAGE_SIZE_LOG) - 1)),
              "memory allocator corruption, block header overwritten?");
+  /* zero out memory before returning it to the system */
+  memset(ptr, 0, (b->reserved) - sizeof(*b));
   FIO_MEM_PAGE_FREE(b, (b->reserved >> FIO_MEM_PAGE_SIZE_LOG));
 }
 
@@ -2092,6 +2103,29 @@ SFUNC void fio_risky_hash_stream(fio_risky_hash_s *risky, const void *buf,
  */
 SFUNC uint64_t fio_risky_hash_value(const fio_risky_hash_s *risky);
 
+/**
+ * Masks data using a Risky Hash and a counter mode nonce.
+ *
+ * Used for mitigating memory access attacks when storing "secret" information
+ * in memory.
+ *
+ * Keep the nonce information in a different memory address then the secret. For
+ * example, if the secret is on the stack, store the nonce on the heap or using
+ * a static variable.
+ *
+ * Don't use the same nonce-secret combination for other data.
+ *
+ * This is NOT a cryptographically secure encryption. Even if the algorithm was
+ * secure, it would provide no more then a 32bit level encryption, which isn't
+ * strong enough for any cryptographic use-case.
+ *
+ * However, this could be used to mitigate memory probing attacks. Secrets
+ * stored in the memory might remain accessible after the program exists or
+ * through core dump information. By storing "secret" information masked in this
+ * way, it mitigates the risk of secret information being recognized or
+ * deciphered.
+ */
+IFUNC void fio_risky_mask(char *buf, size_t len, uint64_t key, uint64_t nonce);
 /* *****************************************************************************
 Risky Hash - Implementation
 ***************************************************************************** */
@@ -2346,6 +2380,84 @@ SFUNC uint64_t fio_risky_hash_value(const fio_risky_hash_s *r) {
   return result;
 }
 
+/**
+ * Masks data using a Risky Hash and a counter mode nonce.
+ */
+IFUNC void fio_risky_mask(char *buf, size_t len, uint64_t key, uint64_t nonce) {
+  if (!nonce) /* nonce can't be zero */
+    nonce = (uint64_t)0xF0E1D2C3B6AA6B0CULL;
+  uint64_t hash = fio_risky_hash(&key, sizeof(key), nonce);
+  if (len > 7) {
+    switch ((uintptr_t)buf & 7) {
+    case 0:
+      /* XOR 64bit aligned bytes */
+      for (size_t i = (len >> 3); i; --i) {
+        ((uint64_t *)buf)[0] ^= hash;
+        hash += nonce;
+        buf = (void *)(((uint64_t *)buf) + 1);
+      }
+      break;
+    case 4:
+      /* XOR 32bit aligned bytes */
+      for (size_t i = (len >> 3); i; --i) {
+        ((uint32_t *)buf)[0] ^= ((uint32_t *)&hash)[0];
+        ((uint32_t *)buf)[1] ^= ((uint32_t *)&hash)[1];
+        hash += nonce;
+        buf = (void *)(((uint32_t *)buf) + 2);
+      }
+      break;
+    case 2:
+      /* XOR 16bit aligned bytes */
+      for (size_t i = (len >> 3); i; --i) {
+        ((uint16_t *)buf)[0] ^= ((uint16_t *)&hash)[0];
+        ((uint16_t *)buf)[1] ^= ((uint16_t *)&hash)[1];
+        ((uint16_t *)buf)[2] ^= ((uint16_t *)&hash)[2];
+        ((uint16_t *)buf)[3] ^= ((uint16_t *)&hash)[3];
+        hash += nonce;
+        buf = (void *)(((uint16_t *)buf) + 4);
+      }
+      break;
+    default:
+      for (size_t i = (len >> 3); i; --i) {
+        ((uint8_t *)buf)[0] ^= ((uint8_t *)&hash)[0];
+        ((uint8_t *)buf)[1] ^= ((uint8_t *)&hash)[1];
+        ((uint8_t *)buf)[2] ^= ((uint8_t *)&hash)[2];
+        ((uint8_t *)buf)[3] ^= ((uint8_t *)&hash)[3];
+        ((uint8_t *)buf)[4] ^= ((uint8_t *)&hash)[4];
+        ((uint8_t *)buf)[5] ^= ((uint8_t *)&hash)[5];
+        ((uint8_t *)buf)[6] ^= ((uint8_t *)&hash)[6];
+        ((uint8_t *)buf)[7] ^= ((uint8_t *)&hash)[7];
+        hash += nonce;
+        buf = (void *)(((uint8_t *)buf) + 8);
+      }
+      break;
+    }
+  }
+  /* XOR any leftover bytes (might be non aligned)  */
+  switch ((len & 7)) {
+  case 7:
+    ((uint8_t *)buf)[6] ^= ((uint8_t *)(&hash))[6];
+  /* fallthrough */
+  case 6:
+    ((uint8_t *)buf)[5] ^= ((uint8_t *)(&hash))[5];
+  /* fallthrough */
+  case 5:
+    ((uint8_t *)buf)[4] ^= ((uint8_t *)(&hash))[4];
+  /* fallthrough */
+  case 4:
+    ((uint8_t *)buf)[3] ^= ((uint8_t *)(&hash))[3];
+  /* fallthrough */
+  case 3:
+    ((uint8_t *)buf)[2] ^= ((uint8_t *)(&hash))[2];
+  /* fallthrough */
+  case 2:
+    ((uint8_t *)buf)[1] ^= ((uint8_t *)(&hash))[1];
+  /* fallthrough */
+  case 1:
+    ((uint8_t *)buf)[0] ^= ((uint8_t *)(&hash))[0];
+    /* fallthrough */
+  }
+}
 /* *****************************************************************************
 Risky Hash - Cleanup
 ***************************************************************************** */
@@ -13167,9 +13279,11 @@ TEST_FUNC void fio___dynamic_types_test___mem(void) {
 
 TEST_FUNC void fio___dynamic_types_test___mem(void) {
   fprintf(stderr, "* Testing core memory allocator (fio_malloc).\n");
-  const size_t three_blocks = ((size_t)3 * FIO_MEMORY_BLOCKS_PER_ALLOCATION)
+  const size_t three_blocks = ((size_t)3ULL * FIO_MEMORY_BLOCKS_PER_ALLOCATION)
                               << FIO_MEMORY_BLOCK_SIZE_LOG;
-  for (int cycles = 4; cycles < 14; ++cycles) {
+  for (int cycles = 4; cycles < 16; ++cycles) {
+    fprintf(stderr, "* Testing %zu byte allocation blocks.\n",
+            (size_t)(1UL << cycles));
     const size_t limit = (three_blocks >> cycles);
     char **ary = fio_calloc(sizeof(*ary), limit);
     TEST_ASSERT(ary, "allocation failed for test container");
@@ -13263,6 +13377,12 @@ fio___dynamic_types_test___risky_stream_wrapper(char *buf, size_t len) {
   return fio_risky_hash_value(&r);
 }
 
+TEST_FUNC uintptr_t fio___dynamic_types_test___risky_mask_wrapper(char *buf,
+                                                                  size_t len) {
+  fio_risky_mask(buf, len, 0, 0);
+  return len;
+}
+
 TEST_FUNC void fio___dynamic_types_test___risky(void) {
   {
     uint64_t h1, h2;
@@ -13281,8 +13401,21 @@ TEST_FUNC void fio___dynamic_types_test___risky(void) {
   }
   fio_test_hash_function(fio___dynamic_types_test___risky_wrapper,
                          "fio_risky_hash");
-  fio_test_hash_function(fio___dynamic_types_test___risky_wrapper,
+  fio_test_hash_function(fio___dynamic_types_test___risky_stream_wrapper,
                          "fio_risky_hash (streaming)");
+  fio_test_hash_function(fio___dynamic_types_test___risky_mask_wrapper,
+                         "fio_risky_mask (memory masking for sensitive data)");
+  for (int i = 0; i < 8; ++i) {
+    char buf[128];
+    uint64_t nonce = fio_rand64();
+    const char *str = "this is a short text, to test risky masking";
+    char *tmp = buf + i;
+    memcpy(tmp, str, strlen(str));
+    fio_risky_mask(tmp, strlen(str), (uint64_t)tmp, nonce);
+    TEST_ASSERT(memcmp(tmp, str, strlen(str)), "Risky Hash masking failed");
+    fio_risky_mask(tmp, strlen(str), (uint64_t)tmp, nonce);
+    TEST_ASSERT(!memcmp(tmp, str, strlen(str)), "Risky Hash masking RT failed");
+  }
 }
 
 /* *****************************************************************************

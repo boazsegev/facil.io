@@ -2007,6 +2007,25 @@ Returns a finalized Risky Hash value.
 
 The Risky Hash storage (`fio_risky_hash_s`) is still writable, allowing the hash to compute more data.
 
+#### `fio_risky_mask`
+
+```c
+void fio_risky_mask(char *buf, size_t len, uint64_t key, uint64_t nonce);
+```
+
+Masks data using a Risky Hash and a counter mode nonce.
+
+Used for mitigating memory access attacks when storing "secret" information in memory.
+
+Keep the nonce information in a different memory address then the secret. For example, if the secret is on the stack, store the nonce on the heap or using a static variable.
+
+Don't use the same nonce-secret combination for other data.
+
+This is **not** a cryptographically secure encryption. Even **if** the algorithm was secure, it would provide no more then a 32 bit level encryption, which isn't strong enough for any cryptographic use-case.
+
+However, this could be used to mitigate memory probing attacks. Secrets stored in the memory might remain accessible after the program exists or through core dump information. By storing "secret" information masked in this way, it mitigates the risk of secret information being recognized or deciphered.
+
+
 -------------------------------------------------------------------------------
 
 ## Pseudo Random Generation
@@ -2244,10 +2263,10 @@ The facil.io standard library provides a few simple IO / Sockets helpers for POS
 
 By defining `FIO_SOCK` on a POSIX system, the following functions will be defined.
 
-#### `fio_socket`
+#### `fio_sock_open`
 
 ```c
-int fio_socket(const char *restrict address,
+int fio_sock_open(const char *restrict address,
                  const char *restrict port,
                  uint16_t flags);
 ```
@@ -2342,7 +2361,7 @@ It is recommended to use the `FIO_SOCK_POLL_LIST(...)` and
 `FIO_SOCK_POLL_[RW](fd)` macros. i.e.:
 
 ```c
-int io_fd = fio_socket(NULL, "8888", FIO_SOCK_UDP | FIO_SOCK_NONBLOCK | FIO_SOCK_SERVER);
+int io_fd = fio_sock_open(NULL, "8888", FIO_SOCK_UDP | FIO_SOCK_NONBLOCK | FIO_SOCK_SERVER);
 int count = fio_sock_poll(.on_ready = on_ready,
                     .on_data = on_data,
                     .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(io_fd)));
