@@ -13354,7 +13354,7 @@ TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h, char *name) {
     memcpy(buffer, &hash, sizeof(hash));
     if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
         cycles >= ((uint64_t)1 << 62)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", name,
+      fprintf(stderr, "%-40s %8.2f MB/s\n", name,
               (double)(sizeof(buffer) * cycles) /
                   (((end - start) * (1000000.0 / CLOCKS_PER_SEC))));
       break;
