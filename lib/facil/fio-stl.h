@@ -2406,6 +2406,7 @@ IFUNC void fio_risky_mask(char *buf, size_t len, uint64_t key, uint64_t nonce) {
         buf = (void *)(((uint32_t *)buf) + 2);
       }
       break;
+    case 6: /* fallthrough */
     case 2:
       /* XOR 16bit aligned bytes */
       for (size_t i = (len >> 3); i; --i) {
