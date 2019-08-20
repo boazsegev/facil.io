@@ -13404,7 +13404,7 @@ TEST_FUNC void fio___dynamic_types_test___risky(void) {
   fio_test_hash_function(fio___dynamic_types_test___risky_stream_wrapper,
                          "fio_risky_hash (streaming)");
   fio_test_hash_function(fio___dynamic_types_test___risky_mask_wrapper,
-                         "fio_risky_mask (memory masking for sensitive data)");
+                         "fio_risky_mask (Risky XOR + counter)");
   for (int i = 0; i < 8; ++i) {
     char buf[128];
     uint64_t nonce = fio_rand64();
