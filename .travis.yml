@@ -2,7 +2,7 @@ language: c
 script:
   - make vars
   - DEBUG=1 make vars
-  - CC="time clang" make test/optimized
+  - CC="time $CC" make test/optimized
   - ASAN_OPTIONS=detect_leaks=0 make test/poll
   - ASAN_OPTIONS=detect_leaks=0 make test/ci
 os:

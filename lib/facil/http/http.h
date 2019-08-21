@@ -42,6 +42,11 @@ Compile Time Settings
 #define HTTP_MAX_HEADER_LENGTH 8192
 #endif
 
+#ifndef FIO_HTTP_LOG_LINE_TRUNCATION
+/** the default maximum length for a single log line - maximum: 32KB */
+#define FIO_HTTP_LOG_LINE_TRUNCATION 1023
+#endif
+
 #ifndef FIO_HTTP_EXACT_LOGGING
 /**
  * By default, facil.io logs the HTTP request cycle using a fuzzy starting point
@@ -74,7 +79,7 @@ The Request / Response type and functions
 typedef struct {
   /** the HTTP request's "head" starts with a private data used by facil.io */
   struct {
-    /** the function touting table - used by facil.io, don't use directly! */
+    /** the function routing table - used by facil.io, don't use directly! */
     void *vtbl;
     /** the connection's owner / uuid - used by facil.io, don't use directly! */
     uintptr_t flag;
@@ -212,6 +217,10 @@ int http_sendfile(http_s *h, int fd, uintptr_t length, uintptr_t offset);
  *
  * The `local` and `encoded` strings will be joined into a single string that
  * represent the file name. Either or both of these strings can be empty.
+ *
+ * The file name will be tested with any supported encoding extensions (i.e.,
+ * filename.gz) and with the added default extension "html" (i.e.,
+ * "filename.html.gz").
  *
  * The `encoded` string will be URL decoded while the `local` string will used
  * as is.
@@ -861,6 +870,8 @@ Commonly used headers (fiobj Symbol objects)
 ***************************************************************************** */
 
 extern FIOBJ HTTP_HEADER_ACCEPT;
+extern FIOBJ HTTP_HEADER_ACCEPT_ENCODING;
+extern FIOBJ HTTP_HEADER_ALLOW;
 extern FIOBJ HTTP_HEADER_CACHE_CONTROL;
 extern FIOBJ HTTP_HEADER_CONNECTION;
 extern FIOBJ HTTP_HEADER_CONTENT_ENCODING;
@@ -871,10 +882,13 @@ extern FIOBJ HTTP_HEADER_COOKIE;
 extern FIOBJ HTTP_HEADER_DATE;
 extern FIOBJ HTTP_HEADER_ETAG;
 extern FIOBJ HTTP_HEADER_HOST;
+extern FIOBJ HTTP_HEADER_IF_NONE_MATCH;
+extern FIOBJ HTTP_HEADER_IF_RANGE;
 extern FIOBJ HTTP_HEADER_LAST_MODIFIED;
 extern FIOBJ HTTP_HEADER_ORIGIN;
 extern FIOBJ HTTP_HEADER_SET_COOKIE;
 extern FIOBJ HTTP_HEADER_UPGRADE;
+extern FIOBJ HTTP_HEADER_RANGE;
 
 /* *****************************************************************************
 HTTP General Helper functions that could be used globally
@@ -923,14 +937,6 @@ static inline size_t http_date2str(char *target, struct tm *tmbuf) {
   return http_date2rfc7231(target, tmbuf);
 }
 
-/**
- * Prints Unix time to a HTTP time formatted string.
- *
- * This variation implements cached results for faster processing, at the
- * price of a less accurate string.
- */
-size_t http_time2str(char *target, const time_t t);
-
 /* *****************************************************************************
 HTTP URL decoding helper functions that might be used globally
 ***************************************************************************** */
@@ -948,47 +954,6 @@ ssize_t http_decode_path_unsafe(char *dest, const char *url_data);
  * Decodes the "path" part of an HTTP request, no buffer overflow protection.
  */
 ssize_t http_decode_path(char *dest, const char *url_data, size_t length);
-
-/* *****************************************************************************
-HTTP URL parsing
-***************************************************************************** */
-
-/** the result returned by `http_url_parse` */
-typedef fio_url_s http_url_s
-    __attribute__((deprecated("use fio_url_s instead")));
-
-/**
- * Parses the URI returning it's components and their lengths (no decoding
- * performed, doesn't accept decoded URIs).
- *
- * The returned string are NOT NUL terminated, they are merely locations within
- * the original string.
- *
- * This function expects any of the following formats:
- *
- * * `/complete_path?query#target`
- *
- *   i.e.: /index.html?page=1#list
- *
- * * `host:port/complete_path?query#target`
- *
- *   i.e.:
- *      example.com
- *      example.com/index.html
- *      example.com:8080/index.html
- *      example.com:8080/index.html?key=val#target
- *
- * * `user:password@host:port/path?query#target`
- *
- *   i.e.: user:1234@example.com:8080/index.html
- *
- * * `schema://user:password@host:port/path?query#target`
- *
- *   i.e.: http://example.com/index.html?page=1#list
- *
- * Invalid formats might produce unexpected results. No error testing performed.
- */
-#define http_url_parse(url, len) fio_url_parse((url), (len))
 
 #if DEBUG
 void http_tests(void);

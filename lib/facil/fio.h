@@ -737,25 +737,35 @@ char const *fio_engine(void);
 Socket / Connection Functions
 ***************************************************************************** */
 
+#define FIO_SOCKET_SERVER 1
+#define FIO_SOCKET_CLIENT 0
+#define FIO_SOCKET_UDP -1
+
 /**
  * Creates a Unix or a TCP/IP socket and returns it's unique identifier.
  *
- * For TCP/IP server sockets (`is_server` is `1`), a NULL `address` variable is
- * recommended. Use "localhost" or "127.0.0.1" to limit access to the server
- * application.
+ * For TCP/IP server sockets (`is_server` is `FIO_SOCKET_SERVER`), a NULL
+ * `address` variable is recommended. Use "localhost" or "127.0.0.1" to limit
+ * access to the server application.
  *
- * For TCP/IP client sockets (`is_server` is `0`), a remote `address` and `port`
- * combination will be required
+ * For TCP/IP client sockets (`is_server` is `FIO_SOCKET_CLIENT`), a remote
+ * `address` and `port` combination will be required
  *
  * For Unix server or client sockets, set the `port` variable to NULL or `0`.
+ *
+ * For Datagram (UDP) sockets, set `is_server` to `FIO_SOCKET_UDP_CLIENT` or
+ * `FIO_SOCKET_UDP_SERVER`.
  *
  * Returns -1 on error. Any other value is a valid unique identifier.
  *
  * Note: facil.io uses unique identifiers to protect sockets from collisions.
  *       However these identifiers can be converted to the underlying file
  *       descriptor using the `fio_uuid2fd` macro.
+ *
+ * Note: UDP server sockets can't use `fio_read` or `fio_write` since they are
+ * connectionless.
  */
-intptr_t fio_socket(const char *address, const char *port, uint8_t is_server);
+intptr_t fio_socket(const char *address, const char *port, char is_server);
 
 /**
  * `fio_accept` accepts a new socket connection from a server socket - see the

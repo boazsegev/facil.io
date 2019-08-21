@@ -27,7 +27,6 @@ Benchmark with higher load:
 /* include the core library, without any extensions */
 #include <fio.h>
 
-#include <fio_cli.h>
 #include <http.h>
 
 /* defined later */

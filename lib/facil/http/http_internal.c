@@ -90,10 +90,10 @@ int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
   if (!uuid || !settings || !error)
     return -1;
   fio_protocol_s *pr = http1_new(uuid, settings, NULL, 0);
-  http_s *r = fio_malloc(sizeof(*r));
+  http_internal_s *h = fio_malloc(sizeof(*h));
   FIO_ASSERT(pr, "Couldn't allocate response object for error report.")
-  http_s_new(r, (http_fio_protocol_s *)pr, http1_vtable());
-  int ret = http_send_error(r, error);
+  *h = (http_internal_s)HTTP_H_INIT(http1_vtable(), (http_fio_protocol_s *)pr);
+  int ret = http_send_error(&h->public, error);
   fio_close(uuid);
   return ret;
 }
@@ -103,7 +103,9 @@ Library initialization
 ***************************************************************************** */
 
 FIOBJ HTTP_HEADER_ACCEPT;
+FIOBJ HTTP_HEADER_ACCEPT_ENCODING;
 FIOBJ HTTP_HEADER_ACCEPT_RANGES;
+FIOBJ HTTP_HEADER_ALLOW;
 FIOBJ HTTP_HEADER_CACHE_CONTROL;
 FIOBJ HTTP_HEADER_CONNECTION;
 FIOBJ HTTP_HEADER_CONTENT_ENCODING;
@@ -114,8 +116,11 @@ FIOBJ HTTP_HEADER_COOKIE;
 FIOBJ HTTP_HEADER_DATE;
 FIOBJ HTTP_HEADER_ETAG;
 FIOBJ HTTP_HEADER_HOST;
+FIOBJ HTTP_HEADER_IF_NONE_MATCH;
+FIOBJ HTTP_HEADER_IF_RANGE;
 FIOBJ HTTP_HEADER_LAST_MODIFIED;
 FIOBJ HTTP_HEADER_ORIGIN;
+FIOBJ HTTP_HEADER_RANGE;
 FIOBJ HTTP_HEADER_SET_COOKIE;
 FIOBJ HTTP_HEADER_UPGRADE;
 FIOBJ HTTP_HEADER_WS_SEC_CLIENT_KEY;
@@ -143,13 +148,16 @@ static __attribute__((constructor)) void http_lib_constructor(void) {
 void http_mimetype_stats(void);
 
 static void http_lib_cleanup(void *ignr_) {
+  FIO_LOG_DEBUG("Freeing HTTP extension resources");
   (void)ignr_;
   http_mimetype_clear();
 #define HTTPLIB_RESET(x)                                                       \
   fiobj_free(x);                                                               \
   x = FIOBJ_INVALID;
   HTTPLIB_RESET(HTTP_HEADER_ACCEPT);
+  HTTPLIB_RESET(HTTP_HEADER_ACCEPT_ENCODING);
   HTTPLIB_RESET(HTTP_HEADER_ACCEPT_RANGES);
+  HTTPLIB_RESET(HTTP_HEADER_ALLOW);
   HTTPLIB_RESET(HTTP_HEADER_CACHE_CONTROL);
   HTTPLIB_RESET(HTTP_HEADER_CONNECTION);
   HTTPLIB_RESET(HTTP_HEADER_CONTENT_ENCODING);
@@ -160,8 +168,11 @@ static void http_lib_cleanup(void *ignr_) {
   HTTPLIB_RESET(HTTP_HEADER_DATE);
   HTTPLIB_RESET(HTTP_HEADER_ETAG);
   HTTPLIB_RESET(HTTP_HEADER_HOST);
+  HTTPLIB_RESET(HTTP_HEADER_IF_NONE_MATCH);
+  HTTPLIB_RESET(HTTP_HEADER_IF_RANGE);
   HTTPLIB_RESET(HTTP_HEADER_LAST_MODIFIED);
   HTTPLIB_RESET(HTTP_HEADER_ORIGIN);
+  HTTPLIB_RESET(HTTP_HEADER_RANGE);
   HTTPLIB_RESET(HTTP_HEADER_SET_COOKIE);
   HTTPLIB_RESET(HTTP_HEADER_UPGRADE);
   HTTPLIB_RESET(HTTP_HEADER_WS_SEC_CLIENT_KEY);
@@ -178,19 +189,20 @@ static void http_lib_cleanup(void *ignr_) {
   HTTPLIB_RESET(HTTP_HVALUE_WS_SEC_VERSION);
   HTTPLIB_RESET(HTTP_HVALUE_WS_UPGRADE);
   HTTPLIB_RESET(HTTP_HVALUE_WS_VERSION);
-
 #undef HTTPLIB_RESET
+
   http_mimetype_stats();
 }
-
-void http_mimetype_stats(void);
 
 static void http_lib_init(void *ignr_) {
   (void)ignr_;
   if (HTTP_HEADER_ACCEPT_RANGES)
     return;
+
   HTTP_HEADER_ACCEPT = fiobj_str_new_cstr("accept", 6);
+  HTTP_HEADER_ACCEPT_ENCODING = fiobj_str_new_cstr("accept-encoding", 15);
   HTTP_HEADER_ACCEPT_RANGES = fiobj_str_new_cstr("accept-ranges", 13);
+  HTTP_HEADER_ALLOW = fiobj_str_new_cstr("allow", 5);
   HTTP_HEADER_CACHE_CONTROL = fiobj_str_new_cstr("cache-control", 13);
   HTTP_HEADER_CONNECTION = fiobj_str_new_cstr("connection", 10);
   HTTP_HEADER_CONTENT_ENCODING = fiobj_str_new_cstr("content-encoding", 16);
@@ -201,8 +213,11 @@ static void http_lib_init(void *ignr_) {
   HTTP_HEADER_DATE = fiobj_str_new_cstr("date", 4);
   HTTP_HEADER_ETAG = fiobj_str_new_cstr("etag", 4);
   HTTP_HEADER_HOST = fiobj_str_new_cstr("host", 4);
+  HTTP_HEADER_IF_NONE_MATCH = fiobj_str_new_cstr("if-none-match", 13);
+  HTTP_HEADER_IF_RANGE = fiobj_str_new_cstr("if-range", 8);
   HTTP_HEADER_LAST_MODIFIED = fiobj_str_new_cstr("last-modified", 13);
   HTTP_HEADER_ORIGIN = fiobj_str_new_cstr("origin", 6);
+  HTTP_HEADER_RANGE = fiobj_str_new_cstr("range", 5);
   HTTP_HEADER_SET_COOKIE = fiobj_str_new_cstr("set-cookie", 10);
   HTTP_HEADER_UPGRADE = fiobj_str_new_cstr("upgrade", 7);
   HTTP_HEADER_WS_SEC_CLIENT_KEY = fiobj_str_new_cstr("sec-websocket-key", 17);

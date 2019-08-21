@@ -19,39 +19,6 @@ Types
 typedef struct http_fio_protocol_s http_fio_protocol_s;
 typedef struct http_vtable_s http_vtable_s;
 
-struct http_vtable_s {
-  /** Should send existing headers and data */
-  int (*const http_send_body)(http_s *h, void *data, uintptr_t length);
-  /** Should send existing headers and file */
-  int (*const http_sendfile)(http_s *h, int fd, uintptr_t length,
-                             uintptr_t offset);
-  /** Should send existing headers and data and prepare for streaming */
-  int (*const http_stream)(http_s *h, void *data, uintptr_t length);
-  /** Should send existing headers or complete streaming */
-  void (*const http_finish)(http_s *h);
-  /** Push for data. */
-  int (*const http_push_data)(http_s *h, void *data, uintptr_t length,
-                              FIOBJ mime_type);
-  /** Upgrades a connection to Websockets. */
-  int (*const http2websocket)(http_s *h, websocket_settings_s *arg);
-  /** Push for files. */
-  int (*const http_push_file)(http_s *h, FIOBJ filename, FIOBJ mime_type);
-  /** Pauses the request / response handling. */
-  void (*http_on_pause)(http_s *, http_fio_protocol_s *);
-
-  /** Resumes a request / response handling. */
-  void (*http_on_resume)(http_s *, http_fio_protocol_s *);
-  /** hijacks the socket aaway from the protocol. */
-  intptr_t (*http_hijack)(http_s *h, fio_str_info_s *leftover);
-
-  /** Upgrades an HTTP connection to an EventSource (SSE) connection. */
-  int (*http_upgrade2sse)(http_s *h, http_sse_s *sse);
-  /** Writes data to an EventSource (SSE) connection. MUST free the FIOBJ. */
-  int (*http_sse_write)(http_sse_s *sse, FIOBJ str);
-  /** Closes an EventSource (SSE) connection. */
-  int (*http_sse_close)(http_sse_s *sse);
-};
-
 struct http_fio_protocol_s {
   fio_protocol_s protocol;   /* facil.io protocol */
   intptr_t uuid;             /* socket uuid */
@@ -84,51 +51,91 @@ extern FIOBJ HTTP_HVALUE_WS_VERSION;
 HTTP request/response object management
 ***************************************************************************** */
 
-static inline void http_s_new(http_s *h, http_fio_protocol_s *owner,
-                              http_vtable_s *vtbl) {
-  *h = (http_s){
-      .private_data =
-          {
-              .vtbl = vtbl,
-              .flag = (uintptr_t)owner,
-              .out_headers = fiobj_hash_new(),
-          },
-      .headers = fiobj_hash_new(),
-      .received_at = fio_last_tick(),
-      .status = 200,
-  };
-}
+typedef struct {
+  http_vtable_s *vtbl;
+  http_fio_protocol_s *pr;
+  FIOBJ headers_out;
+  size_t bytes_sent;
+  http_s public;
+} http_internal_s;
 
-static inline void http_s_destroy(http_s *h, uint8_t log) {
-  if (log && h->status && !h->status_str) {
-    http_write_log(h);
+/** tests public handle validity */
+#define HTTP2PRIVATE(h_) FIO_PTR_FROM_FIELD(http_internal_s, public, h_)
+#define HTTP2PUBLIC(h_) (&h_->public)
+#define HTTP_H_INIT(vtbl_, owner_)                                             \
+  {                                                                            \
+    .vtbl = (vtbl_), .pr = (owner_), .headers_out = fiobj_hash_new(),          \
+    .public = {                                                                \
+        .status = 200,                                                         \
+        .received_at = fio_last_tick(),                                        \
+    },                                                                         \
   }
-  fiobj_free(h->method);
-  fiobj_free(h->status_str);
-  fiobj_free(h->private_data.out_headers);
-  fiobj_free(h->headers);
-  fiobj_free(h->version);
-  fiobj_free(h->query);
-  fiobj_free(h->path);
-  fiobj_free(h->cookies);
-  fiobj_free(h->body);
-  fiobj_free(h->params);
 
-  *h = (http_s){
-      .private_data.vtbl = h->private_data.vtbl,
-      .private_data.flag = h->private_data.flag,
+#define HTTP_S_INVALID(h)                                                      \
+  (!(h) || HTTP2PRIVATE(h)->headers_out == FIOBJ_INVALID)
+
+static inline void http_h_destroy(http_internal_s *h, uint8_t log) {
+  if (log && h->public.status && !h->public.status_str) {
+    http_write_log(HTTP2PUBLIC(h));
+  }
+  fiobj_free(h->public.method);
+  fiobj_free(h->public.status_str);
+  fiobj_free(h->headers_out);
+  fiobj_free(h->public.headers);
+  fiobj_free(h->public.version);
+  fiobj_free(h->public.query);
+  fiobj_free(h->public.path);
+  fiobj_free(h->public.cookies);
+  fiobj_free(h->public.body);
+  fiobj_free(h->public.params);
+
+  *h = (http_internal_s){
+      .vtbl = h->vtbl,
+      .pr = h->pr,
   };
 }
 
-static inline void http_s_clear(http_s *h, uint8_t log) {
-  http_s_destroy(h, log);
-  http_s_new(h, (http_fio_protocol_s *)h->private_data.flag,
-             h->private_data.vtbl);
+static inline void http_h_clear(http_internal_s *h, uint8_t log) {
+  http_h_destroy(h, log);
+  *h = (http_internal_s)HTTP_H_INIT(h->vtbl, h->pr);
 }
 
-/** tests handle validity */
-#define HTTP_INVALID_HANDLE(h)                                                 \
-  (!(h) || (!(h)->method && !(h)->status_str && (h)->status))
+/* *****************************************************************************
+Virtual Function Table for HTTP Protocols
+***************************************************************************** */
+
+struct http_vtable_s {
+  /** Should send existing headers and data */
+  int (*const send_body)(http_internal_s *h, void *data, uintptr_t length);
+  /** Should send existing headers and file */
+  int (*const sendfile)(http_internal_s *h, int fd, uintptr_t length,
+                        uintptr_t offset);
+  /** Should send existing headers and data and prepare for streaming */
+  int (*const stream)(http_internal_s *h, void *data, uintptr_t length);
+  /** Should send existing headers or complete streaming */
+  void (*const finish)(http_internal_s *h);
+  /** Push for data. */
+  int (*const push_data)(http_internal_s *h, void *data, uintptr_t length,
+                         FIOBJ mime_type);
+  /** Upgrades a connection to Websockets. */
+  int (*const http2websocket)(http_internal_s *h, websocket_settings_s *arg);
+  /** Push for files. */
+  int (*const push_file)(http_internal_s *h, FIOBJ filename, FIOBJ mime_type);
+  /** Pauses the request / response handling. */
+  void (*on_pause)(http_internal_s *, http_fio_protocol_s *);
+
+  /** Resumes a request / response handling. */
+  void (*on_resume)(http_internal_s *, http_fio_protocol_s *);
+  /** hijacks the socket aaway from the protocol. */
+  intptr_t (*hijack)(http_internal_s *h, fio_str_info_s *leftover);
+
+  /** Upgrades an HTTP connection to an EventSource (SSE) connection. */
+  int (*upgrade2sse)(http_internal_s *h, http_sse_s *sse);
+  /** Writes data to an EventSource (SSE) connection. MUST free the FIOBJ. */
+  int (*sse_write)(http_sse_s *sse, FIOBJ str);
+  /** Closes an EventSource (SSE) connection. */
+  int (*sse_close)(http_sse_s *sse);
+};
 
 /* *****************************************************************************
 Request / Response Handlers

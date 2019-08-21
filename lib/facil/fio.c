@@ -7,6 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #define FIO_EXTERN_COMPLETE 1
 #define FIOBJ_EXTERN_COMPLETE 1
+#define FIO_VERSION_GUARD
 #include <fio.h>
 
 #define FIO_STRING_NAME fio_str
@@ -2630,41 +2631,89 @@ socket_okay:
   return fd2uuid(fd);
 }
 
-/* PUBLIC API: opens a server or client socket */
-intptr_t fio_socket(const char *address, const char *port, uint8_t server) {
-  intptr_t uuid;
-  if (port) {
-    char *pos = (char *)port;
-    int64_t n = fio_atol(&pos);
-    /* make sure port is only numerical */
-    if (*pos) {
-      FIO_LOG_ERROR("(fio_socket) port %s is not a number.", port);
-      errno = EINVAL;
+/* Creates a TCP/IP socket - returning it's uuid (or -1) */
+static intptr_t fio_udp_socket(const char *address, const char *port) {
+  return -1;
+  int fd;
+  struct addrinfo *addrinfo, *p;
+
+  {
+    /* collect possible binding addresses */
+    struct addrinfo addr_hints = (struct addrinfo){0};
+    int e;
+    // memset(&addr_hints, 0, sizeof(addr_hints));
+    addr_hints.ai_family = AF_UNSPEC; // set to AF_INET to force IPv4
+    addr_hints.ai_socktype = SOCK_DGRAM;
+    addr_hints.ai_flags = AI_PASSIVE; // use my IP
+
+    if ((e = getaddrinfo(address, port, &addr_hints, &addrinfo)) != 0) {
+      FIO_LOG_ERROR("UDP address collection error %s", gai_strerror(e));
       return -1;
     }
-    /* a negative port number will revert to a Unix socket. */
-    if (n <= 0) {
-      if (n < -1)
-        FIO_LOG_WARNING("(fio_socket) negative port number %s is ignored.",
-                        port);
-      port = NULL;
-    }
   }
+
+  /* loop through all the possible addresses and attempt to bind each one */
+  for (p = addrinfo; p != NULL; p = p->ai_next) {
+    if ((fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+      FIO_LOG_DEBUG("UDP socket creation error %s", strerror(errno));
+      continue;
+    }
+
+    if (bind(fd, p->ai_addr, p->ai_addrlen) == -1) {
+      close(fd);
+      FIO_LOG_DEBUG("UDP socket binding error %s", strerror(errno));
+      continue;
+    }
+
+    break;
+  }
+
+  if (p == NULL) {
+    FIO_LOG_ERROR("UDP socket couldn't be innitialized: %s", strerror(errno));
+    return -1;
+  }
+
+  // make sure the socket is non-blocking
+  if (fio_set_non_block(fd) < 0) {
+    freeaddrinfo(addrinfo);
+    close(fd);
+    return -1;
+  }
+
+  fio_lock(&fd_data(fd).protocol_lock);
+  fio_clear_fd(fd, 1);
+  fio_unlock(&fd_data(fd).protocol_lock);
+  fio_tcp_addr_cpy(fd, p->ai_family, (void *)p);
+  freeaddrinfo(addrinfo);
+  /* TODO: setup default read/write hooks for UDP */
+  return fd2uuid(fd);
+}
+
+/* PUBLIC API: opens a server or client socket */
+intptr_t fio_socket(const char *address, const char *port, char server) {
+  intptr_t uuid;
   if (!address && !port) {
     FIO_LOG_ERROR("(fio_socket) both address and port are missing or invalid.");
     errno = EINVAL;
     return -1;
   }
-  if (!port) {
+  if (server == FIO_SOCKET_UDP) {
     do {
       errno = 0;
-      uuid = fio_unix_socket(address, server);
+      uuid = fio_udp_socket(address, port);
     } while (errno == EINTR);
   } else {
-    do {
-      errno = 0;
-      uuid = fio_tcp_socket(address, port, server);
-    } while (errno == EINTR);
+    if (!port || (*port == '0' && port[1] == 0)) {
+      do {
+        errno = 0;
+        uuid = fio_unix_socket(address, server);
+      } while (errno == EINTR);
+    } else {
+      do {
+        errno = 0;
+        uuid = fio_tcp_socket(address, port, server);
+      } while (errno == EINTR);
+    }
   }
   return uuid;
 }

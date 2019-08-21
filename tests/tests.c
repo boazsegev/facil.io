@@ -15,8 +15,12 @@ void resp_test(void);
 int main(void) {
   // mustache_test();
   fiobj_test();
-  fio_test_dynamic_types();
   fio_test();
+  {
+    /* core tests test for memory leaks, so we need to clear cached objects */
+    fio_state_callback_force(FIO_CALL_AT_EXIT);
+    fio_test_dynamic_types();
+  }
   // http_tests();
   // resp_test();
 }
