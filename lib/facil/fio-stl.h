@@ -748,7 +748,8 @@ HFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_xchange(lock, 0); }
 
 ***************************************************************************** */
 
-#if (defined(FIO_BITWISE) || defined(FIO_RAND) || defined(FIO_NTOL)) &&        \
+#if (defined(FIO_BITWISE) || defined(FIO_RAND) || defined(FIO_NTOL) ||         \
+     defined(FIO_RISKY_HASH)) &&                                               \
     !defined(FIO_LROT)
 
 /* *****************************************************************************
@@ -907,6 +908,117 @@ HFUNC uintptr_t fio_ct_if(uint8_t cond, uintptr_t a, uintptr_t b) {
 HFUNC uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
   // b^(a^b) cancels b out. 0-1 => sets all bits.
   return fio_ct_if(fio_ct_true(cond), a, b);
+}
+
+/* *****************************************************************************
+Byte masking (XOR)
+***************************************************************************** */
+
+/**
+ * Masks 64 bit memory aligned data using a 64 bit mask and a counter mode
+ * nonce.
+ *
+ * Returns the end state of the mask.
+ */
+HFUNC uint64_t fio_xmask64(uint64_t buf[], size_t array_len, uint64_t mask,
+                           uint64_t nonce) {
+  for (size_t i = 0; i < array_len; ++i) {
+    buf[i] ^= mask;
+    mask += nonce;
+  }
+  return mask;
+}
+
+/**
+ * Masks 32 bit memory aligned data using a 64 bit mask and a counter mode
+ * nonce.
+ *
+ * Returns the end state of the mask.
+ */
+HFUNC uint64_t fio_xmask32(uint32_t buf[], size_t array_len, uint64_t mask,
+                           uint64_t nonce) {
+  for (size_t i = 0; i < (array_len >> 1); ++i) {
+    *(buf++) ^= ((uint32_t *)(&mask))[0];
+    *(buf++) ^= ((uint32_t *)(&mask))[1];
+    mask += nonce;
+  }
+  if (array_len & 1)
+    *buf ^= ((uint32_t *)(&mask))[0];
+  return mask;
+}
+
+/**
+ * Masks data using a 64 bit mask and a counter mode nonce. When the buffer's
+ * memory is aligned, the function may perform significantly better.
+ *
+ * Returns the end state of the mask.
+ */
+HFUNC uint64_t fio_xmask(char *buf, size_t len, uint64_t mask, uint64_t nonce) {
+  if (len > 7) {
+    const size_t len64 = (len >> 3);
+    switch (((uintptr_t)buf & 7)) {
+    case 0:
+      /* XOR 64bit aligned bytes */
+      mask = fio_xmask64((uint64_t *)buf, len64, mask, nonce);
+      break;
+    case 4:
+      /* XOR 32bit aligned bytes */
+      mask = fio_xmask32((uint32_t *)buf, (len64 << 1), mask, nonce);
+      break;
+    case 6: /* fallthrough */
+    case 2:
+      /* XOR 16bit aligned bytes */
+      for (size_t i = 0; i < len64; ++i) {
+        ((uint16_t *)buf)[(i << 2)] ^= ((uint16_t *)&mask)[0];
+        ((uint16_t *)buf)[(i << 2) | 1] ^= ((uint16_t *)&mask)[1];
+        ((uint16_t *)buf)[(i << 2) | 2] ^= ((uint16_t *)&mask)[2];
+        ((uint16_t *)buf)[(i << 2) | 3] ^= ((uint16_t *)&mask)[3];
+        mask += nonce;
+      }
+      break;
+    default:
+      for (size_t i = 0; i < len64; ++i) {
+        ((uint8_t *)buf)[(i << 3)] ^= ((uint8_t *)&mask)[0];
+        ((uint8_t *)buf)[(i << 3) | 1] ^= ((uint8_t *)&mask)[1];
+        ((uint8_t *)buf)[(i << 3) | 2] ^= ((uint8_t *)&mask)[2];
+        ((uint8_t *)buf)[(i << 3) | 3] ^= ((uint8_t *)&mask)[3];
+        ((uint8_t *)buf)[(i << 3) | 4] ^= ((uint8_t *)&mask)[4];
+        ((uint8_t *)buf)[(i << 3) | 5] ^= ((uint8_t *)&mask)[5];
+        ((uint8_t *)buf)[(i << 3) | 6] ^= ((uint8_t *)&mask)[6];
+        ((uint8_t *)buf)[(i << 3) | 7] ^= ((uint8_t *)&mask)[7];
+        mask += nonce;
+      }
+      break;
+    }
+    buf = (void *)((uintptr_t)buf + (len64 << 3));
+  }
+  /* XOR any leftover bytes (might be non aligned)  */
+  switch ((len & 7)) {
+  case 0:
+    return mask;
+  case 7:
+    ((uint8_t *)buf)[6] ^= ((uint8_t *)(&mask))[6];
+  /* fallthrough */
+  case 6:
+    ((uint8_t *)buf)[5] ^= ((uint8_t *)(&mask))[5];
+  /* fallthrough */
+  case 5:
+    ((uint8_t *)buf)[4] ^= ((uint8_t *)(&mask))[4];
+  /* fallthrough */
+  case 4:
+    ((uint8_t *)buf)[3] ^= ((uint8_t *)(&mask))[3];
+  /* fallthrough */
+  case 3:
+    ((uint8_t *)buf)[2] ^= ((uint8_t *)(&mask))[2];
+  /* fallthrough */
+  case 2:
+    ((uint8_t *)buf)[1] ^= ((uint8_t *)(&mask))[1];
+  /* fallthrough */
+  case 1:
+    ((uint8_t *)buf)[0] ^= ((uint8_t *)(&mask))[0];
+    /* fallthrough */
+  }
+  return mask;
 }
 
 /* *****************************************************************************
@@ -2385,79 +2497,9 @@ SFUNC uint64_t fio_risky_hash_value(const fio_risky_hash_s *r) {
  */
 IFUNC void fio_risky_mask(char *buf, size_t len, uint64_t key, uint64_t nonce) {
   if (!nonce) /* nonce can't be zero */
-    nonce = (uint64_t)0xF0E1D2C3B6AA6B0CULL;
+    nonce = (uint64_t)0xDB1DD478B9E93B1;
   uint64_t hash = fio_risky_hash(&key, sizeof(key), nonce);
-  if (len > 7) {
-    switch ((uintptr_t)buf & 7) {
-    case 0:
-      /* XOR 64bit aligned bytes */
-      for (size_t i = (len >> 3); i; --i) {
-        ((uint64_t *)buf)[0] ^= hash;
-        hash += nonce;
-        buf = (void *)(((uint64_t *)buf) + 1);
-      }
-      break;
-    case 4:
-      /* XOR 32bit aligned bytes */
-      for (size_t i = (len >> 3); i; --i) {
-        ((uint32_t *)buf)[0] ^= ((uint32_t *)&hash)[0];
-        ((uint32_t *)buf)[1] ^= ((uint32_t *)&hash)[1];
-        hash += nonce;
-        buf = (void *)(((uint32_t *)buf) + 2);
-      }
-      break;
-    case 6: /* fallthrough */
-    case 2:
-      /* XOR 16bit aligned bytes */
-      for (size_t i = (len >> 3); i; --i) {
-        ((uint16_t *)buf)[0] ^= ((uint16_t *)&hash)[0];
-        ((uint16_t *)buf)[1] ^= ((uint16_t *)&hash)[1];
-        ((uint16_t *)buf)[2] ^= ((uint16_t *)&hash)[2];
-        ((uint16_t *)buf)[3] ^= ((uint16_t *)&hash)[3];
-        hash += nonce;
-        buf = (void *)(((uint16_t *)buf) + 4);
-      }
-      break;
-    default:
-      for (size_t i = (len >> 3); i; --i) {
-        ((uint8_t *)buf)[0] ^= ((uint8_t *)&hash)[0];
-        ((uint8_t *)buf)[1] ^= ((uint8_t *)&hash)[1];
-        ((uint8_t *)buf)[2] ^= ((uint8_t *)&hash)[2];
-        ((uint8_t *)buf)[3] ^= ((uint8_t *)&hash)[3];
-        ((uint8_t *)buf)[4] ^= ((uint8_t *)&hash)[4];
-        ((uint8_t *)buf)[5] ^= ((uint8_t *)&hash)[5];
-        ((uint8_t *)buf)[6] ^= ((uint8_t *)&hash)[6];
-        ((uint8_t *)buf)[7] ^= ((uint8_t *)&hash)[7];
-        hash += nonce;
-        buf = (void *)(((uint8_t *)buf) + 8);
-      }
-      break;
-    }
-  }
-  /* XOR any leftover bytes (might be non aligned)  */
-  switch ((len & 7)) {
-  case 7:
-    ((uint8_t *)buf)[6] ^= ((uint8_t *)(&hash))[6];
-  /* fallthrough */
-  case 6:
-    ((uint8_t *)buf)[5] ^= ((uint8_t *)(&hash))[5];
-  /* fallthrough */
-  case 5:
-    ((uint8_t *)buf)[4] ^= ((uint8_t *)(&hash))[4];
-  /* fallthrough */
-  case 4:
-    ((uint8_t *)buf)[3] ^= ((uint8_t *)(&hash))[3];
-  /* fallthrough */
-  case 3:
-    ((uint8_t *)buf)[2] ^= ((uint8_t *)(&hash))[2];
-  /* fallthrough */
-  case 2:
-    ((uint8_t *)buf)[1] ^= ((uint8_t *)(&hash))[1];
-  /* fallthrough */
-  case 1:
-    ((uint8_t *)buf)[0] ^= ((uint8_t *)(&hash))[0];
-    /* fallthrough */
-  }
+  fio_xmask(buf, len, hash, nonce);
 }
 /* *****************************************************************************
 Risky Hash - Cleanup
@@ -2544,7 +2586,7 @@ SFUNC uint64_t fio_rand64(void) {
   /* modeled after xoroshiro128+, by David Blackman and Sebastiano Vigna */
   const uint64_t P[] = {0x37701261ED6C16C7ULL, 0x764DBBB75F3B3E0DULL};
   if (((fio___rand_counter++) & (((uint32_t)1 << 19) - 1)) == 0) {
-    /* re-seed state every 524,288 requests */
+    /* re-seed state every 524,288 requests / 2^19-1 attempts  */
     fio_rand_reseed();
   }
   fio___rand_state[0] +=
@@ -13323,7 +13365,8 @@ Hashing speed test
 
 typedef uintptr_t (*fio__hashing_func_fn)(char *, size_t);
 
-TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h, char *name) {
+TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h, char *name,
+                                      uint8_t mem_alignment_ofset) {
 #ifdef DEBUG
   fprintf(stderr,
           "Testing %s speed "
@@ -13335,28 +13378,31 @@ TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h, char *name) {
   uint64_t cycles_start_at = (8192 << 8);
 #endif
   /* test based on code from BearSSL with credit to Thomas Pornin */
-  uint8_t buffer[8192];
-  memset(buffer, 'T', sizeof(buffer));
+  size_t const buffer_len = 8192;
+  uint8_t buffer_[8200];
+  uint8_t *buffer = buffer_ + (mem_alignment_ofset & 7);
+  // uint64_t buffer[1024];
+  memset(buffer, 'T', buffer_len);
   /* warmup */
   uint64_t hash = 0;
   for (size_t i = 0; i < 4; i++) {
-    hash += h((char *)buffer, sizeof(buffer));
-    memcpy(buffer, &hash, sizeof(hash));
+    hash += h((char *)buffer, buffer_len);
+    memcpy(buffer, &hash, buffer_len);
   }
   /* loop until test runs for more than 2 seconds */
   for (uint64_t cycles = cycles_start_at;;) {
     clock_t start, end;
     start = clock();
     for (size_t i = cycles; i > 0; i--) {
-      hash += h((char *)buffer, sizeof(buffer));
+      hash += h((char *)buffer, buffer_len);
       __asm__ volatile("" ::: "memory");
     }
     end = clock();
-    memcpy(buffer, &hash, sizeof(hash));
+    memcpy(buffer, &hash, buffer_len);
     if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
         cycles >= ((uint64_t)1 << 62)) {
       fprintf(stderr, "%-40s %8.2f MB/s\n", name,
-              (double)(sizeof(buffer) * cycles) /
+              (double)(buffer_len * cycles) /
                   (((end - start) * (1000000.0 / CLOCKS_PER_SEC))));
       break;
     }
@@ -13400,12 +13446,6 @@ TEST_FUNC void fio___dynamic_types_test___risky(void) {
     TEST_ASSERT(h1 == h2, "Risky Hash Streaming != Non-Streaming %p != %p",
                 (void *)h1, (void *)h2);
   }
-  fio_test_hash_function(fio___dynamic_types_test___risky_wrapper,
-                         "fio_risky_hash");
-  fio_test_hash_function(fio___dynamic_types_test___risky_stream_wrapper,
-                         "fio_risky_hash (streaming)");
-  fio_test_hash_function(fio___dynamic_types_test___risky_mask_wrapper,
-                         "fio_risky_mask (Risky XOR + counter)");
   for (int i = 0; i < 8; ++i) {
     char buf[128];
     uint64_t nonce = fio_rand64();
@@ -13414,9 +13454,30 @@ TEST_FUNC void fio___dynamic_types_test___risky(void) {
     memcpy(tmp, str, strlen(str));
     fio_risky_mask(tmp, strlen(str), (uint64_t)tmp, nonce);
     TEST_ASSERT(memcmp(tmp, str, strlen(str)), "Risky Hash masking failed");
+    size_t err = 0;
+    for (size_t b = 0; b < strlen(str); ++b) {
+      TEST_ASSERT(tmp[b] != str[b] || (err < 2),
+                  "Risky Hash masking didn't mask buf[%zu] on offset "
+                  "%d (statistical deviation?)",
+                  b, i);
+      err += (tmp[b] == str[b]);
+    }
     fio_risky_mask(tmp, strlen(str), (uint64_t)tmp, nonce);
     TEST_ASSERT(!memcmp(tmp, str, strlen(str)), "Risky Hash masking RT failed");
   }
+  const uint8_t alignment_test_offset = 0;
+  if (alignment_test_offset)
+    fprintf(stderr,
+            "The following speed tests use a memory alignment offset of %d "
+            "bytes.\n",
+            (int)(alignment_test_offset & 7));
+  fio_test_hash_function(fio___dynamic_types_test___risky_wrapper,
+                         "fio_risky_hash", alignment_test_offset);
+  fio_test_hash_function(fio___dynamic_types_test___risky_stream_wrapper,
+                         "fio_risky_hash (streaming)", alignment_test_offset);
+  fio_test_hash_function(fio___dynamic_types_test___risky_mask_wrapper,
+                         "fio_risky_mask (Risky XOR + counter)",
+                         alignment_test_offset);
 }
 
 /* *****************************************************************************
