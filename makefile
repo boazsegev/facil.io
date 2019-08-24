@@ -425,7 +425,7 @@ else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_EXT), "-lbearssl"), 0)
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), "-lcrypto" "-lssl"), 0)
   $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
-	FLAGS:=$(FLAGS) HAVE_OPENSSL
+	FLAGS:=$(FLAGS) HAVE_OPENSSL HAVE_TLS
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
 else
   $(info * No compatible SSL/TLS library detected.)
