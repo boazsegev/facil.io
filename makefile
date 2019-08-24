@@ -141,6 +141,7 @@ ifeq ($(OS),Darwin) # Run MacOS commands
 	# DISAMS=otool -dtVGX
 	# documentation commands
 	# DOCUMENTATION=cldoc generate $(INCLUDE_STR) -- --output ./html $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*))
+$(DEST)/libfacil.so: LDFLAGS += -dynamiclib -install_name $(realpath $(DEST))/libfacil.so
 else
 	# debugger
 	DB=gdb
