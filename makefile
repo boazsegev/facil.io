@@ -149,6 +149,12 @@ else
 	DOCUMENTATION=
 endif
 
+# GCC (at least) >= 7 triggers some bug when -fipa-icf is enabled
+# (as in our default: -O2)
+ifeq ($(shell $(CC) -v 2>&1 | grep -o "^gcc version"),gcc version)
+	OPTIMIZATION += -fno-ipa-icf
+endif
+
 #############################################################################
 # Automatic Setting Expansion
 # (don't edit)
