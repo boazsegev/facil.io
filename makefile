@@ -88,6 +88,8 @@ ifndef CPPSTD
 	CPPSTD:=gnu++11
 endif
 
+PKG_CONFIG ?= pkg-config
+
 # for internal use - don't change
 LINKER_LIBS_EXT:=
 
@@ -414,6 +416,14 @@ int main(void) { \\n\
 # automatic library adjustments for possible BearSSL library
 LIB_PRIVATE_SUBFOLDERS:=$(LIB_PRIVATE_SUBFOLDERS) $(if $(wildcard lib/bearssl),bearssl)
 
+ifeq ($(shell $(PKG_CONFIG) -- openssl 2>&1 >/dev/null; echo $$?), 0)
+	OPENSSL_CFLAGS = $(shell $(PKG_CONFIG) --cflags openssl)
+	OPENSSL_LDFLAGS = $(shell $(PKG_CONFIG) --libs openssl)
+	OPENSSL_LIBS =
+endif
+
+OPENSSL_LDFLAGS ?= "-lssl" "-lcrypto"
+
 # add BearSSL/OpenSSL library flags (exclusive)
 ifdef FIO_NO_TLS
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_SOURCE), $(EMPTY)), 0)
@@ -423,10 +433,12 @@ else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_EXT), "-lbearssl"), 0)
   $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
-else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), "-lcrypto" "-lssl"), 0)
+else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), $(OPENSSL_CFLAGS) $(OPENSSL_LDFLAGS)), 0)
   $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
 	FLAGS:=$(FLAGS) HAVE_OPENSSL HAVE_TLS
-	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
+	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) $(OPENSSL_LIBS)
+	LDFLAGS += $(OPENSSL_LDFLAGS)
+	CFLAGS += $(OPENSSL_CFLAGS)
 else
   $(info * No compatible SSL/TLS library detected.)
 endif
