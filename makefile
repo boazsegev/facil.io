@@ -446,6 +446,8 @@ else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), $(OPENSSL_CFLAGS) $(OPEN
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) $(OPENSSL_LIBS)
 	LDFLAGS += $(OPENSSL_LDFLAGS)
 	CFLAGS += $(OPENSSL_CFLAGS)
+	PKGC_REQ_OPENSSL = openssl >= 1.1, openssl < 1.2
+	PKGC_REQ += $$(PKGC_REQ_OPENSSL)
 else
   $(info * No compatible SSL/TLS library detected.)
 endif
@@ -466,6 +468,8 @@ ifeq ($(call TRY_COMPILE, "\#include <zlib.h>\\nint main(void) {}", "-lz") , 0)
   $(info * Detected the zlib library, setting HAVE_ZLIB)
 	FLAGS:=$(FLAGS) HAVE_ZLIB
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
+	PKGC_REQ_ZLIB = zlib
+	PKGC_REQ += $$(PKGC_REQ_ZLIB)
 endif
 
 #############################################################################
@@ -511,6 +515,17 @@ LINKER_FLAGS= $(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(
 CFLAGS_DEPENDENCY=-MT $@ -MMD -MP
 
 
+# Build a "Requires:" string for the pkgconfig/facil.pc file
+# unfortunately, leading or trailing commas are interpreted as
+# "empty package name" by pkg-config, therefore we work around this by using
+# $(strip ..).
+# The following 2 lines are from the manual of GNU make
+nullstring :=
+space := $(nullstring) # end of line
+comma := ,
+
+$(eval PKGC_REQ_EVAL := $(subst $(space),$(comma) ,$(strip $(PKGC_REQ))))
+
 #############################################################################
 # Tasks - Building
 #############################################################################
@@ -525,7 +540,18 @@ build_objects: $(LIB_OBJS) $(MAIN_OBJS)
 
 lib: | create_tree lib_build
 
-$(DEST)/libfacil.so: $(LIB_OBJS)
+$(DEST)/pkgconfig/facil.pc: makefile | libdump
+	@mkdir -p $(DEST)/pkgconfig && \
+	printf "\
+Name: facil.io\\n\
+Description: facil.io\\n\
+Cflags: -I%s\\n\
+Libs: -L%s -lfacil\\n\
+Version: %s\\n\
+Requires.private: %s\\n\
+" $(realpath $(DEST)/../libdump/include) $(realpath $(DEST)) 0.7.x "$(PKGC_REQ_EVAL)" > $@
+
+$(DEST)/libfacil.so: $(LIB_OBJS) | $(DEST)/pkgconfig/facil.pc
 	@$(CCL) -shared -o $@ $^ $(OPTIMIZATION) $(LINKER_FLAGS)
 
 lib_build: $(DEST)/libfacil.so
