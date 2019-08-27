@@ -3158,8 +3158,8 @@ test_errno:
     fio_force_close(uuid);
     return -1;
   }
-  fprintf(stderr, "UUID error: %p (%d)\n", (void *)uuid, errno);
-  perror("No errno handler");
+  // fprintf(stderr, "UUID error: %p (%d)\n", (void *)uuid, errno);
+  // perror("No errno handler");
   return 0;
 
 invalid:
@@ -3879,6 +3879,8 @@ static void fio_cycle_unwind(void *ignr, void *ignr2) {
 /* reactor pattern cycling */
 static void fio_cycle(void *ignr, void *ignr2) {
   fio_cycle_schedule_events();
+  fio_rand_feed2seed(&fio_data->last_cycle.tv_nsec,
+                     sizeof(fio_data->last_cycle.tv_nsec));
   if (fio_data->active) {
     fio_defer_push_task(fio_cycle, ignr, ignr2);
     return;
@@ -6389,7 +6391,7 @@ Section Start Marker
 
 ***************************************************************************** */
 
-#if !FIO_TLS_SKIP /* TODO: place library compiler flags here */
+#if !FIO_TLS_SKIP && !defined(HAVE_OPENSSL) /* TODO: list flags here */
 
 #define REQUIRE_TLS_LIBRARY()
 
