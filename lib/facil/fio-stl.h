@@ -792,30 +792,6 @@ HFUNC uint64_t fio_bswap64(uint64_t i) {
 Bit rotation
 ***************************************************************************** */
 
-/** 32Bit left rotation, inlined. */
-HFUNC uint32_t fio_lrot32(uint32_t i, uint8_t bits) {
-  return (((uint32_t)(i) << (bits & 31UL)) |
-          ((uint32_t)(i) >> ((-(bits)) & 31UL)));
-}
-
-/** 32Bit right rotation, inlined. */
-HFUNC uint32_t fio_rrot32(uint32_t i, uint8_t bits) {
-  return (((uint32_t)(i) >> (bits & 31UL)) |
-          ((uint32_t)(i) << ((-(bits)) & 31UL)));
-}
-
-/** 64Bit left rotation, inlined. */
-HFUNC uint64_t fio_lrot64(uint64_t i, uint8_t bits) {
-  return (((uint64_t)(i) << ((bits)&63UL)) |
-          ((uint64_t)(i) >> ((-(bits)) & 63UL)));
-}
-
-/** 64Bit right rotation, inlined. */
-HFUNC uint64_t fio_rrot64(uint64_t i, uint8_t bits) {
-  return (((uint64_t)(i) >> ((bits)&63UL)) |
-          ((uint64_t)(i) << ((-(bits)) & 63UL)));
-}
-
 /** Left rotation for an unknown size element, inlined. */
 #define FIO_LROT(i, bits)                                                      \
   (((i) << ((bits) & ((sizeof((i)) << 3) - 1))) |                              \
@@ -825,6 +801,86 @@ HFUNC uint64_t fio_rrot64(uint64_t i, uint8_t bits) {
 #define FIO_RROT(i, bits)                                                      \
   (((i) >> ((bits) & ((sizeof((i)) << 3) - 1))) |                              \
    ((i) << ((-(bits)) & ((sizeof((i)) << 3) - 1))))
+
+#if __has_builtin(__builtin_rotateleft8)
+/** 8Bit left rotation, inlined. */
+#define fio_lrot8(i, bits) __builtin_rotateleft8(i, bits)
+#else
+/** 8Bit left rotation, inlined. */
+HFUNC uint8_t fio_lrot8(uint8_t i, uint8_t bits) {
+  return ((i << (bits & 7UL)) | (i >> ((-(bits)) & 7UL)));
+}
+#endif
+
+#if __has_builtin(__builtin_rotateleft16)
+/** 16Bit left rotation, inlined. */
+#define fio_lrot16(i, bits) __builtin_rotateleft16(i, bits)
+#else
+/** 16Bit left rotation, inlined. */
+HFUNC uint16_t fio_lrot16(uint16_t i, uint8_t bits) {
+  return ((i << (bits & 15UL)) | (i >> ((-(bits)) & 15UL)));
+}
+#endif
+
+#if __has_builtin(__builtin_rotateleft32)
+/** 32Bit left rotation, inlined. */
+#define fio_lrot32(i, bits) __builtin_rotateleft32(i, bits)
+#else
+/** 32Bit left rotation, inlined. */
+HFUNC uint32_t fio_lrot32(uint32_t i, uint8_t bits) {
+  return ((i << (bits & 31UL)) | (i >> ((-(bits)) & 31UL)));
+}
+#endif
+
+#if __has_builtin(__builtin_rotateleft64)
+/** 64Bit left rotation, inlined. */
+#define fio_lrot64(i, bits) __builtin_rotateleft64(i, bits)
+#else
+/** 64Bit left rotation, inlined. */
+HFUNC uint64_t fio_lrot64(uint64_t i, uint8_t bits) {
+  return ((i << ((bits)&63UL)) | (i >> ((-(bits)) & 63UL)));
+}
+#endif
+
+#if __has_builtin(__builtin_rotatrightt8)
+/** 8Bit left rotation, inlined. */
+#define fio_rrot8(i, bits) __builtin_rotateright8(i, bits)
+#else
+/** 8Bit left rotation, inlined. */
+HFUNC uint8_t fio_rrot8(uint8_t i, uint8_t bits) {
+  return ((i >> (bits & 7UL)) | (i << ((-(bits)) & 7UL)));
+}
+#endif
+
+#if __has_builtin(__builtin_rotateright16)
+/** 16Bit left rotation, inlined. */
+#define fio_rrot16(i, bits) __builtin_rotateright16(i, bits)
+#else
+/** 16Bit left rotation, inlined. */
+HFUNC uint16_t fio_rrot16(uint16_t i, uint8_t bits) {
+  return ((i >> (bits & 15UL)) | (i << ((-(bits)) & 15UL)));
+}
+#endif
+
+#if __has_builtin(__builtin_rotateright32)
+/** 32Bit left rotation, inlined. */
+#define fio_rrot32(i, bits) __builtin_rotateright32(i, bits)
+#else
+/** 32Bit left rotation, inlined. */
+HFUNC uint32_t fio_rrot32(uint32_t i, uint8_t bits) {
+  return ((i >> (bits & 31UL)) | (i << ((-(bits)) & 31UL)));
+}
+#endif
+
+#if __has_builtin(__builtin_rotateright64)
+/** 64Bit left rotation, inlined. */
+#define fio_rrot64(i, bits) __builtin_rotateright64(i, bits)
+#else
+/** 64Bit left rotation, inlined. */
+HFUNC uint64_t fio_rrot64(uint64_t i, uint8_t bits) {
+  return ((i >> ((bits)&63UL)) | (i << ((-(bits)) & 63UL)));
+}
+#endif
 
 /* *****************************************************************************
 Unaligned memory read / write operations
@@ -990,7 +1046,7 @@ HFUNC uint64_t fio_xmask(char *buf, size_t len, uint64_t mask, uint64_t nonce) {
       }
       break;
     }
-    buf = (void *)((uintptr_t)buf + (len64 << 3));
+    buf = (char *)((uintptr_t)buf + (len64 << 3));
   }
   /* XOR any leftover bytes (might be non aligned)  */
   switch ((len & 7)) {
@@ -2238,8 +2294,18 @@ SFUNC uint64_t fio_risky_hash_value(const fio_risky_hash_s *risky);
  * deciphered.
  */
 IFUNC void fio_risky_mask(char *buf, size_t len, uint64_t key, uint64_t nonce);
+
 /* *****************************************************************************
 Risky Hash - Implementation
+
+Note: I don't remember what information I used when designining this, but Risky
+Hash is probably NOT cryptographically safe (though I wanted it to be).
+
+Here's a few resources about hashes that might explain more:
+- https://komodoplatform.com/cryptographic-hash-function/
+- https://en.wikipedia.org/wiki/Avalanche_effect
+- http://ticki.github.io/blog/designing-a-good-non-cryptographic-hash-function/
+
 ***************************************************************************** */
 
 #ifdef FIO_EXTERN_COMPLETE
@@ -2561,24 +2627,80 @@ Random - Implementation
 #include <sys/time.h>
 #endif
 
-static __thread uint64_t fio___rand_state[2]; /* random state */
+static __thread uint64_t fio___rand_state[4]; /* random state */
 static __thread uint32_t fio___rand_counter;  /* seed counter */
+/* feeds random data to the algorithm through this 256 bit feed. */
+static __thread uint64_t fio___rand_buffer[4] = {
+    0x9c65875be1fce7b9ULL, 0x7cc568e838f6a40d, 0x4bb8d885a0fe47d5,
+    0x95561f0927ad7ecd};
+
+IFUNC void fio_rand_feed2seed(void *buf_, size_t len) {
+  len &= 1023;
+  uint8_t *buf = buf_;
+  uint8_t offset = (fio___rand_counter & 3);
+  uint64_t tmp = 0;
+  for (size_t i = 0; i < (len >> 3); ++i) {
+    tmp = fio_buf2u64(buf);
+    fio___rand_buffer[(offset++ & 3)] ^= tmp;
+    buf += 8;
+  }
+  switch (len & 7) {
+  case 7:
+    /* fallthrough */
+    tmp <<= 8;
+    tmp |= buf[6];
+  case 6:
+    tmp <<= 8;
+    tmp |= buf[5];
+  /* fallthrough */
+  case 5:
+    tmp <<= 8;
+    tmp |= buf[4];
+  /* fallthrough */
+  case 4:
+    tmp <<= 8;
+    tmp |= buf[3];
+  /* fallthrough */
+  case 3:
+    tmp <<= 8;
+    tmp |= buf[2];
+  /* fallthrough */
+  case 2:
+    tmp <<= 8;
+    tmp |= buf[1];
+  /* fallthrough */
+  case 1:
+    tmp <<= 8;
+    tmp |= buf[1];
+    fio___rand_buffer[(offset & 3)] ^= tmp;
+    break;
+  }
+}
 
 IFUNC void fio_rand_reseed(void) {
-#ifdef RUSAGE_SELF
+#if defined(RUSAGE_SELF)
   struct rusage rusage;
   getrusage(RUSAGE_SELF, &rusage);
   fio___rand_state[0] =
       fio_risky_hash(&rusage, sizeof(rusage), fio___rand_state[0]);
   fio___rand_state[1] = fio_risky_hash(
-      fio___rand_state, sizeof(fio___rand_state[0]), fio___rand_state[1]);
+      &rusage, sizeof(rusage), fio___rand_state[1] + fio___rand_counter);
 #else
   struct timespec clk;
   clock_gettime(CLOCK_REALTIME, &clk);
   fio___rand_state[0] = fio_risky_hash(&clk, sizeof(clk), fio___rand_state[0]);
   fio___rand_state[1] = fio_risky_hash(
-      fio___rand_state, sizeof(fio___rand_state[0]), fio___rand_state[1]);
+      &clk, sizeof(clk), fio___rand_state[1] + fio___rand_counter);
 #endif
+  fio___rand_state[2] =
+      fio_risky_hash(fio___rand_buffer, sizeof(fio___rand_buffer),
+                     fio___rand_counter + fio___rand_state[0]);
+  fio___rand_state[3] = fio_risky_hash(
+      fio___rand_state, sizeof(fio___rand_state), fio___rand_state[1]);
+  fio___rand_buffer[0] = fio_lrot64(fio___rand_buffer[0], 31);
+  fio___rand_buffer[1] = fio_lrot64(fio___rand_buffer[1], 29);
+  fio___rand_buffer[2] ^= fio___rand_buffer[0];
+  fio___rand_buffer[3] ^= fio___rand_buffer[1];
 }
 
 /* tested for randomness using code from: http://xoshiro.di.unimi.it/hwd.php */
@@ -2592,8 +2714,13 @@ SFUNC uint64_t fio_rand64(void) {
   fio___rand_state[0] +=
       (fio_lrot64(fio___rand_state[0], 33) + fio___rand_counter) * P[0];
   fio___rand_state[1] += fio_lrot64(fio___rand_state[1], 33) * P[1];
+  fio___rand_state[2] +=
+      (fio_lrot64(fio___rand_state[2], 33) + fio___rand_counter) * (~P[0]);
+  fio___rand_state[3] += fio_lrot64(fio___rand_state[3], 33) * (~P[1]);
   return fio_lrot64(fio___rand_state[0], 31) +
-         fio_lrot64(fio___rand_state[1], 29);
+         fio_lrot64(fio___rand_state[1], 29) +
+         fio_lrot64(fio___rand_state[2], 27) +
+         fio_lrot64(fio___rand_state[3], 30);
 }
 
 /* copies 64 bits of randomness (8 bytes) repeatedly. */
@@ -2947,15 +3074,32 @@ SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
       uint8_t i = 0;    /* counting bits */
       dest[len++] = '0';
       dest[len++] = 'b';
-
+#if __has_builtin(__builtin_clzll)
+      i = __builtin_clzll(n);
+      /* make sure the Binary representation doesn't appear signed */
+      if (i) {
+        --i;
+        /*  keep it even */
+        if ((i & 1))
+          --i;
+        n <<= i;
+      }
+#else
       while ((i < 64) && (n & 0x8000000000000000) == 0) {
         n = n << 1;
         i++;
       }
-      /* make sure the Binary representation doesn't appear signed. */
+      /* make sure the Binary representation doesn't appear signed */
       if (i) {
-        dest[len++] = '0';
+        --i;
+        n = n >> 1;
+        /*  keep it even */
+        if ((i & 1)) {
+          --i;
+          n = n >> 1;
+        }
       }
+#endif
       /* write to dest. */
       while (i < 64) {
         dest[len++] = ((n & 0x8000000000000000) ? '1' : '0');
@@ -11477,7 +11621,7 @@ FIO_SFUNC void fio_test_dynamic_types(void);
 /* Common testing values / Macros */
 #define TEST_FUNC static __attribute__((unused))
 #define TEST_REPEAT 4096
-#define TEST_ASSERT(cond, ...)                                                 \
+#define FIO_T_ASSERT(cond, ...)                                                \
   if (!(cond)) {                                                               \
     FIO_LOG2STDERR2(__VA_ARGS__);                                              \
     abort();                                                                   \
@@ -11519,24 +11663,24 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
   char buffer[1024];
   for (int i = 0 - TEST_REPEAT; i < TEST_REPEAT; ++i) {
     size_t tmp = fio_ltoa(buffer, i, 0);
-    TEST_ASSERT(tmp > 0, "fio_ltoa returned length error");
+    FIO_T_ASSERT(tmp > 0, "fio_ltoa returned length error");
     buffer[tmp++] = 0;
     char *tmp2 = buffer;
     int i2 = fio_atol(&tmp2);
-    TEST_ASSERT(tmp2 > buffer, "fio_atol pointer motion error");
-    TEST_ASSERT(i == i2, "fio_ltoa-fio_atol roundtrip error %lld != %lld", i,
-                i2);
+    FIO_T_ASSERT(tmp2 > buffer, "fio_atol pointer motion error");
+    FIO_T_ASSERT(i == i2, "fio_ltoa-fio_atol roundtrip error %lld != %lld", i,
+                 i2);
   }
   for (uint8_t bit = 0; bit < sizeof(int64_t) * 8; ++bit) {
     uint64_t i = (uint64_t)1 << bit;
     size_t tmp = fio_ltoa(buffer, (int64_t)i, 0);
-    TEST_ASSERT(tmp > 0, "fio_ltoa return length error");
+    FIO_T_ASSERT(tmp > 0, "fio_ltoa return length error");
     buffer[tmp] = 0;
     char *tmp2 = buffer;
     int64_t i2 = fio_atol(&tmp2);
-    TEST_ASSERT(tmp2 > buffer, "fio_atol pointer motion error");
-    TEST_ASSERT((int64_t)i == i2,
-                "fio_ltoa-fio_atol roundtrip error %lld != %lld", i, i2);
+    FIO_T_ASSERT(tmp2 > buffer, "fio_atol pointer motion error");
+    FIO_T_ASSERT((int64_t)i == i2,
+                 "fio_ltoa-fio_atol roundtrip error %lld != %lld", i, i2);
   }
   fprintf(stderr, "* Testing fio_atol samples.\n");
 #define TEST_ATOL(s, n)                                                        \
@@ -11774,7 +11918,7 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
       char *pos = buffer;
       r += fio_atol(&pos);
       __asm__ volatile("" ::: "memory");
-      // TEST_ASSERT(r == exp, "fio_atol failed during speed test");
+      // FIO_T_ASSERT(r == exp, "fio_atol failed during speed test");
     }
     stop = clock();
     fprintf(stderr, "* fio_atol speed test completed in %zu cycles\n",
@@ -11785,7 +11929,7 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
       char *pos = buffer;
       r += strtol(pos, NULL, 10);
       __asm__ volatile("" ::: "memory");
-      // TEST_ASSERT(r == exp, "system strtol failed during speed test");
+      // FIO_T_ASSERT(r == exp, "system strtol failed during speed test");
     }
     stop = clock();
     fprintf(stderr, "* system atol speed test completed in %zu cycles\n",
@@ -11801,35 +11945,35 @@ Bit-Byte operations - test
 
 TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
   fprintf(stderr, "* Testing fio_bswapX macros.\n");
-  TEST_ASSERT(fio_bswap16(0x0102) == 0x0201, "fio_bswap16 failed");
-  TEST_ASSERT(fio_bswap32(0x01020304) == 0x04030201, "fio_bswap32 failed");
-  TEST_ASSERT(fio_bswap64(0x0102030405060708ULL) == 0x0807060504030201ULL,
-              "fio_bswap64 failed");
+  FIO_T_ASSERT(fio_bswap16(0x0102) == 0x0201, "fio_bswap16 failed");
+  FIO_T_ASSERT(fio_bswap32(0x01020304) == 0x04030201, "fio_bswap32 failed");
+  FIO_T_ASSERT(fio_bswap64(0x0102030405060708ULL) == 0x0807060504030201ULL,
+               "fio_bswap64 failed");
 
   fprintf(stderr, "* Testing fio_lrotX and fio_rrotX macros.\n");
   {
     uint64_t tmp = 1;
     tmp = FIO_RROT(tmp, 1);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT(tmp == ((uint64_t)1 << ((sizeof(uint64_t) << 3) - 1)),
-                "fio_rrot failed");
+    FIO_T_ASSERT(tmp == ((uint64_t)1 << ((sizeof(uint64_t) << 3) - 1)),
+                 "fio_rrot failed");
     tmp = FIO_LROT(tmp, 3);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT(tmp == ((uint64_t)1 << 2), "fio_lrot failed");
+    FIO_T_ASSERT(tmp == ((uint64_t)1 << 2), "fio_lrot failed");
     tmp = 1;
     tmp = fio_rrot32(tmp, 1);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT(tmp == ((uint64_t)1 << 31), "fio_rrot32 failed");
+    FIO_T_ASSERT(tmp == ((uint64_t)1 << 31), "fio_rrot32 failed");
     tmp = fio_lrot32(tmp, 3);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT(tmp == ((uint64_t)1 << 2), "fio_lrot32 failed");
+    FIO_T_ASSERT(tmp == ((uint64_t)1 << 2), "fio_lrot32 failed");
     tmp = 1;
     tmp = fio_rrot64(tmp, 1);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT(tmp == ((uint64_t)1 << 63), "fio_rrot64 failed");
+    FIO_T_ASSERT(tmp == ((uint64_t)1 << 63), "fio_rrot64 failed");
     tmp = fio_lrot64(tmp, 3);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT(tmp == ((uint64_t)1 << 2), "fio_lrot64 failed");
+    FIO_T_ASSERT(tmp == ((uint64_t)1 << 2), "fio_lrot64 failed");
   }
 
   fprintf(stderr, "* Testing fio_buf2uX and fio_u2bufX helpers.\n");
@@ -11837,81 +11981,81 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
   for (int64_t i = -TEST_REPEAT; i < TEST_REPEAT; ++i) {
     FIO_NAME2(fio_u, buf64)(buffer, i);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT((int64_t)FIO_NAME2(fio_buf, u64)(buffer) == i,
-                "fio_u2buf64 / fio_buf2u64  mismatch %zd != %zd",
-                (ssize_t)FIO_NAME2(fio_buf, u64)(buffer), (ssize_t)i);
+    FIO_T_ASSERT((int64_t)FIO_NAME2(fio_buf, u64)(buffer) == i,
+                 "fio_u2buf64 / fio_buf2u64  mismatch %zd != %zd",
+                 (ssize_t)FIO_NAME2(fio_buf, u64)(buffer), (ssize_t)i);
   }
   for (int32_t i = -TEST_REPEAT; i < TEST_REPEAT; ++i) {
     FIO_NAME2(fio_u, buf32)(buffer, i);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT((int32_t)FIO_NAME2(fio_buf, u32)(buffer) == i,
-                "fio_u2buf32 / fio_buf2u32  mismatch %zd != %zd",
-                (ssize_t)(FIO_NAME2(fio_buf, u32)(buffer)), (ssize_t)i);
+    FIO_T_ASSERT((int32_t)FIO_NAME2(fio_buf, u32)(buffer) == i,
+                 "fio_u2buf32 / fio_buf2u32  mismatch %zd != %zd",
+                 (ssize_t)(FIO_NAME2(fio_buf, u32)(buffer)), (ssize_t)i);
   }
   for (int16_t i = -TEST_REPEAT; i < TEST_REPEAT; ++i) {
     FIO_NAME2(fio_u, buf16)(buffer, i);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT((int16_t)FIO_NAME2(fio_buf, u16)(buffer) == i,
-                "fio_u2buf16 / fio_buf2u16  mismatch %zd != %zd",
-                (ssize_t)(FIO_NAME2(fio_buf, u16)(buffer)), (ssize_t)i);
+    FIO_T_ASSERT((int16_t)FIO_NAME2(fio_buf, u16)(buffer) == i,
+                 "fio_u2buf16 / fio_buf2u16  mismatch %zd != %zd",
+                 (ssize_t)(FIO_NAME2(fio_buf, u16)(buffer)), (ssize_t)i);
   }
 
   fprintf(stderr, "* Testing constant-time helpers.\n");
-  TEST_ASSERT(fio_ct_true(8), "fio_ct_true should be true.");
-  TEST_ASSERT(!fio_ct_true(0), "fio_ct_true should be false.");
-  TEST_ASSERT(!fio_ct_false(8), "fio_ct_false should be false.");
-  TEST_ASSERT(fio_ct_false(0), "fio_ct_false should be true.");
-  TEST_ASSERT(fio_ct_if(0, 1, 2) == 2, "fio_ct_if selection error (false).");
-  TEST_ASSERT(fio_ct_if(1, 1, 2) == 1, "fio_ct_if selection error (true).");
-  TEST_ASSERT(fio_ct_if2(0, 1, 2) == 2, "fio_ct_if2 selection error (false).");
-  TEST_ASSERT(fio_ct_if2(8, 1, 2) == 1, "fio_ct_if2 selection error (true).");
+  FIO_T_ASSERT(fio_ct_true(8), "fio_ct_true should be true.");
+  FIO_T_ASSERT(!fio_ct_true(0), "fio_ct_true should be false.");
+  FIO_T_ASSERT(!fio_ct_false(8), "fio_ct_false should be false.");
+  FIO_T_ASSERT(fio_ct_false(0), "fio_ct_false should be true.");
+  FIO_T_ASSERT(fio_ct_if(0, 1, 2) == 2, "fio_ct_if selection error (false).");
+  FIO_T_ASSERT(fio_ct_if(1, 1, 2) == 1, "fio_ct_if selection error (true).");
+  FIO_T_ASSERT(fio_ct_if2(0, 1, 2) == 2, "fio_ct_if2 selection error (false).");
+  FIO_T_ASSERT(fio_ct_if2(8, 1, 2) == 1, "fio_ct_if2 selection error (true).");
   {
     uint8_t bitmap[1024];
     memset(bitmap, 0, 1024);
     fprintf(stderr, "* Testing bitmap helpers.\n");
-    TEST_ASSERT(!fio_bitmap_get(bitmap, 97), "fio_bitmap_get should be 0.");
+    FIO_T_ASSERT(!fio_bitmap_get(bitmap, 97), "fio_bitmap_get should be 0.");
     fio_bitmap_set(bitmap, 97);
-    TEST_ASSERT(fio_bitmap_get(bitmap, 97) == 1,
-                "fio_bitmap_get should be 1 after being set");
-    TEST_ASSERT(!fio_bitmap_get(bitmap, 96),
-                "other bits shouldn't be effected by set.");
-    TEST_ASSERT(!fio_bitmap_get(bitmap, 98),
-                "other bits shouldn't be effected by set.");
+    FIO_T_ASSERT(fio_bitmap_get(bitmap, 97) == 1,
+                 "fio_bitmap_get should be 1 after being set");
+    FIO_T_ASSERT(!fio_bitmap_get(bitmap, 96),
+                 "other bits shouldn't be effected by set.");
+    FIO_T_ASSERT(!fio_bitmap_get(bitmap, 98),
+                 "other bits shouldn't be effected by set.");
     fio_bitmap_flip(bitmap, 96);
     fio_bitmap_flip(bitmap, 97);
-    TEST_ASSERT(!fio_bitmap_get(bitmap, 97),
-                "fio_bitmap_get should be 0 after flip.");
-    TEST_ASSERT(fio_bitmap_get(bitmap, 96) == 1,
-                "other bits shouldn't be effected by flip");
+    FIO_T_ASSERT(!fio_bitmap_get(bitmap, 97),
+                 "fio_bitmap_get should be 0 after flip.");
+    FIO_T_ASSERT(fio_bitmap_get(bitmap, 96) == 1,
+                 "other bits shouldn't be effected by flip");
     fio_bitmap_unset(bitmap, 96);
     fio_bitmap_flip(bitmap, 97);
-    TEST_ASSERT(!fio_bitmap_get(bitmap, 96),
-                "fio_bitmap_get should be 0 after unset.");
-    TEST_ASSERT(fio_bitmap_get(bitmap, 97) == 1,
-                "other bits shouldn't be effected by unset");
+    FIO_T_ASSERT(!fio_bitmap_get(bitmap, 96),
+                 "fio_bitmap_get should be 0 after unset.");
+    FIO_T_ASSERT(fio_bitmap_get(bitmap, 97) == 1,
+                 "other bits shouldn't be effected by unset");
     fio_bitmap_unset(bitmap, 96);
   }
   {
     fprintf(stderr, "* Testing popcount and hemming distance calculation.\n");
     for (int i = 0; i < 64; ++i) {
-      TEST_ASSERT(fio_popcount((uint64_t)1 << i) == 1,
-                  "fio_popcount error for 1 bit");
+      FIO_T_ASSERT(fio_popcount((uint64_t)1 << i) == 1,
+                   "fio_popcount error for 1 bit");
     }
     for (int i = 0; i < 63; ++i) {
-      TEST_ASSERT(fio_popcount((uint64_t)3 << i) == 2,
-                  "fio_popcount error for 2 bits");
+      FIO_T_ASSERT(fio_popcount((uint64_t)3 << i) == 2,
+                   "fio_popcount error for 2 bits");
     }
     for (int i = 0; i < 62; ++i) {
-      TEST_ASSERT(fio_popcount((uint64_t)7 << i) == 3,
-                  "fio_popcount error for 3 bits");
+      FIO_T_ASSERT(fio_popcount((uint64_t)7 << i) == 3,
+                   "fio_popcount error for 3 bits");
     }
     for (int i = 0; i < 59; ++i) {
-      TEST_ASSERT(fio_popcount((uint64_t)21 << i) == 3,
-                  "fio_popcount error for 3 alternating bits");
+      FIO_T_ASSERT(fio_popcount((uint64_t)21 << i) == 3,
+                   "fio_popcount error for 3 alternating bits");
     }
     for (int i = 0; i < 64; ++i) {
-      TEST_ASSERT(fio_hemming_dist(((uint64_t)1 << i) - 1, 0) == i,
-                  "fio_hemming_dist error at %d", i);
+      FIO_T_ASSERT(fio_hemming_dist(((uint64_t)1 << i) - 1, 0) == i,
+                   "fio_hemming_dist error at %d", i);
     }
   }
   {
@@ -11921,8 +12065,8 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
       int b;
     } stst = {.a = 1};
     struct test_s *stst_p = FIO_PTR_FROM_FIELD(struct test_s, b, &stst.b);
-    TEST_ASSERT(stst_p == &stst,
-                "FIO_PTR_FROM_FIELD failed to retrace pointer");
+    FIO_T_ASSERT(stst_p == &stst,
+                 "FIO_PTR_FROM_FIELD failed to retrace pointer");
   }
 }
 
@@ -11959,13 +12103,13 @@ TEST_FUNC void fio___dynamic_types_test___random_buffer(uint64_t *stream,
 #endif
   fprintf(stderr, "\t  zeros / ones (bit frequency)\t%.05f\n",
           ((float)1.0 * totals[0]) / totals[1]);
-  TEST_ASSERT(totals[0] < totals[1] + (total_bits / 20) &&
-                  totals[1] < totals[0] + (total_bits / 20),
-              "randomness isn't random?");
+  FIO_T_ASSERT(totals[0] < totals[1] + (total_bits / 20) &&
+                   totals[1] < totals[0] + (total_bits / 20),
+               "randomness isn't random?");
   fprintf(stderr, "\t  avarage hemming distance\t%zu\n", (size_t)hemming);
   /* expect avarage hemming distance of 25% == 16 bits */
-  TEST_ASSERT(hemming >= 14 && hemming <= 18,
-              "randomness isn't random (hemming distance failed)?");
+  FIO_T_ASSERT(hemming >= 14 && hemming <= 18,
+               "randomness isn't random (hemming distance failed)?");
   /* test chi-square ... I think */
   if (len * sizeof(*stream) > 2560) {
     double n_r = (double)1.0 * ((len * sizeof(*stream)) / 256);
@@ -12103,18 +12247,18 @@ TEST_FUNC void fio___dynamic_types_test___atomic(void) {
   s.s = fio_atomic_add(&p->s, 1);
   s.l = fio_atomic_add(&p->l, 1);
   s.w = fio_atomic_add(&p->w, 1);
-  TEST_ASSERT(s.c == 1 && p->c == 1, "fio_atomic_add failed for c");
-  TEST_ASSERT(s.s == 1 && p->s == 1, "fio_atomic_add failed for s");
-  TEST_ASSERT(s.l == 1 && p->l == 1, "fio_atomic_add failed for l");
-  TEST_ASSERT(s.w == 1 && p->w == 1, "fio_atomic_add failed for w");
+  FIO_T_ASSERT(s.c == 1 && p->c == 1, "fio_atomic_add failed for c");
+  FIO_T_ASSERT(s.s == 1 && p->s == 1, "fio_atomic_add failed for s");
+  FIO_T_ASSERT(s.l == 1 && p->l == 1, "fio_atomic_add failed for l");
+  FIO_T_ASSERT(s.w == 1 && p->w == 1, "fio_atomic_add failed for w");
   s.c = fio_atomic_sub(&p->c, 1);
   s.s = fio_atomic_sub(&p->s, 1);
   s.l = fio_atomic_sub(&p->l, 1);
   s.w = fio_atomic_sub(&p->w, 1);
-  TEST_ASSERT(s.c == 0 && p->c == 0, "fio_atomic_sub failed for c");
-  TEST_ASSERT(s.s == 0 && p->s == 0, "fio_atomic_sub failed for s");
-  TEST_ASSERT(s.l == 0 && p->l == 0, "fio_atomic_sub failed for l");
-  TEST_ASSERT(s.w == 0 && p->w == 0, "fio_atomic_sub failed for w");
+  FIO_T_ASSERT(s.c == 0 && p->c == 0, "fio_atomic_sub failed for c");
+  FIO_T_ASSERT(s.s == 0 && p->s == 0, "fio_atomic_sub failed for s");
+  FIO_T_ASSERT(s.l == 0 && p->l == 0, "fio_atomic_sub failed for l");
+  FIO_T_ASSERT(s.w == 0 && p->w == 0, "fio_atomic_sub failed for w");
   fio_atomic_add(&p->c, 1);
   fio_atomic_add(&p->s, 1);
   fio_atomic_add(&p->l, 1);
@@ -12123,10 +12267,10 @@ TEST_FUNC void fio___dynamic_types_test___atomic(void) {
   s.s = fio_atomic_xchange(&p->s, 99);
   s.l = fio_atomic_xchange(&p->l, 99);
   s.w = fio_atomic_xchange(&p->w, 99);
-  TEST_ASSERT(s.c == 1 && p->c == 99, "fio_atomic_xchange failed for c");
-  TEST_ASSERT(s.s == 1 && p->s == 99, "fio_atomic_xchange failed for s");
-  TEST_ASSERT(s.l == 1 && p->l == 99, "fio_atomic_xchange failed for l");
-  TEST_ASSERT(s.w == 1 && p->w == 99, "fio_atomic_xchange failed for w");
+  FIO_T_ASSERT(s.c == 1 && p->c == 99, "fio_atomic_xchange failed for c");
+  FIO_T_ASSERT(s.s == 1 && p->s == 99, "fio_atomic_xchange failed for s");
+  FIO_T_ASSERT(s.l == 1 && p->l == 99, "fio_atomic_xchange failed for l");
+  FIO_T_ASSERT(s.w == 1 && p->w == 99, "fio_atomic_xchange failed for w");
   FIO_MEM_FREE(p, sizeof(*p));
 }
 /* *****************************************************************************
@@ -12153,16 +12297,16 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
   }
   int tester = 0;
   FIO_LIST_EACH(ls____test_s, node, &ls, pos) {
-    TEST_ASSERT(pos->data == tester++,
-                "Linked list ordering error for push or each");
+    FIO_T_ASSERT(pos->data == tester++,
+                 "Linked list ordering error for push or each");
   }
-  TEST_ASSERT(tester == TEST_REPEAT,
-              "linked list EACH didn't loop through all the list");
+  FIO_T_ASSERT(tester == TEST_REPEAT,
+               "linked list EACH didn't loop through all the list");
   while (ls____test_any(&ls)) {
     ls____test_s *node = ls____test_pop(&ls);
     fio___dynamic_types_test_untag((uintptr_t *)&(node));
-    TEST_ASSERT(node, "Linked list pop or any failed");
-    TEST_ASSERT(node->data == --tester, "Linked list ordering error for pop");
+    FIO_T_ASSERT(node, "Linked list pop or any failed");
+    FIO_T_ASSERT(node->data == --tester, "Linked list ordering error for pop");
     FIO_MEM_FREE(node, sizeof(*node));
   }
   tester = TEST_REPEAT;
@@ -12172,22 +12316,23 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
     node->data = i;
   }
   FIO_LIST_EACH(ls____test_s, node, &ls, pos) {
-    TEST_ASSERT(pos->data == --tester,
-                "Linked list ordering error for unshift or each");
+    FIO_T_ASSERT(pos->data == --tester,
+                 "Linked list ordering error for unshift or each");
   }
-  TEST_ASSERT(
+  FIO_T_ASSERT(
       tester == 0,
       "linked list EACH didn't loop through all the list after unshift");
   tester = TEST_REPEAT;
   while (ls____test_any(&ls)) {
     ls____test_s *node = ls____test_shift(&ls);
     fio___dynamic_types_test_untag((uintptr_t *)&(node));
-    TEST_ASSERT(node, "Linked list pop or any failed");
-    TEST_ASSERT(node->data == --tester, "Linked list ordering error for shift");
+    FIO_T_ASSERT(node, "Linked list pop or any failed");
+    FIO_T_ASSERT(node->data == --tester,
+                 "Linked list ordering error for shift");
     FIO_MEM_FREE(node, sizeof(*node));
   }
-  TEST_ASSERT(FIO_NAME_BL(ls____test, empty)(&ls),
-              "Linked list empty should have been true");
+  FIO_T_ASSERT(FIO_NAME_BL(ls____test, empty)(&ls),
+               "Linked list empty should have been true");
   for (int i = 0; i < TEST_REPEAT; ++i) {
     ls____test_s *node = ls____test_push(&ls, FIO_MEM_CALLOC(sizeof(*node), 1));
     node->data = i;
@@ -12197,8 +12342,8 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
     fio___dynamic_types_test_untag((uintptr_t *)&(pos));
     FIO_MEM_FREE(pos, sizeof(*pos));
   }
-  TEST_ASSERT(FIO_NAME_BL(ls____test, empty)(&ls),
-              "Linked list empty should have been true");
+  FIO_T_ASSERT(FIO_NAME_BL(ls____test, empty)(&ls),
+               "Linked list empty should have been true");
 }
 
 /* *****************************************************************************
@@ -12244,88 +12389,89 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
 
   fprintf(stderr, "* Testing on stack, push/pop.\n");
   /* test stack allocated array (initialization) */
-  TEST_ASSERT(ary____test_capa(&a) == 0,
-              "Freshly initialized array should have zero capacity");
-  TEST_ASSERT(ary____test_count(&a) == 0,
-              "Freshly initialized array should have zero elements");
+  FIO_T_ASSERT(ary____test_capa(&a) == 0,
+               "Freshly initialized array should have zero capacity");
+  FIO_T_ASSERT(ary____test_count(&a) == 0,
+               "Freshly initialized array should have zero elements");
   memset(&a, 1, sizeof(a));
   a = (ary____test_s)FIO_ARRAY_INIT;
-  TEST_ASSERT(ary____test_capa(&a) == 0,
-              "Reinitialized array should have zero capacity");
-  TEST_ASSERT(ary____test_count(&a) == 0,
-              "Reinitialized array should have zero elements");
+  FIO_T_ASSERT(ary____test_capa(&a) == 0,
+               "Reinitialized array should have zero capacity");
+  FIO_T_ASSERT(ary____test_count(&a) == 0,
+               "Reinitialized array should have zero elements");
   ary____test_push(&a, 1);
   ary____test_push(&a, 2);
   /* test get/set array functions */
-  TEST_ASSERT(ary____test_get(&a, 1) == 2,
-              "`get` by index failed to return correct element.");
-  TEST_ASSERT(ary____test_get(&a, -1) == 2,
-              "last element `get` failed to return correct element.");
-  TEST_ASSERT(ary____test_get(&a, 0) == 1,
-              "`get` by index 0 failed to return correct element.");
-  TEST_ASSERT(ary____test_get(&a, -2) == 1,
-              "last element `get(-2)` failed to return correct element.");
+  FIO_T_ASSERT(ary____test_get(&a, 1) == 2,
+               "`get` by index failed to return correct element.");
+  FIO_T_ASSERT(ary____test_get(&a, -1) == 2,
+               "last element `get` failed to return correct element.");
+  FIO_T_ASSERT(ary____test_get(&a, 0) == 1,
+               "`get` by index 0 failed to return correct element.");
+  FIO_T_ASSERT(ary____test_get(&a, -2) == 1,
+               "last element `get(-2)` failed to return correct element.");
   ary____test_pop(&a, &tmp);
-  TEST_ASSERT(tmp == 2, "pop failed to set correct element.");
+  FIO_T_ASSERT(tmp == 2, "pop failed to set correct element.");
   ary____test_pop(&a, &tmp);
   /* array is now empty */
   ary____test_push(&a, 1);
   ary____test_push(&a, 2);
   ary____test_push(&a, 3);
   ary____test_set(&a, 99, 1, NULL);
-  TEST_ASSERT(ary____test_count(&a) == 100,
-              "set with 100 elements should force create elements.");
-  TEST_ASSERT(ary____test_get(&a, 0) == 1,
-              "Intialized element should be kept (index 0)");
-  TEST_ASSERT(ary____test_get(&a, 1) == 2,
-              "Intialized element should be kept (index 1)");
-  TEST_ASSERT(ary____test_get(&a, 2) == 3,
-              "Intialized element should be kept (index 2)");
+  FIO_T_ASSERT(ary____test_count(&a) == 100,
+               "set with 100 elements should force create elements.");
+  FIO_T_ASSERT(ary____test_get(&a, 0) == 1,
+               "Intialized element should be kept (index 0)");
+  FIO_T_ASSERT(ary____test_get(&a, 1) == 2,
+               "Intialized element should be kept (index 1)");
+  FIO_T_ASSERT(ary____test_get(&a, 2) == 3,
+               "Intialized element should be kept (index 2)");
   for (int i = 3; i < 99; ++i) {
-    TEST_ASSERT(ary____test_get(&a, i) == 0,
-                "Unintialized element should be 0");
+    FIO_T_ASSERT(ary____test_get(&a, i) == 0,
+                 "Unintialized element should be 0");
   }
   ary____test_remove2(&a, 0);
-  TEST_ASSERT(ary____test_count(&a) == 4,
-              "remove2 should have removed all zero elements.");
-  TEST_ASSERT(ary____test_get(&a, 0) == 1,
-              "remove2 should have compacted the array (index 0)");
-  TEST_ASSERT(ary____test_get(&a, 1) == 2,
-              "remove2 should have compacted the array (index 1)");
-  TEST_ASSERT(ary____test_get(&a, 2) == 3,
-              "remove2 should have compacted the array (index 2)");
-  TEST_ASSERT(ary____test_get(&a, 3) == 1,
-              "remove2 should have compacted the array (index 4)");
+  FIO_T_ASSERT(ary____test_count(&a) == 4,
+               "remove2 should have removed all zero elements.");
+  FIO_T_ASSERT(ary____test_get(&a, 0) == 1,
+               "remove2 should have compacted the array (index 0)");
+  FIO_T_ASSERT(ary____test_get(&a, 1) == 2,
+               "remove2 should have compacted the array (index 1)");
+  FIO_T_ASSERT(ary____test_get(&a, 2) == 3,
+               "remove2 should have compacted the array (index 2)");
+  FIO_T_ASSERT(ary____test_get(&a, 3) == 1,
+               "remove2 should have compacted the array (index 4)");
   tmp = 9;
   ary____test_remove(&a, 0, &tmp);
-  TEST_ASSERT(tmp == 1, "remove should have copied the value to the pointer.");
-  TEST_ASSERT(ary____test_count(&a) == 3,
-              "remove should have removed an element.");
-  TEST_ASSERT(ary____test_get(&a, 0) == 2,
-              "remove should have compacted the array.");
+  FIO_T_ASSERT(tmp == 1, "remove should have copied the value to the pointer.");
+  FIO_T_ASSERT(ary____test_count(&a) == 3,
+               "remove should have removed an element.");
+  FIO_T_ASSERT(ary____test_get(&a, 0) == 2,
+               "remove should have compacted the array.");
   /* test stack allocated array (destroy) */
   ary____test_destroy(&a);
-  TEST_ASSERT(ary____test_capa(&a) == 0,
-              "Destroyed array should have zero capacity");
-  TEST_ASSERT(ary____test_count(&a) == 0,
-              "Destroyed array should have zero elements");
-  TEST_ASSERT(a.ary == NULL, "Destroyed array shouldn't have memory allocated");
+  FIO_T_ASSERT(ary____test_capa(&a) == 0,
+               "Destroyed array should have zero capacity");
+  FIO_T_ASSERT(ary____test_count(&a) == 0,
+               "Destroyed array should have zero elements");
+  FIO_T_ASSERT(a.ary == NULL,
+               "Destroyed array shouldn't have memory allocated");
   ary____test_push(&a, 1);
   ary____test_push(&a, 2);
   ary____test_push(&a, 3);
   ary____test_reserve(&a, 100);
-  TEST_ASSERT(ary____test_count(&a) == 3,
-              "reserve shouldn't effect itme count.");
-  TEST_ASSERT(ary____test_capa(&a) >= 100, "reserve should reserve.");
-  TEST_ASSERT(ary____test_get(&a, 0) == 1,
-              "Element should be kept after reserve (index 0)");
-  TEST_ASSERT(ary____test_get(&a, 1) == 2,
-              "Element should be kept after reserve (index 1)");
-  TEST_ASSERT(ary____test_get(&a, 2) == 3,
-              "Element should be kept after reserve (index 2)");
+  FIO_T_ASSERT(ary____test_count(&a) == 3,
+               "reserve shouldn't effect itme count.");
+  FIO_T_ASSERT(ary____test_capa(&a) >= 100, "reserve should reserve.");
+  FIO_T_ASSERT(ary____test_get(&a, 0) == 1,
+               "Element should be kept after reserve (index 0)");
+  FIO_T_ASSERT(ary____test_get(&a, 1) == 2,
+               "Element should be kept after reserve (index 1)");
+  FIO_T_ASSERT(ary____test_get(&a, 2) == 3,
+               "Element should be kept after reserve (index 2)");
   ary____test_compact(&a);
-  TEST_ASSERT(ary____test_capa(&a) == 3,
-              "reserve shouldn't effect itme count.");
+  FIO_T_ASSERT(ary____test_capa(&a) == 3,
+               "reserve shouldn't effect itme count.");
   ary____test_destroy(&a);
 
   /* Round 2 - heap, shift/unshift, negative ary_set index */
@@ -12333,78 +12479,78 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   fprintf(stderr, "* Testing on heap, shift/unshift.\n");
   /* test heap allocated array (initialization) */
   ary____test_s *pa = ary____test_new();
-  TEST_ASSERT(ary____test_capa(pa) == 0,
-              "Freshly initialized array should have zero capacity");
-  TEST_ASSERT(ary____test_count(pa) == 0,
-              "Freshly initialized array should have zero elements");
+  FIO_T_ASSERT(ary____test_capa(pa) == 0,
+               "Freshly initialized array should have zero capacity");
+  FIO_T_ASSERT(ary____test_count(pa) == 0,
+               "Freshly initialized array should have zero elements");
   ary____test_unshift(pa, 2);
   ary____test_unshift(pa, 1);
   /* test get/set/shift/unshift array functions */
-  TEST_ASSERT(ary____test_get(pa, 1) == 2,
-              "`get` by index failed to return correct element.");
-  TEST_ASSERT(ary____test_get(pa, -1) == 2,
-              "last element `get` failed to return correct element.");
-  TEST_ASSERT(ary____test_get(pa, 0) == 1,
-              "`get` by index 0 failed to return correct element.");
-  TEST_ASSERT(ary____test_get(pa, -2) == 1,
-              "last element `get(-2)` failed to return correct element.");
+  FIO_T_ASSERT(ary____test_get(pa, 1) == 2,
+               "`get` by index failed to return correct element.");
+  FIO_T_ASSERT(ary____test_get(pa, -1) == 2,
+               "last element `get` failed to return correct element.");
+  FIO_T_ASSERT(ary____test_get(pa, 0) == 1,
+               "`get` by index 0 failed to return correct element.");
+  FIO_T_ASSERT(ary____test_get(pa, -2) == 1,
+               "last element `get(-2)` failed to return correct element.");
   ary____test_shift(pa, &tmp);
-  TEST_ASSERT(tmp == 1, "shift failed to set correct element.");
+  FIO_T_ASSERT(tmp == 1, "shift failed to set correct element.");
   ary____test_shift(pa, &tmp);
-  TEST_ASSERT(tmp == 2, "shift failed to set correct element.");
+  FIO_T_ASSERT(tmp == 2, "shift failed to set correct element.");
   /* array now empty */
   ary____test_unshift(pa, 1);
   ary____test_unshift(pa, 2);
   ary____test_unshift(pa, 3);
   ary____test_set(pa, -100, 1, NULL);
-  TEST_ASSERT(ary____test_count(pa) == 100,
-              "set with 100 elements should force create elements.");
+  FIO_T_ASSERT(ary____test_count(pa) == 100,
+               "set with 100 elements should force create elements.");
   // FIO_ARRAY_EACH(pa, pos) {
   //   fprintf(stderr, "[%zu]  %d\n", (size_t)(pos -
   //   FIO_NAME2(ary____test,ptr)(pa)), *pos);
   // }
-  TEST_ASSERT(ary____test_get(pa, 99) == 1,
-              "Intialized element should be kept (index 99)");
-  TEST_ASSERT(ary____test_get(pa, 98) == 2,
-              "Intialized element should be kept (index 98)");
-  TEST_ASSERT(ary____test_get(pa, 97) == 3,
-              "Intialized element should be kept (index 97)");
+  FIO_T_ASSERT(ary____test_get(pa, 99) == 1,
+               "Intialized element should be kept (index 99)");
+  FIO_T_ASSERT(ary____test_get(pa, 98) == 2,
+               "Intialized element should be kept (index 98)");
+  FIO_T_ASSERT(ary____test_get(pa, 97) == 3,
+               "Intialized element should be kept (index 97)");
   for (int i = 1; i < 97; ++i) {
-    TEST_ASSERT(ary____test_get(pa, i) == 0,
-                "Unintialized element should be 0");
+    FIO_T_ASSERT(ary____test_get(pa, i) == 0,
+                 "Unintialized element should be 0");
   }
   ary____test_remove2(pa, 0);
-  TEST_ASSERT(ary____test_count(pa) == 4,
-              "remove2 should have removed all zero elements.");
-  TEST_ASSERT(ary____test_get(pa, 0) == 1, "remove2 should have kept index 0");
-  TEST_ASSERT(ary____test_get(pa, 1) == 3, "remove2 should have kept index 1");
-  TEST_ASSERT(ary____test_get(pa, 2) == 2, "remove2 should have kept index 2");
-  TEST_ASSERT(ary____test_get(pa, 3) == 1, "remove2 should have kept index 3");
+  FIO_T_ASSERT(ary____test_count(pa) == 4,
+               "remove2 should have removed all zero elements.");
+  FIO_T_ASSERT(ary____test_get(pa, 0) == 1, "remove2 should have kept index 0");
+  FIO_T_ASSERT(ary____test_get(pa, 1) == 3, "remove2 should have kept index 1");
+  FIO_T_ASSERT(ary____test_get(pa, 2) == 2, "remove2 should have kept index 2");
+  FIO_T_ASSERT(ary____test_get(pa, 3) == 1, "remove2 should have kept index 3");
   tmp = 9;
   ary____test_remove(pa, 0, &tmp);
-  TEST_ASSERT(tmp == 1, "remove should have copied the value to the pointer.");
-  TEST_ASSERT(ary____test_count(pa) == 3,
-              "remove should have removed an element.");
-  TEST_ASSERT(ary____test_get(pa, 0) == 3,
-              "remove should have compacted the array.");
+  FIO_T_ASSERT(tmp == 1, "remove should have copied the value to the pointer.");
+  FIO_T_ASSERT(ary____test_count(pa) == 3,
+               "remove should have removed an element.");
+  FIO_T_ASSERT(ary____test_get(pa, 0) == 3,
+               "remove should have compacted the array.");
   /* test heap allocated array (destroy) */
   ary____test_destroy(pa);
-  TEST_ASSERT(ary____test_capa(pa) == 0,
-              "Destroyed array should have zero capacity");
-  TEST_ASSERT(ary____test_count(pa) == 0,
-              "Destroyed array should have zero elements");
-  TEST_ASSERT(FIO_NAME2(ary____test, ptr)(pa) == NULL,
-              "Destroyed array shouldn't have memory allocated");
+  FIO_T_ASSERT(ary____test_capa(pa) == 0,
+               "Destroyed array should have zero capacity");
+  FIO_T_ASSERT(ary____test_count(pa) == 0,
+               "Destroyed array should have zero elements");
+  FIO_T_ASSERT(FIO_NAME2(ary____test, ptr)(pa) == NULL,
+               "Destroyed array shouldn't have memory allocated");
   ary____test_unshift(pa, 1);
   ary____test_unshift(pa, 2);
   ary____test_unshift(pa, 3);
   ary____test_reserve(pa, -100);
-  TEST_ASSERT(ary____test_count(pa) == 3,
-              "reserve shouldn't change item count.");
-  TEST_ASSERT(ary____test_capa(pa) >= 100, "reserve should reserve.");
-  TEST_ASSERT(ary____test_get(pa, 0) == 3, "reserve should have kept index 0");
-  TEST_ASSERT(ary____test_get(pa, 1) == 2, "reserve should have kept index 1");
-  TEST_ASSERT(ary____test_get(pa, 2) == 1, "reserve should have kept index 2");
+  FIO_T_ASSERT(ary____test_count(pa) == 3,
+               "reserve shouldn't change item count.");
+  FIO_T_ASSERT(ary____test_capa(pa) >= 100, "reserve should reserve.");
+  FIO_T_ASSERT(ary____test_get(pa, 0) == 3, "reserve should have kept index 0");
+  FIO_T_ASSERT(ary____test_get(pa, 1) == 2, "reserve should have kept index 1");
+  FIO_T_ASSERT(ary____test_get(pa, 2) == 1, "reserve should have kept index 2");
   ary____test_destroy(pa);
   ary____test_free(pa);
 
@@ -12412,20 +12558,20 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   ary2____test_s a2 = FIO_ARRAY_INIT;
   ary2____test_set(&a2, 99, 1, NULL);
   FIO_ARRAY_EACH(&a2, pos) {
-    TEST_ASSERT(
+    FIO_T_ASSERT(
         (*pos == 0xFF || (pos - FIO_NAME2(ary2____test, ptr)(&a2)) == 99),
         "uninitialized elements should be initialized as "
         "FIO_ARRAY_TYPE_INVALID");
   }
   ary2____test_set(&a2, -200, 1, NULL);
-  TEST_ASSERT(ary2____test_count(&a2) == 200, "array should have 100 items.");
+  FIO_T_ASSERT(ary2____test_count(&a2) == 200, "array should have 100 items.");
   FIO_ARRAY_EACH(&a2, pos) {
-    TEST_ASSERT((*pos == 0xFF ||
-                 (pos - FIO_NAME2(ary2____test, ptr)(&a2)) == 0 ||
-                 (pos - FIO_NAME2(ary2____test, ptr)(&a2)) == 199),
-                "uninitialized elements should be initialized as "
-                "FIO_ARRAY_TYPE_INVALID (index %zd)",
-                (pos - FIO_NAME2(ary2____test, ptr)(&a2)));
+    FIO_T_ASSERT((*pos == 0xFF ||
+                  (pos - FIO_NAME2(ary2____test, ptr)(&a2)) == 0 ||
+                  (pos - FIO_NAME2(ary2____test, ptr)(&a2)) == 199),
+                 "uninitialized elements should be initialized as "
+                 "FIO_ARRAY_TYPE_INVALID (index %zd)",
+                 (pos - FIO_NAME2(ary2____test, ptr)(&a2)));
   }
   ary2____test_destroy(&a2);
 
@@ -12437,45 +12583,45 @@ TEST_FUNC void fio___dynamic_types_test___array_test(void) {
   ary____test_unshift(pa, 2);
   ary____test_unshift(pa, 1);
   ary____test_free2(pa);
-  TEST_ASSERT(!ary____test_was_destroyed,
-              "reference counted array destroyed too early.");
-  TEST_ASSERT(ary____test_get(pa, 1) == 2,
-              "`get` by index failed to return correct element.");
-  TEST_ASSERT(ary____test_get(pa, -1) == 2,
-              "last element `get` failed to return correct element.");
-  TEST_ASSERT(ary____test_get(pa, 0) == 1,
-              "`get` by index 0 failed to return correct element.");
-  TEST_ASSERT(ary____test_get(pa, -2) == 1,
-              "last element `get(-2)` failed to return correct element.");
+  FIO_T_ASSERT(!ary____test_was_destroyed,
+               "reference counted array destroyed too early.");
+  FIO_T_ASSERT(ary____test_get(pa, 1) == 2,
+               "`get` by index failed to return correct element.");
+  FIO_T_ASSERT(ary____test_get(pa, -1) == 2,
+               "last element `get` failed to return correct element.");
+  FIO_T_ASSERT(ary____test_get(pa, 0) == 1,
+               "`get` by index 0 failed to return correct element.");
+  FIO_T_ASSERT(ary____test_get(pa, -2) == 1,
+               "last element `get(-2)` failed to return correct element.");
   ary____test_free2(pa);
-  TEST_ASSERT(ary____test_was_destroyed,
-              "reference counted array not destroyed.");
+  FIO_T_ASSERT(ary____test_was_destroyed,
+               "reference counted array not destroyed.");
 
   fprintf(stderr, "* Testing dynamic arrays helpers.\n");
   for (size_t i = 0; i < TEST_REPEAT; ++i) {
     ary____test_push(&a, i);
   }
-  TEST_ASSERT(ary____test_count(&a) == TEST_REPEAT, "push object count error");
+  FIO_T_ASSERT(ary____test_count(&a) == TEST_REPEAT, "push object count error");
   {
     size_t c = 0;
     size_t i = ary____test_each(&a, 3, fio_____dynamic_test_array_task, &c);
-    TEST_ASSERT(i < 64, "too many objects counted in each loop.");
-    TEST_ASSERT(c >= 256 && c < 512, "each loop too long.");
+    FIO_T_ASSERT(i < 64, "too many objects counted in each loop.");
+    FIO_T_ASSERT(c >= 256 && c < 512, "each loop too long.");
   }
   for (size_t i = 0; i < TEST_REPEAT; ++i) {
-    TEST_ASSERT((size_t)ary____test_get(&a, i) == i,
-                "push order / insert issue");
+    FIO_T_ASSERT((size_t)ary____test_get(&a, i) == i,
+                 "push order / insert issue");
   }
   ary____test_destroy(&a);
   for (size_t i = 0; i < TEST_REPEAT; ++i) {
     ary____test_unshift(&a, i);
   }
-  TEST_ASSERT(ary____test_count(&a) == TEST_REPEAT,
-              "unshift object count error");
+  FIO_T_ASSERT(ary____test_count(&a) == TEST_REPEAT,
+               "unshift object count error");
   for (size_t i = 0; i < TEST_REPEAT; ++i) {
     int old = 0;
     ary____test_pop(&a, &old);
-    TEST_ASSERT((size_t)old == i, "shift order / insert issue");
+    FIO_T_ASSERT((size_t)old == i, "shift order / insert issue");
   }
   ary____test_destroy(&a);
 }
@@ -12503,7 +12649,7 @@ Hash Map / Set - test
 TEST_FUNC size_t map_____test_key_copy_counter = 0;
 TEST_FUNC void map_____test_key_copy(char **dest, char *src) {
   *dest = FIO_MEM_CALLOC(strlen(src) + 1, sizeof(*dest));
-  TEST_ASSERT(*dest, "not memory to allocate key in map_test")
+  FIO_T_ASSERT(*dest, "not memory to allocate key in map_test")
   strcpy(*dest, src);
   ++map_____test_key_copy_counter;
 }
@@ -12527,9 +12673,9 @@ TEST_FUNC void map_____test_key_destroy(char **dest) {
 
 TEST_FUNC int set_____test_each_task(size_t o, void *a_) {
   uintptr_t *i_p = (uintptr_t *)a_;
-  TEST_ASSERT(o == ++(*i_p), "set_each started at a bad offset!");
-  TEST_ASSERT(HASHOFi((o - 1)) == set_____test_each_get_key(),
-              "set_each key error!");
+  FIO_T_ASSERT(o == ++(*i_p), "set_each started at a bad offset!");
+  FIO_T_ASSERT(HASHOFi((o - 1)) == set_____test_each_get_key(),
+               "set_each key error!");
   return 0;
 }
 
@@ -12539,13 +12685,13 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     fprintf(stderr, "* Testing dynamic hash / set maps.\n");
 
     fprintf(stderr, "* Testing set (hash map where value == key).\n");
-    TEST_ASSERT(set_____test_count(&m) == 0,
-                "freshly initialized map should have no objects");
-    TEST_ASSERT(set_____test_capa(&m) == 0,
-                "freshly initialized map should have no capacity");
-    TEST_ASSERT(set_____test_reserve(&m, (TEST_REPEAT >> 1)) >=
-                    (TEST_REPEAT >> 1),
-                "reserve should increase capacity.");
+    FIO_T_ASSERT(set_____test_count(&m) == 0,
+                 "freshly initialized map should have no objects");
+    FIO_T_ASSERT(set_____test_capa(&m) == 0,
+                 "freshly initialized map should have no capacity");
+    FIO_T_ASSERT(set_____test_reserve(&m, (TEST_REPEAT >> 1)) >=
+                     (TEST_REPEAT >> 1),
+                 "reserve should increase capacity.");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
       set_____test_set_if_missing(&m, HASHOFi(i), i + 1);
     }
@@ -12553,21 +12699,21 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
       uintptr_t pos_test = (TEST_REPEAT >> 1);
       size_t count =
           set_____test_each(&m, pos_test, set_____test_each_task, &pos_test);
-      TEST_ASSERT(count == set_____test_count(&m),
-                  "set_each tast returned the wrong counter.");
-      TEST_ASSERT(count == pos_test, "set_each position testing error");
+      FIO_T_ASSERT(count == set_____test_count(&m),
+                   "set_each tast returned the wrong counter.");
+      FIO_T_ASSERT(count == pos_test, "set_each position testing error");
     }
 
-    TEST_ASSERT(set_____test_count(&m) == TEST_REPEAT,
-                "After inserting %zu items to set, got %zu items",
-                (size_t)TEST_REPEAT, (size_t)set_____test_count(&m));
+    FIO_T_ASSERT(set_____test_count(&m) == TEST_REPEAT,
+                 "After inserting %zu items to set, got %zu items",
+                 (size_t)TEST_REPEAT, (size_t)set_____test_count(&m));
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set_____test_get(&m, HASHOFi(i), i + 1) == i + 1,
-                  "item retrival error in set.");
+      FIO_T_ASSERT(set_____test_get(&m, HASHOFi(i), i + 1) == i + 1,
+                   "item retrival error in set.");
     }
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set_____test_get(&m, HASHOFi(i), i + 2) == 0,
-                  "item retrival error in set - object comparisson error?");
+      FIO_T_ASSERT(set_____test_get(&m, HASHOFi(i), i + 2) == 0,
+                   "item retrival error in set - object comparisson error?");
     }
 
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
@@ -12576,53 +12722,53 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     {
       size_t i = 0;
       FIO_MAP_EACH(&m, pos) {
-        TEST_ASSERT((pos->hash == HASHOFi(i) || HASHOFi(i) == 0) &&
-                        pos->obj == i + 1,
-                    "FIO_MAP_EACH loop out of order?")
+        FIO_T_ASSERT((pos->hash == HASHOFi(i) || HASHOFi(i) == 0) &&
+                         pos->obj == i + 1,
+                     "FIO_MAP_EACH loop out of order?")
         ++i;
       }
-      TEST_ASSERT(i == TEST_REPEAT, "FIO_MAP_EACH loop incomplete?")
+      FIO_T_ASSERT(i == TEST_REPEAT, "FIO_MAP_EACH loop incomplete?")
     }
-    TEST_ASSERT(set_____test_count(&m) == TEST_REPEAT,
-                "Inserting existing object should keep existing object.");
+    FIO_T_ASSERT(set_____test_count(&m) == TEST_REPEAT,
+                 "Inserting existing object should keep existing object.");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set_____test_get(&m, HASHOFi(i), i + 1) == i + 1,
-                  "item retrival error in set - insert failed to update?");
+      FIO_T_ASSERT(set_____test_get(&m, HASHOFi(i), i + 1) == i + 1,
+                   "item retrival error in set - insert failed to update?");
     }
 
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
       size_t old = 5;
       set_____test_set(&m, HASHOFi(i), i + 2, &old);
-      TEST_ASSERT(old == 0,
-                  "old pointer not initialized with old (or missing) data");
+      FIO_T_ASSERT(old == 0,
+                   "old pointer not initialized with old (or missing) data");
     }
 
-    TEST_ASSERT(set_____test_count(&m) == (TEST_REPEAT * 2),
-                "full hash collision shoudn't break map until attack limit.");
+    FIO_T_ASSERT(set_____test_count(&m) == (TEST_REPEAT * 2),
+                 "full hash collision shoudn't break map until attack limit.");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set_____test_get(&m, HASHOFi(i), i + 2) == i + 2,
-                  "item retrival error in set - overwrite failed to update?");
+      FIO_T_ASSERT(set_____test_get(&m, HASHOFi(i), i + 2) == i + 2,
+                   "item retrival error in set - overwrite failed to update?");
     }
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set_____test_get(&m, HASHOFi(i), i + 1) == i + 1,
-                  "item retrival error in set - collision resolution error?");
+      FIO_T_ASSERT(set_____test_get(&m, HASHOFi(i), i + 1) == i + 1,
+                   "item retrival error in set - collision resolution error?");
     }
 
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
       size_t old = 5;
       set_____test_remove(&m, HASHOFi(i), i + 1, &old);
-      TEST_ASSERT(old == i + 1,
-                  "removed item not initialized with old (or missing) data");
+      FIO_T_ASSERT(old == i + 1,
+                   "removed item not initialized with old (or missing) data");
     }
-    TEST_ASSERT(set_____test_count(&m) == TEST_REPEAT,
-                "removal should update object count.");
+    FIO_T_ASSERT(set_____test_count(&m) == TEST_REPEAT,
+                 "removal should update object count.");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set_____test_get(&m, HASHOFi(i), i + 1) == 0,
-                  "removed items should be unavailable");
+      FIO_T_ASSERT(set_____test_get(&m, HASHOFi(i), i + 1) == 0,
+                   "removed items should be unavailable");
     }
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set_____test_get(&m, HASHOFi(i), i + 2) == i + 2,
-                  "previous items should be accessible after removal");
+      FIO_T_ASSERT(set_____test_get(&m, HASHOFi(i), i + 2) == i + 2,
+                   "previous items should be accessible after removal");
     }
     set_____test_destroy(&m);
   }
@@ -12633,64 +12779,64 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
       set2_____test_set_if_missing(&m, HASHOFi(i), i + 1);
     }
 
-    TEST_ASSERT(set2_____test_count(&m) == TEST_REPEAT,
-                "After inserting %zu items to set, got %zu items",
-                (size_t)TEST_REPEAT, (size_t)set2_____test_count(&m));
+    FIO_T_ASSERT(set2_____test_count(&m) == TEST_REPEAT,
+                 "After inserting %zu items to set, got %zu items",
+                 (size_t)TEST_REPEAT, (size_t)set2_____test_count(&m));
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == i + 1,
-                  "item retrival error in set.");
+      FIO_T_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == i + 1,
+                   "item retrival error in set.");
     }
 
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
       set2_____test_set_if_missing(&m, HASHOFi(i), i + 2);
     }
-    TEST_ASSERT(set2_____test_count(&m) == TEST_REPEAT,
-                "Inserting existing object should keep existing object.");
+    FIO_T_ASSERT(set2_____test_count(&m) == TEST_REPEAT,
+                 "Inserting existing object should keep existing object.");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == i + 1,
-                  "item retrival error in set - insert failed to update?");
+      FIO_T_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == i + 1,
+                   "item retrival error in set - insert failed to update?");
     }
 
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
       size_t old = 5;
       set2_____test_set(&m, HASHOFi(i), i + 2, &old);
-      TEST_ASSERT(old == i + 1,
-                  "old pointer not initialized with old (or missing) data");
+      FIO_T_ASSERT(old == i + 1,
+                   "old pointer not initialized with old (or missing) data");
     }
 
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == i + 2,
-                  "item retrival error in set - overwrite failed to update?");
+      FIO_T_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == i + 2,
+                   "item retrival error in set - overwrite failed to update?");
     }
     {
       /* test partial removal */
       for (size_t i = 1; i < TEST_REPEAT; i += 2) {
         size_t old = 5;
         set2_____test_remove(&m, HASHOFi(i), 0, &old);
-        TEST_ASSERT(old == i + 2,
-                    "removed item not initialized with old (or missing) data "
-                    "(%zu != %zu)",
-                    old, i + 2);
+        FIO_T_ASSERT(old == i + 2,
+                     "removed item not initialized with old (or missing) data "
+                     "(%zu != %zu)",
+                     old, i + 2);
       }
       for (size_t i = 1; i < TEST_REPEAT; i += 2) {
-        TEST_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == 0,
-                    "previous items should NOT be accessible after removal");
+        FIO_T_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == 0,
+                     "previous items should NOT be accessible after removal");
         set2_____test_set_if_missing(&m, HASHOFi(i), i + 2);
       }
     }
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
       size_t old = 5;
       set2_____test_remove(&m, HASHOFi(i), 0, &old);
-      TEST_ASSERT(old == i + 2,
-                  "removed item not initialized with old (or missing) data "
-                  "(%zu != %zu)",
-                  old, i + 2);
+      FIO_T_ASSERT(old == i + 2,
+                   "removed item not initialized with old (or missing) data "
+                   "(%zu != %zu)",
+                   old, i + 2);
     }
-    TEST_ASSERT(set2_____test_count(&m) == 0,
-                "removal should update object count.");
+    FIO_T_ASSERT(set2_____test_count(&m) == 0,
+                 "removal should update object count.");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      TEST_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == 0,
-                  "previous items should NOT be accessible after removal");
+      FIO_T_ASSERT(set2_____test_get(&m, HASHOFi(i), 0) == 0,
+                   "previous items should NOT be accessible after removal");
     }
     set2_____test_destroy(&m);
   }
@@ -12698,44 +12844,45 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
   {
     map_____test_s *m = map_____test_new();
     fprintf(stderr, "* Testing hash map.\n");
-    TEST_ASSERT(map_____test_count(m) == 0,
-                "freshly initialized map should have no objects");
-    TEST_ASSERT(map_____test_capa(m) == 0,
-                "freshly initialized map should have no capacity");
+    FIO_T_ASSERT(map_____test_count(m) == 0,
+                 "freshly initialized map should have no objects");
+    FIO_T_ASSERT(map_____test_capa(m) == 0,
+                 "freshly initialized map should have no capacity");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
       char buffer[64];
       int l = snprintf(buffer, 63, "%zu", i);
       buffer[l] = 0;
       map_____test_set(m, HASHOFs(buffer), buffer, i + 1, NULL);
     }
-    TEST_ASSERT(map_____test_key_copy_counter == TEST_REPEAT,
-                "key copying error - was the key copied?");
-    TEST_ASSERT(map_____test_count(m) == TEST_REPEAT,
-                "After inserting %zu items to map, got %zu items",
-                (size_t)TEST_REPEAT, (size_t)map_____test_count(m));
+    FIO_T_ASSERT(map_____test_key_copy_counter == TEST_REPEAT,
+                 "key copying error - was the key copied?");
+    FIO_T_ASSERT(map_____test_count(m) == TEST_REPEAT,
+                 "After inserting %zu items to map, got %zu items",
+                 (size_t)TEST_REPEAT, (size_t)map_____test_count(m));
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
       char buffer[64];
       int l = snprintf(buffer + 1, 61, "%zu", i);
       buffer[l + 1] = 0;
-      TEST_ASSERT(map_____test_get(m, HASHOFs(buffer + 1), buffer + 1) == i + 1,
-                  "item retrival error in map.");
+      FIO_T_ASSERT(map_____test_get(m, HASHOFs(buffer + 1), buffer + 1) ==
+                       i + 1,
+                   "item retrival error in map.");
     }
     {
-      TEST_ASSERT(map_____test_last(m) == TEST_REPEAT,
-                  "last object value retrival error. got %zu",
-                  map_____test_last(m));
+      FIO_T_ASSERT(map_____test_last(m) == TEST_REPEAT,
+                   "last object value retrival error. got %zu",
+                   map_____test_last(m));
       map_____test_pop(m, NULL);
-      TEST_ASSERT(map_____test_count(m) == TEST_REPEAT - 1,
-                  "popping an object should have decreased object count.");
+      FIO_T_ASSERT(map_____test_count(m) == TEST_REPEAT - 1,
+                   "popping an object should have decreased object count.");
       char buffer[64];
       int l = snprintf(buffer + 1, 61, "%zu", (size_t)(TEST_REPEAT - 1));
       buffer[l + 1] = 0;
-      TEST_ASSERT(map_____test_get(m, HASHOFs(buffer + 1), buffer + 1) == 0,
-                  "popping an object should have removed it.");
+      FIO_T_ASSERT(map_____test_get(m, HASHOFs(buffer + 1), buffer + 1) == 0,
+                   "popping an object should have removed it.");
     }
     map_____test_free(m);
-    TEST_ASSERT(map_____test_key_copy_counter == 0,
-                "key destruction error - was the key freed?");
+    FIO_T_ASSERT(map_____test_key_copy_counter == 0,
+                 "key destruction error - was the key freed?");
   }
   {
     set_____test_s m = FIO_MAP_INIT;
@@ -12743,8 +12890,8 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
       set_____test_set(&m, 1, i + 1, NULL);
     }
-    TEST_ASSERT(set_____test_count(&m) != TEST_REPEAT,
-                "full collision protection failed?");
+    FIO_T_ASSERT(set_____test_count(&m) != TEST_REPEAT,
+                 "full collision protection failed?");
     set_____test_destroy(&m);
   }
 }
@@ -12770,33 +12917,33 @@ Hash Map 2 type test
 TEST_FUNC void fio___dynamic_types_test___hmap_test(void) {
   hmap_____test_s m = FIO_MAP_INIT;
   fprintf(stderr, "* Testing dynamic hash map (2).\n");
-  TEST_ASSERT(m.count == 0, "freshly initialized map should have no objects");
+  FIO_T_ASSERT(m.count == 0, "freshly initialized map should have no objects");
   for (size_t i = 0; i < TEST_REPEAT; ++i) {
     hmap_____test_set(&m, HASHOFi(i), i, i + 1, NULL);
   }
 
-  TEST_ASSERT(m.count == TEST_REPEAT,
-              "After inserting %zu items to hash map, got %zu items",
-              (size_t)TEST_REPEAT, (size_t)m.count);
+  FIO_T_ASSERT(m.count == TEST_REPEAT,
+               "After inserting %zu items to hash map, got %zu items",
+               (size_t)TEST_REPEAT, (size_t)m.count);
   for (size_t i = 0; i < TEST_REPEAT; ++i) {
-    TEST_ASSERT(hmap_____test_get(&m, HASHOFi(i), i) == i + 1,
-                "item retrival error in hash map.");
+    FIO_T_ASSERT(hmap_____test_get(&m, HASHOFi(i), i) == i + 1,
+                 "item retrival error in hash map.");
   }
   for (size_t i = 0; i < TEST_REPEAT; ++i) {
-    TEST_ASSERT(hmap_____test_get(&m, HASHOFi(i), i + 1) == 0,
-                "item retrival error in hash map - object comparison error?");
+    FIO_T_ASSERT(hmap_____test_get(&m, HASHOFi(i), i + 1) == 0,
+                 "item retrival error in hash map - object comparison error?");
   }
   for (size_t i = 1; i < TEST_REPEAT; i += 2) {
-    TEST_ASSERT(hmap_____test_remove(&m, HASHOFi(i), i, NULL) == 0,
-                "item removal error in hash map - object wasn't found?");
+    FIO_T_ASSERT(hmap_____test_remove(&m, HASHOFi(i), i, NULL) == 0,
+                 "item removal error in hash map - object wasn't found?");
   }
   for (size_t i = 1; i < TEST_REPEAT; i += 2) {
-    TEST_ASSERT(hmap_____test_get(&m, HASHOFi(i), i) == 0,
-                "item retrival error in hash map - destroyed object alive?");
+    FIO_T_ASSERT(hmap_____test_get(&m, HASHOFi(i), i) == 0,
+                 "item retrival error in hash map - destroyed object alive?");
   }
   for (size_t i = 0; i < TEST_REPEAT; i += 2) {
-    TEST_ASSERT(hmap_____test_get(&m, HASHOFi(i), i) == i + 1,
-                "item retrival error in hash map with holes.");
+    FIO_T_ASSERT(hmap_____test_get(&m, HASHOFi(i), i) == i + 1,
+                 "item retrival error in hash map with holes.");
   }
   hmap_____test_destroy(&m);
 }
@@ -12832,133 +12979,133 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   fprintf(stderr, "* Self-contained capacity (FIO_STRING_SMALL_CAPA): %zu\n",
           FIO__STR_SMALL_CAPA);
   fio__str_____test_s str = {.len = 0}; /* test zeroed out memory */
-  TEST_ASSERT(!FIO_NAME_BL(fio__str_____test, frozen)(&str),
-              "new string is frozen");
-  TEST_ASSERT(fio__str_____test_capa(&str) == FIO__STR_SMALL_CAPA,
-              "small string capacity returned %zu",
-              fio__str_____test_capa(&str));
-  TEST_ASSERT(fio__str_____test_len(&str) == 0,
-              "small string length reporting error!");
-  TEST_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) == ((char *)(&str) + 1),
-              "small string pointer reporting error (%zd offset)!",
-              (ssize_t)(((char *)(&str) + 1) -
-                        FIO_NAME2(fio__str_____test, ptr)(&str)));
+  FIO_T_ASSERT(!FIO_NAME_BL(fio__str_____test, frozen)(&str),
+               "new string is frozen");
+  FIO_T_ASSERT(fio__str_____test_capa(&str) == FIO__STR_SMALL_CAPA,
+               "small string capacity returned %zu",
+               fio__str_____test_capa(&str));
+  FIO_T_ASSERT(fio__str_____test_len(&str) == 0,
+               "small string length reporting error!");
+  FIO_T_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) == ((char *)(&str) + 1),
+               "small string pointer reporting error (%zd offset)!",
+               (ssize_t)(((char *)(&str) + 1) -
+                         FIO_NAME2(fio__str_____test, ptr)(&str)));
   fio__str_____test_write(&str, "World", 4);
-  TEST_ASSERT(str.special,
-              "small string writing error - not small on small write!");
-  TEST_ASSERT(fio__str_____test_capa(&str) == FIO__STR_SMALL_CAPA,
-              "Small string capacity reporting error after write!");
-  TEST_ASSERT(fio__str_____test_len(&str) == 4,
-              "small string length reporting error after write!");
-  TEST_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) == (char *)&str + 1,
-              "small string pointer reporting error after write!");
-  TEST_ASSERT(strlen(FIO_NAME2(fio__str_____test, ptr)(&str)) == 4,
-              "small string NUL missing after write (%zu)!",
-              strlen(FIO_NAME2(fio__str_____test, ptr)(&str)));
-  TEST_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Worl"),
-              "small string write error (%s)!",
-              FIO_NAME2(fio__str_____test, ptr)(&str));
-  TEST_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) ==
-                  FIO_NAME(fio__str_____test, info)(&str).buf,
-              "small string `data` != `info.buf` (%p != %p)",
-              (void *)FIO_NAME2(fio__str_____test, ptr)(&str),
-              (void *)FIO_NAME(fio__str_____test, info)(&str).buf);
+  FIO_T_ASSERT(str.special,
+               "small string writing error - not small on small write!");
+  FIO_T_ASSERT(fio__str_____test_capa(&str) == FIO__STR_SMALL_CAPA,
+               "Small string capacity reporting error after write!");
+  FIO_T_ASSERT(fio__str_____test_len(&str) == 4,
+               "small string length reporting error after write!");
+  FIO_T_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) == (char *)&str + 1,
+               "small string pointer reporting error after write!");
+  FIO_T_ASSERT(strlen(FIO_NAME2(fio__str_____test, ptr)(&str)) == 4,
+               "small string NUL missing after write (%zu)!",
+               strlen(FIO_NAME2(fio__str_____test, ptr)(&str)));
+  FIO_T_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Worl"),
+               "small string write error (%s)!",
+               FIO_NAME2(fio__str_____test, ptr)(&str));
+  FIO_T_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) ==
+                   FIO_NAME(fio__str_____test, info)(&str).buf,
+               "small string `data` != `info.buf` (%p != %p)",
+               (void *)FIO_NAME2(fio__str_____test, ptr)(&str),
+               (void *)FIO_NAME(fio__str_____test, info)(&str).buf);
 
   fio__str_____test_reserve(&str, sizeof(fio__str_____test_s));
-  TEST_ASSERT(!str.special,
-              "Long String reporting as small after capacity update!");
-  TEST_ASSERT(fio__str_____test_capa(&str) >= sizeof(fio__str_____test_s) - 1,
-              "Long String capacity update error (%zu != %zu)!",
-              fio__str_____test_capa(&str), sizeof(fio__str_____test_s));
-  TEST_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) ==
-                  FIO_NAME(fio__str_____test, info)(&str).buf,
-              "Long String `FIO_NAME2(fio__str_____test,ptr)` !>= "
-              "`FIO_NAME2(fio__str_____test,cstr)(s).buf` (%p != %p)",
-              (void *)FIO_NAME2(fio__str_____test, ptr)(&str),
-              (void *)FIO_NAME(fio__str_____test, info)(&str).buf);
+  FIO_T_ASSERT(!str.special,
+               "Long String reporting as small after capacity update!");
+  FIO_T_ASSERT(fio__str_____test_capa(&str) >= sizeof(fio__str_____test_s) - 1,
+               "Long String capacity update error (%zu != %zu)!",
+               fio__str_____test_capa(&str), sizeof(fio__str_____test_s));
+  FIO_T_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) ==
+                   FIO_NAME(fio__str_____test, info)(&str).buf,
+               "Long String `FIO_NAME2(fio__str_____test,ptr)` !>= "
+               "`FIO_NAME2(fio__str_____test,cstr)(s).buf` (%p != %p)",
+               (void *)FIO_NAME2(fio__str_____test, ptr)(&str),
+               (void *)FIO_NAME(fio__str_____test, info)(&str).buf);
 
-  TEST_ASSERT(
+  FIO_T_ASSERT(
       fio__str_____test_len(&str) == 4,
       "Long String length changed during conversion from small string (%zu)!",
       fio__str_____test_len(&str));
-  TEST_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) == str.buf,
-              "Long String pointer reporting error after capacity update!");
-  TEST_ASSERT(strlen(FIO_NAME2(fio__str_____test, ptr)(&str)) == 4,
-              "Long String NUL missing after capacity update (%zu)!",
-              strlen(FIO_NAME2(fio__str_____test, ptr)(&str)));
-  TEST_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Worl"),
-              "Long String value changed after capacity update (%s)!",
-              FIO_NAME2(fio__str_____test, ptr)(&str));
+  FIO_T_ASSERT(FIO_NAME2(fio__str_____test, ptr)(&str) == str.buf,
+               "Long String pointer reporting error after capacity update!");
+  FIO_T_ASSERT(strlen(FIO_NAME2(fio__str_____test, ptr)(&str)) == 4,
+               "Long String NUL missing after capacity update (%zu)!",
+               strlen(FIO_NAME2(fio__str_____test, ptr)(&str)));
+  FIO_T_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Worl"),
+               "Long String value changed after capacity update (%s)!",
+               FIO_NAME2(fio__str_____test, ptr)(&str));
 
   fio__str_____test_write(&str, "d!", 2);
-  TEST_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "World!"),
-              "Long String `write` error (%s)!",
-              FIO_NAME2(fio__str_____test, ptr)(&str));
+  FIO_T_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "World!"),
+               "Long String `write` error (%s)!",
+               FIO_NAME2(fio__str_____test, ptr)(&str));
 
   fio__str_____test_replace(&str, 0, 0, "Hello ", 6);
-  TEST_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Hello World!"),
-              "Long String `insert` error (%s)!",
-              FIO_NAME2(fio__str_____test, ptr)(&str));
+  FIO_T_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Hello World!"),
+               "Long String `insert` error (%s)!",
+               FIO_NAME2(fio__str_____test, ptr)(&str));
 
   fio__str_____test_resize(&str, 6);
-  TEST_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Hello "),
-              "Long String `resize` clipping error (%s)!",
-              FIO_NAME2(fio__str_____test, ptr)(&str));
+  FIO_T_ASSERT(!strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Hello "),
+               "Long String `resize` clipping error (%s)!",
+               FIO_NAME2(fio__str_____test, ptr)(&str));
 
   fio__str_____test_replace(&str, 6, 0, "My World!", 9);
-  TEST_ASSERT(
+  FIO_T_ASSERT(
       !strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Hello My World!"),
       "Long String `replace` error when testing overflow (%s)!",
       FIO_NAME2(fio__str_____test, ptr)(&str));
 
   str.capa = str.len;
   fio__str_____test_replace(&str, -10, 2, "Big", 3);
-  TEST_ASSERT(
+  FIO_T_ASSERT(
       !strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Hello Big World!"),
       "Long String `replace` error when testing splicing (%s)!",
       FIO_NAME2(fio__str_____test, ptr)(&str));
 
-  TEST_ASSERT(fio__str_____test_capa(&str) ==
-                  ROUND_UP_CAPA_2WORDS(strlen("Hello Big World!")),
-              "Long String `fio__str_____test_replace` capacity update error "
-              "(%zu != %zu)!",
-              fio__str_____test_capa(&str),
-              ROUND_UP_CAPA_2WORDS(strlen("Hello Big World!")));
+  FIO_T_ASSERT(fio__str_____test_capa(&str) ==
+                   ROUND_UP_CAPA_2WORDS(strlen("Hello Big World!")),
+               "Long String `fio__str_____test_replace` capacity update error "
+               "(%zu != %zu)!",
+               fio__str_____test_capa(&str),
+               ROUND_UP_CAPA_2WORDS(strlen("Hello Big World!")));
 
   if (str.len < (sizeof(str) - 2)) {
     fio__str_____test_compact(&str);
-    TEST_ASSERT(str.special, "Compacting didn't change String to small!");
-    TEST_ASSERT(fio__str_____test_len(&str) == strlen("Hello Big World!"),
-                "Compacting altered String length! (%zu != %zu)!",
-                fio__str_____test_len(&str), strlen("Hello Big World!"));
-    TEST_ASSERT(
+    FIO_T_ASSERT(str.special, "Compacting didn't change String to small!");
+    FIO_T_ASSERT(fio__str_____test_len(&str) == strlen("Hello Big World!"),
+                 "Compacting altered String length! (%zu != %zu)!",
+                 fio__str_____test_len(&str), strlen("Hello Big World!"));
+    FIO_T_ASSERT(
         !strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Hello Big World!"),
         "Compact data error (%s)!", FIO_NAME2(fio__str_____test, ptr)(&str));
-    TEST_ASSERT(fio__str_____test_capa(&str) == sizeof(str) - 2,
-                "Compacted String capacity reporting error!");
+    FIO_T_ASSERT(fio__str_____test_capa(&str) == sizeof(str) - 2,
+                 "Compacted String capacity reporting error!");
   } else {
     fprintf(stderr, "* skipped `compact` test!\n");
   }
 
   {
     fio__str_____test_freeze(&str);
-    TEST_ASSERT(FIO_NAME_BL(fio__str_____test, frozen)(&str),
-                "Frozen String not flagged as frozen.");
+    FIO_T_ASSERT(FIO_NAME_BL(fio__str_____test, frozen)(&str),
+                 "Frozen String not flagged as frozen.");
     fio_str_info_s old_state = FIO_NAME(fio__str_____test, info)(&str);
     fio__str_____test_write(&str, "more data to be written here", 28);
     fio__str_____test_replace(&str, 2, 1, "more data to be written here", 28);
     fio_str_info_s new_state = FIO_NAME(fio__str_____test, info)(&str);
-    TEST_ASSERT(old_state.len == new_state.len,
-                "Frozen String length changed!");
-    TEST_ASSERT(old_state.buf == new_state.buf,
-                "Frozen String pointer changed!");
-    TEST_ASSERT(
+    FIO_T_ASSERT(old_state.len == new_state.len,
+                 "Frozen String length changed!");
+    FIO_T_ASSERT(old_state.buf == new_state.buf,
+                 "Frozen String pointer changed!");
+    FIO_T_ASSERT(
         old_state.capa == new_state.capa,
         "Frozen String capacity changed (allowed, but shouldn't happen)!");
     str.special &= (uint8_t)(~(2U));
   }
   fio__str_____test_printf(&str, " %u", 42);
-  TEST_ASSERT(
+  FIO_T_ASSERT(
       !strcmp(FIO_NAME2(fio__str_____test, ptr)(&str), "Hello Big World! 42"),
       "`fio__str_____test_printf` data error (%s)!",
       FIO_NAME2(fio__str_____test, ptr)(&str));
@@ -12966,13 +13113,13 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   {
     fio__str_____test_s str2 = FIO_STRING_INIT;
     fio__str_____test_concat(&str2, &str);
-    TEST_ASSERT(
+    FIO_T_ASSERT(
         FIO_NAME_BL(fio__str_____test, eq)(&str, &str2),
         "`fio__str_____test_concat` error, strings not equal (%s != %s)!",
         FIO_NAME2(fio__str_____test, ptr)(&str),
         FIO_NAME2(fio__str_____test, ptr)(&str2));
     fio__str_____test_write(&str2, ":extra data", 11);
-    TEST_ASSERT(
+    FIO_T_ASSERT(
         !FIO_NAME_BL(fio__str_____test, eq)(&str, &str2),
         "`fio__str_____test_write` error after copy, strings equal "
         "((%zu)%s == (%zu)%s)!",
@@ -12985,33 +13132,34 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   fio__str_____test_destroy(&str);
 
   fio__str_____test_write_i(&str, -42);
-  TEST_ASSERT(fio__str_____test_len(&str) == 3 &&
-                  !memcmp("-42", FIO_NAME2(fio__str_____test, ptr)(&str), 3),
-              "fio__str_____test_write_i output error ((%zu) %s != -42)",
-              fio__str_____test_len(&str),
-              FIO_NAME2(fio__str_____test, ptr)(&str));
+  FIO_T_ASSERT(fio__str_____test_len(&str) == 3 &&
+                   !memcmp("-42", FIO_NAME2(fio__str_____test, ptr)(&str), 3),
+               "fio__str_____test_write_i output error ((%zu) %s != -42)",
+               fio__str_____test_len(&str),
+               FIO_NAME2(fio__str_____test, ptr)(&str));
   fio__str_____test_destroy(&str);
 
   {
     fprintf(stderr, "* Testing string `readfile`.\n");
     fio__str_____test_s *s = fio__str_____test_new();
-    TEST_ASSERT(s && ((fio__str_____test_s *)((uintptr_t)s & ~15ULL))->special,
-                "error, string not initialized (%p)!", (void *)s);
+    FIO_T_ASSERT(s && ((fio__str_____test_s *)((uintptr_t)s & ~15ULL))->special,
+                 "error, string not initialized (%p)!", (void *)s);
     fio_str_info_s state = fio__str_____test_readfile(s, __FILE__, 0, 0);
 
-    TEST_ASSERT(state.buf, "error, no data was read for file %s!", __FILE__);
+    FIO_T_ASSERT(state.buf, "error, no data was read for file %s!", __FILE__);
 
-    TEST_ASSERT(!memcmp(state.buf,
-                        "/* "
-                        "******************************************************"
-                        "***********************",
-                        80),
-                "content error, header mismatch!\n %s", state.buf);
+    FIO_T_ASSERT(
+        !memcmp(state.buf,
+                "/* "
+                "******************************************************"
+                "***********************",
+                80),
+        "content error, header mismatch!\n %s", state.buf);
     fprintf(stderr, "* Testing UTF-8 validation and length.\n");
-    TEST_ASSERT(fio__str_____test_utf8_valid(s),
-                "`fio__str_____test_utf8_valid` error, code in this file "
-                "should be valid!");
-    TEST_ASSERT(
+    FIO_T_ASSERT(fio__str_____test_utf8_valid(s),
+                 "`fio__str_____test_utf8_valid` error, code in this file "
+                 "should be valid!");
+    FIO_T_ASSERT(
         fio__str_____test_utf8_len(s) &&
             (fio__str_____test_utf8_len(s) <= fio__str_____test_len(s)) &&
             (fio__str_____test_utf8_len(s) >= (fio__str_____test_len(s)) >> 1),
@@ -13024,29 +13172,30 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
       size_t len = 20;
       fprintf(stderr, "* Testing UTF-8 positioning.\n");
 
-      TEST_ASSERT(fio__str_____test_utf8_select(s, &pos, &len) == 0,
-                  "`fio__str_____test_utf8_select` returned error for negative "
-                  "pos! (%zd, %zu)",
-                  (ssize_t)pos, len);
-      TEST_ASSERT(pos == (intptr_t)state.len -
-                             10, /* no UTF-8 bytes in this file */
-                  "`fio__str_____test_utf8_select` error, negative position "
-                  "invalid! (%zd)",
-                  (ssize_t)pos);
-      TEST_ASSERT(len == 10,
-                  "`fio__str_____test_utf8_select` error, trancated length "
-                  "invalid! (%zd)",
-                  (ssize_t)len);
+      FIO_T_ASSERT(
+          fio__str_____test_utf8_select(s, &pos, &len) == 0,
+          "`fio__str_____test_utf8_select` returned error for negative "
+          "pos! (%zd, %zu)",
+          (ssize_t)pos, len);
+      FIO_T_ASSERT(pos == (intptr_t)state.len -
+                              10, /* no UTF-8 bytes in this file */
+                   "`fio__str_____test_utf8_select` error, negative position "
+                   "invalid! (%zd)",
+                   (ssize_t)pos);
+      FIO_T_ASSERT(len == 10,
+                   "`fio__str_____test_utf8_select` error, trancated length "
+                   "invalid! (%zd)",
+                   (ssize_t)len);
       pos = 10;
       len = 20;
-      TEST_ASSERT(fio__str_____test_utf8_select(s, &pos, &len) == 0,
-                  "`fio__str_____test_utf8_select` returned error! (%zd, %zu)",
-                  (ssize_t)pos, len);
-      TEST_ASSERT(
+      FIO_T_ASSERT(fio__str_____test_utf8_select(s, &pos, &len) == 0,
+                   "`fio__str_____test_utf8_select` returned error! (%zd, %zu)",
+                   (ssize_t)pos, len);
+      FIO_T_ASSERT(
           pos == 10,
           "`fio__str_____test_utf8_select` error, position invalid! (%zd)",
           (ssize_t)pos);
-      TEST_ASSERT(
+      FIO_T_ASSERT(
           len == 20,
           "`fio__str_____test_utf8_select` error, length invalid! (%zd)",
           (ssize_t)len);
@@ -13061,42 +13210,43 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     fio__str_____test_write(&str, utf8_sample, strlen(utf8_sample));
     intptr_t pos = -2;
     size_t len = 2;
-    TEST_ASSERT(
+    FIO_T_ASSERT(
         fio__str_____test_utf8_select(&str, &pos, &len) == 0,
         "`fio__str_____test_utf8_select` returned error for negative pos on "
         "UTF-8 data! (%zd, %zu)",
         (ssize_t)pos, len);
-    TEST_ASSERT(
+    FIO_T_ASSERT(
         pos == (intptr_t)fio__str_____test_len(&str) - 4, /* 4 byte emoji */
         "`fio__str_____test_utf8_select` error, negative position invalid on "
         "UTF-8 data! (%zd)",
         (ssize_t)pos);
-    TEST_ASSERT(
+    FIO_T_ASSERT(
         len == 4, /* last utf-8 char is 4 byte long */
         "`fio__str_____test_utf8_select` error, trancated length invalid on "
         "UTF-8 data! (%zd)",
         (ssize_t)len);
     pos = 1;
     len = 20;
-    TEST_ASSERT(fio__str_____test_utf8_select(&str, &pos, &len) == 0,
-                "`fio__str_____test_utf8_select` returned error on UTF-8 data! "
-                "(%zd, %zu)",
-                (ssize_t)pos, len);
-    TEST_ASSERT(pos == 4,
-                "`fio__str_____test_utf8_select` error, position invalid on "
-                "UTF-8 data! (%zd)",
-                (ssize_t)pos);
-    TEST_ASSERT(len == 10,
-                "`fio__str_____test_utf8_select` error, length invalid on "
-                "UTF-8 data! (%zd)",
-                (ssize_t)len);
+    FIO_T_ASSERT(
+        fio__str_____test_utf8_select(&str, &pos, &len) == 0,
+        "`fio__str_____test_utf8_select` returned error on UTF-8 data! "
+        "(%zd, %zu)",
+        (ssize_t)pos, len);
+    FIO_T_ASSERT(pos == 4,
+                 "`fio__str_____test_utf8_select` error, position invalid on "
+                 "UTF-8 data! (%zd)",
+                 (ssize_t)pos);
+    FIO_T_ASSERT(len == 10,
+                 "`fio__str_____test_utf8_select` error, length invalid on "
+                 "UTF-8 data! (%zd)",
+                 (ssize_t)len);
     pos = 1;
     len = 3;
-    TEST_ASSERT(fio__str_____test_utf8_select(&str, &pos, &len) == 0,
-                "`fio__str_____test_utf8_select` returned error on UTF-8 data "
-                "(2)! (%zd, %zu)",
-                (ssize_t)pos, len);
-    TEST_ASSERT(
+    FIO_T_ASSERT(fio__str_____test_utf8_select(&str, &pos, &len) == 0,
+                 "`fio__str_____test_utf8_select` returned error on UTF-8 data "
+                 "(2)! (%zd, %zu)",
+                 (ssize_t)pos, len);
+    FIO_T_ASSERT(
         len == 10, /* 3 UTF-8 chars: 4 byte + 4 byte + 2 byte codes == 10 */
         "`fio__str_____test_utf8_select` error, length invalid on UTF-8 data! "
         "(%zd)",
@@ -13106,26 +13256,26 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   if (1) {
     /* Testing Static initialization and writing */
     str = (fio__str_____test_s)FIO_STRING_INIT_STATIC("Welcome");
-    TEST_ASSERT(fio__str_____test_capa(&str) == 0,
-                "Static string capacity non-zero.");
-    TEST_ASSERT(fio__str_____test_len(&str) > 0,
-                "Static string length should be automatically calculated.");
-    TEST_ASSERT(str.dealloc == NULL,
-                "Static string deallocation function should be NULL.");
+    FIO_T_ASSERT(fio__str_____test_capa(&str) == 0,
+                 "Static string capacity non-zero.");
+    FIO_T_ASSERT(fio__str_____test_len(&str) > 0,
+                 "Static string length should be automatically calculated.");
+    FIO_T_ASSERT(str.dealloc == NULL,
+                 "Static string deallocation function should be NULL.");
     fio__str_____test_destroy(&str);
     str = (fio__str_____test_s)FIO_STRING_INIT_STATIC("Welcome");
     fio_str_info_s state = fio__str_____test_write(&str, " Home", 5);
-    TEST_ASSERT(state.capa > 0, "Static string not converted to non-static.");
-    TEST_ASSERT(str.dealloc, "Missing static string deallocation function"
-                             " after `fio__str_____test_write`.");
+    FIO_T_ASSERT(state.capa > 0, "Static string not converted to non-static.");
+    FIO_T_ASSERT(str.dealloc, "Missing static string deallocation function"
+                              " after `fio__str_____test_write`.");
 
     char *cstr = fio__str_____test_detach(&str);
-    TEST_ASSERT(cstr, "`fio__str_____test_detach` returned NULL");
-    TEST_ASSERT(!memcmp(cstr, "Welcome Home\0", 13),
-                "`fio__str_____test_detach` string error: %s", cstr);
+    FIO_T_ASSERT(cstr, "`fio__str_____test_detach` returned NULL");
+    FIO_T_ASSERT(!memcmp(cstr, "Welcome Home\0", 13),
+                 "`fio__str_____test_detach` string error: %s", cstr);
     FIO_MEM_FREE(cstr, state.capa);
-    TEST_ASSERT(fio__str_____test_len(&str) == 0,
-                "`fio__str_____test_detach` data wasn't cleared.");
+    FIO_T_ASSERT(fio__str_____test_len(&str) == 0,
+                 "`fio__str_____test_detach` data wasn't cleared.");
     fio__str_____test_destroy(&str); /* does nothing, but what the heck... */
   }
   {
@@ -13146,16 +13296,16 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
                                                   ((encoded.len >> 2) * 3) + 8);
     fio_str_info_s decoded =
         fio__str_____test_write_base64dec(&str, encoded.buf, encoded.len);
-    TEST_ASSERT(encoded.len, "Base64 encoding failed");
-    TEST_ASSERT(decoded.len > encoded.len, "Base64 decoding failed:\n%s",
-                encoded.buf);
-    TEST_ASSERT(b64i.len == decoded.len - encoded.len,
-                "Base 64 roundtrip length error, %zu != %zu (%zu - %zu):\n %s",
-                b64i.len, decoded.len - encoded.len, decoded.len, encoded.len,
-                decoded.buf);
+    FIO_T_ASSERT(encoded.len, "Base64 encoding failed");
+    FIO_T_ASSERT(decoded.len > encoded.len, "Base64 decoding failed:\n%s",
+                 encoded.buf);
+    FIO_T_ASSERT(b64i.len == decoded.len - encoded.len,
+                 "Base 64 roundtrip length error, %zu != %zu (%zu - %zu):\n %s",
+                 b64i.len, decoded.len - encoded.len, decoded.len, encoded.len,
+                 decoded.buf);
 
-    TEST_ASSERT(!memcmp(b64i.buf, decoded.buf + encoded.len, b64i.len),
-                "Base 64 roundtrip failed:\n %s", decoded.buf);
+    FIO_T_ASSERT(!memcmp(b64i.buf, decoded.buf + encoded.len, b64i.len),
+                 "Base 64 roundtrip failed:\n %s", decoded.buf);
     fio__str_____test_destroy(&b64message);
     fio__str_____test_destroy(&str);
   }
@@ -13177,18 +13327,18 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
     // fprintf(stderr, "* %s\n", encoded.buf);
     fio_str_info_s decoded =
         fio__str_____test_write_unescape(&str, encoded.buf, encoded.len);
-    TEST_ASSERT(!memcmp(encoded.buf, utf8_sample, strlen(utf8_sample)),
-                "valid UTF-8 data shouldn't be escaped");
-    TEST_ASSERT(encoded.len, "JSON encoding failed");
-    TEST_ASSERT(decoded.len > encoded.len, "JSON decoding failed:\n%s",
-                encoded.buf);
-    TEST_ASSERT(ue.len == decoded.len - encoded.len,
-                "JSON roundtrip length error, %zu != %zu (%zu - %zu):\n %s",
-                ue.len, decoded.len - encoded.len, decoded.len, encoded.len,
-                decoded.buf);
+    FIO_T_ASSERT(!memcmp(encoded.buf, utf8_sample, strlen(utf8_sample)),
+                 "valid UTF-8 data shouldn't be escaped");
+    FIO_T_ASSERT(encoded.len, "JSON encoding failed");
+    FIO_T_ASSERT(decoded.len > encoded.len, "JSON decoding failed:\n%s",
+                 encoded.buf);
+    FIO_T_ASSERT(ue.len == decoded.len - encoded.len,
+                 "JSON roundtrip length error, %zu != %zu (%zu - %zu):\n %s",
+                 ue.len, decoded.len - encoded.len, decoded.len, encoded.len,
+                 decoded.buf);
 
-    TEST_ASSERT(!memcmp(ue.buf, decoded.buf + encoded.len, ue.len),
-                "JSON roundtrip failed:\n %s", decoded.buf);
+    FIO_T_ASSERT(!memcmp(ue.buf, decoded.buf + encoded.len, ue.len),
+                 "JSON roundtrip failed:\n %s", decoded.buf);
     fio__str_____test_destroy(&unescaped);
     fio__str_____test_destroy(&str);
   }
@@ -13291,18 +13441,18 @@ TEST_FUNC void fio___dynamic_types_test___cli(void) {
                 FIO_CLI_BOOL("-boolean -t boolean"),
                 FIO_CLI_BOOL("-boolean_false -f boolean"),
                 FIO_CLI_STRING("-str -s a string"));
-  TEST_ASSERT(fio_cli_get_i("-i2") == 2, "CLI second integer error.");
-  TEST_ASSERT(fio_cli_get_i("-i3") == 3, "CLI third integer error.");
-  TEST_ASSERT(fio_cli_get_i("-i1") == 1, "CLI first integer error.");
-  TEST_ASSERT(fio_cli_get_i("-t") == 1, "CLI boolean true error.");
-  TEST_ASSERT(fio_cli_get_i("-f") == 0, "CLI boolean false error.");
-  TEST_ASSERT(!strcmp(fio_cli_get("-s"), "test"), "CLI string error.");
-  TEST_ASSERT(fio_cli_unnamed_count() == 1, "CLI unnamed count error.");
-  TEST_ASSERT(!strcmp(fio_cli_unnamed(0), "unnamed"), "CLI unnamed error.");
+  FIO_T_ASSERT(fio_cli_get_i("-i2") == 2, "CLI second integer error.");
+  FIO_T_ASSERT(fio_cli_get_i("-i3") == 3, "CLI third integer error.");
+  FIO_T_ASSERT(fio_cli_get_i("-i1") == 1, "CLI first integer error.");
+  FIO_T_ASSERT(fio_cli_get_i("-t") == 1, "CLI boolean true error.");
+  FIO_T_ASSERT(fio_cli_get_i("-f") == 0, "CLI boolean false error.");
+  FIO_T_ASSERT(!strcmp(fio_cli_get("-s"), "test"), "CLI string error.");
+  FIO_T_ASSERT(fio_cli_unnamed_count() == 1, "CLI unnamed count error.");
+  FIO_T_ASSERT(!strcmp(fio_cli_unnamed(0), "unnamed"), "CLI unnamed error.");
   fio_cli_set("-manual", "okay");
-  TEST_ASSERT(!strcmp(fio_cli_get("-manual"), "okay"), "CLI set/get error.");
+  FIO_T_ASSERT(!strcmp(fio_cli_get("-manual"), "okay"), "CLI set/get error.");
   fio_cli_end();
-  TEST_ASSERT(fio_cli_get_i("-i1") == 0, "CLI cleanup error.");
+  FIO_T_ASSERT(fio_cli_get_i("-i1") == 0, "CLI cleanup error.");
 }
 
 /* *****************************************************************************
@@ -13329,23 +13479,23 @@ TEST_FUNC void fio___dynamic_types_test___mem(void) {
             (size_t)(1UL << cycles));
     const size_t limit = (three_blocks >> cycles);
     char **ary = fio_calloc(sizeof(*ary), limit);
-    TEST_ASSERT(ary, "allocation failed for test container");
+    FIO_T_ASSERT(ary, "allocation failed for test container");
     for (size_t i = 0; i < limit; ++i) {
       ary[i] = fio_malloc(1UL << cycles);
-      TEST_ASSERT(ary[i], "allocation failed!")
-      TEST_ASSERT(!ary[i][0], "allocated memory not zero");
+      FIO_T_ASSERT(ary[i], "allocation failed!")
+      FIO_T_ASSERT(!ary[i][0], "allocated memory not zero");
       memset(ary[i], 0xff, (1UL << cycles));
     }
     for (size_t i = 0; i < limit; ++i) {
       char *tmp = fio_realloc2(ary[i], (2UL << cycles), (1UL << cycles));
-      TEST_ASSERT(tmp, "re-allocation failed!")
+      FIO_T_ASSERT(tmp, "re-allocation failed!")
       ary[i] = tmp;
-      TEST_ASSERT(!ary[i][(2UL << cycles) - 1], "fio_realloc2 copy overflow!");
+      FIO_T_ASSERT(!ary[i][(2UL << cycles) - 1], "fio_realloc2 copy overflow!");
       tmp = fio_realloc2(ary[i], (1UL << cycles), (2UL << cycles));
-      TEST_ASSERT(tmp, "re-allocation (shrinking) failed!")
+      FIO_T_ASSERT(tmp, "re-allocation (shrinking) failed!")
       ary[i] = tmp;
-      TEST_ASSERT(ary[i][(1UL << cycles) - 1] == (char)0xFF,
-                  "fio_realloc2 copy underflow!");
+      FIO_T_ASSERT(ary[i][(1UL << cycles) - 1] == (char)0xFF,
+                   "fio_realloc2 copy underflow!");
     }
     for (size_t i = 0; i < limit; ++i) {
       fio_free(ary[i]);
@@ -13354,7 +13504,7 @@ TEST_FUNC void fio___dynamic_types_test___mem(void) {
   }
 #if DEBUG && FIO_EXTERN_COMPLETE
   fio___mem_destroy();
-  TEST_ASSERT(fio___mem_block_count <= 1, "memory leaks?");
+  FIO_T_ASSERT(fio___mem_block_count <= 1, "memory leaks?");
 #endif
 }
 #endif
@@ -13443,8 +13593,8 @@ TEST_FUNC void fio___dynamic_types_test___risky(void) {
     fio_risky_hash_stream(&r, buf + 37, len - 37);
     h1 = fio_risky_hash_value(&r);
     h2 = fio_risky_hash(buf, len, 0);
-    TEST_ASSERT(h1 == h2, "Risky Hash Streaming != Non-Streaming %p != %p",
-                (void *)h1, (void *)h2);
+    FIO_T_ASSERT(h1 == h2, "Risky Hash Streaming != Non-Streaming %p != %p",
+                 (void *)h1, (void *)h2);
   }
   for (int i = 0; i < 8; ++i) {
     char buf[128];
@@ -13453,17 +13603,18 @@ TEST_FUNC void fio___dynamic_types_test___risky(void) {
     char *tmp = buf + i;
     memcpy(tmp, str, strlen(str));
     fio_risky_mask(tmp, strlen(str), (uint64_t)tmp, nonce);
-    TEST_ASSERT(memcmp(tmp, str, strlen(str)), "Risky Hash masking failed");
+    FIO_T_ASSERT(memcmp(tmp, str, strlen(str)), "Risky Hash masking failed");
     size_t err = 0;
     for (size_t b = 0; b < strlen(str); ++b) {
-      TEST_ASSERT(tmp[b] != str[b] || (err < 2),
-                  "Risky Hash masking didn't mask buf[%zu] on offset "
-                  "%d (statistical deviation?)",
-                  b, i);
+      FIO_T_ASSERT(tmp[b] != str[b] || (err < 2),
+                   "Risky Hash masking didn't mask buf[%zu] on offset "
+                   "%d (statistical deviation?)",
+                   b, i);
       err += (tmp[b] == str[b]);
     }
     fio_risky_mask(tmp, strlen(str), (uint64_t)tmp, nonce);
-    TEST_ASSERT(!memcmp(tmp, str, strlen(str)), "Risky Hash masking RT failed");
+    FIO_T_ASSERT(!memcmp(tmp, str, strlen(str)),
+                 "Risky Hash masking RT failed");
   }
   const uint8_t alignment_test_offset = 0;
   if (alignment_test_offset)
@@ -13488,12 +13639,12 @@ TEST_FUNC int fio___dynamic_types_test___fiobj_task(FIOBJ o, void *e_) {
   static size_t index = 0;
   int *expect = (int *)e_;
   if (expect[index] == -1) {
-    TEST_ASSERT(FIOBJ_TYPE(o) == FIOBJ_T_ARRAY,
-                "each2 ordering issue [%zu] (array).", index);
+    FIO_T_ASSERT(FIOBJ_TYPE(o) == FIOBJ_T_ARRAY,
+                 "each2 ordering issue [%zu] (array).", index);
   } else {
-    TEST_ASSERT(FIO_NAME2(fiobj, i)(o) == expect[index],
-                "each2 ordering issue [%zu] (number) %ld != %d", index,
-                FIO_NAME2(fiobj, i)(o), expect[index]);
+    FIO_T_ASSERT(FIO_NAME2(fiobj, i)(o) == expect[index],
+                 "each2 ordering issue [%zu] (number) %ld != %d", index,
+                 FIO_NAME2(fiobj, i)(o), expect[index]);
   }
   ++index;
   return 0;
@@ -13508,38 +13659,38 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
   /* primitives - (in)sanity */
   {
     fprintf(stderr, "* Testing FIOBJ primitives.\n");
-    TEST_ASSERT(FIOBJ_TYPE(o) == FIOBJ_T_NULL,
-                "invalid FIOBJ type should be FIOBJ_T_NULL.");
-    TEST_ASSERT(
+    FIO_T_ASSERT(FIOBJ_TYPE(o) == FIOBJ_T_NULL,
+                 "invalid FIOBJ type should be FIOBJ_T_NULL.");
+    FIO_T_ASSERT(
         !FIO_NAME_BL(fiobj, eq)(o, FIO_NAME(fiobj, FIOBJ___NAME_NULL)()),
         "invalid FIOBJ is NOT a fiobj_null().");
-    TEST_ASSERT(!FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(),
+    FIO_T_ASSERT(!FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(),
+                                         FIO_NAME(fiobj, FIOBJ___NAME_NULL)()),
+                 "fiobj_true() is NOT fiobj_null().");
+    FIO_T_ASSERT(!FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_FALSE)(),
+                                         FIO_NAME(fiobj, FIOBJ___NAME_NULL)()),
+                 "fiobj_false() is NOT fiobj_null().");
+    FIO_T_ASSERT(!FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_FALSE)(),
+                                         FIO_NAME(fiobj, FIOBJ___NAME_TRUE)()),
+                 "fiobj_false() is NOT fiobj_true().");
+    FIO_T_ASSERT(FIOBJ_TYPE(FIO_NAME(fiobj, FIOBJ___NAME_NULL)()) ==
+                     FIOBJ_T_NULL,
+                 "fiobj_null() type should be FIOBJ_T_NULL.");
+    FIO_T_ASSERT(FIOBJ_TYPE(FIO_NAME(fiobj, FIOBJ___NAME_TRUE)()) ==
+                     FIOBJ_T_TRUE,
+                 "fiobj_true() type should be FIOBJ_T_TRUE.");
+    FIO_T_ASSERT(FIOBJ_TYPE(FIO_NAME(fiobj, FIOBJ___NAME_FALSE)()) ==
+                     FIOBJ_T_FALSE,
+                 "fiobj_false() type should be FIOBJ_T_FALSE.");
+    FIO_T_ASSERT(FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_NULL)(),
                                         FIO_NAME(fiobj, FIOBJ___NAME_NULL)()),
-                "fiobj_true() is NOT fiobj_null().");
-    TEST_ASSERT(!FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_FALSE)(),
-                                        FIO_NAME(fiobj, FIOBJ___NAME_NULL)()),
-                "fiobj_false() is NOT fiobj_null().");
-    TEST_ASSERT(!FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_FALSE)(),
+                 "fiobj_null() should be equal to self.");
+    FIO_T_ASSERT(FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(),
                                         FIO_NAME(fiobj, FIOBJ___NAME_TRUE)()),
-                "fiobj_false() is NOT fiobj_true().");
-    TEST_ASSERT(FIOBJ_TYPE(FIO_NAME(fiobj, FIOBJ___NAME_NULL)()) ==
-                    FIOBJ_T_NULL,
-                "fiobj_null() type should be FIOBJ_T_NULL.");
-    TEST_ASSERT(FIOBJ_TYPE(FIO_NAME(fiobj, FIOBJ___NAME_TRUE)()) ==
-                    FIOBJ_T_TRUE,
-                "fiobj_true() type should be FIOBJ_T_TRUE.");
-    TEST_ASSERT(FIOBJ_TYPE(FIO_NAME(fiobj, FIOBJ___NAME_FALSE)()) ==
-                    FIOBJ_T_FALSE,
-                "fiobj_false() type should be FIOBJ_T_FALSE.");
-    TEST_ASSERT(FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_NULL)(),
-                                       FIO_NAME(fiobj, FIOBJ___NAME_NULL)()),
-                "fiobj_null() should be equal to self.");
-    TEST_ASSERT(FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(),
-                                       FIO_NAME(fiobj, FIOBJ___NAME_TRUE)()),
-                "fiobj_true() should be equal to self.");
-    TEST_ASSERT(FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_FALSE)(),
-                                       FIO_NAME(fiobj, FIOBJ___NAME_FALSE)()),
-                "fiobj_false() should be equal to self.");
+                 "fiobj_true() should be equal to self.");
+    FIO_T_ASSERT(FIO_NAME_BL(fiobj, eq)(FIO_NAME(fiobj, FIOBJ___NAME_FALSE)(),
+                                        FIO_NAME(fiobj, FIOBJ___NAME_FALSE)()),
+                 "fiobj_false() should be equal to self.");
   }
   {
     fprintf(stderr, "* Testing FIOBJ integers.\n");
@@ -13547,15 +13698,15 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
     for (uint8_t bit = 0; bit < (sizeof(intptr_t) * 8); ++bit) {
       uintptr_t i = (uintptr_t)1 << bit;
       o = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), new)((intptr_t)i);
-      TEST_ASSERT(FIO_NAME2(fiobj, i)(o) == (intptr_t)i,
-                  "Number not reversible at bit %d (%zd != %zd)!", (int)bit,
-                  (ssize_t)FIO_NAME2(fiobj, i)(o), (ssize_t)i);
+      FIO_T_ASSERT(FIO_NAME2(fiobj, i)(o) == (intptr_t)i,
+                   "Number not reversible at bit %d (%zd != %zd)!", (int)bit,
+                   (ssize_t)FIO_NAME2(fiobj, i)(o), (ssize_t)i);
       allocation_flags |= (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_NUMBER) ? 1 : 2;
       fiobj_free(o);
     }
-    TEST_ASSERT(allocation_flags == 3,
-                "no bits are allocated / no allocations optimized away (%d)",
-                (int)allocation_flags);
+    FIO_T_ASSERT(allocation_flags == 3,
+                 "no bits are allocated / no allocations optimized away (%d)",
+                 (int)allocation_flags);
   }
   {
     fprintf(stderr, "* Testing FIOBJ floats.\n");
@@ -13567,15 +13718,15 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
       } punned;
       punned.i = (uint64_t)1 << bit;
       o = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), new)(punned.d);
-      TEST_ASSERT(FIO_NAME2(fiobj, f)(o) == punned.d,
-                  "Float not reversible at bit %d (%lf != %lf)!", (int)bit,
-                  FIO_NAME2(fiobj, f)(o), punned.d);
+      FIO_T_ASSERT(FIO_NAME2(fiobj, f)(o) == punned.d,
+                   "Float not reversible at bit %d (%lf != %lf)!", (int)bit,
+                   FIO_NAME2(fiobj, f)(o), punned.d);
       allocation_flags |= (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_FLOAT) ? 1 : 2;
       fiobj_free(o);
     }
-    TEST_ASSERT(allocation_flags == 3,
-                "no bits are allocated / no allocations optimized away (%d)",
-                (int)allocation_flags);
+    FIO_T_ASSERT(allocation_flags == 3,
+                 "no bits are allocated / no allocations optimized away (%d)",
+                 (int)allocation_flags);
   }
   {
     fprintf(stderr, "* Testing FIOBJ each2.\n");
@@ -13595,9 +13746,9 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
         -1 /* array */, -1, 1, 2, 3, -1, 4, 5, 6, -1, 7, 8, 9, -1};
     size_t c = fiobj_each2(o, fio___dynamic_types_test___fiobj_task,
                            (void *)expectation);
-    TEST_ASSERT(c == FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), count)(o) +
-                         9 + 1,
-                "each2 repetition count error");
+    FIO_T_ASSERT(c == FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), count)(o) +
+                          9 + 1,
+                 "each2 repetition count error");
     fiobj_free(o);
   }
   {
@@ -13609,18 +13760,19 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
         "\"string\":\"hello\\tjson\\bworld!\\r\\n\",\"hash\":{\"true\":true,"
         "\"false\":false},\"array2\":[1,2,3,4.2,\"five\",{\"hash\":true}]}";
     o = fiobj_json_parse2(json, strlen(json), NULL);
-    TEST_ASSERT(o, "JSON parsing failed - no data returned.");
+    FIO_T_ASSERT(o, "JSON parsing failed - no data returned.");
     FIOBJ j = FIO_NAME2(fiobj, json)(FIOBJ_INVALID, o, 0);
 #if DEBUG
     fprintf(stderr, "JSON: %s\n", FIO_NAME2(fiobj, cstr)(j).buf);
 #endif
-    TEST_ASSERT(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(j) ==
-                    strlen(json + 20),
-                "JSON roundtrip failed (length error).");
-    TEST_ASSERT(!memcmp(json + 20,
-                        FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(j),
-                        strlen(json + 20)),
-                "JSON roundtrip failed (data error).");
+    FIO_T_ASSERT(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(j) ==
+                     strlen(json + 20),
+                 "JSON roundtrip failed (length error).");
+    FIO_T_ASSERT(
+        !memcmp(json + 20,
+                FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(j),
+                strlen(json + 20)),
+        "JSON roundtrip failed (data error).");
     fiobj_free(o);
     fiobj_free(j);
     o = FIOBJ_INVALID;
@@ -13644,7 +13796,7 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
     (a, 0, FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(), &set);
     FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), remove)(a, 1, &removed);
     fiobj_free(a);
-    TEST_ASSERT(
+    FIO_T_ASSERT(
         FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(popped) ==
                 strlen("number: " FIO_MACRO2STR(TEST_REPEAT)) &&
             !memcmp(
@@ -13653,7 +13805,7 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
                 FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(popped)),
         "Object popped from Array lost it's value %s",
         FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(popped));
-    TEST_ASSERT(
+    FIO_T_ASSERT(
         FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(unshifted) == 9 &&
             !memcmp(
                 "number: 1",
@@ -13661,7 +13813,7 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
                 9),
         "Object unshifted from Array lost it's value %s",
         FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(unshifted));
-    TEST_ASSERT(
+    FIO_T_ASSERT(
         FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(set) == 9 &&
             !memcmp("number: 2",
                     FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(set),
@@ -13669,15 +13821,15 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
         "Object retrieved from Array using fiobj_array_set() lost it's "
         "value %s",
         FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(set));
-    TEST_ASSERT(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(removed) ==
-                        9 &&
-                    !memcmp("number: 3",
-                            FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
-                                      ptr)(removed),
-                            9),
-                "Object retrieved from Array using fiobj_array_set() lost it's "
-                "value %s",
-                FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(removed));
+    FIO_T_ASSERT(
+        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(removed) == 9 &&
+            !memcmp(
+                "number: 3",
+                FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(removed),
+                9),
+        "Object retrieved from Array using fiobj_array_set() lost it's "
+        "value %s",
+        FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(removed));
     fiobj_free(unshifted);
     fiobj_free(popped);
     fiobj_free(set);
@@ -13698,11 +13850,11 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
     for (int i = 0; i < TEST_REPEAT; ++i) {
       FIOBJ_STR_TEMP_VAR(tmp);
       FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write_i)(tmp, i);
-      TEST_ASSERT(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(FIO_NAME(
-                      FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), get)(a2, i)) ==
-                      FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(tmp),
-                  "string length zeroed out - string freed?");
-      TEST_ASSERT(
+      FIO_T_ASSERT(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(FIO_NAME(
+                       FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), get)(a2, i)) ==
+                       FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(tmp),
+                   "string length zeroed out - string freed?");
+      FIO_T_ASSERT(
           !memcmp(FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(tmp),
                   FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(FIO_NAME(
                       FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), get)(a2, i)),
@@ -13735,13 +13887,14 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
     FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), set)
     (o, fiobj2hash(o, k), k, FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(), &set);
     fiobj_free(k);
-    TEST_ASSERT(popped,
-                "fiobj_hash_pop didn't copy information to old pointer?");
-    TEST_ASSERT(set, "fiobj_hash_set2 didn't copy information to old pointer?");
-    TEST_ASSERT(removed,
-                "fiobj_hash_remove2 didn't copy information to old pointer?");
+    FIO_T_ASSERT(popped,
+                 "fiobj_hash_pop didn't copy information to old pointer?");
+    FIO_T_ASSERT(set,
+                 "fiobj_hash_set2 didn't copy information to old pointer?");
+    FIO_T_ASSERT(removed,
+                 "fiobj_hash_remove2 didn't copy information to old pointer?");
     // fiobj_hash_set(o, uintptr_t hash, FIOBJ key, FIOBJ value, FIOBJ *old)
-    TEST_ASSERT(
+    FIO_T_ASSERT(
         FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(popped) ==
                 strlen("number: " FIO_MACRO2STR(TEST_REPEAT)) &&
             !memcmp(
@@ -13750,7 +13903,7 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
                 FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(popped)),
         "Object popped from Hash lost it's value %s",
         FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(popped));
-    TEST_ASSERT(
+    FIO_T_ASSERT(
         FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(removed) ==
                 strlen("number: 1") &&
             !memcmp(
@@ -13759,7 +13912,7 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
                 FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(removed)),
         "Object removed from Hash lost it's value %s",
         FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(removed));
-    TEST_ASSERT(
+    FIO_T_ASSERT(
         FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(set) ==
                 strlen("number: 2") &&
             !memcmp("number: 2",
@@ -13788,8 +13941,9 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
     FIOBJ key = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
     FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(key, "array", 5);
     FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), set2)(h, key, a);
-    TEST_ASSERT(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), get2)(h, key) == a,
-                "FIOBJ Hash retrival failed");
+    FIO_T_ASSERT(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), get2)(h, key) ==
+                     a,
+                 "FIOBJ Hash retrival failed");
     FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(a, key);
     if (0) {
       FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)
@@ -13814,7 +13968,7 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
     }
     fiobj_free(h);
 
-    TEST_ASSERT(
+    FIO_T_ASSERT(
         FIOBJ_MARK_MEMORY_ALLOC_COUNTER == FIOBJ_MARK_MEMORY_FREE_COUNTER,
         "FIOBJ leak detected (freed %zu/%zu)", FIOBJ_MARK_MEMORY_FREE_COUNTER,
         FIOBJ_MARK_MEMORY_ALLOC_COUNTER);
@@ -13911,7 +14065,7 @@ Testing cleanup
 
 #undef TEST_REPEAT
 #undef TEST_FUNC
-#undef TEST_ASSERT
+#undef FIO_T_ASSERT
 
 #endif /* FIO_EXTERN_COMPLETE */
 #endif
