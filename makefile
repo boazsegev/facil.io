@@ -524,8 +524,10 @@ build_objects: $(LIB_OBJS) $(MAIN_OBJS)
 
 lib: | create_tree lib_build
 
-lib_build: $(LIB_OBJS)
-	@$(CCL) -shared -o $(DEST)/libfacil.so $^ $(OPTIMIZATION) $(LINKER_FLAGS)
+$(DEST)/libfacil.so: $(LIB_OBJS)
+	@$(CCL) -shared -o $@ $^ $(OPTIMIZATION) $(LINKER_FLAGS)
+
+lib_build: $(DEST)/libfacil.so
 	@$(DOCUMENTATION)
 
 
