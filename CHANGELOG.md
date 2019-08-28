@@ -40,6 +40,10 @@ I though about it as a small STL, much like C++ has, only for C, and moved the b
 
 ### v. 0.7.2
 
+**Fix**: (`fio_tls`) fixes a memory leak in the trusted certificate chain. Credit to @fbrausse for opening PR #71.
+
+**Fix**: (`fio_tls`) fixes compilation / linking flags (including a bug caused by the `gcc` optimizer `-fipa-icf`) and improves support for OpenSSL using `pkg-config`. Credit to @fbrausse for PR #71.
+
 **Fix**: (`http1`) fixes a race-condition between the `on_ready` and `on_data` events, that could result in the `on_data` event being called twice instead of once (only possible with some clients). On multi-threaded workers, this could result in the CPU spinning while the task lock remains busy. Credit to Néstor Coppi (@Shelvak) for exposing the issue and providing an example application with detailed reports. Issue #75.
 
 ### v. 0.7.1
