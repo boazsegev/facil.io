@@ -6391,7 +6391,7 @@ Section Start Marker
 
 ***************************************************************************** */
 
-#if !FIO_TLS_SKIP && !defined(HAVE_OPENSSL) /* TODO: list flags here */
+#if !FIO_TLS_FOUND && !defined(HAVE_OPENSSL) /* TODO: list flags here */
 
 #define REQUIRE_TLS_LIBRARY()
 
