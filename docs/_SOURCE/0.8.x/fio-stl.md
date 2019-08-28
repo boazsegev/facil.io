@@ -1977,36 +1977,6 @@ This is a non-streaming implementation of the RiskyHash algorithm.
 
 This function will produce a 64 bit hash for X bytes of data.
 
-#### `fio_risky_hash_init`
-
-```c
-typedef struct { /*...*/ } fio_risky_hash_s;
-fio_risky_hash_s fio_risky_hash_init(uint64_t seed);
-```
-
-This function is part of a streaming implementation of the RiskyHash algorithm.
-
-Returns an initialized `fio_risky_hash_s` with stated seed.
-
-#### `fio_risky_hash_stream`
-
-```c
-void fio_risky_hash_stream(fio_risky_hash_s *risky,
-                           const void *buf, size_t len);
-```
-
-Writes streamed data to the streaming Risky Hash storage (`fio_risky_hash_s`).
-
-#### `fio_risky_hash_value`
-
-```c
-uint64_t fio_risky_hash_value(const fio_risky_hash_s *risky);
-```
-
-Returns a finalized Risky Hash value.
-
-The Risky Hash storage (`fio_risky_hash_s`) is still writable, allowing the hash to compute more data.
-
 #### `fio_risky_mask`
 
 ```c

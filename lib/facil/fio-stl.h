@@ -2253,24 +2253,6 @@ Risky Hash - API
 /**  Computes a facil.io Risky Hash. */
 SFUNC uint64_t fio_risky_hash(const void *buf, size_t len, uint64_t seed);
 
-typedef struct {
-  uint64_t v[4];
-  size_t len;
-  uint8_t buf[32];
-} fio_risky_hash_s;
-
-/** Returns an initialized `fio_risky_hash_s` with stated seed. */
-SFUNC fio_risky_hash_s fio_risky_hash_init(uint64_t seed);
-/** Writes streamed data to the Risky Hash storage. */
-SFUNC void fio_risky_hash_stream(fio_risky_hash_s *risky, const void *buf,
-                                 size_t len);
-/**
- * Returns a finalized Risky Hash value.
- *
- * The `fio_risky_hash_s` is still writable.
- */
-SFUNC uint64_t fio_risky_hash_value(const fio_risky_hash_s *risky);
-
 /**
  * Masks data using a Risky Hash and a counter mode nonce.
  *
@@ -2310,252 +2292,132 @@ Here's a few resources about hashes that might explain more:
 
 #ifdef FIO_EXTERN_COMPLETE
 
-/** Converts an unaligned network ordered byte stream to a 64 bit number. */
-#define FIO_RISKY_STR2U64(c)                                                   \
-  ((uint64_t)((((uint64_t)((uint8_t *)(c))[0]) << 56) |                        \
-              (((uint64_t)((uint8_t *)(c))[1]) << 48) |                        \
-              (((uint64_t)((uint8_t *)(c))[2]) << 40) |                        \
-              (((uint64_t)((uint8_t *)(c))[3]) << 32) |                        \
-              (((uint64_t)((uint8_t *)(c))[4]) << 24) |                        \
-              (((uint64_t)((uint8_t *)(c))[5]) << 16) |                        \
-              (((uint64_t)((uint8_t *)(c))[6]) << 8) | (((uint8_t *)(c))[7])))
-
-/** 64Bit left rotation, inlined. */
-#define FIO_RISKY_LROT64(i, bits)                                              \
-  (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> (64 - (bits))))
-
 /* Risky Hash primes */
-#define RISKY_PRIME_0 0xFBBA3FA15B22113B
-#define RISKY_PRIME_1 0xAB137439982B86C9
-
-/* Risky Hash consumption round, accepts a state word s and an input word w */
-#define FIO_RISKY_CONSUME(v, w)                                                \
-  (v) += (w);                                                                  \
-  (v) = FIO_RISKY_LROT64((v), 33);                                             \
-  (v) += (w);                                                                  \
-  (v) *= RISKY_PRIME_0;
-
+#define FIO_RISKY3_PRIME0 0xCAEF89D1E9A5EB21ULL
+#define FIO_RISKY3_PRIME1 0xAB137439982B86C9ULL
+#define FIO_RISKY3_PRIME2 0xD9FDC73ABE9EDECDULL
+#define FIO_RISKY3_PRIME3 0x3532D520F9511B13ULL
+#define FIO_RISKY3_PRIME4 0x038720DDEB5A8415ULL
+/* Risky Hash initialization constants */
+#define FIO_RISKY3_IV0 0x0000001000000001ULL
+#define FIO_RISKY3_IV1 0x0000010000000010ULL
+#define FIO_RISKY3_IV2 0x0000100000000100ULL
+#define FIO_RISKY3_IV3 0x0001000000001000ULL
+/* avoid naming changes */
+#define FIO_RISKY_BUF2U64(c)                                                   \
+  ((uint64_t)((((uint64_t)((const uint8_t *)(c))[0]) << 56) |                  \
+              (((uint64_t)((const uint8_t *)(c))[1]) << 48) |                  \
+              (((uint64_t)((const uint8_t *)(c))[2]) << 40) |                  \
+              (((uint64_t)((const uint8_t *)(c))[3]) << 32) |                  \
+              (((uint64_t)((const uint8_t *)(c))[4]) << 24) |                  \
+              (((uint64_t)((const uint8_t *)(c))[5]) << 16) |                  \
+              (((uint64_t)((const uint8_t *)(c))[6]) << 8) |                   \
+              (((uint8_t *)(c))[7])))
 /*  Computes a facil.io Risky Hash. */
 SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
-  /* reading position */
-  const uint8_t *data = (uint8_t *)data_;
+  const uint64_t primes[] = {
+      FIO_RISKY3_PRIME0,
+      FIO_RISKY3_PRIME1,
+      FIO_RISKY3_PRIME2,
+      FIO_RISKY3_PRIME3,
+  };
+  register uint64_t v[] = {
+      FIO_RISKY3_IV0,
+      FIO_RISKY3_IV1,
+      FIO_RISKY3_IV2,
+      FIO_RISKY3_IV3,
+  };
+  const uint8_t *data = (const uint8_t *)data_;
 
-  /* The consumption vectors initialized state */
-  register uint64_t v0 = seed ^ RISKY_PRIME_1;
-  register uint64_t v1 = ~seed + RISKY_PRIME_1;
-  register uint64_t v2 =
-      FIO_RISKY_LROT64(seed, 17) ^ ((~RISKY_PRIME_1) + RISKY_PRIME_0);
-  register uint64_t v3 = FIO_RISKY_LROT64(seed, 33) + (~RISKY_PRIME_1);
+#define FIO_RISKY3_ROUND64(vi, w)                                              \
+  v[vi] += w;                                                                  \
+  v[vi] = fio_lrot64(v[vi], 29);                                               \
+  v[vi] += w;                                                                  \
+  v[vi] *= primes[vi];
 
-  /* consume 256 bit blocks */
-  for (size_t i = len >> 5; i; --i) {
-    FIO_RISKY_CONSUME(v0, FIO_RISKY_STR2U64(data));
-    FIO_RISKY_CONSUME(v1, FIO_RISKY_STR2U64(data + 8));
-    FIO_RISKY_CONSUME(v2, FIO_RISKY_STR2U64(data + 16));
-    FIO_RISKY_CONSUME(v3, FIO_RISKY_STR2U64(data + 24));
-    data += 32;
+#define FIO_RISKY3_ROUND256(w0, w1, w2, w3)                                    \
+  FIO_RISKY3_ROUND64(0, w0);                                                   \
+  FIO_RISKY3_ROUND64(1, w1);                                                   \
+  FIO_RISKY3_ROUND64(2, w2);                                                   \
+  FIO_RISKY3_ROUND64(3, w3);
+
+  if (seed) {
+    /* process the seed as if it was a prepended 8 Byte string. */
+    v[0] *= seed;
+    v[1] *= seed;
+    v[2] *= seed;
+    v[3] *= seed;
+    v[1] ^= seed;
+    v[2] ^= seed;
+    v[3] ^= seed;
   }
 
-  /* Consume any remaining 64 bit words. */
+  for (size_t i = len >> 5; i; --i) {
+    /* vectorized 32 bytes / 256 bit access */
+    FIO_RISKY3_ROUND256(fio_buf2u64(data), fio_buf2u64(data + 8),
+                        fio_buf2u64(data + 16), fio_buf2u64(data + 24));
+    data += 32;
+  }
   switch (len & 24) {
   case 24:
-    FIO_RISKY_CONSUME(v2, FIO_RISKY_STR2U64(data + 16));
+    FIO_RISKY3_ROUND64(2, fio_buf2u64(data + 16));
     /* fallthrough */
   case 16:
-    FIO_RISKY_CONSUME(v1, FIO_RISKY_STR2U64(data + 8));
+    FIO_RISKY3_ROUND64(1, fio_buf2u64(data + 8));
     /* fallthrough */
   case 8:
-    FIO_RISKY_CONSUME(v0, FIO_RISKY_STR2U64(data));
+    FIO_RISKY3_ROUND64(0, fio_buf2u64(data + 0));
     data += len & 24;
   }
 
-  uint64_t tmp = 0;
-  /* consume leftover bytes, if any */
+  uint64_t tmp = (len & 0xFF); /* add offset intformation to padding */
+  /* leftover bytes */
   switch ((len & 7)) {
   case 7:
-    tmp |= ((uint64_t)data[6]) << 8;
-    /* fallthrough */
+    tmp |= ((uint64_t)data[6]) << 8; /* fallthrough */
   case 6:
-    tmp |= ((uint64_t)data[5]) << 16;
-    /* fallthrough */
+    tmp |= ((uint64_t)data[5]) << 16; /* fallthrough */
   case 5:
-    tmp |= ((uint64_t)data[4]) << 24;
-    /* fallthrough */
+    tmp |= ((uint64_t)data[4]) << 24; /* fallthrough */
   case 4:
-    tmp |= ((uint64_t)data[3]) << 32;
-    /* fallthrough */
+    tmp |= ((uint64_t)data[3]) << 32; /* fallthrough */
   case 3:
-    tmp |= ((uint64_t)data[2]) << 40;
-    /* fallthrough */
+    tmp |= ((uint64_t)data[2]) << 40; /* fallthrough */
   case 2:
-    tmp |= ((uint64_t)data[1]) << 48;
-    /* fallthrough */
+    tmp |= ((uint64_t)data[1]) << 48; /* fallthrough */
   case 1:
     tmp |= ((uint64_t)data[0]) << 56;
-    /* ((len >> 3) & 3) is a 0...3 value indicating consumption vector */
-    switch ((len >> 3) & 3) {
-    case 3:
-      FIO_RISKY_CONSUME(v3, tmp);
+    /* the last (now padded) byte's position */
+    switch ((len & 24)) {
+    case 24: /* offset 24 in 32 byte segment */
+      FIO_RISKY3_ROUND64(3, tmp);
       break;
-    case 2:
-      FIO_RISKY_CONSUME(v2, tmp);
+    case 16: /* offset 16 in 32 byte segment */
+      FIO_RISKY3_ROUND64(2, tmp);
       break;
-    case 1:
-      FIO_RISKY_CONSUME(v1, tmp);
+    case 8: /* offset 8 in 32 byte segment */
+      FIO_RISKY3_ROUND64(1, tmp);
       break;
-    case 0:
-      FIO_RISKY_CONSUME(v0, tmp);
+    case 0: /* offset 0 in 32 byte segment */
+      FIO_RISKY3_ROUND64(0, tmp);
       break;
     }
   }
 
-  /* merge and mix */
-  uint64_t result = FIO_RISKY_LROT64(v0, 17) + FIO_RISKY_LROT64(v1, 13) +
-                    FIO_RISKY_LROT64(v2, 47) + FIO_RISKY_LROT64(v3, 57);
-
-  len ^= (len << 33);
-  result += len;
-
-  result += v0 * RISKY_PRIME_1;
-  result ^= FIO_RISKY_LROT64(result, 13);
-  result += v1 * RISKY_PRIME_1;
-  result ^= FIO_RISKY_LROT64(result, 29);
-  result += v2 * RISKY_PRIME_1;
-  result ^= FIO_RISKY_LROT64(result, 33);
-  result += v3 * RISKY_PRIME_1;
-  result ^= FIO_RISKY_LROT64(result, 51);
-
   /* irreversible avalanche... I think */
-  result ^= (result >> 29) * RISKY_PRIME_0;
-  return result;
-}
-
-/** Returns an initialized `fio_risky_hash_s` with stated seed. */
-SFUNC fio_risky_hash_s fio_risky_hash_init(uint64_t seed) {
-  fio_risky_hash_s r = {
-      .v =
-          {
-              (seed ^ RISKY_PRIME_1),
-              (~seed + RISKY_PRIME_1),
-              (FIO_RISKY_LROT64(seed, 17) ^ ((~RISKY_PRIME_1) + RISKY_PRIME_0)),
-              (FIO_RISKY_LROT64(seed, 33) + (~RISKY_PRIME_1)),
-          },
-      .len = 0};
+  uint64_t r = (len)*0x0000001000000001ULL;
+  r += fio_lrot64(v[0], 17) + fio_lrot64(v[1], 13) + fio_lrot64(v[2], 47) +
+       fio_lrot64(v[3], 57);
+  r += v[0] ^ v[1];
+  r ^= fio_lrot64(r, 13);
+  r += v[1] ^ v[2];
+  r ^= fio_lrot64(r, 29);
+  r += v[2] ^ v[3];
+  r += fio_lrot64(r, 33);
+  r += v[3] ^ v[0];
+  r ^= fio_lrot64(r, 51);
+  r ^= (r >> 29) * FIO_RISKY3_PRIME4;
   return r;
-}
-/** Writes streamed data to the Risky Hash storage. */
-SFUNC void fio_risky_hash_stream(fio_risky_hash_s *r, const void *buf_,
-                                 size_t len) {
-  // TODO: implement
-  const uint8_t *buf = (const uint8_t *)buf_;
-  size_t old_len = r->len;
-  uint8_t leftover = (old_len & 31);
-  r->len += len;
-  if (len + leftover >= 32) {
-    if (leftover) {
-      uint8_t leftover_inv = (32 - leftover);
-      memcpy(r->buf + leftover, buf, leftover_inv);
-      len -= leftover_inv;
-      buf += leftover_inv;
-      FIO_RISKY_CONSUME(r->v[0], FIO_RISKY_STR2U64(r->buf));
-      FIO_RISKY_CONSUME(r->v[1], FIO_RISKY_STR2U64(r->buf + 8));
-      FIO_RISKY_CONSUME(r->v[2], FIO_RISKY_STR2U64(r->buf + 16));
-      FIO_RISKY_CONSUME(r->v[3], FIO_RISKY_STR2U64(r->buf + 24));
-    }
-    for (size_t i = len >> 5; i; --i) {
-      FIO_RISKY_CONSUME(r->v[0], FIO_RISKY_STR2U64(buf));
-      FIO_RISKY_CONSUME(r->v[1], FIO_RISKY_STR2U64(buf + 8));
-      FIO_RISKY_CONSUME(r->v[2], FIO_RISKY_STR2U64(buf + 16));
-      FIO_RISKY_CONSUME(r->v[3], FIO_RISKY_STR2U64(buf + 24));
-      buf += 32;
-    }
-  }
-  leftover = (len & 31);
-  if (leftover) {
-    memcpy(r->buf, buf, leftover);
-  }
-}
-/**
- * Returns a finalized Risky Hash value.
- * The `fio_risky_hash_s` is still writable.
- */
-SFUNC uint64_t fio_risky_hash_value(const fio_risky_hash_s *r) {
-  uint64_t tmp = 0;
-  fio_risky_hash_s t = *r;
-  uint8_t *data = t.buf;
-
-  /* Consume any remaining 64 bit words. */
-  switch (t.len & 24) {
-  case 24:
-    FIO_RISKY_CONSUME(t.v[2], FIO_RISKY_STR2U64(data + 16));
-    /* fallthrough */
-  case 16:
-    FIO_RISKY_CONSUME(t.v[1], FIO_RISKY_STR2U64(data + 8));
-    /* fallthrough */
-  case 8:
-    FIO_RISKY_CONSUME(t.v[0], FIO_RISKY_STR2U64(data));
-    data += t.len & 24;
-  }
-
-  /* consume leftover bytes, if any */
-  switch ((t.len & 7)) {
-  case 7:
-    tmp |= ((uint64_t)data[6]) << 8;
-    /* fallthrough */
-  case 6:
-    tmp |= ((uint64_t)data[5]) << 16;
-    /* fallthrough */
-  case 5:
-    tmp |= ((uint64_t)data[4]) << 24;
-    /* fallthrough */
-  case 4:
-    tmp |= ((uint64_t)data[3]) << 32;
-    /* fallthrough */
-  case 3:
-    tmp |= ((uint64_t)data[2]) << 40;
-    /* fallthrough */
-  case 2:
-    tmp |= ((uint64_t)data[1]) << 48;
-    /* fallthrough */
-  case 1:
-    tmp |= ((uint64_t)data[0]) << 56;
-    /* ((t.len >> 3) & 3) is a 0...3 value indicating consumption vector */
-    switch ((t.len >> 3) & 3) {
-    case 3:
-      FIO_RISKY_CONSUME(t.v[3], tmp);
-      break;
-    case 2:
-      FIO_RISKY_CONSUME(t.v[2], tmp);
-      break;
-    case 1:
-      FIO_RISKY_CONSUME(t.v[1], tmp);
-      break;
-    case 0:
-      FIO_RISKY_CONSUME(t.v[0], tmp);
-      break;
-    }
-  }
-
-  /* merge and mix */
-  uint64_t result = FIO_RISKY_LROT64(t.v[0], 17) +
-                    FIO_RISKY_LROT64(t.v[1], 13) +
-                    FIO_RISKY_LROT64(t.v[2], 47) + FIO_RISKY_LROT64(t.v[3], 57);
-
-  t.len ^= (t.len << 33);
-  result += t.len;
-
-  result += t.v[0] * RISKY_PRIME_1;
-  result ^= FIO_RISKY_LROT64(result, 13);
-  result += t.v[1] * RISKY_PRIME_1;
-  result ^= FIO_RISKY_LROT64(result, 29);
-  result += t.v[2] * RISKY_PRIME_1;
-  result ^= FIO_RISKY_LROT64(result, 33);
-  result += t.v[3] * RISKY_PRIME_1;
-  result ^= FIO_RISKY_LROT64(result, 51);
-
-  /* irreversible avalanche... I think */
-  result ^= (result >> 29) * RISKY_PRIME_0;
-  return result;
 }
 
 /**
@@ -2570,13 +2432,10 @@ IFUNC void fio_risky_mask(char *buf, size_t len, uint64_t key, uint64_t nonce) {
 /* *****************************************************************************
 Risky Hash - Cleanup
 ***************************************************************************** */
-#endif /* FIO_EXTERN_COMPLETE */
+#undef FIO_RISKY3_ROUND64
+#undef FIO_RISKY3_ROUND256
 
-#undef FIO_RISKY_STR2U64
-#undef FIO_RISKY_LROT64
-#undef FIO_RISKY_CONSUME
-#undef FIO_RISKY_PRIME_0
-#undef FIO_RISKY_PRIME_1
+#endif /* FIO_EXTERN_COMPLETE */
 #endif
 #undef FIO_RISKY_HASH
 
@@ -4978,10 +4837,14 @@ Hash Map / Set - type and hash macros
 
 #ifndef FIO_MAP_HASH_OFFSET
 /** Handles a copy operation for an array's element. */
+// #define FIO_MAP_HASH_OFFSET(hash, offset)                                      \
+//   ((((hash) << ((offset) & ((sizeof((hash)) << 3) - 1))) |                     \
+//     ((hash) >> ((-(offset)) & ((sizeof((hash)) << 3) - 1)))) ^                 \
+//    (hash))
+
 #define FIO_MAP_HASH_OFFSET(hash, offset)                                      \
-  ((((hash) << ((offset) & ((sizeof((hash)) << 3) - 1))) |                     \
-    ((hash) >> ((-(offset)) & ((sizeof((hash)) << 3) - 1)))) ^                 \
-   (hash))
+  (((hash) ^ (((hash) >> ((offset) & ((sizeof((hash)) << 3) - 1))))) *         \
+   0x038720DDEB5A8415)
 #endif
 
 #ifndef FIO_MAP_HASH_COPY
@@ -13565,14 +13428,14 @@ TEST_FUNC uintptr_t fio___dynamic_types_test___risky_wrapper(char *buf,
   return fio_risky_hash(buf, len, 0);
 }
 
-TEST_FUNC uintptr_t
-fio___dynamic_types_test___risky_stream_wrapper(char *buf, size_t len) {
-  fio_risky_hash_s r = fio_risky_hash_init(0);
-  __asm__ volatile("" ::: "memory");
-  fio_risky_hash_stream(&r, buf, len);
-  __asm__ volatile("" ::: "memory");
-  return fio_risky_hash_value(&r);
-}
+// TEST_FUNC uintptr_t
+// fio___dynamic_types_test___risky_stream_wrapper(char *buf, size_t len) {
+//   fio_risky_hash_s r = fio_risky_hash_init(0);
+//   __asm__ volatile("" ::: "memory");
+//   fio_risky_hash_stream(&r, buf, len);
+//   __asm__ volatile("" ::: "memory");
+//   return fio_risky_hash_value(&r);
+// }
 
 TEST_FUNC uintptr_t fio___dynamic_types_test___risky_mask_wrapper(char *buf,
                                                                   size_t len) {
@@ -13581,6 +13444,7 @@ TEST_FUNC uintptr_t fio___dynamic_types_test___risky_mask_wrapper(char *buf,
 }
 
 TEST_FUNC void fio___dynamic_types_test___risky(void) {
+#if 0
   {
     uint64_t h1, h2;
     const char *buf =
@@ -13590,12 +13454,13 @@ TEST_FUNC void fio___dynamic_types_test___risky(void) {
     fio_risky_hash_s r = fio_risky_hash_init(0);
     // fio_risky_hash_stream(&r, buf, len);
     fio_risky_hash_stream(&r, buf, 37);
-    fio_risky_hash_stream(&r, buf + 37, len - 37);
+    // fio_risky_hash_stream(&r, buf + 37, len - 37);
     h1 = fio_risky_hash_value(&r);
     h2 = fio_risky_hash(buf, len, 0);
     FIO_T_ASSERT(h1 == h2, "Risky Hash Streaming != Non-Streaming %p != %p",
                  (void *)h1, (void *)h2);
   }
+#endif
   for (int i = 0; i < 8; ++i) {
     char buf[128];
     uint64_t nonce = fio_rand64();
@@ -13624,8 +13489,9 @@ TEST_FUNC void fio___dynamic_types_test___risky(void) {
             (int)(alignment_test_offset & 7));
   fio_test_hash_function(fio___dynamic_types_test___risky_wrapper,
                          "fio_risky_hash", alignment_test_offset);
-  fio_test_hash_function(fio___dynamic_types_test___risky_stream_wrapper,
-                         "fio_risky_hash (streaming)", alignment_test_offset);
+  // fio_test_hash_function(fio___dynamic_types_test___risky_stream_wrapper,
+  //                        "fio_risky_hash (streaming)",
+  //                        alignment_test_offset);
   fio_test_hash_function(fio___dynamic_types_test___risky_mask_wrapper,
                          "fio_risky_mask (Risky XOR + counter)",
                          alignment_test_offset);

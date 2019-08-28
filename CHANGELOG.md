@@ -36,6 +36,7 @@ I though about it as a small STL, much like C++ has, only for C, and moved the b
 
     Also, this update **should** improve type recognition performance for primitive types (`true`, `false`, `null`, numbers, floats, Arrays, Strings and Hash Maps), increasing pointer tagging usage (at the expense of the number range that optimizes away memory allocation).
 
+- Risky Hash algorithm was updated.
 
 ### v. 0.7.2
 
