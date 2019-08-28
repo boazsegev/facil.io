@@ -19,7 +19,7 @@ Feel free to copy, use and enjoy according to the license provided.
  */
 #include "fio_tls.h"
 
-#if !defined(HAVE_TLS) /* Library compiler flags */
+#if !defined(FIO_TLS_FOUND) /* Library compiler flags */
 
 #define REQUIRE_LIBRARY()
 #define FIO_TLS_WEAK

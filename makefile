@@ -435,14 +435,16 @@ OPENSSL_LDFLAGS ?= "-lssl" "-lcrypto"
 ifdef FIO_NO_TLS
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_SOURCE), $(EMPTY)), 0)
   $(info * Detected the BearSSL source code library, setting HAVE_BEARSSL)
+	# TODO: when BearSSL support arrived, set the FIO_TLS_FOUND flag as well
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_EXT), "-lbearssl"), 0)
   $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
+	# TODO: when BearSSL support arrived, set the FIO_TLS_FOUND flag as well
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), $(OPENSSL_CFLAGS) $(OPENSSL_LDFLAGS)), 0)
   $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
-	FLAGS:=$(FLAGS) HAVE_OPENSSL HAVE_TLS
+	FLAGS:=$(FLAGS) HAVE_OPENSSL FIO_TLS_FOUND
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) $(OPENSSL_LIBS)
 	LDFLAGS += $(OPENSSL_LDFLAGS)
 	CFLAGS += $(OPENSSL_CFLAGS)
@@ -455,6 +457,7 @@ endif
 # S2N TLS/SSL library: https://github.com/awslabs/s2n
 ifeq ($(call TRY_COMPILE, "\#include <s2n.h>\\n int main(void) {}", "-ls2n") , 0)
   $(info * Detected the s2n library, setting HAVE_S2N)
+	# TODO: when S2N support arrived, set the FIO_TLS_FOUND flag as well
 	FLAGS:=$(FLAGS) HAVE_S2N
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
 endif
