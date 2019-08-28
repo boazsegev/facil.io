@@ -25,7 +25,7 @@ State machine and types
 #define FIO_STRING_NAME fio_str
 #include <fio-stl.h>
 
-static uint8_t print_flag = 1;
+static uint8_t print_flag = 0;
 
 static inline int fio_str_eq_print(fio_str_s *a, fio_str_s *b) {
   /* always return 1, to avoid internal set collision mitigation. */
@@ -82,6 +82,7 @@ static void print_hash_names(void);
 static char *hash_name(hashing_func_fn fn);
 static void cleanup(void);
 static void find_bit_collisions(hashing_func_fn fn, size_t count, uint8_t bits);
+static void find_full_collisions_rot(hashing_func_fn fn);
 
 int main(int argc, char const *argv[]) {
   // FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
@@ -93,7 +94,19 @@ int main(int argc, char const *argv[]) {
     hashing_func_fn h = hash_name_get(&hash_names, fio_str_hash(&tmp, 0), NULL);
     if (h) {
       test_hash_function(h);
-      find_bit_collisions(h, 8, fio_cli_get_i("-b"));
+      if (fio_cli_get_i("-b"))
+        find_bit_collisions(h, 8, fio_cli_get_i("-b"));
+      if (fio_cli_get_i("-r"))
+        find_full_collisions_rot(h);
+      if (1) {
+        fprintf(stderr, "10 sample hashes:\n");
+        for (size_t i = 0; i < 10; ++i) {
+          uint64_t hash = h((char *)&i, sizeof(i));
+          char sbuf[80];
+          sbuf[fio_ltoa(sbuf, hash, 2)] = 0;
+          fprintf(stderr, "%s\n", sbuf);
+        }
+      }
     } else {
       FIO_LOG_ERROR("Test function %s unknown.", tmp.buf);
       fprintf(stderr, "Try any of the following:\n");
@@ -154,6 +167,8 @@ static void initialize_cli(int argc, char const *argv[]) {
           "-dictionary -d a text file containing words separated by an "
           "EOL marker."),
       FIO_CLI_INT("-bits -b number of collision bits in a brute force attack."),
+      FIO_CLI_BOOL(
+          "-rotate -r tests against rotation attack on a 512 bit vector."),
       FIO_CLI_BOOL("-v make output more verbouse (debug mode)"));
   if (fio_cli_get_bool("-v"))
     FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
@@ -246,6 +261,7 @@ static uintptr_t sha1(char *data, size_t len) {
 
 static uintptr_t counter(char *data, size_t len) {
   static uintptr_t counter = 0;
+  volatile uint64_t optimization_stopper = 0;
 
   for (size_t i = len >> 5; i; --i) {
     /* vectorized 32 bytes / 256 bit access */
@@ -253,7 +269,7 @@ static uintptr_t counter(char *data, size_t len) {
     uint64_t t1 = fio_buf2u64(data + 8);
     uint64_t t2 = fio_buf2u64(data + 16);
     uint64_t t3 = fio_buf2u64(data + 24);
-    __asm__ volatile("" ::: "memory");
+    optimization_stopper += t0 + t1 + t2 + t3;
     (void)t0;
     (void)t1;
     (void)t2;
@@ -265,36 +281,163 @@ static uintptr_t counter(char *data, size_t len) {
   switch (len & 24) {
   case 24:
     tmp = fio_buf2u64(data + 16);
-    __asm__ volatile("" ::: "memory");
   case 16: /* overflow */
     tmp = fio_buf2u64(data + 8);
-    __asm__ volatile("" ::: "memory");
   case 8: /* overflow */
     tmp = fio_buf2u64(data);
-    __asm__ volatile("" ::: "memory");
     data += len & 24;
   }
 
   tmp = 0;
   /* leftover bytes */
   switch ((len & 7)) {
-  case 7: /* overflow */
-    tmp |= ((uint64_t)data[6]) << 8;
-  case 6: /* overflow */
-    tmp |= ((uint64_t)data[5]) << 16;
-  case 5: /* overflow */
-    tmp |= ((uint64_t)data[4]) << 24;
-  case 4: /* overflow */
-    tmp |= ((uint64_t)data[3]) << 32;
-  case 3: /* overflow */
-    tmp |= ((uint64_t)data[2]) << 40;
-  case 2: /* overflow */
-    tmp |= ((uint64_t)data[1]) << 48;
-  case 1: /* overflow */
+  case 7:
+    tmp |= ((uint64_t)data[6]) << 8; /* fallthrough */
+  case 6:
+    tmp |= ((uint64_t)data[5]) << 16; /* fallthrough */
+  case 5:
+    tmp |= ((uint64_t)data[4]) << 24; /* fallthrough */
+  case 4:
+    tmp |= ((uint64_t)data[3]) << 32; /* fallthrough */
+  case 3:
+    tmp |= ((uint64_t)data[2]) << 40; /* fallthrough */
+  case 2:
+    tmp |= ((uint64_t)data[1]) << 48; /* fallthrough */
+  case 1:
     tmp |= ((uint64_t)data[0]) << 56;
+  }
+  switch ((len & 24)) { /* information about position */
+  case 24:              /* offset in 32 byte segment */
+    optimization_stopper += tmp;
+    break;
+  case 16: /* offset in 32 byte segment */
+    optimization_stopper += tmp;
+    break;
+  case 8: /* offset in 32 byte segment */
+    optimization_stopper += tmp;
+    break;
+  case 0: /* offset in 32 byte segment */
+    optimization_stopper += tmp;
+    break;
   }
   __asm__ volatile("" ::: "memory");
   return ++counter;
+}
+
+#define FIO_RISKY3_PRIME0 0xCAEF89D1E9A5EB21ULL
+#define FIO_RISKY3_PRIME1 0xAB137439982B86C9ULL
+#define FIO_RISKY3_PRIME2 0xD9FDC73ABE9EDECDULL
+#define FIO_RISKY3_PRIME3 0x3532D520F9511B13ULL
+#define FIO_RISKY3_PRIME4 0x038720DDEB5A8415ULL
+#define FIO_RISKY3_IV0 0x0000001000000001ULL
+#define FIO_RISKY3_IV1 0x0000010000000010ULL
+#define FIO_RISKY3_IV2 0x0000100000000100ULL
+#define FIO_RISKY3_IV3 0x0001000000001000ULL
+
+static uint64_t fall(const void *data_, size_t len, uint64_t seed) {
+  const uint64_t primes[] = {
+      FIO_RISKY3_PRIME0,
+      FIO_RISKY3_PRIME1,
+      FIO_RISKY3_PRIME2,
+      FIO_RISKY3_PRIME3,
+  };
+  register uint64_t v[] = {
+      FIO_RISKY3_IV0,
+      FIO_RISKY3_IV1,
+      FIO_RISKY3_IV2,
+      FIO_RISKY3_IV3,
+  };
+  const uint8_t *data = (const uint8_t *)data_;
+
+#define FIO_RISKY3_ROUND64(vi, w)                                              \
+  v[vi] += w;                                                                  \
+  v[vi] = fio_lrot64(v[vi], 29);                                               \
+  v[vi] += w;                                                                  \
+  v[vi] *= primes[vi];
+
+#define FIO_RISKY3_ROUND256(w0, w1, w2, w3)                                    \
+  FIO_RISKY3_ROUND64(0, w0);                                                   \
+  FIO_RISKY3_ROUND64(1, w1);                                                   \
+  FIO_RISKY3_ROUND64(2, w2);                                                   \
+  FIO_RISKY3_ROUND64(3, w3);
+
+  if (seed) {
+    /* process the seed as if it was a prepended 8 Byte string. */
+    v[0] *= seed;
+    v[1] *= seed;
+    v[2] *= seed;
+    v[3] *= seed;
+    v[1] ^= seed;
+    v[2] ^= seed;
+    v[3] ^= seed;
+  }
+
+  for (size_t i = len >> 5; i; --i) {
+    /* vectorized 32 bytes / 256 bit access */
+    FIO_RISKY3_ROUND256(fio_buf2u64(data), fio_buf2u64(data + 8),
+                        fio_buf2u64(data + 16), fio_buf2u64(data + 24));
+    data += 32;
+  }
+  switch (len & 24) {
+  case 24:
+    FIO_RISKY3_ROUND64(2, fio_buf2u64(data + 16));
+    /* fallthrough */
+  case 16:
+    FIO_RISKY3_ROUND64(1, fio_buf2u64(data + 8));
+    /* fallthrough */
+  case 8:
+    FIO_RISKY3_ROUND64(0, fio_buf2u64(data + 0));
+    data += len & 24;
+  }
+
+  uint64_t tmp = (len & 0xFF); /* add offset intformation to padding */
+  /* leftover bytes */
+  switch ((len & 7)) {
+  case 7:
+    tmp |= ((uint64_t)data[6]) << 8; /* fallthrough */
+  case 6:
+    tmp |= ((uint64_t)data[5]) << 16; /* fallthrough */
+  case 5:
+    tmp |= ((uint64_t)data[4]) << 24; /* fallthrough */
+  case 4:
+    tmp |= ((uint64_t)data[3]) << 32; /* fallthrough */
+  case 3:
+    tmp |= ((uint64_t)data[2]) << 40; /* fallthrough */
+  case 2:
+    tmp |= ((uint64_t)data[1]) << 48; /* fallthrough */
+  case 1:
+    tmp |= ((uint64_t)data[0]) << 56;
+    /* the last (now padded) byte's position */
+    switch ((len & 24)) {
+    case 24: /* offset 24 in 32 byte segment */
+      FIO_RISKY3_ROUND64(3, tmp);
+      break;
+    case 16: /* offset 16 in 32 byte segment */
+      FIO_RISKY3_ROUND64(2, tmp);
+      break;
+    case 8: /* offset 8 in 32 byte segment */
+      FIO_RISKY3_ROUND64(1, tmp);
+      break;
+    case 0: /* offset 0 in 32 byte segment */
+      FIO_RISKY3_ROUND64(0, tmp);
+      break;
+    }
+  }
+
+  /* irreversible avalanche... I think */
+  uint64_t r = (len)*0x0000001000000001ULL;
+  r += fio_lrot64(v[0], 17) + fio_lrot64(v[1], 13) + fio_lrot64(v[2], 47) +
+       fio_lrot64(v[3], 57);
+  r += v[0] ^ v[1];
+  r ^= fio_lrot64(r, 13);
+  r += v[1] ^ v[2];
+  r ^= fio_lrot64(r, 29);
+  r += v[2] ^ v[3];
+  r += fio_lrot64(r, 33);
+  r += v[3] ^ v[0];
+  r ^= fio_lrot64(r, 51);
+  r ^= (r >> 29) * FIO_RISKY3_PRIME4;
+  return r;
 }
 
 #if TEST_XXHASH
@@ -307,11 +450,18 @@ static uintptr_t xxhash_test(char *data, size_t len) {
 /**
 Working version.
 */
-inline FIO_FUNC uint64_t fio_risky_hash2(const void *data, size_t len,
-                                         uint64_t salt);
+inline FIO_FUNC uint64_t fio_risky_hash_v3(const void *data, size_t len,
+                                           uint64_t salt);
 
 inline FIO_FUNC uintptr_t risky2(char *data, size_t len) {
-  return fio_risky_hash2(data, len, 0);
+  return fio_risky_hash_v3(data, len, 0);
+}
+inline FIO_FUNC uintptr_t summer(char *data, size_t len) {
+  return SMR_hash(data, len, 0);
+}
+
+inline FIO_FUNC uintptr_t fall_wrapper(char *data, size_t len) {
+  return fall(data, len, (uint64_t)fall);
 }
 
 inline FIO_FUNC uintptr_t risky(char *data, size_t len) {
@@ -334,6 +484,7 @@ struct hash_fn_names_s {
 } hash_fn_list[] = {
     {"collider", collision_promise},
     {"counter (no hash, RAM access test)", counter},
+    {"fall", fall_wrapper},
 #ifdef H_FACIL_IO_H
     {"siphash13", siphash13},
     {"siphash24", siphash24},
@@ -421,6 +572,16 @@ static void test_hash_function(hashing_func_fn h) {
   if (!name)
     name = "unknown";
   fprintf(stderr, "======= %s\n", name);
+  /* Sanity test */
+  {
+    uint64_t s1 = h("", 0);
+    uint64_t s2 = h("\0", 1);
+    uint64_t s3 = h("\0\0", 2);
+    // fprintf(stderr, "Zero hash 0: %p\n", (void *)s1);
+    // fprintf(stderr, "Zero hash 1: %p\n", (void *)s2);
+    // fprintf(stderr, "Zero hash 2: %p\n", (void *)s3);
+    FIO_ASSERT(s1 != s2 && s2 != s3 && s1 != s3, "Zero padding test failed!");
+  }
   /* Speed test */
   test_hash_function_speed(h, name);
   /* Collision test */
@@ -474,8 +635,39 @@ static void find_bit_collisions(hashing_func_fn fn, size_t collision_count,
   words_destroy(&c);
 }
 
+static void find_full_collisions_rot(hashing_func_fn fn) {
+  uint64_t collision_target[] = {1UL, 0, 0, 0, 1, 0, 0, 0};
+  uint64_t h1 = fn((char *)collision_target, sizeof(collision_target));
+  uint8_t pos[64] = {0};
+  for (int i = 1; i < 64; ++i) {
+    collision_target[4] = fio_lrot64(collision_target[4], 1);
+    collision_target[5] = fio_lrot64(collision_target[5], 1);
+    collision_target[6] = fio_lrot64(collision_target[6], 1);
+    collision_target[7] = fio_lrot64(collision_target[7], 1);
+    uint64_t h2 = fn((char *)collision_target, sizeof(collision_target));
+    if (h1 == h2)
+      pos[0] = pos[i] = 1;
+  }
+  char *name = hash_name(fn);
+  if (!name)
+    name = "unknown";
+  if (!pos[0])
+    fprintf(stderr,
+            "* No collision found for %s when using 512 bit vector with 2nd "
+            "half shift.\n",
+            name);
+  else
+    for (int i = 1; i < 64; ++i) {
+      if (pos[i])
+        fprintf(stderr,
+                "* Found full collision for %s using 512 bit vector with 2nd "
+                "half shift or %d:\n",
+                name, i);
+    }
+}
+
 /* *****************************************************************************
-Finsing a mod64 inverse
+Finding a mod64 inverse
 See: https://lemire.me/blog/2017/09/18/computing-the-inverse-of-odd-integers/
 ***************************************************************************** */
 
@@ -509,6 +701,8 @@ FIO_FUNC uint64_t inverse64(uint64_t x) {
 /* *****************************************************************************
 Hash experimentation workspace
 ***************************************************************************** */
+#define SFUNC FIO_SFUNC
+#define IFUNC FIO_IFUNC
 
 /** Converts an unaligned network ordered byte stream to a 64 bit number. */
 #define FIO_RISKY_STR2U64(c)                                                   \
@@ -530,16 +724,99 @@ Hash experimentation workspace
 
 /* Risky Hash consumption round, accepts a state word s and an input word w */
 #define FIO_RISKY_CONSUME(v, w)                                                \
+  (v) += (w);                                                                  \
+  (v) = FIO_RISKY_LROT64((v), 33);                                             \
+  (v) += (w);                                                                  \
+  (v) *= RISKY_PRIME_0;
+
+/* Reads and consumes a buffer (uint8_t ptr) */
+#define FIO_RISKY_READ_AND_CONSUME(v0, v1, v2, v3, data, len)                  \
   do {                                                                         \
-    (v) += (w);                                                                \
-    (v) = FIO_RISKY_LROT64((v), 33);                                           \
-    (v) += (w);                                                                \
-    (v) *= RISKY_PRIME_0;                                                      \
+    /* consume 256 bit blocks */                                               \
+    for (size_t i = len >> 5; i; --i) {                                        \
+      FIO_RISKY_CONSUME(v0, FIO_RISKY_STR2U64(data));                          \
+      FIO_RISKY_CONSUME(v1, FIO_RISKY_STR2U64(data + 8));                      \
+      FIO_RISKY_CONSUME(v2, FIO_RISKY_STR2U64(data + 16));                     \
+      FIO_RISKY_CONSUME(v3, FIO_RISKY_STR2U64(data + 24));                     \
+      data += 32;                                                              \
+    }                                                                          \
+    /* Consume any remaining 64 bit words. */                                  \
+    switch (len & 24) {                                                        \
+    case 24:                                                                   \
+      FIO_RISKY_CONSUME(v2, FIO_RISKY_STR2U64(data + 16));                     \
+      /* fallthrough */                                                        \
+    case 16:                                                                   \
+      FIO_RISKY_CONSUME(v1, FIO_RISKY_STR2U64(data + 8));                      \
+      /* fallthrough */                                                        \
+    case 8:                                                                    \
+      FIO_RISKY_CONSUME(v0, FIO_RISKY_STR2U64(data));                          \
+      data += len & 24;                                                        \
+    }                                                                          \
+    uint64_t tmp = 0;                                                          \
+    /* consume leftover bytes, if any */                                       \
+    switch ((len & 7)) {                                                       \
+    case 7:                                                                    \
+      tmp |= ((uint64_t)data[6]) << 8;                                         \
+      /* fallthrough */                                                        \
+    case 6:                                                                    \
+      tmp |= ((uint64_t)data[5]) << 16;                                        \
+      /* fallthrough */                                                        \
+    case 5:                                                                    \
+      tmp |= ((uint64_t)data[4]) << 24;                                        \
+      /* fallthrough */                                                        \
+    case 4:                                                                    \
+      tmp |= ((uint64_t)data[3]) << 32;                                        \
+      /* fallthrough */                                                        \
+    case 3:                                                                    \
+      tmp |= ((uint64_t)data[2]) << 40;                                        \
+      /* fallthrough */                                                        \
+    case 2:                                                                    \
+      tmp |= ((uint64_t)data[1]) << 48;                                        \
+      /* fallthrough */                                                        \
+    case 1:                                                                    \
+      tmp |= ((uint64_t)data[0]) << 56;                                        \
+      tmp |= (len & 255);                                                      \
+      /* ((len >> 3) & 3) is a 0...3 value indicating consumption vector */    \
+      switch ((len >> 3) & 3) {                                                \
+      case 3:                                                                  \
+        FIO_RISKY_CONSUME(v3, tmp);                                            \
+        break;                                                                 \
+      case 2:                                                                  \
+        FIO_RISKY_CONSUME(v2, tmp);                                            \
+        break;                                                                 \
+      case 1:                                                                  \
+        FIO_RISKY_CONSUME(v1, tmp);                                            \
+        break;                                                                 \
+      case 0:                                                                  \
+        FIO_RISKY_CONSUME(v0, tmp);                                            \
+        break;                                                                 \
+      }                                                                        \
+    }                                                                          \
+                                                                               \
+  } while (0);
+
+#define FIO_RISKY_FINALIZE64(result, v0, v1, v2, v3, len)                      \
+  do {                                                                         \
+    result = FIO_RISKY_LROT64(v0, 17) + FIO_RISKY_LROT64(v1, 13) +             \
+             FIO_RISKY_LROT64(v2, 47) + FIO_RISKY_LROT64(v3, 57);              \
+                                                                               \
+    len ^= (len << 33);                                                        \
+    result += len;                                                             \
+                                                                               \
+    /* irreversible avalanche... I think */                                    \
+    result += v0 * RISKY_PRIME_1;                                              \
+    result ^= FIO_RISKY_LROT64(result, 13);                                    \
+    result += v1 * RISKY_PRIME_1;                                              \
+    result ^= FIO_RISKY_LROT64(result, 29);                                    \
+    result += v2 * RISKY_PRIME_1;                                              \
+    result ^= FIO_RISKY_LROT64(result, 33);                                    \
+    result += v3 * RISKY_PRIME_1;                                              \
+    result ^= FIO_RISKY_LROT64(result, 51);                                    \
+    result ^= (result >> 29) * RISKY_PRIME_0;                                  \
   } while (0)
 
 /*  Computes a facil.io Risky Hash. */
-FIO_FUNC inline uint64_t fio_risky_hash2(const void *data_, size_t len,
-                                         uint64_t seed) {
+SFUNC uint64_t fio_risky_hash_v2(const void *data_, size_t len, uint64_t seed) {
   /* reading position */
   const uint8_t *data = (uint8_t *)data_;
 
@@ -549,96 +826,116 @@ FIO_FUNC inline uint64_t fio_risky_hash2(const void *data_, size_t len,
   register uint64_t v2 =
       FIO_RISKY_LROT64(seed, 17) ^ ((~RISKY_PRIME_1) + RISKY_PRIME_0);
   register uint64_t v3 = FIO_RISKY_LROT64(seed, 33) + (~RISKY_PRIME_1);
-
-  /* consume 256 bit blocks */
-  for (size_t i = len >> 5; i; --i) {
-    FIO_RISKY_CONSUME(v0, FIO_RISKY_STR2U64(data));
-    FIO_RISKY_CONSUME(v1, FIO_RISKY_STR2U64(data + 8));
-    FIO_RISKY_CONSUME(v2, FIO_RISKY_STR2U64(data + 16));
-    FIO_RISKY_CONSUME(v3, FIO_RISKY_STR2U64(data + 24));
-    data += 32;
-  }
-
-  /* Consume any remaining 64 bit words. */
-  switch (len & 24) {
-  case 24:
-    FIO_RISKY_CONSUME(v2, FIO_RISKY_STR2U64(data + 16));
-    /* fallthrough */
-  case 16:
-    FIO_RISKY_CONSUME(v1, FIO_RISKY_STR2U64(data + 8));
-    /* fallthrough */
-  case 8:
-    FIO_RISKY_CONSUME(v0, FIO_RISKY_STR2U64(data));
-    data += len & 24;
-  }
-
-  uint64_t tmp = 0;
-  /* consume leftover bytes, if any */
-  switch ((len & 7)) {
-  case 7:
-    tmp |= ((uint64_t)data[6]) << 8;
-    /* fallthrough */
-  case 6:
-    tmp |= ((uint64_t)data[5]) << 16;
-    /* fallthrough */
-  case 5:
-    tmp |= ((uint64_t)data[4]) << 24;
-    /* fallthrough */
-  case 4:
-    tmp |= ((uint64_t)data[3]) << 32;
-    /* fallthrough */
-  case 3:
-    tmp |= ((uint64_t)data[2]) << 40;
-    /* fallthrough */
-  case 2:
-    tmp |= ((uint64_t)data[1]) << 48;
-    /* fallthrough */
-  case 1:
-    tmp |= ((uint64_t)data[0]) << 56;
-    /* ((len >> 3) & 3) is a 0...3 value indicating consumption vector */
-    switch ((len >> 3) & 3) {
-    case 3:
-      FIO_RISKY_CONSUME(v3, tmp);
-      break;
-    case 2:
-      FIO_RISKY_CONSUME(v2, tmp);
-      break;
-    case 1:
-      FIO_RISKY_CONSUME(v1, tmp);
-      break;
-    case 0:
-      FIO_RISKY_CONSUME(v0, tmp);
-      break;
-    }
-  }
-
+  FIO_RISKY_READ_AND_CONSUME(v0, v1, v2, v3, data, len);
   /* merge and mix */
-  uint64_t result = FIO_RISKY_LROT64(v0, 17) + FIO_RISKY_LROT64(v1, 13) +
-                    FIO_RISKY_LROT64(v2, 47) + FIO_RISKY_LROT64(v3, 57);
+  uint64_t result;
+  FIO_RISKY_FINALIZE64(result, v0, v1, v2, v3, len);
+  return result;
+}
 
-  len ^= (len << 33);
-  result += len;
+#undef FIO_RISKY_FINALIZE64
 
-  result += v0 * RISKY_PRIME_1;
-  result ^= FIO_RISKY_LROT64(result, 13);
-  result += v1 * RISKY_PRIME_1;
-  result ^= FIO_RISKY_LROT64(result, 29);
-  result += v2 * RISKY_PRIME_1;
-  result ^= FIO_RISKY_LROT64(result, 33);
-  result += v3 * RISKY_PRIME_1;
-  result ^= FIO_RISKY_LROT64(result, 51);
+#define FIO_RISKY_FINALIZE64(result, v0, v1, v2, v3, len)                      \
+  do {                                                                         \
+    result = FIO_RISKY_LROT64(v0, 17) + FIO_RISKY_LROT64(v1, 13) +             \
+             FIO_RISKY_LROT64(v2, 47) + FIO_RISKY_LROT64(v3, 57);              \
+                                                                               \
+    len ^= (len << 33);                                                        \
+    result += len;                                                             \
+                                                                               \
+    /* irreversible avalanche... I think */                                    \
+    result += (v0 * RISKY_PRIME_1) ^ FIO_RISKY_LROT64(result, 13);             \
+    result += (v1 * RISKY_PRIME_1) ^ FIO_RISKY_LROT64(result, 29);             \
+    result += (v2 * RISKY_PRIME_1) ^ FIO_RISKY_LROT64(result, 33);             \
+    result += (v3 * RISKY_PRIME_1) ^ FIO_RISKY_LROT64(result, 51);             \
+    result ^= (result >> 29) * RISKY_PRIME_0;                                  \
+  } while (0)
 
-  /* irreversible avalanche... I think */
-  result ^= (result >> 29) * RISKY_PRIME_0;
+/*  Computes a facil.io Risky Hash. */
+SFUNC uint64_t fio_risky_hash_v3(const void *data_, size_t len, uint64_t seed) {
+  /* reading position */
+  const uint8_t *data = (uint8_t *)data_;
+
+  /* The consumption vectors initialized state */
+  register uint64_t v0 = seed ^ RISKY_PRIME_1;
+  register uint64_t v1 = ~seed + RISKY_PRIME_1;
+  register uint64_t v2 =
+      FIO_RISKY_LROT64(seed, 17) ^ ((~RISKY_PRIME_1) + RISKY_PRIME_0);
+  register uint64_t v3 = FIO_RISKY_LROT64(seed, 33) + (~RISKY_PRIME_1);
+  FIO_RISKY_READ_AND_CONSUME(v0, v1, v2, v3, data, len);
+  /* merge and mix */
+  uint64_t result;
+  FIO_RISKY_FINALIZE64(result, v0, v1, v2, v3, len);
   return result;
 }
 
 #undef FIO_RISKY_STR2U64
 #undef FIO_RISKY_LROT64
 #undef FIO_RISKY_CONSUME
+#undef FIO_RISKY_READ_AND_CONSUME
+#undef FIO_RISKY_FINALIZE64
 #undef FIO_RISKY_PRIME_0
 #undef FIO_RISKY_PRIME_1
 
 #if TEST_XXHASH
 #include "xxhash.c"
+#endif
+
+#if 0
+inline static uint64_t folder(const void *data_, size_t len, uint64_t seed) {
+  const uint8_t *buf = (const uint8_t *)data_;
+#define FIO_RISKY_ROUND0(w0, w1)
+#define FIO_RISKY_ROUND1(w0, w1)
+  if (seed) {
+    FIO_RISKY_ROUND0(seed, seed);
+    FIO_RISKY_ROUND1(seed, seed);
+  }
+  for (size_t i = len >> 5; i; --i) {
+    FIO_RISKY_ROUND0(fio_buf2u64(buf + 0), fio_buf2u64(buf + 8));
+    FIO_RISKY_ROUND1(fio_buf2u64(buf + 16), fio_buf2u64(buf + 24));
+    buf += 32;
+  }
+  {
+    uint64_t w0 = 0, w1 = 0, w2 = 0, w3 = (len & 255);
+    switch (len & 31) {
+    // clang-format off
+    case 31: w3 |= (uint64_t)buf[30] << 8          ; /* fallthrough */
+    case 30: w3 |= (uint64_t)buf[29] << 16         ; /* fallthrough */
+    case 29: w3 |= (uint64_t)buf[28] << 24         ; /* fallthrough */
+    case 28: w3 |= (uint64_t)buf[27] << 32         ; /* fallthrough */
+    case 27: w3 |= (uint64_t)buf[26] << 40         ; /* fallthrough */
+    case 26: w3 |= (uint64_t)buf[25] << 48         ; /* fallthrough */
+    case 25: w3 |= (uint64_t)buf[24] << 56         ; /* fallthrough */
+    case 24: w2 |= (uint64_t)buf[23]               ; /* fallthrough */
+    case 23: w2 |= (uint64_t)buf[22] << 8          ; /* fallthrough */
+    case 22: w2 |= (uint64_t)buf[21] << 16         ; /* fallthrough */
+    case 21: w2 |= (uint64_t)buf[20] << 24         ; /* fallthrough */
+    case 20: w2 |= (uint64_t)buf[19] << 32         ; /* fallthrough */
+    case 19: w2 |= (uint64_t)buf[18] << 40         ; /* fallthrough */
+    case 18: w2 |= (uint64_t)buf[17] << 48         ; /* fallthrough */
+    case 17: w2 |= (uint64_t)buf[16] << 56         ; /* fallthrough */
+    case 16: w1 |= (uint64_t)buf[15]               ; /* fallthrough */
+    case 15: w1 |= (uint64_t)buf[14] << 8          ; /* fallthrough */
+    case 14: w1 |= (uint64_t)buf[13] << 16         ; /* fallthrough */
+    case 13: w1 |= (uint64_t)buf[12] << 24         ; /* fallthrough */
+    case 12: w1 |= (uint64_t)buf[11] << 32         ; /* fallthrough */
+    case 11: w1 |= (uint64_t)buf[10] << 40         ; /* fallthrough */
+    case 10: w1 |= (uint64_t)buf[9] << 48          ; /* fallthrough */
+    case 9:  w1 |= (uint64_t)buf[8] << 56          ; /* fallthrough */
+    case 8:  w0 |= (uint64_t)buf[7]                ; /* fallthrough */
+    case 7:  w0 |= (uint64_t)buf[6] << 8           ; /* fallthrough */
+    case 6:  w0 |= (uint64_t)buf[5] << 16          ; /* fallthrough */
+    case 5:  w0 |= (uint64_t)buf[4] << 24          ; /* fallthrough */
+    case 4:  w0 |= (uint64_t)buf[3] << 32          ; /* fallthrough */
+    case 3:  w0 |= (uint64_t)buf[2] << 40          ; /* fallthrough */
+    case 2:  w0 |= (uint64_t)buf[1] << 48          ; /* fallthrough */
+    case 1:  w0 |= (uint64_t)buf[0] << 56          ; /* fallthrough */
+      // clang-format on
+      FIO_RISKY_ROUND0(w0, w1);
+      FIO_RISKY_ROUND1(w2, w3);
+      break;
+      // case 0: nothing.
+    }
+  }
+}
 #endif
