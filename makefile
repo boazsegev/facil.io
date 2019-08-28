@@ -88,6 +88,8 @@ ifndef CPPSTD
 	CPPSTD:=gnu++11
 endif
 
+PKG_CONFIG ?= pkg-config
+
 # for internal use - don't change
 LINKER_LIBS_EXT:=
 
@@ -139,12 +141,19 @@ ifeq ($(OS),Darwin) # Run MacOS commands
 	# DISAMS=otool -dtVGX
 	# documentation commands
 	# DOCUMENTATION=cldoc generate $(INCLUDE_STR) -- --output ./html $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*))
+$(DEST)/libfacil.so: LDFLAGS += -dynamiclib -install_name $(realpath $(DEST))/libfacil.so
 else
 	# debugger
 	DB=gdb
 	# disassemble tool, leave undefined.
 	# DISAMS=otool -tVX
 	DOCUMENTATION=
+endif
+
+# GCC (at least) >= 7 triggers some bug when -fipa-icf is enabled
+# (as in our default: -O2)
+ifeq ($(shell $(CC) -v 2>&1 | grep -o "^gcc version"),gcc version)
+	OPTIMIZATION += -fno-ipa-icf
 endif
 
 #############################################################################
@@ -414,19 +423,33 @@ int main(void) { \\n\
 # automatic library adjustments for possible BearSSL library
 LIB_PRIVATE_SUBFOLDERS:=$(LIB_PRIVATE_SUBFOLDERS) $(if $(wildcard lib/bearssl),bearssl)
 
+ifeq ($(shell $(PKG_CONFIG) -- openssl >/dev/null 2>&1; echo $$?), 0)
+	OPENSSL_CFLAGS = $(shell $(PKG_CONFIG) --cflags openssl)
+	OPENSSL_LDFLAGS = $(shell $(PKG_CONFIG) --libs openssl)
+	OPENSSL_LIBS =
+endif
+
+OPENSSL_LDFLAGS ?= "-lssl" "-lcrypto"
+
 # add BearSSL/OpenSSL library flags (exclusive)
 ifdef FIO_NO_TLS
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_SOURCE), $(EMPTY)), 0)
   $(info * Detected the BearSSL source code library, setting HAVE_BEARSSL)
+	# TODO: when BearSSL support arrived, set the FIO_TLS_FOUND flag as well
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_EXT), "-lbearssl"), 0)
   $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
+	# TODO: when BearSSL support arrived, set the FIO_TLS_FOUND flag as well
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
-else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), "-lcrypto" "-lssl"), 0)
+else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), $(OPENSSL_CFLAGS) $(OPENSSL_LDFLAGS)), 0)
   $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
-	FLAGS:=$(FLAGS) HAVE_OPENSSL
-	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
+	FLAGS:=$(FLAGS) HAVE_OPENSSL FIO_TLS_FOUND
+	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) $(OPENSSL_LIBS)
+	LDFLAGS += $(OPENSSL_LDFLAGS)
+	CFLAGS += $(OPENSSL_CFLAGS)
+	PKGC_REQ_OPENSSL = openssl >= 1.1, openssl < 1.2
+	PKGC_REQ += $$(PKGC_REQ_OPENSSL)
 else
   $(info * No compatible SSL/TLS library detected.)
 endif
@@ -434,6 +457,7 @@ endif
 # S2N TLS/SSL library: https://github.com/awslabs/s2n
 ifeq ($(call TRY_COMPILE, "\#include <s2n.h>\\n int main(void) {}", "-ls2n") , 0)
   $(info * Detected the s2n library, setting HAVE_S2N)
+	# TODO: when S2N support arrived, set the FIO_TLS_FOUND flag as well
 	FLAGS:=$(FLAGS) HAVE_S2N
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
 endif
@@ -447,6 +471,8 @@ ifeq ($(call TRY_COMPILE, "\#include <zlib.h>\\nint main(void) {}", "-lz") , 0)
   $(info * Detected the zlib library, setting HAVE_ZLIB)
 	FLAGS:=$(FLAGS) HAVE_ZLIB
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
+	PKGC_REQ_ZLIB = zlib
+	PKGC_REQ += $$(PKGC_REQ_ZLIB)
 endif
 
 #############################################################################
@@ -492,6 +518,17 @@ LINKER_FLAGS= $(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(
 CFLAGS_DEPENDENCY=-MT $@ -MMD -MP
 
 
+# Build a "Requires:" string for the pkgconfig/facil.pc file
+# unfortunately, leading or trailing commas are interpreted as
+# "empty package name" by pkg-config, therefore we work around this by using
+# $(strip ..).
+# The following 2 lines are from the manual of GNU make
+nullstring :=
+space := $(nullstring) # end of line
+comma := ,
+
+$(eval PKGC_REQ_EVAL := $(subst $(space),$(comma) ,$(strip $(PKGC_REQ))))
+
 #############################################################################
 # Tasks - Building
 #############################################################################
@@ -506,8 +543,21 @@ build_objects: $(LIB_OBJS) $(MAIN_OBJS)
 
 lib: | create_tree lib_build
 
-lib_build: $(LIB_OBJS)
-	@$(CCL) -shared -o $(DEST)/libfacil.so $^ $(OPTIMIZATION) $(LINKER_FLAGS)
+$(DEST)/pkgconfig/facil.pc: makefile | libdump
+	@mkdir -p $(DEST)/pkgconfig && \
+	printf "\
+Name: facil.io\\n\
+Description: facil.io\\n\
+Cflags: -I%s\\n\
+Libs: -L%s -lfacil\\n\
+Version: %s\\n\
+Requires.private: %s\\n\
+" $(realpath $(DEST)/../libdump/include) $(realpath $(DEST)) 0.7.x "$(PKGC_REQ_EVAL)" > $@
+
+$(DEST)/libfacil.so: $(LIB_OBJS) | $(DEST)/pkgconfig/facil.pc
+	@$(CCL) -shared -o $@ $^ $(OPTIMIZATION) $(LINKER_FLAGS)
+
+lib_build: $(DEST)/libfacil.so
 	@$(DOCUMENTATION)
 
 
