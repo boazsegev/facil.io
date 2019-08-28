@@ -423,7 +423,7 @@ int main(void) { \\n\
 # automatic library adjustments for possible BearSSL library
 LIB_PRIVATE_SUBFOLDERS:=$(LIB_PRIVATE_SUBFOLDERS) $(if $(wildcard lib/bearssl),bearssl)
 
-ifeq ($(shell $(PKG_CONFIG) -- openssl 2>&1 >/dev/null; echo $$?), 0)
+ifeq ($(shell $(PKG_CONFIG) -- openssl >/dev/null 2>&1; echo $$?), 0)
 	OPENSSL_CFLAGS = $(shell $(PKG_CONFIG) --cflags openssl)
 	OPENSSL_LDFLAGS = $(shell $(PKG_CONFIG) --libs openssl)
 	OPENSSL_LIBS =
