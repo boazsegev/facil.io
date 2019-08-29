@@ -2521,6 +2521,9 @@ intptr_t fio_accept(intptr_t srv_uuid) {
  */
 intptr_t fio_socket(const char *address, const char *port,
                     fio_socket_flags_e flags) {
+  if (!(flags & ((uint16_t)FIO_SOCKET_TCP | (uint16_t)FIO_SOCKET_UDP |
+                 (uint16_t)FIO_SOCKET_UNIX)))
+    flags |= FIO_SOCKET_TCP;
   int fd = fio_sock_open(address, port, flags);
   if (fd == -1)
     return -1;

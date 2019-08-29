@@ -432,13 +432,15 @@ intptr_t fio_connect(struct fio_connect_args args);
 #define fio_connect(...) fio_connect((struct fio_connect_args){__VA_ARGS__})
 ```
 
+The `fio_connect` function establishes a TCP/IP or Unix socket connection.
+
 The `fio_connect` function is shadowed by the `fio_connect` MACRO, which allows the function to accept "named arguments", similar to [`fio_listen](#fio_listen).
 
 The following arguments are supported:
 
 * `port`:
 
-    The remote network service / port. A NULL or "0" port indicates a Unix socket connection should be attempted.
+    The remote network service / port. A NULL port indicates a Unix socket connection should be attempted.
 
         // type:
         const char *port;
@@ -729,20 +731,33 @@ Valid values are "kqueue", "epoll" and "poll".
 intptr_t fio_socket(const char *address, const char *port, uint8_t is_server);
 ```
 
-Creates a TCP/IP or Unix socket and returns it's unique identifier.
 
-The socket is non-blocking and the `O_CLOEXEC` flag will be set.
+Creates a TCP/IP, UDP or Unix socket and returns it's unique identifier.
 
-For TCP/IP server sockets (`is_server` is `1`), a NULL `address` variable is recommended. Use "localhost" or "127.0.0.1" to limit access to the server application.
+For TCP/IP or UDP server sockets (flag sets `FIO_SOCKET_SERVER`), a NULL `address` variable is recommended. Use "localhost" or "127.0.0.1" to limit access to the local machine.
 
-For TCP/IP client sockets (`is_server` is `0`), a remote `address` and `port` combination will be required
+For TCP/IP or UDP client sockets (flag sets `FIO_SOCKET_CLIENT`), a remote `address` and `port` combination will be required. `connect` will be called.
 
-For Unix server or client sockets, set the `port` variable to NULL or `0` (and the `is_server` to `1`).
+For TCP/IP and Unix server sockets (flag sets `FIO_SOCKET_SERVER`), `listen` will automatically be called by this function.
+
+For Unix server or client sockets, the `port` variable is silently ignored.
+
+If the socket is meant to be attached to the facil.io reactor, `FIO_SOCKET_NONBLOCK` MUST be set.
+
+The following flags control the type and behavior of the socket:
+
+- FIO_SOCKET_SERVER - (default) server mode (may call `listen`).
+- FIO_SOCKET_CLIENT - client mode (calls `connect).
+- FIO_SOCKET_NONBLOCK - sets the socket to non-blocking mode.
+- FIO_SOCKET_TCP - TCP/IP socket (default).
+- FIO_SOCKET_UDP - UDP socket.
+- FIO_SOCKET_UNIX - Unix Socket.
 
 Returns -1 on error. Any other value is a valid unique identifier.
 
-**Note**: facil.io uses unique identifiers to protect sockets from collisions. However these identifiers can be converted to the underlying file descriptor using the [`fio_uuid2fd`](#fio_uuid2fd) macro.
+**Note**: facil.io uses unique identifiers to protect sockets from collisions. However these identifiers can be converted to the underlying file descriptor using the `fio_uuid2fd` macro.
 
+**Note**: UDP sockets shouldn't use `fio_read` or `fio_write`, since they are designed to send messages, not streams. UDP server sockets can't use `fio_read` or `fio_write` since they are connectionless.
 
 #### `fio_accept`
 

@@ -745,14 +745,14 @@ typedef enum { /* DON'T CHANGE VALUES - they match fio-stl.h */
 } fio_socket_flags_e;
 
 /**
- * Creates a Unix or a TCP/IP socket and returns it's unique identifier.
+ * Creates a TCP/IP, UDP or Unix socket and returns it's unique identifier.
  *
  * For TCP/IP or UDP server sockets (flag sets `FIO_SOCKET_SERVER`), a NULL
  * `address` variable is recommended. Use "localhost" or "127.0.0.1" to limit
- * access to the server application.
+ * access to the local machine.
  *
  * For TCP/IP or UDP client sockets (flag sets `FIO_SOCKET_CLIENT`), a remote
- * `address` and `port` combination will be required.
+ * `address` and `port` combination will be required. `connect` will be called.
  *
  * For TCP/IP and Unix server sockets (flag sets `FIO_SOCKET_SERVER`), `listen`
  * will automatically be called by this function.
@@ -764,12 +764,12 @@ typedef enum { /* DON'T CHANGE VALUES - they match fio-stl.h */
  *
  * The following flags control the type and behavior of the socket:
  *
- * - FIO_SOCKET_SERVER - Sets the socket to server mode (may call `listen`).
- * - FIO_SOCKET_CLIENT - Sets the socket to client mode (calls `connect).
- * - FIO_SOCKET_NONBLOCK - Sets the socket to non-blocking mode.
- * - FIO_SOCKET_TCP -
- * - FIO_SOCKET_UDP -
- * - FIO_SOCKET_UNIX -
+ * - FIO_SOCKET_SERVER - (default) server mode (may call `listen`).
+ * - FIO_SOCKET_CLIENT - client mode (calls `connect).
+ * - FIO_SOCKET_NONBLOCK - sets the socket to non-blocking mode.
+ * - FIO_SOCKET_TCP - TCP/IP socket (default).
+ * - FIO_SOCKET_UDP - UDP socket.
+ * - FIO_SOCKET_UNIX - Unix Socket.
  *
  * Returns -1 on error. Any other value is a valid unique identifier.
  *
