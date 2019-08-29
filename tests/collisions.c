@@ -4,11 +4,12 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#include <fio.h>
-
-#define FIO_CLI 1
 #define FIO_RAND 1
 #define FIO_LOG 1
+#define FIO_RISKY_HASH 1
+#include <fio-stl.h>
+
+#define FIO_CLI 1
 #include <fio-stl.h>
 
 #ifndef FIO_FUNC

@@ -641,15 +641,15 @@ test/set_debug_flags:
 
 .PHONY : test/run
 test/run: | test/set_test_flag $(LIB_OBJS)
-	@$(CC) -c $(TEST_SRC) -o $(TMP_ROOT)/tests.o $(CFLAGS_DEPENDENCY) $(CFLAGS)
-	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/tests.o $(OPTIMIZATION) $(LINKER_FLAGS)
+	@$(CC) -c $(TEST_SRC) -o $(TMP_ROOT)/tests.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/tests.o $(OPTIMIZATION) $(LINKER_FLAGS) $(OPTIMIZATION)
 	@$(BIN)
 
 
 .PHONY : test/collisions
-test/collisions: | $(LIB_OBJS)
-	@$(CC) -c ./tests/collisions.c -o $(TMP_ROOT)/collisions.o $(CFLAGS_DEPENDENCY) $(CFLAGS)
-	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/collisions.o $(OPTIMIZATION) $(LINKER_FLAGS)
+test/collisions: | create_tree
+	@$(CC) -c ./tests/collisions.c -o $(TMP_ROOT)/collisions.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@$(CCL) -o $(BIN) $(TMP_ROOT)/collisions.o $(OPTIMIZATION) $(LINKER_FLAGS) $(OPTIMIZATION)
 	@$(BIN)
 
 
@@ -798,6 +798,8 @@ vars:
 	@echo "OBJS_DEPENDENCY: $(OBJS_DEPENDENCY)"
 	@echo ""
 	@echo "CFLAGS: $(CFLAGS)"
+	@echo ""
+	@echo "OPTIMIZATIONOPTIMIZATION: $(OPTIMIZATION)"
 	@echo ""
 	@echo "CPPFLAGS: $(CPPFLAGS)"
 	@echo ""
