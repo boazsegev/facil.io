@@ -456,9 +456,6 @@ inline FIO_FUNC uint64_t fio_risky_hash_v3(const void *data, size_t len,
 inline FIO_FUNC uintptr_t risky2(char *data, size_t len) {
   return fio_risky_hash_v3(data, len, 0);
 }
-inline FIO_FUNC uintptr_t summer(char *data, size_t len) {
-  return SMR_hash(data, len, 0);
-}
 
 inline FIO_FUNC uintptr_t fall_wrapper(char *data, size_t len) {
   return fall(data, len, (uint64_t)fall);
