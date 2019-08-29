@@ -14,18 +14,17 @@
 #############################################################################
 
 # binary name and location
-ifndef NAME
-NAME=fioapp
-endif
+NAME?=fioapp
 
 # a temporary folder that will be cleared out and deleted between fresh builds
 # All object files will be placed in this folder
 TMP_ROOT=tmp
 
 # destination folder for the final compiled output
-ifndef DEST
-DEST=$(TMP_ROOT)
-endif
+DEST?=$(TMP_ROOT)
+
+# testing code
+TEST_SRC:=./tests/tests.c
 
 # output folder for `make libdump` - dumps all library files (not source files) in one place.
 DUMP_LIB=libdump
@@ -171,6 +170,8 @@ OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d)
 # (as in our default: -O2)
 #
 # Is there a hidden code issue in facil.io?
+#
+# https://kristerw.blogspot.com/2017/05/interprocedural-optimization-in-gcc.html
 ifeq ($(shell $(CC) -v 2>&1 | grep -o "^gcc version"),gcc version)
 	OPTIMIZATION += -fno-ipa-icf
 endif
@@ -434,7 +435,7 @@ else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_EXT), "-lbearssl"), 0)
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), $(OPENSSL_CFLAGS) $(OPENSSL_LDFLAGS)), 0)
-  $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
+  $(info * Detected the OpenSSL library, setting HAVE_OPENSSL and FIO_TLS_FOUND)
 	FLAGS:=$(FLAGS) HAVE_OPENSSL FIO_TLS_FOUND
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) $(OPENSSL_LIBS)
 	LDFLAGS += $(OPENSSL_LDFLAGS)
@@ -502,8 +503,8 @@ endif
 #############################################################################
 
 FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
-CFLAGS:= $(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
-CPPFLAGS:= $(CPPFLAGS) -std=$(CPPSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
+CFLAGS:= $(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR)
+CPPFLAGS:= $(CPPFLAGS) -std=$(CPPSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR)
 LINKER_FLAGS= $(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
 CFLAGS_DEPENDENCY=-MT $@ -MMD -MP
 
@@ -530,6 +531,25 @@ build_objects: $(LIB_OBJS) $(MAIN_OBJS)
 	@$(CCL) -o $(BIN) $^ $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(DOCUMENTATION)
 
+.PHONY : clean
+clean:
+	-@rm -f $(BIN) 2> /dev/null || echo "" >> /dev/null
+	-@rm -R -f $(TMP_ROOT) 2> /dev/null || echo "" >> /dev/null
+	-@mkdir -p $(BUILDTREE)
+
+.PHONY : run
+run: | build
+	@$(BIN)
+
+.PHONY : db
+db: | clean
+	DEBUG=1 $(MAKE) build
+	$(DB) $(BIN)
+
+.PHONY : create_tree
+create_tree:
+	-@mkdir -p $(BUILDTREE) 2> /dev/null
+
 lib: | create_tree lib_build
 
 $(DEST)/pkgconfig/facil.pc: makefile | libdump
@@ -555,34 +575,34 @@ lib_build: $(DEST)/libfacil.so
 ifndef DISAMS
 $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
 	@echo "* Compiling $<"
-	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CFLAGS)
+	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
 	@echo "- compiling $<"
-	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CPPFLAGS)
+	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CPPFLAGS) $(OPTIMIZATION)
 	$(eval CCL = $(CPP))
 
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
 	@echo "* Compiling $<"
-	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CPPFLAGS)
+	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CPPFLAGS) $(OPTIMIZATION)
 	$(eval CCL = $(CPP))
 
 #### add diassembling stage (testing / slower)
 else
 $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
 	@echo "* Compiling $<"
-	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CFLAGS)
+	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
 	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
 	@echo "* Compiling $<"
-	@$(CPP) -o $@ -c $< $(CFLAGS_DEPENDENCY) $(CPPFLAGS)
+	@$(CPP) -o $@ -c $< $(CFLAGS_DEPENDENCY) $(CPPFLAGS) $(OPTIMIZATION)
 	$(eval CCL = $(CPP))
 	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
 	@echo "* Compiling $<"
-	@$(CPP) -o $@ -c $< $(CFLAGS_DEPENDENCY) $(CPPFLAGS)
+	@$(CPP) -o $@ -c $< $(CFLAGS_DEPENDENCY) $(CPPFLAGS) $(OPTIMIZATION)
 	$(eval CCL = $(CPP))
 	@$(DISAMS) $@ > $@.s
 endif
@@ -596,11 +616,35 @@ $(TMP_ROOT)/%.d: ;
 #############################################################################
 
 
+ifneq ($(TEST_SRC),)
+
 .PHONY : test
-test: | clean cmake
-	@DEBUG=1 $(MAKE) test_build_and_run
-	-@rm $(BIN) 2> /dev/null
-	-@rm -R $(TMP_ROOT) 2> /dev/null
+test: | clean cmake test/set_debug_flags test/run clean
+
+.PHONY : test/optimized
+test/optimized: | clean cmake test/run clean
+
+.PHONY : test/c99
+test/c99:| clean
+	@CSTD=c99 DEBUG=1 $(MAKE) test
+
+
+.PHONY : test/set_test_flag
+test/set_test_flag:
+	$(eval CFLAGS+=-DTEST=1)
+
+.PHONY : test/set_debug_flags
+test/set_debug_flags:
+	$(eval OPTIMIZATION=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer)
+	$(eval CFLAGS+=-coverage -DDEBUG=1 -Werror)
+	$(eval LINKER_FLAGS=-coverage -DDEBUG=1 $(LINKER_FLAGS))
+
+.PHONY : test/run
+test/run: | test/set_test_flag $(LIB_OBJS)
+	@$(CC) -c $(TEST_SRC) -o $(TMP_ROOT)/tests.o $(CFLAGS_DEPENDENCY) $(CFLAGS)
+	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/tests.o $(OPTIMIZATION) $(LINKER_FLAGS)
+	@$(BIN)
+
 
 .PHONY : test/collisions
 test/collisions: | $(LIB_OBJS)
@@ -608,66 +652,20 @@ test/collisions: | $(LIB_OBJS)
 	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/collisions.o $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(BIN)
 
-.PHONY : test/optimized
-test/optimized: | clean test_add_speed_flags create_tree $(LIB_OBJS)
-	@$(CC) -c ./tests/tests.c -o $(TMP_ROOT)/tests.o $(CFLAGS_DEPENDENCY) $(CFLAGS)
-	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/tests.o $(OPTIMIZATION) $(LINKER_FLAGS)
-	@$(BIN)
-	-@rm $(BIN) 2> /dev/null
-	-@rm -R $(TMP_ROOT) 2> /dev/null
 
 .PHONY : test/ci
-test/ci:| clean
+test/ci:| clean cmake test/set_debug_flags test/run
 	@DEBUG=1 $(MAKE) test_build_and_run
 
-.PHONY : test/c99
-test/c99:| clean
-	@CSTD=c99 DEBUG=1 $(MAKE) test_build_and_run
-
 .PHONY : test/poll
-test/poll:| clean
-	@CSTD=c99 DEBUG=1 FIO_FORCE_POLL=1 $(MAKE) test_build_and_run
+test/poll:| test/set_poll_flag test
 
-.PHONY : test_build_and_run
-test_build_and_run: | create_tree test_add_flags test/build
-	@$(BIN)
-
-.PHONY : test_add_flags
-test_add_flags:
-	$(eval CFLAGS:=-coverage $(CFLAGS) -DDEBUG=1 -DTEST=1 -Werror)
-	$(eval LINKER_FLAGS:=-coverage -DDEBUG=1 $(LINKER_FLAGS))
-
-.PHONY : test_add_speed_flags
-test_add_speed_flags:
-	$(eval CFLAGS:=$(CFLAGS) -DTEST=1 -DFIO_LOG_LEVEL_DEFAULT=4)
-	$(eval LINKER_FLAGS:=-DTEST=1 $(LINKER_FLAGS))
+.PHONY : test/set_poll_flag
+test/set_poll_flag:| clean
+	$(eval CFLAGS+=-DFIO_ENGINE_POLL=1)
 
 
-.PHONY : test/build
-test/build: $(LIB_OBJS)
-	@$(CC) -c ./tests/tests.c -o $(TMP_ROOT)/tests.o $(CFLAGS_DEPENDENCY) $(CFLAGS)
-	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/tests.o $(OPTIMIZATION) $(LINKER_FLAGS)
-
-.PHONY : clean
-clean:
-	-@rm -f $(BIN) 2> /dev/null || echo "" >> /dev/null
-	-@rm -R -f $(TMP_ROOT) 2> /dev/null || echo "" >> /dev/null
-	-@mkdir -p $(BUILDTREE)
-
-.PHONY : run
-run: | build
-	@$(BIN)
-
-.PHONY : db
-db: | clean
-	DEBUG=1 $(MAKE) build
-	$(DB) $(BIN)
-
-
-.PHONY : create_tree
-create_tree:
-	-@mkdir -p $(BUILDTREE) 2> /dev/null
-
+endif
 
 #############################################################################
 # Tasks - Installers

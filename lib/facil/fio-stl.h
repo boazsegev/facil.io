@@ -1714,9 +1714,9 @@ HSFUNC void __attribute__((constructor)) fio___mem_state_allocate(void) {
       .available = FIO_LIST_INIT(fio___mem_state->available),
   };
 #if DEBUG && defined(FIO_LOG_INFO)
-  FIO_LOG_INFO(
-      "facil.io memory allocation initialized with %zu concurrent arenas.",
-      cores);
+  FIO_LOG_INFO("facil.io memory allocation initialized with %zu concurrent "
+               "arenas (@%p).",
+               cores, (void *)fio___mem_state);
 #endif
 }
 
@@ -11476,8 +11476,7 @@ FIOBJ cleanup
 
 ***************************************************************************** */
 
-#if !defined(FIO_FIO_TEST_CSTL_ONLY_ONCE) &&                                   \
-    (defined(FIO_TEST_CSTL) || defined(TEST))
+#if !defined(FIO_FIO_TEST_CSTL_ONLY_ONCE) && (defined(FIO_TEST_CSTL))
 #undef FIO_TEST_CSTL
 #define FIO_FIO_TEST_CSTL_ONLY_ONCE 1
 
