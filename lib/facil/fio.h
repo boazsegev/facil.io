@@ -133,9 +133,6 @@ Compilation Macros
 /* *****************************************************************************
 Import STL
 ***************************************************************************** */
-#define FIO_RISKY_HASH 1
-#include "fio-stl.h"
-
 #ifndef FIO_LOG_LENGTH_LIMIT
 /**
  * Since logging uses stack memory rather than dynamic allocation, it's memory
@@ -145,12 +142,6 @@ Import STL
 #define FIO_LOG_LENGTH_LIMIT 2048
 #endif
 
-/* Enable CLI extension before enabling the custom memory allocator. */
-#define FIO_MALLOC_TMP_USE_SYSTEM
-#define FIO_EXTERN
-#define FIO_CLI
-#include "fio-stl.h"
-
 /* Backwards support for version 0.7.x memory allocator behavior */
 #ifdef FIO_OVERRIDE_MALLOC
 #warning FIO_OVERRIDE_MALLOC is deprecated, use FIO_MALLOC_OVERRIDE_SYSTEM
@@ -158,6 +149,18 @@ Import STL
 #elif defined(FIO_FORCE_MALLOC)
 #define FIO_MALLOC_FORCE_SYSTEM
 #endif
+
+/* let it run once without side-effects, to prevent self-inclusion CLI errors */
+#include "fio-stl.h"
+
+#define FIO_RISKY_HASH 1
+#include "fio-stl.h"
+
+/* Enable CLI extension before enabling the custom memory allocator. */
+#define FIO_MALLOC_TMP_USE_SYSTEM
+#define FIO_EXTERN
+#define FIO_CLI
+#include "fio-stl.h"
 
 /* Enable custom memory allocator. */
 #define FIO_EXTERN

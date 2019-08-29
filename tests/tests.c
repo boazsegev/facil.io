@@ -1,6 +1,5 @@
 
 // #include "tests/mustache.c.h"
-
 #define FIOBJ_MEMORY_MARK 1
 #include <fio.h>
 #define FIO_TEST_CSTL 1

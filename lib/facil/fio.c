@@ -2506,9 +2506,9 @@ intptr_t fio_accept(intptr_t srv_uuid) {
  * - FIO_SOCKET_SERVER - Sets the socket to server mode (may call `listen`).
  * - FIO_SOCKET_CLIENT - Sets the socket to client mode (calls `connect).
  * - FIO_SOCKET_NONBLOCK - Sets the socket to non-blocking mode.
- * - FIO_SOCKET_TCP -
- * - FIO_SOCKET_UDP -
- * - FIO_SOCKET_UNIX -
+ * - FIO_SOCKET_TCP - TCP/IP socket (default).
+ * - FIO_SOCKET_UDP - UDP socket.
+ * - FIO_SOCKET_UNIX - Unix Socket.
  *
  * Returns -1 on error. Any other value is a valid unique identifier.
  *
@@ -2521,6 +2521,7 @@ intptr_t fio_accept(intptr_t srv_uuid) {
  */
 intptr_t fio_socket(const char *address, const char *port,
                     fio_socket_flags_e flags) {
+  /* TCP/IP is the  default socket mode */
   if (!(flags & ((uint16_t)FIO_SOCKET_TCP | (uint16_t)FIO_SOCKET_UDP |
                  (uint16_t)FIO_SOCKET_UNIX)))
     flags |= FIO_SOCKET_TCP;
