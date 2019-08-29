@@ -69,25 +69,16 @@ WARNINGS= -Wshadow -Wall -Wextra -Wno-missing-field-initializers -Wpedantic
 INCLUDE= ./
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
 FLAGS:=
-
 # c compiler
-ifndef CC
-	CC=gcc
-endif
+CC?=gcc
 # c++ compiler
-ifndef CPP
-	CPP=g++
-endif
-
+CPP?=g++
 # c standard
-ifndef CSTD
-	CSTD:=c11
-endif
+CSTD?=c11
 # c++ standard
-ifndef CPPSTD
-	CPPSTD:=gnu++11
-endif
-
+CPPSTD?=gnu++11
+# pkg-config
+PKG_CONFIG?=pkg-config
 # for internal use - don't change
 LINKER_LIBS_EXT:=
 
@@ -96,7 +87,7 @@ LINKER_LIBS_EXT:=
 #############################################################################
 
 # add DEBUG flag if requested
-ifdef DEBUG
+ifeq ($(DEBUG), 1)
   $(info * Detected DEBUG environment flag, enforcing debug mode compilation)
 	FLAGS:=$(FLAGS) DEBUG
 	# # comment the following line if you want to use a different address sanitizer or a profiling tool.
@@ -133,11 +124,14 @@ ifeq ($(OS),Darwin) # Run MacOS commands
 	# DISAMS=otool -dtVGX
 	# documentation commands
 	# DOCUMENTATION=cldoc generate $(INCLUDE_STR) -- --output ./html $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*))
+	# rule modifier (can't be indented)
+$(DEST)/libfacil.so: LDFLAGS += -dynamiclib -install_name $(realpath $(DEST))/libfacil.so
 else
 	# debugger
 	DB=gdb
 	# disassemble tool, leave undefined.
 	# DISAMS=otool -tVX
+	# documentation commands
 	DOCUMENTATION=
 endif
 
@@ -170,6 +164,16 @@ MAIN_OBJS = $(foreach source, $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix 
 LIB_OBJS = $(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 
 OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d)
+
+# TODO: fix code so this isn't required.
+#
+# GCC (at least) >= 7 triggers some bug when -fipa-icf is enabled
+# (as in our default: -O2)
+#
+# Is there a hidden code issue in facil.io?
+ifeq ($(shell $(CC) -v 2>&1 | grep -o "^gcc version"),gcc version)
+	OPTIMIZATION += -fno-ipa-icf
+endif
 
 #############################################################################
 # TRY_COMPILE and TRY_COMPILE_AND_RUN functions
@@ -404,23 +408,39 @@ int main(void) { \\n\
 }\\n\
 "
 
-
 # automatic library adjustments for possible BearSSL library
 LIB_PRIVATE_SUBFOLDERS:=$(LIB_PRIVATE_SUBFOLDERS) $(if $(wildcard lib/bearssl),bearssl)
+
+# default OpenSSL flags
+OPENSSL_CFLAGS:=
+OPENSSL_LIBS:=
+OPENSSL_LDFLAGS:="-lssl" "-lcrypto"
+# detect OpenSSL flags using pkg-config, if available
+ifeq ($(shell $(PKG_CONFIG) -- openssl >/dev/null 2>&1; echo $$?), 0)
+	OPENSSL_CFLAGS:=$(shell $(PKG_CONFIG) --cflags openssl)
+	OPENSSL_LDFLAGS:=$(shell $(PKG_CONFIG) --libs openssl)
+endif
+
 
 # add BearSSL/OpenSSL library flags (exclusive)
 ifdef FIO_NO_TLS
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_SOURCE), $(EMPTY)), 0)
   $(info * Detected the BearSSL source code library, setting HAVE_BEARSSL)
+  # TODO: when BearSSL support arrived, set the FIO_TLS_FOUND flag as well
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_EXT), "-lbearssl"), 0)
   $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
+  # TODO: when BearSSL support arrived, set the FIO_TLS_FOUND flag as well
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
-else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), "-lcrypto" "-lssl"), 0)
+else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), $(OPENSSL_CFLAGS) $(OPENSSL_LDFLAGS)), 0)
   $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
-	FLAGS:=$(FLAGS) HAVE_OPENSSL
-	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
+	FLAGS:=$(FLAGS) HAVE_OPENSSL FIO_TLS_FOUND
+	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) $(OPENSSL_LIBS)
+	LDFLAGS += $(OPENSSL_LDFLAGS)
+	CFLAGS += $(OPENSSL_CFLAGS)
+	PKGC_REQ_OPENSSL = openssl >= 1.1, openssl < 1.2
+	PKGC_REQ += $$(PKGC_REQ_OPENSSL)
 else
   $(info * No compatible SSL/TLS library detected.)
 endif
@@ -441,6 +461,8 @@ ifeq ($(call TRY_COMPILE, "\#include <zlib.h>\\nint main(void) {}", "-lz") , 0)
   $(info * Detected the zlib library, setting HAVE_ZLIB)
 	FLAGS:=$(FLAGS) HAVE_ZLIB
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
+	PKGC_REQ_ZLIB=zlib
+	PKGC_REQ+=$$(PKGC_REQ_ZLIB)
 endif
 
 #############################################################################
@@ -486,6 +508,16 @@ LINKER_FLAGS= $(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(
 CFLAGS_DEPENDENCY=-MT $@ -MMD -MP
 
 
+# Build a "Requires:" string for the pkgconfig/facil.pc file
+# unfortunately, leading or trailing commas are interpreted as
+# "empty package name" by pkg-config, therefore we work around this by using
+# $(strip ..).
+# The following 2 lines are from the manual of GNU make
+nullstring :=
+space := $(nullstring) # end of line
+comma := ,
+$(eval PKGC_REQ_EVAL := $(subst $(space),$(comma) ,$(strip $(PKGC_REQ))))
+
 #############################################################################
 # Tasks - Building
 #############################################################################
@@ -500,10 +532,22 @@ build_objects: $(LIB_OBJS) $(MAIN_OBJS)
 
 lib: | create_tree lib_build
 
-lib_build: $(LIB_OBJS)
-	@$(CCL) -shared -o $(DEST)/libfacil.so $^ $(OPTIMIZATION) $(LINKER_FLAGS)
-	@$(DOCUMENTATION)
+$(DEST)/pkgconfig/facil.pc: makefile | libdump
+	@mkdir -p $(DEST)/pkgconfig && \
+	printf "\
+Name: facil.io\\n\
+Description: facil.io\\n\
+Cflags: -I%s\\n\
+Libs: -L%s -lfacil\\n\
+Version: %s\\n\
+Requires.private: %s\\n\
+" $(realpath $(DEST)/../libdump/include) $(realpath $(DEST)) 0.7.x "$(PKGC_REQ_EVAL)" > $@
 
+$(DEST)/libfacil.so: $(LIB_OBJS) | $(DEST)/pkgconfig/facil.pc
+	@$(CCL) -shared -o $@ $^ $(OPTIMIZATION) $(LINKER_FLAGS)
+
+lib_build: $(DEST)/libfacil.so
+	@$(DOCUMENTATION)
 
 %.o : %.c
 
