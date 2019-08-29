@@ -4472,7 +4472,7 @@ IFUNC int FIO_NAME(FIO_ARRAY_NAME, remove)(FIO_ARRAY_PTR ary_, int32_t index,
     --ary->end;
     if (ary->end != (uint32_t)index) {
       memmove(ary->ary + index, ary->ary + index + 1,
-              (ary->ary + ary->end) - (ary->ary + index));
+              (ary->end - index) * sizeof(*old));
     }
   }
   return 0;
@@ -13407,7 +13407,7 @@ TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h, char *name,
   uint64_t hash = 0;
   for (size_t i = 0; i < 4; i++) {
     hash += h((char *)buffer, buffer_len);
-    memcpy(buffer, &hash, buffer_len);
+    memcpy(buffer, &hash, sizeof(hash));
   }
   /* loop until test runs for more than 2 seconds */
   for (uint64_t cycles = cycles_start_at;;) {
@@ -13418,7 +13418,7 @@ TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h, char *name,
       __asm__ volatile("" ::: "memory");
     }
     end = clock();
-    memcpy(buffer, &hash, buffer_len);
+    memcpy(buffer, &hash, sizeof(hash));
     if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
         cycles >= ((uint64_t)1 << 62)) {
       fprintf(stderr, "%-40s %8.2f MB/s\n", name,
@@ -13659,51 +13659,53 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
       FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write_i)(tmp, i);
       FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(a, tmp);
     }
-    FIOBJ unshifted = FIOBJ_INVALID;
+    FIOBJ shifted = FIOBJ_INVALID;
     FIOBJ popped = FIOBJ_INVALID;
     FIOBJ removed = FIOBJ_INVALID;
     FIOBJ set = FIOBJ_INVALID;
-    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), shift)(a, &unshifted);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), shift)(a, &shifted);
     FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), pop)(a, &popped);
     FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), set)
-    (a, 0, FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(), &set);
-    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), remove)(a, 1, &removed);
+    (a, 1, FIO_NAME(fiobj, FIOBJ___NAME_TRUE)(), &set);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), remove)(a, 2, &removed);
     fiobj_free(a);
-    FIO_T_ASSERT(
-        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(popped) ==
-                strlen("number: " FIO_MACRO2STR(TEST_REPEAT)) &&
-            !memcmp(
-                "number: " FIO_MACRO2STR(TEST_REPEAT),
-                FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(popped),
-                FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(popped)),
-        "Object popped from Array lost it's value %s",
-        FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(popped));
-    FIO_T_ASSERT(
-        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(unshifted) == 9 &&
-            !memcmp(
-                "number: 1",
-                FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(unshifted),
-                9),
-        "Object unshifted from Array lost it's value %s",
-        FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(unshifted));
-    FIO_T_ASSERT(
-        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(set) == 9 &&
-            !memcmp("number: 2",
-                    FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(set),
-                    9),
-        "Object retrieved from Array using fiobj_array_set() lost it's "
-        "value %s",
-        FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(set));
-    FIO_T_ASSERT(
-        FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(removed) == 9 &&
-            !memcmp(
-                "number: 3",
-                FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(removed),
-                9),
-        "Object retrieved from Array using fiobj_array_set() lost it's "
-        "value %s",
-        FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(removed));
-    fiobj_free(unshifted);
+    if (1) {
+      FIO_T_ASSERT(
+          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(popped) ==
+                  strlen("number: " FIO_MACRO2STR(TEST_REPEAT)) &&
+              !memcmp(
+                  "number: " FIO_MACRO2STR(TEST_REPEAT),
+                  FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(popped),
+                  FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(popped)),
+          "Object popped from Array lost it's value %s",
+          FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(popped));
+      FIO_T_ASSERT(
+          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(shifted) == 9 &&
+              !memcmp(
+                  "number: 1",
+                  FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(shifted),
+                  9),
+          "Object shifted from Array lost it's value %s",
+          FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(shifted));
+      FIO_T_ASSERT(
+          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(set) == 9 &&
+              !memcmp("number: 3",
+                      FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(set),
+                      9),
+          "Object retrieved from Array using fiobj_array_set() lost it's "
+          "value %s",
+          FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(set));
+      FIO_T_ASSERT(
+          FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(removed) == 9 &&
+              !memcmp(
+                  "number: 4",
+                  FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(removed),
+                  9),
+          "Object retrieved from Array using fiobj_array_set() lost it's "
+          "value %s",
+          FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(removed));
+    }
+    fiobj_free(shifted);
     fiobj_free(popped);
     fiobj_free(set);
     fiobj_free(removed);
