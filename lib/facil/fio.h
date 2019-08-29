@@ -145,8 +145,6 @@ Import STL
 #define FIO_LOG_LENGTH_LIMIT 2048
 #endif
 
-// #define FIO_MALLOC_FORCE_SYSTEM 1
-
 /* Enable CLI extension before enabling the custom memory allocator. */
 #define FIO_MALLOC_TMP_USE_SYSTEM
 #define FIO_EXTERN
@@ -737,24 +735,41 @@ char const *fio_engine(void);
 Socket / Connection Functions
 ***************************************************************************** */
 
-#define FIO_SOCKET_SERVER 1
-#define FIO_SOCKET_CLIENT 0
-#define FIO_SOCKET_UDP -1
+typedef enum { /* DON'T CHANGE VALUES - they match fio-stl.h */
+               FIO_SOCKET_SERVER = 0,
+               FIO_SOCKET_CLIENT = 1,
+               FIO_SOCKET_NONBLOCK = 2,
+               FIO_SOCKET_TCP = 4,
+               FIO_SOCKET_UDP = 8,
+               FIO_SOCKET_UNIX = 16,
+} fio_socket_flags_e;
 
 /**
  * Creates a Unix or a TCP/IP socket and returns it's unique identifier.
  *
- * For TCP/IP server sockets (`is_server` is `FIO_SOCKET_SERVER`), a NULL
+ * For TCP/IP or UDP server sockets (flag sets `FIO_SOCKET_SERVER`), a NULL
  * `address` variable is recommended. Use "localhost" or "127.0.0.1" to limit
  * access to the server application.
  *
- * For TCP/IP client sockets (`is_server` is `FIO_SOCKET_CLIENT`), a remote
- * `address` and `port` combination will be required
+ * For TCP/IP or UDP client sockets (flag sets `FIO_SOCKET_CLIENT`), a remote
+ * `address` and `port` combination will be required.
  *
- * For Unix server or client sockets, set the `port` variable to NULL or `0`.
+ * For TCP/IP and Unix server sockets (flag sets `FIO_SOCKET_SERVER`), `listen`
+ * will automatically be called by this function.
  *
- * For Datagram (UDP) sockets, set `is_server` to `FIO_SOCKET_UDP_CLIENT` or
- * `FIO_SOCKET_UDP_SERVER`.
+ * For Unix server or client sockets, the `port` variable is silently ignored.
+ *
+ * If the socket is meant to be attached to the facil.io reactor,
+ * `FIO_SOCKET_NONBLOCK` MUST be set.
+ *
+ * The following flags control the type and behavior of the socket:
+ *
+ * - FIO_SOCKET_SERVER - Sets the socket to server mode (may call `listen`).
+ * - FIO_SOCKET_CLIENT - Sets the socket to client mode (calls `connect).
+ * - FIO_SOCKET_NONBLOCK - Sets the socket to non-blocking mode.
+ * - FIO_SOCKET_TCP -
+ * - FIO_SOCKET_UDP -
+ * - FIO_SOCKET_UNIX -
  *
  * Returns -1 on error. Any other value is a valid unique identifier.
  *
@@ -765,7 +780,8 @@ Socket / Connection Functions
  * Note: UDP server sockets can't use `fio_read` or `fio_write` since they are
  * connectionless.
  */
-intptr_t fio_socket(const char *address, const char *port, char is_server);
+intptr_t fio_socket(const char *address, const char *port,
+                    fio_socket_flags_e flags);
 
 /**
  * `fio_accept` accepts a new socket connection from a server socket - see the

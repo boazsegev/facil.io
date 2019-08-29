@@ -15,6 +15,9 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FIO_REF_CONSTRUCTOR_ONLY
 #include "fio-stl.h"
 
+#define FIO_SOCK
+#include <fio-stl.h>
+
 #include <pthread.h>
 #include <sys/mman.h>
 
@@ -64,6 +67,10 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #ifndef DEBUG_SPINLOCK
 #define DEBUG_SPINLOCK 0
+#endif
+
+#ifndef FIO_MAX_ADDR_LEN
+#define FIO_MAX_ADDR_LEN 48
 #endif
 
 /* Slowloris mitigation  (must be less than 1<<16) */
@@ -182,7 +189,7 @@ typedef struct {
   /** peer address length */
   uint8_t addr_len;
   /** peer address length */
-  uint8_t addr[48];
+  uint8_t addr[FIO_MAX_ADDR_LEN];
   /** RW hooks. */
   fio_rw_hook_s *rw_hooks;
   /** RW udata. */
@@ -2398,26 +2405,7 @@ Sets a socket to non blocking state.
 This function is called automatically for the new socket, when using
 `fio_accept` or `fio_connect`.
 */
-int fio_set_non_block(int fd) {
-/* If they have O_NONBLOCK, use the Posix way to do it */
-#if defined(O_NONBLOCK)
-  /* Fixme: O_NONBLOCK is defined but broken on SunOS 4.1.x and AIX 3.2.5. */
-  int flags;
-  if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
-    flags = 0;
-#ifdef O_CLOEXEC
-  return fcntl(fd, F_SETFL, flags | O_NONBLOCK | O_CLOEXEC);
-#else
-  return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-#endif
-#elif defined(FIONBIO)
-  /* Otherwise, use the old way of doing it */
-  static int flags = 1;
-  return ioctl(fd, FIONBIO, &flags);
-#else
-#error No functions / argumnet macros for non-blocking sockets.
-#endif
-}
+int fio_set_non_block(int fd) { return fio_sock_set_non_block(fd); }
 
 static void fio_tcp_addr_cpy(int fd, int family, struct sockaddr *addrinfo) {
   const char *result =
@@ -2495,227 +2483,82 @@ intptr_t fio_accept(intptr_t srv_uuid) {
   return fd2uuid(client);
 }
 
-/* Creates a Unix socket - returning it's uuid (or -1) */
-static intptr_t fio_unix_socket(const char *address, uint8_t server) {
-  /* Unix socket */
-  struct sockaddr_un addr = {0};
-  size_t addr_len = strlen(address);
-  if (addr_len >= sizeof(addr.sun_path)) {
-    FIO_LOG_ERROR("(fio_unix_socket) address too long (%zu bytes > %zu bytes).",
-                  addr_len, sizeof(addr.sun_path) - 1);
-    errno = ENAMETOOLONG;
+/**
+ * Creates a Unix or a TCP/IP socket and returns it's unique identifier.
+ *
+ * For TCP/IP or UDP server sockets (flag sets `FIO_SOCKET_SERVER`), a NULL
+ * `address` variable is recommended. Use "localhost" or "127.0.0.1" to limit
+ * access to the server application.
+ *
+ * For TCP/IP or UDP client sockets (flag sets `FIO_SOCKET_CLIENT`), a remote
+ * `address` and `port` combination will be required.
+ *
+ * For TCP/IP and Unix server sockets (flag sets `FIO_SOCKET_SERVER`), `listen`
+ * will automatically be called by this function.
+ *
+ * For Unix server or client sockets, the `port` variable is silently ignored.
+ *
+ * If the socket is meant to be attached to the facil.io reactor,
+ * `FIO_SOCKET_NONBLOCK` MUST be set.
+ *
+ * The following flags control the type and behavior of the socket:
+ *
+ * - FIO_SOCKET_SERVER - Sets the socket to server mode (may call `listen`).
+ * - FIO_SOCKET_CLIENT - Sets the socket to client mode (calls `connect).
+ * - FIO_SOCKET_NONBLOCK - Sets the socket to non-blocking mode.
+ * - FIO_SOCKET_TCP -
+ * - FIO_SOCKET_UDP -
+ * - FIO_SOCKET_UNIX -
+ *
+ * Returns -1 on error. Any other value is a valid unique identifier.
+ *
+ * Note: facil.io uses unique identifiers to protect sockets from collisions.
+ *       However these identifiers can be converted to the underlying file
+ *       descriptor using the `fio_uuid2fd` macro.
+ *
+ * Note: UDP server sockets can't use `fio_read` or `fio_write` since they are
+ * connectionless.
+ */
+intptr_t fio_socket(const char *address, const char *port,
+                    fio_socket_flags_e flags) {
+  int fd = fio_sock_open(address, port, flags);
+  if (fd == -1)
     return -1;
+
+#if defined(TCP_FASTOPEN) && defined(IPPROTO_TCP)
+  if ((flags & (FIO_SOCKET_SERVER | FIO_SOCKET_TCP)) ==
+      (FIO_SOCKET_SERVER | FIO_SOCKET_TCP)) {
+    // support TCP Fast Open when available
+    int optval = 128;
+    setsockopt(fd, IPPROTO_TCP, TCP_FASTOPEN, &optval, sizeof(optval));
   }
-  addr.sun_family = AF_UNIX;
-  memcpy(addr.sun_path, address, addr_len + 1); /* copy the NUL byte. */
-#if defined(__APPLE__)
-  addr.sun_len = addr_len;
 #endif
-  // get the file descriptor
-  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (fd == -1) {
-    return -1;
-  }
-  if (fio_set_non_block(fd) == -1) {
-    close(fd);
-    return -1;
-  }
-  if (server) {
-    unlink(addr.sun_path);
-    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-      // perror("couldn't bind unix socket");
-      close(fd);
-      return -1;
-    }
-    if (listen(fd, SOMAXCONN) < 0) {
-      // perror("couldn't start listening to unix socket");
-      close(fd);
-      return -1;
-    }
-    /* chmod for foriegn connections */
-    fchmod(fd, 0777);
-  } else {
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1 &&
-        errno != EINPROGRESS) {
-      close(fd);
-      return -1;
-    }
-  }
+
   fio_lock(&fd_data(fd).protocol_lock);
   fio_clear_fd(fd, 1);
   fio_unlock(&fd_data(fd).protocol_lock);
-  if (addr_len < sizeof(fd_data(fd).addr)) {
-    memcpy(fd_data(fd).addr, address, addr_len + 1); /* copy the NUL byte. */
+  /* copy address to the uuid */
+  if (address) {
+    size_t addr_len = strlen(address);
+    if (addr_len > (FIO_MAX_ADDR_LEN - 1))
+      addr_len = (FIO_MAX_ADDR_LEN - 1);
+    memcpy(fd_data(fd).addr, address, addr_len);
     fd_data(fd).addr_len = addr_len;
-  }
-  return fd2uuid(fd);
-}
-
-/* Creates a TCP/IP socket - returning it's uuid (or -1) */
-static intptr_t fio_tcp_socket(const char *address, const char *port,
-                               uint8_t server) {
-  /* TCP/IP socket */
-  // setup the address
-  struct addrinfo hints = {0};
-  struct addrinfo *addrinfo;       // will point to the results
-  memset(&hints, 0, sizeof hints); // make sure the struct is empty
-  hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
-  hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
-  hints.ai_flags = AI_PASSIVE;     // fill in my IP for me
-  if (getaddrinfo(address, port, &hints, &addrinfo)) {
-    // perror("addr err");
-    return -1;
-  }
-  // get the file descriptor
-  int fd =
-      socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
-  if (fd <= 0) {
-    freeaddrinfo(addrinfo);
-    return -1;
-  }
-  // make sure the socket is non-blocking
-  if (fio_set_non_block(fd) < 0) {
-    freeaddrinfo(addrinfo);
-    close(fd);
-    return -1;
-  }
-  if (server) {
-    {
-      // avoid the "address taken"
-      int optval = 1;
-      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-    }
-    // bind the address to the socket
-    int bound = 0;
-    for (struct addrinfo *i = addrinfo; i != NULL; i = i->ai_next) {
-      if (!bind(fd, i->ai_addr, i->ai_addrlen))
-        bound = 1;
-    }
-    if (!bound) {
-      // perror("bind err");
-      freeaddrinfo(addrinfo);
-      close(fd);
-      return -1;
-    }
-#ifdef TCP_FASTOPEN
-    {
-      // support TCP Fast Open when available
-      int optval = 128;
-      setsockopt(fd, addrinfo->ai_protocol, TCP_FASTOPEN, &optval,
-                 sizeof(optval));
-    }
-#endif
-    if (listen(fd, SOMAXCONN) < 0) {
-      freeaddrinfo(addrinfo);
-      close(fd);
-      return -1;
-    }
   } else {
-    int one = 1;
-    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-    errno = 0;
-    for (struct addrinfo *i = addrinfo; i; i = i->ai_next) {
-      if (connect(fd, i->ai_addr, i->ai_addrlen) == 0 || errno == EINPROGRESS)
-        goto socket_okay;
-    }
-    freeaddrinfo(addrinfo);
-    close(fd);
-    return -1;
+    memcpy(fd_data(fd).addr, "0.0.0.0", 7);
+    fd_data(fd).addr_len = 7;
   }
-socket_okay:
-  fio_lock(&fd_data(fd).protocol_lock);
-  fio_clear_fd(fd, 1);
-  fio_unlock(&fd_data(fd).protocol_lock);
-  fio_tcp_addr_cpy(fd, addrinfo->ai_family, (void *)addrinfo);
-  freeaddrinfo(addrinfo);
-  return fd2uuid(fd);
-}
-
-/* Creates a TCP/IP socket - returning it's uuid (or -1) */
-static intptr_t fio_udp_socket(const char *address, const char *port) {
-  return -1;
-  int fd;
-  struct addrinfo *addrinfo, *p;
-
-  {
-    /* collect possible binding addresses */
-    struct addrinfo addr_hints = (struct addrinfo){0};
-    int e;
-    // memset(&addr_hints, 0, sizeof(addr_hints));
-    addr_hints.ai_family = AF_UNSPEC; // set to AF_INET to force IPv4
-    addr_hints.ai_socktype = SOCK_DGRAM;
-    addr_hints.ai_flags = AI_PASSIVE; // use my IP
-
-    if ((e = getaddrinfo(address, port, &addr_hints, &addrinfo)) != 0) {
-      FIO_LOG_ERROR("UDP address collection error %s", gai_strerror(e));
-      return -1;
+  if (port && !(flags & FIO_SOCKET_UNIX)) {
+    size_t port_len = strlen(port);
+    if (fd_data(fd).addr_len + port_len <= (FIO_MAX_ADDR_LEN - 2)) {
+      fd_data(fd).addr[fd_data(fd).addr_len++] = ':';
+      memcpy(fd_data(fd).addr + fd_data(fd).addr_len, port, port_len);
+      fd_data(fd).addr_len += port_len;
     }
   }
-
-  /* loop through all the possible addresses and attempt to bind each one */
-  for (p = addrinfo; p != NULL; p = p->ai_next) {
-    if ((fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-      FIO_LOG_DEBUG("UDP socket creation error %s", strerror(errno));
-      continue;
-    }
-
-    if (bind(fd, p->ai_addr, p->ai_addrlen) == -1) {
-      close(fd);
-      FIO_LOG_DEBUG("UDP socket binding error %s", strerror(errno));
-      continue;
-    }
-
-    break;
-  }
-
-  if (p == NULL) {
-    FIO_LOG_ERROR("UDP socket couldn't be innitialized: %s", strerror(errno));
-    return -1;
-  }
-
-  // make sure the socket is non-blocking
-  if (fio_set_non_block(fd) < 0) {
-    freeaddrinfo(addrinfo);
-    close(fd);
-    return -1;
-  }
-
-  fio_lock(&fd_data(fd).protocol_lock);
-  fio_clear_fd(fd, 1);
-  fio_unlock(&fd_data(fd).protocol_lock);
-  fio_tcp_addr_cpy(fd, p->ai_family, (void *)p);
-  freeaddrinfo(addrinfo);
+  fd_data(fd).addr[fd_data(fd).addr_len] = 0;
   /* TODO: setup default read/write hooks for UDP */
   return fd2uuid(fd);
-}
-
-/* PUBLIC API: opens a server or client socket */
-intptr_t fio_socket(const char *address, const char *port, char server) {
-  intptr_t uuid;
-  if (!address && !port) {
-    FIO_LOG_ERROR("(fio_socket) both address and port are missing or invalid.");
-    errno = EINVAL;
-    return -1;
-  }
-  if (server == FIO_SOCKET_UDP) {
-    do {
-      errno = 0;
-      uuid = fio_udp_socket(address, port);
-    } while (errno == EINTR);
-  } else {
-    if (!port || (*port == '0' && port[1] == 0)) {
-      do {
-        errno = 0;
-        uuid = fio_unix_socket(address, server);
-      } while (errno == EINTR);
-    } else {
-      do {
-        errno = 0;
-        uuid = fio_tcp_socket(address, port, server);
-      } while (errno == EINTR);
-    }
-  }
-  return uuid;
 }
 
 /* *****************************************************************************
@@ -4119,7 +3962,7 @@ typedef struct {
   char *addr;
   size_t port_len;
   size_t addr_len;
-  void *tls;
+  fio_tls_s *tls;
 } fio_listen_protocol_s;
 
 static void fio_listen_cleanup_task(void *pr_) {
@@ -4219,7 +4062,9 @@ intptr_t fio_listen FIO_NOOP(struct fio_listen_args args) {
       goto error;
     }
   }
-  const intptr_t uuid = fio_socket(args.address, args.port, 1);
+  const intptr_t uuid =
+      fio_socket(args.address, args.port,
+                 FIO_SOCKET_TCP | FIO_SOCKET_SERVER | FIO_SOCKET_NONBLOCK);
   if (uuid == -1)
     goto error;
 
@@ -4321,7 +4166,7 @@ typedef struct {
   fio_protocol_s pr;
   intptr_t uuid;
   void *udata;
-  void *tls;
+  fio_tls_s *tls;
   void (*on_connect)(intptr_t uuid, void *udata);
   void (*on_fail)(intptr_t uuid, void *udata);
 } fio_connect_protocol_s;
@@ -4379,7 +4224,10 @@ intptr_t fio_connect FIO_NOOP(struct fio_connect_args args) {
     errno = EINVAL;
     goto error;
   }
-  const intptr_t uuid = fio_socket(args.address, args.port, 0);
+  const intptr_t uuid =
+      fio_socket(args.address, args.port,
+                 (args.port ? FIO_SOCKET_TCP : FIO_SOCKET_UNIX) |
+                     FIO_SOCKET_SERVER | FIO_SOCKET_NONBLOCK);
   if (uuid == -1)
     goto error;
   fio_timeout_set(uuid, args.timeout);
@@ -5899,7 +5747,9 @@ static void fio_cluster_listen_on_close(intptr_t uuid,
 static void fio_listen2cluster(void *ignore) {
   /* this is called for each `fork`, but we only need this to run once. */
   fio_lock(&cluster_data.lock);
-  cluster_data.uuid = fio_socket(cluster_data.name, NULL, 1);
+  cluster_data.uuid =
+      fio_socket(cluster_data.name, NULL,
+                 FIO_SOCKET_UNIX | FIO_SOCKET_SERVER | FIO_SOCKET_NONBLOCK);
   fio_unlock(&cluster_data.lock);
   if (cluster_data.uuid < 0) {
     FIO_LOG_FATAL("(facil.io cluster) failed to open cluster socket.");
@@ -6391,7 +6241,7 @@ Section Start Marker
 
 ***************************************************************************** */
 
-#if !FIO_TLS_FOUND && !defined(HAVE_OPENSSL) /* TODO: list flags here */
+#if !FIO_TLS_FOUND && !HAVE_OPENSSL /* TODO: list flags here */
 
 #define REQUIRE_TLS_LIBRARY()
 
@@ -8076,10 +7926,12 @@ FIO_SFUNC void fio_socket_test(void) {
                   "testing only).\n");
   fprintf(stderr, "* testing on TCP/IP port 8765 and Unix socket: %s\n",
           fio_str2ptr(&sock_name));
-  intptr_t uuid = fio_socket(fio_str2ptr(&sock_name), NULL, 1);
+  intptr_t uuid = fio_socket(fio_str2ptr(&sock_name), NULL,
+                             FIO_SOCKET_UNIX | FIO_SOCKET_SERVER);
   FIO_ASSERT(uuid != -1, "Failed to open unix socket\n");
   FIO_ASSERT(uuid_data(uuid).open, "Unix socket not initialized");
-  intptr_t client1 = fio_socket(fio_str2ptr(&sock_name), NULL, 0);
+  intptr_t client1 = fio_socket(fio_str2ptr(&sock_name), NULL,
+                                FIO_SOCKET_UNIX | FIO_SOCKET_CLIENT);
   FIO_ASSERT(client1 != -1, "Failed to connect to unix socket.");
   intptr_t client2 = fio_accept(uuid);
   FIO_ASSERT(client2 != -1, "Failed to accept unix socket connection.");
@@ -8131,11 +7983,14 @@ FIO_SFUNC void fio_socket_test(void) {
   /* free unix socket name */
   fio_str_destroy(&sock_name);
 
-  uuid = fio_socket(NULL, "8765", 1);
+  uuid = fio_socket(NULL, "8765",
+                    FIO_SOCKET_TCP | FIO_SOCKET_SERVER | FIO_SOCKET_NONBLOCK);
   FIO_ASSERT(uuid != -1, "Failed to open TCP/IP socket on port 8765");
   FIO_ASSERT(uuid_data(uuid).open, "TCP/IP socket not initialized");
   fprintf(stderr, "* TCP/IP server addr %s\n", fio_peer_addr(uuid).buf);
-  client1 = fio_socket("Localhost", "8765", 0);
+  client1 =
+      fio_socket("localhost", "8765",
+                 FIO_SOCKET_TCP | FIO_SOCKET_CLIENT | FIO_SOCKET_NONBLOCK);
   FIO_ASSERT(client1 != -1, "Failed to connect to TCP/IP socket on port 8765");
   fprintf(stderr, "* TCP/IP client1 addr %s\n", fio_peer_addr(client1).buf);
   errno = EAGAIN;
@@ -8745,7 +8600,8 @@ FIO_SFUNC void fio_uuid_env_test(void) {
   uintptr_t called = 0;
   uintptr_t removed = 0;
   uintptr_t overwritten = 0;
-  intptr_t uuid = fio_socket(NULL, "8765", 1);
+  intptr_t uuid = fio_socket(
+      NULL, "8765", FIO_SOCKET_TCP | FIO_SOCKET_SERVER | FIO_SOCKET_NONBLOCK);
   FIO_ASSERT(uuid != -1, "fio_uuid_env_test failed to create a socket!");
   fio_uuid_env_set(uuid, .data = &called,
                    .on_close = fio_uuid_env_test_on_close, .type = 1);

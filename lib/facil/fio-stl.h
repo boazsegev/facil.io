@@ -3361,7 +3361,7 @@ HFUNC struct addrinfo *fio_sock_address_new(const char *restrict address,
 HFUNC void fio_sock_address_free(struct addrinfo *a);
 
 /** Creates a new network socket and binds it to a local address. */
-SFUNC int fio_sock_open_local(struct addrinfo *addr);
+SFUNC int fio_sock_open_local(struct addrinfo *addr, int nonblock);
 
 /** Creates a new network socket and connects it to a remote address. */
 SFUNC int fio_sock_open_remote(struct addrinfo *addr, int nonblock);
@@ -3418,28 +3418,24 @@ HFUNC int fio_sock_open(const char *restrict address, const char *restrict port,
       FIO_LOG_ERROR("(fio_sock_open) address error: %s", strerror(errno));
       return -1;
     }
-    /* fallthrough */
+    if ((flags & FIO_SOCK_CLIENT)) {
+      fd = fio_sock_open_remote(addr, (flags & FIO_SOCK_NONBLOCK));
+    } else {
+      fd = fio_sock_open_local(addr, (flags & FIO_SOCK_NONBLOCK));
+    }
+    fio_sock_address_free(addr);
+    return fd;
   case FIO_SOCK_TCP:
+    addr = fio_sock_address_new(address, port, SOCK_STREAM);
     if (!addr) {
-      addr = fio_sock_address_new(address, port, SOCK_STREAM);
-      if (!addr) {
-        FIO_LOG_ERROR("(fio_sock_open) address error: %s", strerror(errno));
-        return -1;
-      }
+      FIO_LOG_ERROR("(fio_sock_open) address error: %s", strerror(errno));
+      return -1;
     }
     if ((flags & FIO_SOCK_CLIENT)) {
       fd = fio_sock_open_remote(addr, (flags & FIO_SOCK_NONBLOCK));
     } else {
-      fd = fio_sock_open_local(addr);
-      if (fd != -1 && (flags & FIO_SOCK_NONBLOCK) &&
-          fio_sock_set_non_block(fd) == -1) {
-        FIO_LOG_ERROR(
-            "(fio_sock_open) couldn't set socket to non-blocking mode: %s",
-            strerror(errno));
-        close(fd);
-        fd = -1;
-      }
-      if ((flags & FIO_SOCK_TCP) && listen(fd, SOMAXCONN) == -1) {
+      fd = fio_sock_open_local(addr, (flags & FIO_SOCK_NONBLOCK));
+      if (fd != -1 && listen(fd, SOMAXCONN) == -1) {
         FIO_LOG_ERROR("(fio_sock_open) failed on call to listen: %s",
                       strerror(errno));
         close(fd);
@@ -3503,14 +3499,24 @@ SFUNC int fio_sock_set_non_block(int fd) {
 }
 
 /** Creates a new network socket and binds it to a local address. */
-SFUNC int fio_sock_open_local(struct addrinfo *addr) {
+SFUNC int fio_sock_open_local(struct addrinfo *addr, int nonblock) {
   int fd = -1;
   for (struct addrinfo *p = addr; p != NULL; p = p->ai_next) {
     if ((fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
       FIO_LOG_DEBUG("socket creation error %s", strerror(errno));
       continue;
     }
+    {
+      // avoid the "address taken"
+      int optval = 1;
+      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    }
     if (bind(fd, p->ai_addr, p->ai_addrlen) == -1) {
+      close(fd);
+      fd = -1;
+      continue;
+    }
+    if (nonblock && fio_sock_set_non_block(fd) == -1) {
       close(fd);
       fd = -1;
       continue;
@@ -11470,7 +11476,8 @@ FIOBJ cleanup
 
 ***************************************************************************** */
 
-#if !defined(FIO_FIO_TEST_CSTL_ONLY_ONCE) && (defined(FIO_TEST_CSTL))
+#if !defined(FIO_FIO_TEST_CSTL_ONLY_ONCE) &&                                   \
+    (defined(FIO_TEST_CSTL) || defined(TEST))
 #undef FIO_TEST_CSTL
 #define FIO_FIO_TEST_CSTL_ONLY_ONCE 1
 
