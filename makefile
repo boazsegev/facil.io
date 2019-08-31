@@ -161,8 +161,9 @@ INCLUDE_STR = $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(
 
 MAIN_OBJS = $(foreach source, $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 LIB_OBJS = $(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+TEST_OBJS = $(foreach source, $(TEST_SRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 
-OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d)
+OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d) $(TEST_OBJS:.o=.d)
 
 # TODO: fix code so this isn't required.
 #
@@ -428,20 +429,20 @@ ifdef FIO_NO_TLS
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_SOURCE), $(EMPTY)), 0)
   $(info * Detected the BearSSL source code library, setting HAVE_BEARSSL)
   # TODO: when BearSSL support arrived, set the FIO_TLS_FOUND flag as well
-	FLAGS:=$(FLAGS) HAVE_BEARSSL
+	FLAGS+=HAVE_BEARSSL
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_EXT), "-lbearssl"), 0)
   $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
   # TODO: when BearSSL support arrived, set the FIO_TLS_FOUND flag as well
-	FLAGS:=$(FLAGS) HAVE_BEARSSL
+	FLAGS+=HAVE_BEARSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), $(OPENSSL_CFLAGS) $(OPENSSL_LDFLAGS)), 0)
-  $(info * Detected the OpenSSL library, setting HAVE_OPENSSL and FIO_TLS_FOUND)
-	FLAGS:=$(FLAGS) HAVE_OPENSSL FIO_TLS_FOUND
+  $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
+	FLAGS+=HAVE_OPENSSL FIO_TLS_FOUND
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) $(OPENSSL_LIBS)
-	LDFLAGS += $(OPENSSL_LDFLAGS)
-	CFLAGS += $(OPENSSL_CFLAGS)
+	LDFLAGS+=$(OPENSSL_LDFLAGS)
+	CFLAGS+=$(OPENSSL_CFLAGS)
 	PKGC_REQ_OPENSSL = openssl >= 1.1, openssl < 1.2
-	PKGC_REQ += $$(PKGC_REQ_OPENSSL)
+	PKGC_REQ+=$$(PKGC_REQ_OPENSSL)
 else
   $(info * No compatible SSL/TLS library detected.)
 endif
@@ -597,7 +598,7 @@ $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
 	@echo "* Compiling $<"
 	@$(CPP) -o $@ -c $< $(CFLAGS_DEPENDENCY) $(CPPFLAGS) $(OPTIMIZATION)
-	$(eval CCL = $(CPP))
+	$(eval CCL=$(CPP))
 	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
@@ -640,9 +641,8 @@ test/set_debug_flags:
 	$(eval LINKER_FLAGS=-coverage -DDEBUG=1 $(LINKER_FLAGS))
 
 .PHONY : test/run
-test/run: | test/set_test_flag $(LIB_OBJS)
-	@$(CC) -c $(TEST_SRC) -o $(TMP_ROOT)/tests.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
-	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/tests.o $(OPTIMIZATION) $(LINKER_FLAGS) $(OPTIMIZATION)
+test/run: | test/set_test_flag $(LIB_OBJS) $(TEST_OBJS)
+	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TEST_OBJS) $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(BIN)
 
 

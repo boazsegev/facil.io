@@ -20,6 +20,8 @@ I though about it as a small STL, much like C++ has, only for C, and moved the b
 
 - Major API changes!
 
+- Multiple core rewrites / refinements (while, possibly, replacing old boring bugs with new and interesting one).
+
 - Core types and common helpers have been re-written and moved to a separate, stand alone, header-library: `fio-stl.h`
 
    This updates the core type API in an attempt to create a more unified and intuitive API. for both core types and dynamic types (FIOBJ).

@@ -3299,9 +3299,11 @@ IO Poll - API
   }
 
 typedef struct {
+  void (*before_events)(void *udata);
   void (*on_ready)(int fd, void *udata);
   void (*on_data)(int fd, void *udata);
   void (*on_error)(int fd, void *udata);
+  void (*after_events)(void *udata);
   void *udata;
   int timeout;
   struct pollfd *fds;
@@ -3380,14 +3382,13 @@ HFUNC int fio_sock_poll FIO_NOOP(fio_sock_poll_args args) {
   int tmp = 0;
   while (args.fds[tmp].events)
     ++tmp;
-  if (!tmp) {
-    if (args.timeout)
-      FIO_THREAD_WAIT(args.timeout);
-    return 0;
-  }
+  if (!tmp)
+    goto empty_list;
   tmp = poll(args.fds, tmp, args.timeout);
+  if (args.before_events)
+    args.before_events(args.udata);
   if (tmp <= 0)
-    return tmp;
+    goto finish;
   for (int i = 0; args.fds[i].events; ++i) {
     if (!args.fds[i].revents)
       continue;
@@ -3398,7 +3399,18 @@ HFUNC int fio_sock_poll FIO_NOOP(fio_sock_poll_args args) {
     if (args.on_error != NULL && (args.fds[i].revents | POLLERR) == POLLERR)
       args.on_error(args.fds[i].fd, args.udata);
   }
+finish:
+  if (args.after_events)
+    args.after_events(args.udata);
   return tmp;
+empty_list:
+  if (args.timeout)
+    FIO_THREAD_WAIT(args.timeout);
+  if (args.before_events)
+    args.before_events(args.udata);
+  if (args.after_events)
+    args.after_events(args.udata);
+  return 0;
 }
 
 /**
@@ -13897,8 +13909,13 @@ TEST_FUNC void fio_test_dynamic_types(void) {
     filename += 2;
   fprintf(stderr, "===============\n");
   fprintf(stderr, "Testing Dynamic Types (%s)\n", filename);
-  fprintf(stderr, "facil.io core: version " FIO_VERSION_STRING "\n");
-  fprintf(stderr, "The facil.io library was originally coded by Boaz Segev.\n");
+  fprintf(
+      stderr,
+      "facil.io core: version \x1B[1m" FIO_VERSION_STRING "\x1B[0m\n"
+      "The facil.io library was originally coded by \x1B[1mBoaz Segev\x1B[0m.\n"
+      "Please give credit where credit is due.\n"
+      "\x1B[1mYour support for is only fair\x1B[0m "
+      "(code contributions / donations).\n");
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___print_sizes();
   fprintf(stderr, "===============\n");
@@ -13930,7 +13947,14 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___risky();
   fprintf(stderr, "===============\n");
-  fprintf(stderr, "Dynamic types testing complete - PASS.\n\n");
+  fprintf(stderr, "\x1B[1mPASSED\x1B[0m testing for facil.io core: version "
+                  "\x1B[1m" FIO_VERSION_STRING "\x1B[0m\n");
+  fprintf(
+      stderr,
+      "The facil.io library was originally coded by \x1B[1mBoaz Segev\x1B[0m.\n"
+      "Please give credit where credit is due.\n"
+      "\x1B[1mYour support for is only fair\x1B[0m "
+      "(code contributions / donations).\n\n");
 }
 
 /* *****************************************************************************
