@@ -23,9 +23,6 @@ TMP_ROOT=tmp
 # destination folder for the final compiled output
 DEST?=$(TMP_ROOT)
 
-# testing code
-TEST_SRC:=./tests/tests.c
-
 # output folder for `make libdump` - dumps all library files (not source files) in one place.
 DUMP_LIB=libdump
 
@@ -54,6 +51,19 @@ LIB_PUBLIC_SUBFOLDERS=facil facil/tls facil/fiobj facil/cli facil/http facil/htt
 # privately used subfolders in the lib root (this distinction is only relevant for CMake)
 LIB_PRIVATE_SUBFOLDERS=
 
+
+#############################################################################
+# Testing code
+#############################################################################
+
+# Testing folder
+TEST_ROOT=./tests
+# Testing subfolders under the main testing root
+TEST_SUBFOLDERS=
+# Fill this in if the test folder contains more then a single file with a `main` function
+TESTSRC:=./tests/tests.c
+
+
 #############################################################################
 # Compiler / Linker Settings
 #############################################################################
@@ -63,9 +73,9 @@ LINKER_LIBS=pthread m
 # optimization level.
 OPTIMIZATION=-O2 -march=native
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
-WARNINGS= -Wshadow -Wall -Wextra -Wno-missing-field-initializers -Wpedantic
+WARNINGS=-Wshadow -Wall -Wextra -Wno-missing-field-initializers -Wpedantic
 # any extra include folders, space seperated list. (i.e. `pg_config --includedir`)
-INCLUDE= ./
+INCLUDE=./
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
 FLAGS:=
 # c compiler
@@ -112,7 +122,7 @@ endif
 
 
 ifneq ($(OS),Windows_NT)
-	OS := $(shell uname)
+	OS:=$(shell uname)
 else
 	$(warning *** Windows systems might not work with this makefile / library.)
 endif
@@ -124,7 +134,7 @@ ifeq ($(OS),Darwin) # Run MacOS commands
 	# documentation commands
 	# DOCUMENTATION=cldoc generate $(INCLUDE_STR) -- --output ./html $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*))
 	# rule modifier (can't be indented)
-$(DEST)/libfacil.so: LDFLAGS += -dynamiclib -install_name $(realpath $(DEST))/libfacil.so
+$(DEST)/libfacil.so: LDFLAGS+=-dynamiclib -install_name $(realpath $(DEST))/libfacil.so
 else
 	# debugger
 	DB=gdb
@@ -139,29 +149,34 @@ endif
 # (don't edit)
 #############################################################################
 
-BIN = $(DEST)/$(NAME)
+BIN=$(DEST)/$(NAME)
 
-LIBDIR_PUB = $(LIB_ROOT) $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(addsuffix /,$(basename $(LIB_ROOT)))$(dir))
-LIBDIR_PRIV = $(foreach dir, $(LIB_PRIVATE_SUBFOLDERS), $(addsuffix /,$(basename $(LIB_ROOT)))$(dir))
+LIBDIR_PUB=$(LIB_ROOT) $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(addsuffix /,$(basename $(LIB_ROOT)))$(dir))
+LIBDIR_PRIV=$(foreach dir, $(LIB_PRIVATE_SUBFOLDERS), $(addsuffix /,$(basename $(LIB_ROOT)))$(dir))
 
-LIBDIR = $(LIBDIR_PUB) $(LIBDIR_PRIV)
-LIBSRC = $(foreach dir, $(LIBDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c*))
+LIBDIR=$(LIBDIR_PUB) $(LIBDIR_PRIV)
+LIBSRC=$(foreach dir, $(LIBDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c*))
 
-MAINDIR = $(MAIN_ROOT) $(foreach main_root, $(MAIN_ROOT) , $(foreach dir, $(MAIN_SUBFOLDERS), $(addsuffix /,$(basename $(main_root)))$(dir)))
-MAINSRC = $(foreach dir, $(MAINDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c*))
+MAINDIR=$(MAIN_ROOT) $(foreach main_root, $(MAIN_ROOT) , $(foreach dir, $(MAIN_SUBFOLDERS), $(addsuffix /,$(basename $(main_root)))$(dir)))
+MAINSRC=$(foreach dir, $(MAINDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c*))
 
-FOLDERS = $(LIBDIR) $(MAINDIR)
-SOURCES = $(LIBSRC) $(MAINSRC)
+TESTDIR=$(TEST_ROOT) $(foreach folder_root, $(TEST_ROOT) , $(foreach dir, $(TEST_SUBFOLDERS), $(addsuffix /,$(basename $(folder_root)))$(dir)))
+ifeq (, $(TESTSRC))
+TESTSRC=$(foreach dir, $(TESTDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c*))
+endif
 
-BUILDTREE =$(foreach dir, $(FOLDERS), $(addsuffix /, $(basename $(TMP_ROOT)))$(basename $(dir)))
+FOLDERS=$(LIBDIR) $(MAINDIR) $(TESTDIR)
+SOURCES=$(LIBSRC) $(MAINSRC)
 
-CCL = $(CC)
+BUILDTREE=$(foreach dir, $(FOLDERS), $(addsuffix /, $(basename $(TMP_ROOT)))$(basename $(dir)))
 
-INCLUDE_STR = $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(FOLDERS),$(addprefix -I, $(dir)))
+CCL=$(CC)
 
-MAIN_OBJS = $(foreach source, $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
-LIB_OBJS = $(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
-TEST_OBJS = $(foreach source, $(TEST_SRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+INCLUDE_STR=$(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(FOLDERS),$(addprefix -I, $(dir)))
+
+MAIN_OBJS=$(foreach source, $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+LIB_OBJS=$(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+TEST_OBJS=$(foreach source, $(TESTSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 
 OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d) $(TEST_OBJS:.o=.d)
 
@@ -174,7 +189,7 @@ OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d) $(TEST_OBJS:.o=.d)
 #
 # https://kristerw.blogspot.com/2017/05/interprocedural-optimization-in-gcc.html
 ifeq ($(shell $(CC) -v 2>&1 | grep -o "^gcc version"),gcc version)
-	OPTIMIZATION += -fno-ipa-icf
+	OPTIMIZATION+=-fno-ipa-icf
 endif
 
 #############################################################################
@@ -196,7 +211,7 @@ EMPTY:=
 # (no need to edit)
 #############################################################################
 
-FIO_POLL_TEST_KQUEUE := "\\n\
+FIO_POLL_TEST_KQUEUE:="\\n\
 \#define _GNU_SOURCE\\n\
 \#include <stdlib.h>\\n\
 \#include <sys/event.h>\\n\
@@ -205,7 +220,7 @@ int main(void) {\\n\
 }\\n\
 "
 
-FIO_POLL_TEST_EPOLL := "\\n\
+FIO_POLL_TEST_EPOLL:="\\n\
 \#define _GNU_SOURCE\\n\
 \#include <stdlib.h>\\n\
 \#include <stdio.h>\\n\
@@ -218,7 +233,7 @@ int main(void) {\\n\
 }\\n\
 "
 
-FIO_POLL_TEST_POLL := "\\n\
+FIO_POLL_TEST_POLL:="\\n\
 \#define _GNU_SOURCE\\n\
 \#include <stdlib.h>\\n\
 \#include <poll.h>\\n\
@@ -261,7 +276,7 @@ endif
 #############################################################################
 
 # Linux variation
-FIO_SENDFILE_TEST_LINUX := "\\n\
+FIO_SENDFILE_TEST_LINUX:="\\n\
 \#define _GNU_SOURCE\\n\
 \#include <stdlib.h>\\n\
 \#include <stdio.h>\\n\
@@ -273,7 +288,7 @@ int main(void) {\\n\
 "
 
 # BSD variation
-FIO_SENDFILE_TEST_BSD := "\\n\
+FIO_SENDFILE_TEST_BSD:="\\n\
 \#define _GNU_SOURCE\\n\
 \#include <stdlib.h>\\n\
 \#include <stdio.h>\\n\
@@ -288,7 +303,7 @@ int main(void) {\\n\
 "
 
 # Apple variation
-FIO_SENDFILE_TEST_APPLE := "\\n\
+FIO_SENDFILE_TEST_APPLE:="\\n\
 \#define _GNU_SOURCE\\n\
 \#include <stdlib.h>\\n\
 \#include <stdio.h>\\n\
@@ -321,7 +336,7 @@ endif
 # (no need to edit)
 #############################################################################
 
-FIO_TEST_STRUCT_TM_TM_ZONE := "\\n\
+FIO_TEST_STRUCT_TM_TM_ZONE:="\\n\
 \#define _GNU_SOURCE\\n\
 \#include <time.h>\\n\
 int main(void) {\\n\
@@ -341,7 +356,7 @@ endif
 # (no need to edit)
 #############################################################################
 
-FIO_TEST_SOCKET_AND_NETWORK_SERVICE := "\\n\
+FIO_TEST_SOCKET_AND_NETWORK_SERVICE:="\\n\
 \#include <sys/types.h>\\n\
 \#include <sys/socket.h>\\n\
 \#include <netinet/in.h>\\n\
@@ -371,7 +386,7 @@ endif
 
 # BearSSL requirement C application code
 # (source code variation)
-FIO_TLS_TEST_BEARSSL_SOURCE := "\\n\
+FIO_TLS_TEST_BEARSSL_SOURCE:="\\n\
 \#define _GNU_SOURCE\\n\
 \#include <stdlib.h>\\n\
 \#include <bearssl.h>\\n\
@@ -381,7 +396,7 @@ int main(void) {\\n\
 
 # BearSSL requirement C application code
 # (linked library variation)
-FIO_TLS_TEST_BEARSSL_EXT := "\\n\
+FIO_TLS_TEST_BEARSSL_EXT:="\\n\
 \#define _GNU_SOURCE\\n\
 \#include <stdlib.h>\\n\
 \#include <bearssl.h>\\n\
@@ -390,7 +405,7 @@ int main(void) {\\n\
 "
 
 # OpenSSL requirement C application code
-FIO_TLS_TEST_OPENSSL := "\\n\
+FIO_TLS_TEST_OPENSSL:="\\n\
 \#define _GNU_SOURCE\\n\
 \#include <stdlib.h>\\n\
 \#include <openssl/bio.h> \\n\
@@ -441,7 +456,7 @@ else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), $(OPENSSL_CFLAGS) $(OPEN
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) $(OPENSSL_LIBS)
 	LDFLAGS+=$(OPENSSL_LDFLAGS)
 	CFLAGS+=$(OPENSSL_CFLAGS)
-	PKGC_REQ_OPENSSL = openssl >= 1.1, openssl < 1.2
+	PKGC_REQ_OPENSSL=openssl >= 1.1, openssl < 1.2
 	PKGC_REQ+=$$(PKGC_REQ_OPENSSL)
 else
   $(info * No compatible SSL/TLS library detected.)
@@ -503,10 +518,10 @@ endif
 # (don't edit)
 #############################################################################
 
-FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
-CFLAGS:= $(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR)
-CPPFLAGS:= $(CPPFLAGS) -std=$(CPPSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR)
-LINKER_FLAGS= $(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
+FLAGS_STR=$(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
+CFLAGS:=$(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR)
+CPPFLAGS:=$(CPPFLAGS) -std=$(CPPSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR)
+LINKER_FLAGS=$(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
 CFLAGS_DEPENDENCY=-MT $@ -MMD -MP
 
 
@@ -518,7 +533,7 @@ CFLAGS_DEPENDENCY=-MT $@ -MMD -MP
 nullstring :=
 space := $(nullstring) # end of line
 comma := ,
-$(eval PKGC_REQ_EVAL := $(subst $(space),$(comma) ,$(strip $(PKGC_REQ))))
+$(eval PKGC_REQ_EVAL:=$(subst $(space),$(comma) ,$(strip $(PKGC_REQ))))
 
 #############################################################################
 # Tasks - Building
@@ -581,12 +596,12 @@ $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
 	@echo "- compiling $<"
 	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CPPFLAGS) $(OPTIMIZATION)
-	$(eval CCL = $(CPP))
+	$(eval CCL=$(CPP))
 
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
 	@echo "* Compiling $<"
 	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CPPFLAGS) $(OPTIMIZATION)
-	$(eval CCL = $(CPP))
+	$(eval CCL=$(CPP))
 
 #### add diassembling stage (testing / slower)
 else
@@ -604,7 +619,7 @@ $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
 	@echo "* Compiling $<"
 	@$(CPP) -o $@ -c $< $(CFLAGS_DEPENDENCY) $(CPPFLAGS) $(OPTIMIZATION)
-	$(eval CCL = $(CPP))
+	$(eval CCL=$(CPP))
 	@$(DISAMS) $@ > $@.s
 endif
 
@@ -617,7 +632,7 @@ $(TMP_ROOT)/%.d: ;
 #############################################################################
 
 
-ifneq ($(TEST_SRC),)
+ifneq ($(TESTSRC),)
 
 .PHONY : test
 test: | clean cmake test/set_debug_flags test/run clean
@@ -794,6 +809,8 @@ vars:
 	@echo "LIB_OBJS: $(LIB_OBJS)"
 	@echo ""
 	@echo "MAIN_OBJS: $(MAIN_OBJS)"
+	@echo ""
+	@echo "TEST_OBJS: $(TEST_OBJS)"
 	@echo ""
 	@echo "OBJS_DEPENDENCY: $(OBJS_DEPENDENCY)"
 	@echo ""
