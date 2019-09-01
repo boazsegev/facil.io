@@ -1270,12 +1270,13 @@ static inline void fio_mark_time(void) {
 /** Calculates the due time for a task, given it's interval */
 static struct timespec fio_timer_calc_due(size_t interval) {
   struct timespec now = fio_last_tick();
-  if (interval > 1000) {
-    now.tv_sec += interval / 1000;
-    interval -= interval / 1000;
+  if (interval >= 1000) {
+    unsigned long long secs = interval / 1000;
+    now.tv_sec += secs;
+    interval -= secs * 1000;
   }
   now.tv_nsec += (interval * 1000000UL);
-  if (now.tv_nsec > 1000000000L) {
+  if (now.tv_nsec >= 1000000000L) {
     now.tv_nsec -= 1000000000L;
     now.tv_sec += 1;
   }
@@ -1431,7 +1432,7 @@ Section Start Marker
 ***************************************************************************** */
 
 volatile uint8_t fio_signal_children_flag = 0;
-
+volatile fio_lock_i fio_signal_set_flag = 0;
 /* store old signal handlers to propegate signal handling */
 static struct sigaction fio_old_sig_chld;
 static struct sigaction fio_old_sig_pipe;
@@ -1467,7 +1468,7 @@ void fio_reap_children(void) {
   sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
   if (sigaction(SIGCHLD, &sa, &fio_old_sig_chld) == -1) {
     perror("Child reaping initialization failed");
-    kill(0, SIGTERM);
+    kill(0, SIGINT);
     exit(errno);
   }
 }
@@ -1475,7 +1476,6 @@ void fio_reap_children(void) {
 /* handles the SIGUSR1, SIGINT and SIGTERM signals. */
 static void sig_int_handler(int sig) {
   struct sigaction *old = NULL;
-  uint8_t running = fio_data->active;
   switch (sig) {
 #if !FIO_DISABLE_HOT_RESTART
   case SIGUSR1:
@@ -1483,6 +1483,7 @@ static void sig_int_handler(int sig) {
     old = &fio_old_sig_usr1;
     break;
 #endif
+    /* fallthrough */
   case SIGINT:
     if (!old)
       old = &fio_old_sig_int;
@@ -1490,8 +1491,6 @@ static void sig_int_handler(int sig) {
   case SIGTERM:
     if (!old)
       old = &fio_old_sig_term;
-    if (!running)
-      exit(SIGINT);
     fio_stop();
     break;
   case SIGPIPE:
@@ -1502,7 +1501,7 @@ static void sig_int_handler(int sig) {
     break;
   }
   /* propagate signale handling to previous existing handler (if any) */
-  if ((old->sa_handler != SIG_IGN && old->sa_handler != SIG_DFL))
+  if (old && old->sa_handler != SIG_IGN && old->sa_handler != SIG_DFL)
     old->sa_handler(sig);
 }
 
@@ -1510,7 +1509,7 @@ static void sig_int_handler(int sig) {
 static void fio_signal_handler_setup(void) {
   /* setup signal handling */
   struct sigaction act;
-  if (fio_old_sig_int.sa_handler)
+  if (fio_trylock(&fio_signal_set_flag))
     return;
 
   memset(&act, 0, sizeof(act));
@@ -1544,8 +1543,9 @@ static void fio_signal_handler_setup(void) {
 
 void fio_signal_handler_reset(void) {
   struct sigaction old;
-  if (!fio_old_sig_int.sa_handler)
+  if (fio_signal_set_flag)
     return;
+  fio_unlock(&fio_signal_set_flag);
   memset(&old, 0, sizeof(old));
   sigaction(SIGINT, &fio_old_sig_int, &old);
   sigaction(SIGTERM, &fio_old_sig_term, &old);
@@ -3789,6 +3789,8 @@ static void fio_worker_cleanup(void) {
       fio_force_close(fd2uuid(i));
     }
   }
+  fio_defer_perform();
+  fio_timer_clear_all();
   fio_defer_perform();
   fio_state_callback_force(FIO_CALL_ON_FINISH);
   fio_defer_perform();
