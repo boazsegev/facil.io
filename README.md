@@ -112,6 +112,24 @@ You can find more information on the [facil.io](http://facil.io) website
 
 ---
 
+## Semantic Version Control
+
+The facil.io library aims at implementing a semantic versioning](https://semver.org) scheme. 
+
+This means, in general that means that:
+
+- Version numbers look like this: MAJOR.MINOR.PATCH(.BETA##). i.e.: 1.0.0 => (patch) => 1.0.1 => (ABI breaking changes / significant updates) => 1.1.0 => (API breaking changes) => 2.0.0.
+
+- API / ABI shouldn't break between patch releases, API shouldn't break between minor releases (ABI might) and major releases might introduce breaking changes.
+
+- Note that minor releases might mark a behavioral change or a significant enough feature upgrade that might require a review before adoption.
+
+- Note that major releases might require significant code changes when porting an application from a previous version. Even functions with the same name might result in significantly different behavior.
+
+- During development (major version 0), API is always considered unstable, so breaking API/ABI changes will result in a minor version update. i.e., 0.7.2 => (API breaking changes) => 0.8.0.
+
+- Beta versions will have a ".beta##" at the end of their version string. i.e., 0.8.0.beta1. Beta versions should be considered experimental.
+
 ## Forking, Contributing and all that Jazz
 
 [The contribution guide can be found here](CONTRIBUTING.md).
