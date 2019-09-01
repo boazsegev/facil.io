@@ -5335,6 +5335,18 @@ HFUNC void FIO_NAME(FIO_MAP_NAME,
   n->prev = (uint32_t)-1;
 }
 
+HFUNC void FIO_NAME(FIO_MAP_NAME, __relink_node_as_root)(
+    FIO_NAME(FIO_MAP_NAME, s) * m, FIO_NAME(FIO_MAP_NAME, __map_s) * n) {
+  /* remove node form linked list */
+  (m->map + n->next)->prev = n->prev;
+  (m->map + n->prev)->next = n->next;
+  /* reinsert node to linked list, replacing th head of the list */
+  FIO_NAME(FIO_MAP_NAME, __map_s) *r = m->map + m->head; /* root */
+  n->next = m->head;
+  n->prev = r->prev;
+  m->head = r->prev = (m->map + n->prev)->next = (n - m->map);
+}
+
 SFUNC int FIO_NAME(FIO_MAP_NAME, __remap2bits)(FIO_NAME(FIO_MAP_NAME, s) * m,
                                                const uint8_t bits) {
   FIO_NAME(FIO_MAP_NAME, s)
@@ -5583,6 +5595,9 @@ SFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m_,
   if (!pos || FIO_MAP_HASH_CMP(pos->hash, FIO_MAP_HASH_INVALID) ||
       pos->next == (uint32_t)-1)
     return NULL;
+#if FIO_MAP_MAX_ELEMENTS
+  FIO_NAME(FIO_MAP_NAME, __relink_node_as_root)(m, pos);
+#endif
   return &FIO_MAP_OBJ2TYPE(pos->obj);
 }
 
@@ -5598,6 +5613,9 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m_,
   if (!pos || FIO_MAP_HASH_CMP(pos->hash, FIO_MAP_HASH_INVALID) ||
       pos->next == (uint32_t)-1)
     return FIO_MAP_TYPE_INVALID;
+#if FIO_MAP_MAX_ELEMENTS
+  FIO_NAME(FIO_MAP_NAME, __relink_node_as_root)(m, pos);
+#endif
   return FIO_MAP_OBJ2TYPE(pos->obj);
 }
 
