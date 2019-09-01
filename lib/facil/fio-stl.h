@@ -2348,7 +2348,7 @@ Here's a few resources about hashes that might explain more:
               (((uint64_t)((const uint8_t *)(c))[6]) << 8) |                   \
               (((uint8_t *)(c))[7])))
 
-#if 0
+#if 0 || FIO_RISKY_HASH_OPTIMIZER_LIKES_ARRAYS
 /*  Computes a facil.io Risky Hash. */
 SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
   const uint64_t primes[] = {
@@ -2455,7 +2455,8 @@ SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
   r ^= (r >> 29) * FIO_RISKY3_PRIME4;
   return r;
 }
-#else
+
+#else /* FIO_RISKY_HASH_OPTIMIZER_LIKES_ARRAYS */
 
 /*  Computes a facil.io Risky Hash. */
 SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
@@ -13443,8 +13444,7 @@ TEST_FUNC void fio___dynamic_types_test___small_str(void) {
   FIO_ASSERT(fio___smallstr_test_info(&s).buf == fio___smallstr_test2ptr(&s),
              "str_info.buf and str2ptr not equal");
   fio___smallstr_test_destroy(&s);
-  FIO_ASSERT(!s.aligned && !(*(uintptr_t *)s.data),
-             "data in short string after cleanup");
+  FIO_ASSERT(!s.aligned && !(*pn.pi), "data in short string after cleanup");
   {
     const char *const_str2 = "A longer string that should, hopefully, overflow "
                              "the struct and require dynamic memory allocation";
