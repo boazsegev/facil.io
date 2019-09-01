@@ -670,7 +670,7 @@ test/collisions: | create_tree
 
 .PHONY : test/ci
 test/ci:| clean cmake test/set_debug_flags test/run
-	@DEBUG=1 $(MAKE) test_build_and_run
+	@DEBUG=1 $(MAKE) test/run
 
 .PHONY : test/poll
 test/poll:
