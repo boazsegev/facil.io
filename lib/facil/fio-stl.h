@@ -1005,13 +1005,18 @@ HFUNC uint64_t fio_xmask64(uint64_t buf[], size_t array_len, uint64_t mask,
  */
 HFUNC uint64_t fio_xmask32(uint32_t buf[], size_t array_len, uint64_t mask,
                            uint64_t nonce) {
+  union {
+    uint64_t *p64;
+    uint32_t *p32;
+  } mpn;
+  mpn.p64 = &mask;
   for (size_t i = 0; i < (array_len >> 1); ++i) {
-    *(buf++) ^= ((uint32_t *)((uint8_t *)&mask))[0];
-    *(buf++) ^= ((uint32_t *)((uint8_t *)&mask))[1];
+    *(buf++) ^= mpn.p32[0];
+    *(buf++) ^= mpn.p32[1];
     mask += nonce;
   }
   if (array_len & 1)
-    *buf ^= ((uint32_t *)(&mask))[0];
+    *buf ^= m32[0];
   return mask;
 }
 
@@ -1032,19 +1037,32 @@ HFUNC uint64_t fio_xmask(char *buf, size_t len, uint64_t mask, uint64_t nonce) {
     case 4:
       /* XOR 32bit aligned bytes */
       if (1) {
-        uint32_t *b32 = (uint32_t *)buf;
-        mask = fio_xmask32(b32, (len64 << 1), mask, nonce);
+        union {
+          char *pc;
+          uint32_t *p32;
+        } pn;
+        pn.pc = buf;
+        mask = fio_xmask32(pn.p32, (len64 << 1), mask, nonce);
       }
       break;
     case 6: /* fallthrough */
     case 2:
       /* XOR 16bit aligned bytes */
       for (size_t i = 0; i < len64; ++i) {
-        uint16_t *b16 = (uint16_t *)buf;
-        b16[(i << 2)] ^= ((uint16_t *)(uint8_t *)&mask)[0];
-        b16[(i << 2) | 1] ^= ((uint16_t *)(uint8_t *)&mask)[1];
-        b16[(i << 2) | 2] ^= ((uint16_t *)(uint8_t *)&mask)[2];
-        b16[(i << 2) | 3] ^= ((uint16_t *)(uint8_t *)&mask)[3];
+        union {
+          char *pc;
+          uint16_t *p16;
+        } pn;
+        union {
+          uint64_t *p64;
+          uint16_t *p16;
+        } mpn;
+        pn.pc = buf;
+        mpn.p64 = &mask;
+        pn.p16[(i << 2)] ^= mpn.p16[0];
+        pn.p16[(i << 2) | 1] ^= mpn.p16[1];
+        pn.p16[(i << 2) | 2] ^= mpn.p16[2];
+        pn.p16[(i << 2) | 3] ^= mpn.p16[3];
         mask += nonce;
       }
       break;
@@ -8286,9 +8304,17 @@ IFUNC int FIO_NAME_BL(FIO_SMALL_STR_NAME, eq)(const FIO_SMALL_STR_PTR str1_,
     return 1;
   if (!str1 || !str2)
     return 0;
-  if (((uintptr_t *)str1->data)[0] == ((uintptr_t *)str2->data)[0] &&
-      ((uintptr_t *)str1->data)[1] == ((uintptr_t *)str2->data)[1])
-    return 1;
+  {
+    union {
+      FIO_NAME(FIO_SMALL_STR_NAME, s) * str;
+      uintptr_t *i;
+    } punned_str1, punned_str2;
+    punned_str1.str = str1;
+    punned_str2.str = str2;
+    if (punned_str1.i[0] == punned_str2.i[0] &&
+        punned_str1.i[1] == punned_str2.i[1])
+      return 1;
+  }
   if (FIO_SMALL_STR_IS_SMALL(str1))
     return 0;
   /* big strings */
