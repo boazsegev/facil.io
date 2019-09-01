@@ -1962,7 +1962,7 @@ void http_write_log(http_s *h_) {
   HTTP___WRITE_STATIC2LOG(" ", 1);
   HTTP___WRITE_FIOBJ2LOG(h->public.version);
   HTTP___WRITE_STATIC2LOG("\" ", 2);
-  if (h->public.status >= 0 && h->public.status < 1000 && i.len + 3 < i.capa) {
+  if (h->public.status < 1000 && i.len + 3 < i.capa) {
     i.len += fio_ltoa(i.buf + i.len, h->public.status, 10);
   }
   if (h->bytes_sent > 0) {
