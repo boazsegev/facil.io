@@ -1016,7 +1016,7 @@ HFUNC uint64_t fio_xmask32(uint32_t buf[], size_t array_len, uint64_t mask,
     mask += nonce;
   }
   if (array_len & 1)
-    *buf ^= m32[0];
+    *buf ^= mpn.p32[0];
   return mask;
 }
 
