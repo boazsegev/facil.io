@@ -13,7 +13,7 @@
 
 <ul>
 <li><p><a href="changelog">Change Log</a></p></li>
-<li><p><strong>Latest (stable)</strong>: 0.7.0</p></li>
+<li><p><strong>Latest (stable)</strong>: 0.7.2</p></li>
 <li><p><strong>Legacy</strong>: 0.6.4</p></li>
 </ul>
 </nav><div id="md_container"><div class='toc'><ul>
@@ -22,6 +22,15 @@
 <ul>
 <li>
 <ul>
+<li>
+<a href="#v-0-7-3">v. 0.7.3</a>
+</li>
+<li>
+<a href="#v-0-7-2">v. 0.7.2</a>
+</li>
+<li>
+<a href="#v-0-7-1">v. 0.7.1</a>
+</li>
 <li>
 <a href="#v-0-7-0">v. 0.7.0</a>
 </li>
@@ -264,6 +273,28 @@
 </li>
 </ul>
 </div><h1 id="change-log">Change Log</h1>
+
+<h3 id="v-0-7-3">v. 0.7.3</h3>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fixes an issue where timer cleanup wasn&#39;t performed after <code>fio_stop</code> (or SIGINT/SIGTERM). No a &quot;clean slate&quot; will be provided if <code>fio_start</code> is called more then once. Note: this may <strong>break previous behavior</strong>, which should be considered undocumented and unexpected behavior. (this fax <strong>may</strong> be deferred to version 0.8.x, still undecided). Credit to @fbrausse for opening issue #72. </p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fixes an issue where timer cleanup would be performed after the <code>AT_EXIT</code> state callbacks. Now the timer cleanup callbacks will be performed <strong>before</strong> the <code>AT_EXIT</code> callback (as they should). (See issue #72).</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fixes an issue where timer cleanup would be performed after the <code>AT_EXIT</code> state callbacks. Now the timer cleanup callbacks will be performed <strong>before</strong> the <code>AT_EXIT</code> callback (as they should). (See issue #72).</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fixes signal handler (re)establishment test to prevent recursive signal calling.</p>
+
+<h3 id="v-0-7-2">v. 0.7.2</h3>
+
+<p><strong>Fix</strong>: (<code>fio_tls</code>) fixes a memory leak in the trusted certificate chain. Credit to @fbrausse for opening PR #71.</p>
+
+<p><strong>Fix</strong>: (<code>fio_tls</code>) fixes compilation / linking flags (including a bug caused by the <code>gcc</code> optimizer <code>-fipa-icf</code>) and improves support for OpenSSL using <code>pkg-config</code>. Credit to @fbrausse for PR #71.</p>
+
+<p><strong>Fix</strong>: (<code>http1</code>) fixes a race-condition between the <code>on_ready</code> and <code>on_data</code> events, that could result in the <code>on_data</code> event being called twice instead of once (only possible with some clients). On multi-threaded workers, this could result in the CPU spinning while the task lock remains busy. Credit to Néstor Coppi (@Shelvak) for exposing the issue and providing an example application with detailed reports. Issue #75.</p>
+
+<h3 id="v-0-7-1">v. 0.7.1</h3>
+
+<p><strong>Security</strong>: a heap-overflow vulnerability was fixed in the WebSocket parser, which could have been triggered by a maliciously crafted message-header. Credit to Dane (4cad@silvertoque) for exposing this issue and providing a Python script demonstrating the attack. </p>
 
 <h3 id="v-0-7-0">v. 0.7.0</h3>
 

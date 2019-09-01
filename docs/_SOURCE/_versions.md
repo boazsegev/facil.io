@@ -12,8 +12,7 @@ Review the [change-log](changelog) when migrating between versions.
 
 * [Change Log](changelog)
 
-* **Latest (stable)**: 0.7.0
+* **Latest (stable)**: 0.7.2
 
 * **Legacy**: 0.6.4
-
 
