@@ -1031,16 +1031,20 @@ HFUNC uint64_t fio_xmask(char *buf, size_t len, uint64_t mask, uint64_t nonce) {
       break;
     case 4:
       /* XOR 32bit aligned bytes */
-      mask = fio_xmask32((uint32_t *)buf, (len64 << 1), mask, nonce);
+      if (1) {
+        uint32_t *b32 = (uint32_t *)buf;
+        mask = fio_xmask32(b32, (len64 << 1), mask, nonce);
+      }
       break;
     case 6: /* fallthrough */
     case 2:
       /* XOR 16bit aligned bytes */
       for (size_t i = 0; i < len64; ++i) {
-        ((uint16_t *)buf)[(i << 2)] ^= ((uint16_t *)(uint8_t *)&mask)[0];
-        ((uint16_t *)buf)[(i << 2) | 1] ^= ((uint16_t *)(uint8_t *)&mask)[1];
-        ((uint16_t *)buf)[(i << 2) | 2] ^= ((uint16_t *)(uint8_t *)&mask)[2];
-        ((uint16_t *)buf)[(i << 2) | 3] ^= ((uint16_t *)(uint8_t *)&mask)[3];
+        uint16_t *b16 = (uint16_t *)buf;
+        b16[(i << 2)] ^= ((uint16_t *)(uint8_t *)&mask)[0];
+        b16[(i << 2) | 1] ^= ((uint16_t *)(uint8_t *)&mask)[1];
+        b16[(i << 2) | 2] ^= ((uint16_t *)(uint8_t *)&mask)[2];
+        b16[(i << 2) | 3] ^= ((uint16_t *)(uint8_t *)&mask)[3];
         mask += nonce;
       }
       break;
@@ -2535,11 +2539,10 @@ SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
 }
 #endif
 
-    /**
-     * Masks data using a Risky Hash and a counter mode nonce.
-     */
-    IFUNC void
-    fio_risky_mask(char *buf, size_t len, uint64_t key, uint64_t nonce) {
+/**
+ * Masks data using a Risky Hash and a counter mode nonce.
+ */
+IFUNC void fio_risky_mask(char *buf, size_t len, uint64_t key, uint64_t nonce) {
   if (!nonce) /* nonce can't be zero */
     nonce = (uint64_t)0xDB1DD478B9E93B1;
   uint64_t hash = fio_risky_hash(&key, sizeof(key), nonce);
