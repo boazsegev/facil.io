@@ -1006,8 +1006,8 @@ HFUNC uint64_t fio_xmask64(uint64_t buf[], size_t array_len, uint64_t mask,
 HFUNC uint64_t fio_xmask32(uint32_t buf[], size_t array_len, uint64_t mask,
                            uint64_t nonce) {
   for (size_t i = 0; i < (array_len >> 1); ++i) {
-    *(buf++) ^= ((uint32_t *)(&mask))[0];
-    *(buf++) ^= ((uint32_t *)(&mask))[1];
+    *(buf++) ^= ((uint32_t *)((uint8_t *)&mask))[0];
+    *(buf++) ^= ((uint32_t *)((uint8_t *)&mask))[1];
     mask += nonce;
   }
   if (array_len & 1)
@@ -1037,10 +1037,10 @@ HFUNC uint64_t fio_xmask(char *buf, size_t len, uint64_t mask, uint64_t nonce) {
     case 2:
       /* XOR 16bit aligned bytes */
       for (size_t i = 0; i < len64; ++i) {
-        ((uint16_t *)buf)[(i << 2)] ^= ((uint16_t *)&mask)[0];
-        ((uint16_t *)buf)[(i << 2) | 1] ^= ((uint16_t *)&mask)[1];
-        ((uint16_t *)buf)[(i << 2) | 2] ^= ((uint16_t *)&mask)[2];
-        ((uint16_t *)buf)[(i << 2) | 3] ^= ((uint16_t *)&mask)[3];
+        ((uint16_t *)buf)[(i << 2)] ^= ((uint16_t *)(uint8_t *)&mask)[0];
+        ((uint16_t *)buf)[(i << 2) | 1] ^= ((uint16_t *)(uint8_t *)&mask)[1];
+        ((uint16_t *)buf)[(i << 2) | 2] ^= ((uint16_t *)(uint8_t *)&mask)[2];
+        ((uint16_t *)buf)[(i << 2) | 3] ^= ((uint16_t *)(uint8_t *)&mask)[3];
         mask += nonce;
       }
       break;
@@ -2325,6 +2325,8 @@ Here's a few resources about hashes that might explain more:
               (((uint64_t)((const uint8_t *)(c))[5]) << 16) |                  \
               (((uint64_t)((const uint8_t *)(c))[6]) << 8) |                   \
               (((uint8_t *)(c))[7])))
+
+#if 0
 /*  Computes a facil.io Risky Hash. */
 SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
   const uint64_t primes[] = {
@@ -2333,7 +2335,7 @@ SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
       FIO_RISKY3_PRIME2,
       FIO_RISKY3_PRIME3,
   };
-  register uint64_t v[] = {
+  uint64_t v[] = {
       FIO_RISKY3_IV0,
       FIO_RISKY3_IV1,
       FIO_RISKY3_IV2,
@@ -2431,11 +2433,113 @@ SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
   r ^= (r >> 29) * FIO_RISKY3_PRIME4;
   return r;
 }
+#else
 
-/**
- * Masks data using a Risky Hash and a counter mode nonce.
- */
-IFUNC void fio_risky_mask(char *buf, size_t len, uint64_t key, uint64_t nonce) {
+/*  Computes a facil.io Risky Hash. */
+SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
+  uint64_t v0 = FIO_RISKY3_IV0;
+  uint64_t v1 = FIO_RISKY3_IV1;
+  uint64_t v2 = FIO_RISKY3_IV2;
+  uint64_t v3 = FIO_RISKY3_IV3;
+  const uint8_t *data = (const uint8_t *)data_;
+
+#define FIO_RISKY3_ROUND64(vi, w)                                              \
+  v##vi += w;                                                                  \
+  v##vi = fio_lrot64(v##vi, 29);                                               \
+  v##vi += w;                                                                  \
+  v##vi *= FIO_RISKY3_PRIME##vi;
+
+#define FIO_RISKY3_ROUND256(w0, w1, w2, w3)                                    \
+  FIO_RISKY3_ROUND64(0, w0);                                                   \
+  FIO_RISKY3_ROUND64(1, w1);                                                   \
+  FIO_RISKY3_ROUND64(2, w2);                                                   \
+  FIO_RISKY3_ROUND64(3, w3);
+
+  if (seed) {
+    /* process the seed as if it was a prepended 8 Byte string. */
+    v0 *= seed;
+    v1 *= seed;
+    v2 *= seed;
+    v3 *= seed;
+    v1 ^= seed;
+    v2 ^= seed;
+    v3 ^= seed;
+  }
+
+  for (size_t i = len >> 5; i; --i) {
+    /* vectorized 32 bytes / 256 bit access */
+    FIO_RISKY3_ROUND256(fio_buf2u64(data), fio_buf2u64(data + 8),
+                        fio_buf2u64(data + 16), fio_buf2u64(data + 24));
+    data += 32;
+  }
+  switch (len & 24) {
+  case 24:
+    FIO_RISKY3_ROUND64(2, fio_buf2u64(data + 16));
+    /* fallthrough */
+  case 16:
+    FIO_RISKY3_ROUND64(1, fio_buf2u64(data + 8));
+    /* fallthrough */
+  case 8:
+    FIO_RISKY3_ROUND64(0, fio_buf2u64(data + 0));
+    data += len & 24;
+  }
+
+  uint64_t tmp = (len & 0xFF); /* add offset intformation to padding */
+  /* leftover bytes */
+  switch ((len & 7)) {
+  case 7:
+    tmp |= ((uint64_t)data[6]) << 8; /* fallthrough */
+  case 6:
+    tmp |= ((uint64_t)data[5]) << 16; /* fallthrough */
+  case 5:
+    tmp |= ((uint64_t)data[4]) << 24; /* fallthrough */
+  case 4:
+    tmp |= ((uint64_t)data[3]) << 32; /* fallthrough */
+  case 3:
+    tmp |= ((uint64_t)data[2]) << 40; /* fallthrough */
+  case 2:
+    tmp |= ((uint64_t)data[1]) << 48; /* fallthrough */
+  case 1:
+    tmp |= ((uint64_t)data[0]) << 56;
+    /* the last (now padded) byte's position */
+    switch ((len & 24)) {
+    case 24: /* offset 24 in 32 byte segment */
+      FIO_RISKY3_ROUND64(3, tmp);
+      break;
+    case 16: /* offset 16 in 32 byte segment */
+      FIO_RISKY3_ROUND64(2, tmp);
+      break;
+    case 8: /* offset 8 in 32 byte segment */
+      FIO_RISKY3_ROUND64(1, tmp);
+      break;
+    case 0: /* offset 0 in 32 byte segment */
+      FIO_RISKY3_ROUND64(0, tmp);
+      break;
+    }
+  }
+
+  /* irreversible avalanche... I think */
+  uint64_t r = (len)*0x0000001000000001ULL;
+  r += fio_lrot64(v0, 17) + fio_lrot64(v1, 13) + fio_lrot64(v2, 47) +
+       fio_lrot64(v3, 57);
+  r += v0 ^ v1;
+  r ^= fio_lrot64(r, 13);
+  r += v1 ^ v2;
+  r ^= fio_lrot64(r, 29);
+  r += v2 ^ v3;
+  r += fio_lrot64(r, 33);
+  r += v3 ^ v0;
+  r ^= fio_lrot64(r, 51);
+  r ^= (r >> 29) * FIO_RISKY3_PRIME4;
+  return r;
+}
+#endif
+
+    /**
+     * Masks data using a Risky Hash and a counter mode nonce.
+     */
+    IFUNC void
+    fio_risky_mask(char *buf, size_t len, uint64_t key, uint64_t nonce) {
   if (!nonce) /* nonce can't be zero */
     nonce = (uint64_t)0xDB1DD478B9E93B1;
   uint64_t hash = fio_risky_hash(&key, sizeof(key), nonce);
@@ -4867,9 +4971,9 @@ Hash Map / Set - type and hash macros
 
 #ifndef FIO_MAP_HASH_OFFSET
 /** Handles a copy operation for an array's element. */
-// #define FIO_MAP_HASH_OFFSET(hash, offset)                                      \
-//   ((((hash) << ((offset) & ((sizeof((hash)) << 3) - 1))) |                     \
-//     ((hash) >> ((-(offset)) & ((sizeof((hash)) << 3) - 1)))) ^                 \
+// #define FIO_MAP_HASH_OFFSET(hash, offset)
+//   ((((hash) << ((offset) & ((sizeof((hash)) << 3) - 1))) |
+//     ((hash) >> ((-(offset)) & ((sizeof((hash)) << 3) - 1)))) ^
 //    (hash))
 
 #define FIO_MAP_HASH_OFFSET(hash, offset)                                      \
