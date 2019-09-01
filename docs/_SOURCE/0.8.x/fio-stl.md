@@ -80,13 +80,19 @@ The facil.io C STL library follows [semantic versioning](https://semver.org) and
 
 Translates to the STL's major version number.
 
+MAJOR version upgrades require a code review and possibly significant changes. Even functions with the same name might change their behavior.
+
 #### `FIO_VERSION_MINOR`
 
 Translates to the STL's minor version number.
 
+Please review your code before adopting a MINOR version upgrade.
+
 #### `FIO_VERSION_PATCH`
 
 Translates to the STL's patch version number.
+
+PATCH versions should be adopted as soon as possible (they contain bug fixes).
 
 #### `FIO_VERSION_BETA`
 

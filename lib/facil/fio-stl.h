@@ -176,18 +176,23 @@ The facil.io C STL library follows [semantic versioning](https://semver.org) and
 supports macros that will help detect and validate it's version.
 ***************************************************************************** */
 
+/** MAJOR version: API/ABI breaking changes. */
 #define FIO_VERSION_MAJOR 0
+/** MINOR version: Deprecation, or significant features added. May break ABI. */
 #define FIO_VERSION_MINOR 8
+/** PATCH version: Bug fixes, minor features may be added. */
 #define FIO_VERSION_PATCH 0
+/** BETA version: pre-version development marker. Nothing is stable. */
 #define FIO_VERSION_BETA 1
 
-/** set FIO_VERSION_STRING - version as a String literal */
 #if FIO_VERSION_BETA
+/** Version as a String literal (MACRO). */
 #define FIO_VERSION_STRING                                                     \
   FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
   "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(                      \
       FIO_VERSION_PATCH) ".beta" FIO_MACRO2STR(FIO_VERSION_BETA)
 #else
+/** Version as a String literal (MACRO). */
 #define FIO_VERSION_STRING                                                     \
   FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
   "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(FIO_VERSION_PATCH)
@@ -211,6 +216,10 @@ char *fio_version_string();
                  fio_version_beta() == FIO_VERSION_BETA,                       \
              "facil.io version mismatch, not %s", fio_version_string())
 
+/**
+ * To implement the fio_version_* functions and FIO_VERSION_VALIDATE guard, the
+ * `FIO_VERSION_GUARD` must be defined (only) once per application / library.
+ */
 #ifdef FIO_VERSION_GUARD
 size_t __attribute__((weak)) fio_version_major() { return FIO_VERSION_MAJOR; }
 size_t __attribute__((weak)) fio_version_minor() { return FIO_VERSION_MINOR; }

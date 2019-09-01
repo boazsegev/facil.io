@@ -71,7 +71,7 @@ static inline FIOBJ get_date___(void) {
   return date;
 }
 static inline void add_date(http_internal_s *h) {
-  FIOBJ date = get_date___();
+  FIOBJ date = get_date___(); /* no fiobj_dup, since it's a static tmp var. */
   set_header_if_missing(h->headers_out, HTTP_HEADER_DATE, date);
   set_header_if_missing(h->headers_out, HTTP_HEADER_LAST_MODIFIED, date);
 }
@@ -854,6 +854,7 @@ void *http_paused_udata_set(http_pause_handle_s *http, void *udata) {
 HTTP Connections - Listening / Connecting / Hijacking
 ***************************************************************************** */
 
+intptr_t http_listen___(void); /* SublimeText Marker */
 /**
  * Listens to HTTP connections at the specified `port`.
  *
@@ -866,6 +867,7 @@ HTTP Connections - Listening / Connecting / Hijacking
 intptr_t http_listen FIO_NOOP(const char *port, const char *binding,
                               struct http_settings_s);
 
+intptr_t http_connect___(void); /* SublimeText Marker */
 /**
  * Connects to an HTTP server as a client.
  *
@@ -948,6 +950,8 @@ intptr_t http_hijack(http_s *h_, fio_str_info_s *leftover) {
 Websocket Upgrade (Server and Client connection establishment)
 ***************************************************************************** */
 
+void http_upgrade2ws___(void); /* SublimeText Marker */
+
 /**
  * Upgrades an HTTP/1.1 connection to a Websocket connection.
  *
@@ -961,6 +965,8 @@ Websocket Upgrade (Server and Client connection establishment)
  * stage has finished).
  */
 int http_upgrade2ws FIO_NOOP(http_s *http, websocket_settings_s);
+
+void websocket_connect___(void); /* SublimeText Marker */
 
 /**
  * Connects to a Websocket service according to the provided address.
@@ -980,6 +986,7 @@ int websocket_connect FIO_NOOP(const char *url, websocket_settings_s settings);
 EventSource Support (SSE)
 ***************************************************************************** */
 
+void http_upgrade2sse___(void); /* SublimeText Marker */
 /**
  * Upgrades an HTTP connection to an EventSource (SSE) connection.
  *
@@ -995,6 +1002,7 @@ int http_upgrade2sse FIO_NOOP(http_s *h, http_sse_s);
  */
 void http_sse_set_timout(http_sse_s *sse, uint8_t timeout);
 
+void http_sse_subscribe___(void); /* SublimeText Marker */
 /**
  * Subscribes to a channel for direct message deliverance. See {struct
  * http_sse_subscribe_args} for possible arguments.
@@ -1020,6 +1028,8 @@ void http_sse_unsubscribe(http_sse_s *sse, uintptr_t subscription);
 //   fio_str_info_s data;
 //   intptr_t retry;
 // };
+
+void http_sse_write___(void); /* SublimeText Marker */
 
 /**
  * Writes data to an EventSource (SSE) connection.
@@ -1059,8 +1069,8 @@ static inline FIOBJ http_urlstr2fiobj(char *s, size_t len) {
   FIOBJ o = fiobj_str_new_buf(len);
   ssize_t l = http_decode_url(fiobj_str2cstr(o).buf, s, len);
   if (l < 0) {
-    fiobj_free(o);
-    return fiobj_str_new(); /* empty string */
+    fiobj_str_destroy(o);
+    return o; /* empty string */
   }
   fiobj_str_resize(o, (size_t)l);
   return o;

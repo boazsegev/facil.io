@@ -86,6 +86,26 @@ i.e., download the latest development (edge) version from the `master` branch:
 FIO_BRANCH=master bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app) appname
 ```
 
+## Semantic Version Control
+
+The facil.io library aims at implementing a semantic versioning](https://semver.org) scheme. 
+
+This means, in general that means that:
+
+- Version numbers look like this: MAJOR.MINOR.PATCH(.BETA##). i.e.: 1.0.0 => (patch) => 1.0.1 => (significant updates, may brake ABI) => 1.1.0 => (API breaking changes) => 2.0.0.
+
+- API / ABI shouldn't break between PATCH releases, API shouldn't break between MINOR releases (ABI might, but shouldn't) and MAJOR releases will introduce breaking changes.
+
+- Note that PATCH releases should always be adopted (the contain bug fixes).
+
+- Note that MINOR releases might mark a behavioral change or a significant enough feature upgrade that might require a review before adoption.
+
+- Note that MAJOR releases might require significant code changes when porting an application from a previous version. Even functions with the same name might result in significantly different behavior.
+
+- During development (major version 0), API/ABI is always considered unstable, so breaking API/ABI changes will result in a MINOR version update. i.e., 0.7.2 => (API breaking changes) => 0.8.0.
+
+- Beta versions will have a ".beta##" at the end of their version string. i.e., 0.8.0.beta1. Beta versions should be considered experimental.
+
 ---
 
 ## Forking, Contributing and all that Jazz
