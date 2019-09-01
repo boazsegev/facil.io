@@ -40,6 +40,16 @@ I though about it as a small STL, much like C++ has, only for C, and moved the b
 
 - Risky Hash algorithm was updated.
 
+### v. 0.7.3
+
+**Fix**: (`fio`) fixes an issue where timer cleanup wasn't performed after `fio_stop` (or SIGINT/SIGTERM). No a "clean slate" will be provided if `fio_start` is called more then once. Note: this may **break previous behavior**, which should be considered undocumented and unexpected behavior. (this fax **may** be deferred to version 0.8.x, still undecided). Credit to @fbrausse for opening issue #72. 
+
+**Fix**: (`fio`) fixes an issue where timer cleanup would be performed after the `AT_EXIT` state callbacks. Now the timer cleanup callbacks will be performed **before** the `AT_EXIT` callback (as they should). (See issue #72).
+
+**Fix**: (`fio`) fixes an issue where timer cleanup would be performed after the `AT_EXIT` state callbacks. Now the timer cleanup callbacks will be performed **before** the `AT_EXIT` callback (as they should). (See issue #72).
+
+**Fix**: (`fio`) fixes signal handler (re)establishment test to prevent recursive signal calling.
+
 ### v. 0.7.2
 
 **Fix**: (`fio_tls`) fixes a memory leak in the trusted certificate chain. Credit to @fbrausse for opening PR #71.
