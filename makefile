@@ -247,25 +247,25 @@ int main(void) {\\n\
 # Test for manual selection and then TRY_COMPILE with each polling engine
 ifdef FIO_POLL
   $(info * Skipping polling tests, enforcing manual selection of: poll)
-	FLAGS:=$(FLAGS) FIO_ENGINE_POLL
+	FLAGS+=FIO_ENGINE_POLL
 else ifdef FIO_FORCE_POLL
   $(info * Skipping polling tests, enforcing manual selection of: poll)
-	FLAGS:=$(FLAGS) FIO_ENGINE_POLL
+	FLAGS+=FIO_ENGINE_POLL
 else ifdef FIO_FORCE_EPOLL
   $(info * Skipping polling tests, enforcing manual selection of: epoll)
-	FLAGS:=$(FLAGS) FIO_ENGINE_EPOLL
+	FLAGS+=FIO_ENGINE_EPOLL
 else ifdef FIO_FORCE_KQUEUE
   $(info * Skipping polling tests, enforcing manual selection of: kqueue)
-	FLAGS:=$(FLAGS) FIO_ENGINE_KQUEUE
+	FLAGS+=FIO_ENGINE_KQUEUE
 else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_EPOLL), $(EMPTY)), 0)
   $(info * Detected `epoll`)
-	FLAGS:=$(FLAGS) FIO_ENGINE_EPOLL
+	FLAGS+=FIO_ENGINE_EPOLL
 else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_KQUEUE), $(EMPTY)), 0)
   $(info * Detected `kqueue`)
-	FLAGS:=$(FLAGS) FIO_ENGINE_KQUEUE
+	FLAGS+=FIO_ENGINE_KQUEUE
 else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_POLL), $(EMPTY)), 0)
   $(info * Detected `poll` - this is suboptimal fallback!)
-	FLAGS:=$(FLAGS) FIO_ENGINE_POLL
+	FLAGS+=FIO_ENGINE_POLL
 else
 	$(warning No supported polling engine! won't be able to compile facil.io)
 endif
@@ -673,12 +673,8 @@ test/ci:| clean cmake test/set_debug_flags test/run
 	@DEBUG=1 $(MAKE) test_build_and_run
 
 .PHONY : test/poll
-test/poll:| test/set_poll_flag test
-
-.PHONY : test/set_poll_flag
-test/set_poll_flag:| clean
-	$(eval CFLAGS+=-DFIO_ENGINE_POLL=1)
-
+test/poll:
+	@DEBUG=1 FIO_POLL=1 $(MAKE) test
 
 endif
 
