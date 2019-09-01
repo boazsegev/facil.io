@@ -13397,6 +13397,11 @@ Small (non-dynamic) String test
 
 TEST_FUNC void fio___dynamic_types_test___small_str(void) {
   fio___smallstr_test_s s;
+  union {
+    fio___smallstr_test_s *ps;
+    uintptr_t *pi;
+  } pn;
+  ps = &s;
   fprintf(stderr, "* Testing small (non-dynamic) string type\n");
   fio___smallstr_test_set_const(&s, "short", 5);
   FIO_ASSERT(fio___smallstr_test_len(&s) == 5,
@@ -13405,8 +13410,7 @@ TEST_FUNC void fio___dynamic_types_test___small_str(void) {
                  fio___smallstr_test2ptr(&s) < (char *)(&s + 1),
              "Short const string not copied");
   fio___smallstr_test_destroy(&s);
-  FIO_ASSERT(!s.aligned && !(*(uintptr_t *)s.data),
-             "data in short string after cleanup");
+  FIO_ASSERT(!s.aligned && !(*pn.pi), "data in short string after cleanup");
   fio___smallstr_test_set_copy(&s, "short", 5);
   FIO_ASSERT(fio___smallstr_test_len(&s) == 5,
              "short string (copy) length error");
@@ -13414,8 +13418,7 @@ TEST_FUNC void fio___dynamic_types_test___small_str(void) {
                  fio___smallstr_test2ptr(&s) < (char *)(&s + 1),
              "Short string not copied");
   fio___smallstr_test_destroy(&s);
-  FIO_ASSERT(!s.aligned && !(*(uintptr_t *)s.data),
-             "data in short string after cleanup");
+  FIO_ASSERT(!s.aligned && !(*pn.pi), "data in short string after cleanup");
   const char *const_str = "a longer string that should, hopefully, overflow "
                           "the struct and require dynamic memory allocation";
   fio___smallstr_test_set_const(&s, const_str, 97);
@@ -13424,8 +13427,7 @@ TEST_FUNC void fio___dynamic_types_test___small_str(void) {
   FIO_ASSERT(fio___smallstr_test2ptr(&s) == const_str,
              "const string allocated?");
   fio___smallstr_test_destroy(&s);
-  FIO_ASSERT(!s.aligned && !(*(uintptr_t *)s.data),
-             "data in short string after cleanup");
+  FIO_ASSERT(!s.aligned && !(*pn.pi), "data in short string after cleanup");
   fio___smallstr_test_set_copy(
       &s,
       "a longer string that should, hopefully, overflow the struct and require "
