@@ -3512,11 +3512,12 @@ static void __attribute__((destructor)) fio_lib_destroy(void) {
   fio_data->active = 0;
   fio_on_fork();
   fio_defer_perform();
-  fio_state_callback_force(FIO_CALL_AT_EXIT);
-  fio_state_callback_clear_all();
-  fio_defer_perform();
-  fio_poll_close();
   fio_timer_clear_all();
+  fio_defer_perform();
+  fio_state_callback_force(FIO_CALL_AT_EXIT);
+  fio_defer_perform();
+  fio_state_callback_clear_all();
+  fio_poll_close();
   fio_free(fio_data);
   /* memory library destruction must be last */
   FIO_LOG_DEBUG("(%d) facil.io resources released, exit complete.",

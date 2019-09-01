@@ -171,6 +171,9 @@ Macro Stringifier
 
 /* *****************************************************************************
 Version Macros
+
+The facil.io C STL library follows [semantic versioning](https://semver.org) and
+supports macros that will help detect and validate it's version.
 ***************************************************************************** */
 
 #define FIO_VERSION_MAJOR 0

@@ -74,10 +74,10 @@ By default, this script downloads the latest release, which may or may not be wh
 
 It's possible to download a specific release or branch, (for example, a specific 0.7.x release) using `FIO_RELEASE` or `FIO_BRANCH`.
 
-i.e., download a specific release, such as version 0.7.0:
+i.e., download a specific release, such as version 0.7.2:
 
 ```bash
-FIO_RELEASE=0.7.0 bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app) appname
+FIO_RELEASE=0.7.2 bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app) appname
 ```
 
 i.e., download the latest development (edge) version from the `master` branch:
