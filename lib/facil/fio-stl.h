@@ -13401,7 +13401,7 @@ TEST_FUNC void fio___dynamic_types_test___small_str(void) {
     fio___smallstr_test_s *ps;
     uintptr_t *pi;
   } pn;
-  ps = &s;
+  pn.ps = &s;
   fprintf(stderr, "* Testing small (non-dynamic) string type\n");
   fio___smallstr_test_set_const(&s, "short", 5);
   FIO_ASSERT(fio___smallstr_test_len(&s) == 5,
