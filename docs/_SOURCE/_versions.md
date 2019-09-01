@@ -14,7 +14,9 @@ Review the [change-log](changelog) when migrating between versions.
 
 * [Change Log](changelog)
 
-* **Latest (stable)**: 0.7.0
+* **Edge**: 0.8.0.beta1
+
+* **Latest (stable)**: 0.7.2
 
 * **Legacy**: 0.6.4
 
