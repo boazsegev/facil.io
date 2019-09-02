@@ -5960,6 +5960,9 @@ HSFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
  * For sets, returns the hash value, for hash maps, returns the key value.
  */
 SFUNC FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
+  if (!FIO_NAME(FIO_MAP_NAME, __each_map) ||
+      !FIO_NAME(FIO_MAP_NAME, __each_map)->map)
+    return FIO_MAP_HASH_INVALID;
   return FIO_NAME(FIO_MAP_NAME, __each_map)
       ->map[FIO_NAME(FIO_MAP_NAME, __each_pos)]
       .hash;
@@ -5985,9 +5988,12 @@ IFUNC uint32_t FIO_NAME(FIO_MAP_NAME,
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   FIO_NAME(FIO_MAP_NAME, s) *old_map = FIO_NAME(FIO_MAP_NAME, __each_map);
-  if (start_at < 0)
+  if (start_at < 0) {
     start_at = m->count + start_at;
-  if (start_at < 0 || (uint32_t)start_at >= m->count)
+    if (start_at < 0)
+      start_at = 0;
+  }
+  if ((uint32_t)start_at >= m->count)
     return m->count;
   uint32_t old_pos = FIO_NAME(FIO_MAP_NAME, __each_pos);
   uint32_t count = 0;
@@ -6549,7 +6555,7 @@ SFUNC char *FIO_NAME(FIO_STRING_NAME, detach)(FIO_STRING_PTR s_) {
       (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
   char *data = NULL;
   if (FIO_STRING_IS_SMALL(s)) {
-    if (FIO_STRING_SMALL_LEN(s)) {
+    if (FIO_STRING_SMALL_LEN(s)) { /* keep these ifs apart */
       data =
           (char *)FIO_MEM_CALLOC_(sizeof(*data), (FIO_STRING_SMALL_LEN(s) + 1));
       if (!data)
@@ -12779,6 +12785,9 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
       FIO_T_ASSERT(set_____test_get(&m, HASHOFi(i), i + 1) == i + 1,
                    "item retrival error in set - insert failed to update?");
+      FIO_T_ASSERT(set_____test_get_ptr(&m, HASHOFi(i), i + 1) &&
+                       set_____test_get_ptr(&m, HASHOFi(i), i + 1)[0] == i + 1,
+                   "pointer retrival error in set.");
     }
 
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
@@ -12911,6 +12920,10 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
       FIO_T_ASSERT(map_____test_get(m, HASHOFs(buffer + 1), buffer + 1) ==
                        i + 1,
                    "item retrival error in map.");
+      FIO_T_ASSERT(map_____test_get_ptr(m, HASHOFs(buffer + 1), buffer + 1) &&
+                       map_____test_get_ptr(m, HASHOFs(buffer + 1),
+                                            buffer + 1)[0] == i + 1,
+                   "pointer retrival error in map.");
     }
     {
       FIO_T_ASSERT(map_____test_last(m) == TEST_REPEAT,
