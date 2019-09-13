@@ -898,6 +898,45 @@ HFUNC uint64_t fio_rrot64(uint64_t i, uint8_t bits) {
 Unaligned memory read / write operations
 ***************************************************************************** */
 
+#if __has_builtin(__builtin_memcpy)
+/** Converts an unaligned network ordered byte stream to a 16 bit number. */
+HFUNC uint16_t FIO_NAME2(fio_buf, u16)(const void *c) { /* fio_buf2u16 */
+  uint16_t tmp;
+  __builtin_memcpy(&tmp, c, sizeof(tmp));
+  return tmp;
+}
+
+/** Converts an unaligned network ordered byte stream to a 32 bit number. */
+HFUNC uint32_t FIO_NAME2(fio_buf, u32)(const void *c) { /* fio_buf2u32 */
+  uint32_t tmp;
+  __builtin_memcpy(&tmp, c, sizeof(tmp));
+  return tmp;
+}
+
+/** Converts an unaligned network ordered byte stream to a 64 bit number. */
+HFUNC uint64_t FIO_NAME2(fio_buf, u64)(const void *c) { /* fio_buf2u64 */
+  uint64_t tmp;
+  __builtin_memcpy(&tmp, c, sizeof(tmp));
+  return tmp;
+}
+
+/** Writes a local 16 bit number to an unaligned buffer in network order. */
+HFUNC void FIO_NAME2(fio_u, buf16)(void *buf, uint16_t i) { /* fio_u2buf16 */
+  __builtin_memcpy(buf, &i, sizeof(i));
+}
+
+/** Writes a local 32 bit number to an unaligned buffer in network order. */
+HFUNC void FIO_NAME2(fio_u, buf32)(void *buf, uint32_t i) { /* fio_u2buf32 */
+  __builtin_memcpy(buf, &i, sizeof(i));
+}
+
+/** Writes a local 64 bit number to an unaligned buffer in network order. */
+HFUNC void FIO_NAME2(fio_u, buf64)(void *buf, uint64_t i) { /* fio_u2buf64 */
+  __builtin_memcpy(buf, &i, sizeof(i));
+}
+
+#else
+
 /** Converts an unaligned network ordered byte stream to a 16 bit number. */
 HFUNC uint16_t FIO_NAME2(fio_buf, u16)(const void *c) { /* fio_buf2u16 */
   return ((uint16_t)(((uint16_t)(((const uint8_t *)(c))[0]) << 8) |
@@ -950,6 +989,7 @@ HFUNC void FIO_NAME2(fio_u, buf64)(void *buf, uint64_t i) { /* fio_u2buf64 */
   ((uint8_t *)(buf))[7] = ((i)&0xFF);
 }
 
+#endif /* __has_builtin(__builtin_memcpy) */
 /* *****************************************************************************
 Constant-time selectors
 ***************************************************************************** */
@@ -988,35 +1028,89 @@ Byte masking (XOR)
  *
  * Returns the end state of the mask.
  */
-HFUNC uint64_t fio_xmask64(uint64_t buf[], size_t array_len, uint64_t mask,
-                           uint64_t nonce) {
-  for (size_t i = 0; i < array_len; ++i) {
-    buf[i] ^= mask;
+HFUNC uint64_t fio___xmask_aligned64(uint64_t buf[], size_t byte_len,
+                                     uint64_t mask, uint64_t nonce) {
+  for (size_t i = byte_len >> 3; i; --i) {
+    *buf ^= mask;
     mask += nonce;
+    ++buf;
+  }
+  union { /* type punning */
+    char *p8;
+    uint64_t *p64;
+  } pn, mpn;
+  pn.p64 = buf;
+  mpn.p64 = &mask;
+
+  switch ((byte_len & 7)) {
+  case 0:
+    return mask;
+  case 7:
+    pn.p8[6] ^= mpn.p8[6];
+  /* fallthrough */
+  case 6:
+    pn.p8[5] ^= mpn.p8[5];
+  /* fallthrough */
+  case 5:
+    pn.p8[4] ^= mpn.p8[4];
+  /* fallthrough */
+  case 4:
+    pn.p8[3] ^= mpn.p8[3];
+  /* fallthrough */
+  case 3:
+    pn.p8[2] ^= mpn.p8[2];
+  /* fallthrough */
+  case 2:
+    pn.p8[1] ^= mpn.p8[1];
+  /* fallthrough */
+  case 1:
+    pn.p8[0] ^= mpn.p8[0];
+    /* fallthrough */
   }
   return mask;
 }
 
 /**
- * Masks 32 bit memory aligned data using a 64 bit mask and a counter mode
- * nonce.
+ * Masks unaligned memory data using a 64 bit mask and a counter mode nonce.
  *
  * Returns the end state of the mask.
  */
-HFUNC uint64_t fio_xmask32(uint32_t buf[], size_t array_len, uint64_t mask,
-                           uint64_t nonce) {
-  union {
-    uint64_t *p64;
-    uint32_t *p32;
-  } mpn;
-  mpn.p64 = &mask;
-  for (size_t i = 0; i < (array_len >> 1); ++i) {
-    *(buf++) ^= mpn.p32[0];
-    *(buf++) ^= mpn.p32[1];
+HFUNC uint64_t fio___xmask_unaligned_words(void *buf_, size_t len,
+                                           uint64_t mask, uint64_t nonce) {
+  uint8_t register *buf = buf_;
+  for (size_t i = len >> 3; i; --i) {
+    uint64_t tmp;
+    tmp = fio_buf2u64(buf);
+    tmp ^= mask;
+    fio_u2buf64(buf, tmp);
     mask += nonce;
+    buf += 8;
   }
-  if (array_len & 1)
-    *buf ^= mpn.p32[0];
+  switch ((len & 7)) {
+  case 0:
+    return mask;
+  case 7:
+    buf[6] ^= ((uint8_t *)(&mask))[6];
+  /* fallthrough */
+  case 6:
+    buf[5] ^= ((uint8_t *)(&mask))[5];
+  /* fallthrough */
+  case 5:
+    buf[4] ^= ((uint8_t *)(&mask))[4];
+  /* fallthrough */
+  case 4:
+    buf[3] ^= ((uint8_t *)(&mask))[3];
+  /* fallthrough */
+  case 3:
+    buf[2] ^= ((uint8_t *)(&mask))[2];
+  /* fallthrough */
+  case 2:
+    buf[1] ^= ((uint8_t *)(&mask))[1];
+  /* fallthrough */
+  case 1:
+    buf[0] ^= ((uint8_t *)(&mask))[0];
+    /* fallthrough */
+  }
   return mask;
 }
 
@@ -1027,88 +1121,15 @@ HFUNC uint64_t fio_xmask32(uint32_t buf[], size_t array_len, uint64_t mask,
  * Returns the end state of the mask.
  */
 HFUNC uint64_t fio_xmask(char *buf, size_t len, uint64_t mask, uint64_t nonce) {
-  if (len > 7) {
-    const size_t len64 = (len >> 3);
-    switch (((uintptr_t)buf & 7)) {
-    case 0:
-      /* XOR 64bit aligned bytes */
-      mask = fio_xmask64((uint64_t *)buf, len64, mask, nonce);
-      break;
-    case 4:
-      /* XOR 32bit aligned bytes */
-      if (1) {
-        union {
-          char *pc;
-          uint32_t *p32;
-        } pn;
-        pn.pc = buf;
-        mask = fio_xmask32(pn.p32, (len64 << 1), mask, nonce);
-      }
-      break;
-    case 6: /* fallthrough */
-    case 2:
-      /* XOR 16bit aligned bytes */
-      for (size_t i = 0; i < len64; ++i) {
-        union {
-          char *pc;
-          uint16_t *p16;
-        } pn;
-        union {
-          uint64_t *p64;
-          uint16_t *p16;
-        } mpn;
-        pn.pc = buf;
-        mpn.p64 = &mask;
-        pn.p16[(i << 2)] ^= mpn.p16[0];
-        pn.p16[(i << 2) | 1] ^= mpn.p16[1];
-        pn.p16[(i << 2) | 2] ^= mpn.p16[2];
-        pn.p16[(i << 2) | 3] ^= mpn.p16[3];
-        mask += nonce;
-      }
-      break;
-    default:
-      for (size_t i = 0; i < len64; ++i) {
-        ((uint8_t *)buf)[(i << 3)] ^= ((uint8_t *)&mask)[0];
-        ((uint8_t *)buf)[(i << 3) | 1] ^= ((uint8_t *)&mask)[1];
-        ((uint8_t *)buf)[(i << 3) | 2] ^= ((uint8_t *)&mask)[2];
-        ((uint8_t *)buf)[(i << 3) | 3] ^= ((uint8_t *)&mask)[3];
-        ((uint8_t *)buf)[(i << 3) | 4] ^= ((uint8_t *)&mask)[4];
-        ((uint8_t *)buf)[(i << 3) | 5] ^= ((uint8_t *)&mask)[5];
-        ((uint8_t *)buf)[(i << 3) | 6] ^= ((uint8_t *)&mask)[6];
-        ((uint8_t *)buf)[(i << 3) | 7] ^= ((uint8_t *)&mask)[7];
-        mask += nonce;
-      }
-      break;
-    }
-    buf = (char *)((uintptr_t)buf + (len64 << 3));
+  if (!((uintptr_t)buf & 7)) {
+    union {
+      char *p8;
+      uint64_t *p64;
+    } pn;
+    pn.p8 = buf;
+    return fio___xmask_aligned64(pn.p64, len, mask, nonce);
   }
-  /* XOR any leftover bytes (might be non aligned)  */
-  switch ((len & 7)) {
-  case 0:
-    return mask;
-  case 7:
-    ((uint8_t *)buf)[6] ^= ((uint8_t *)(&mask))[6];
-  /* fallthrough */
-  case 6:
-    ((uint8_t *)buf)[5] ^= ((uint8_t *)(&mask))[5];
-  /* fallthrough */
-  case 5:
-    ((uint8_t *)buf)[4] ^= ((uint8_t *)(&mask))[4];
-  /* fallthrough */
-  case 4:
-    ((uint8_t *)buf)[3] ^= ((uint8_t *)(&mask))[3];
-  /* fallthrough */
-  case 3:
-    ((uint8_t *)buf)[2] ^= ((uint8_t *)(&mask))[2];
-  /* fallthrough */
-  case 2:
-    ((uint8_t *)buf)[1] ^= ((uint8_t *)(&mask))[1];
-  /* fallthrough */
-  case 1:
-    ((uint8_t *)buf)[0] ^= ((uint8_t *)(&mask))[0];
-    /* fallthrough */
-  }
-  return mask;
+  return fio___xmask_unaligned_words(buf, len, mask, nonce);
 }
 
 /* *****************************************************************************
@@ -13691,6 +13712,8 @@ TEST_FUNC void fio___dynamic_types_test___risky(void) {
   fio_test_hash_function(fio___dynamic_types_test___risky_mask_wrapper,
                          "fio_risky_mask (Risky XOR + counter)",
                          alignment_test_offset);
+  fio_test_hash_function(fio___dynamic_types_test___risky_mask_wrapper,
+                         "fio_risky_mask (unaligned)", 1);
 }
 
 /* *****************************************************************************
