@@ -106,7 +106,7 @@ Then add the following line the project's `CMakeLists.txt`
 
 ## More Examples
 
-The examples folder includes code examples for a [telnet echo protocol](examples/telnet-echo.c), a [Simple Hello World server](examples/hello-world.c), an example for [Websocket pub/sub with (optional) Redis](examples/pubsub-chat.c) ,a [super fast DIY HTTP/1.1 server](examples/fast-http.c), etc'.
+The examples folder includes code examples for a [telnet style echo protocol](examples/raw-echo.c), a [Simple Hello World server](examples/http-hello.c), an example for [Websocket pub/sub with (optional) Redis](examples/http-chat.c) ,a [super fast DIY (insecure) HTTP/1.1 server](examples/raw-http.c), etc'.
 
 You can find more information on the [facil.io](http://facil.io) website
 
