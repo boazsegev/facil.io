@@ -1030,11 +1030,14 @@ Byte masking (XOR)
  */
 HFUNC uint64_t fio___xmask_aligned64(uint64_t buf[], size_t byte_len,
                                      uint64_t mask, uint64_t nonce) {
+
+  uint64_t register m = mask;
   for (size_t i = byte_len >> 3; i; --i) {
-    *buf ^= mask;
-    mask += nonce;
+    *buf ^= m;
+    m += nonce;
     ++buf;
   }
+  mask = m;
   union { /* type punning */
     char *p8;
     uint64_t *p64;
@@ -1076,16 +1079,19 @@ HFUNC uint64_t fio___xmask_aligned64(uint64_t buf[], size_t byte_len,
  * Returns the end state of the mask.
  */
 HFUNC uint64_t fio___xmask_unaligned_words(void *buf_, size_t len,
-                                           uint64_t mask, uint64_t nonce) {
+                                           uint64_t mask,
+                                           const uint64_t nonce) {
   uint8_t register *buf = buf_;
+  uint64_t register m = mask;
   for (size_t i = len >> 3; i; --i) {
     uint64_t tmp;
-    tmp = fio_buf2u64(buf);
-    tmp ^= mask;
+    tmp = FIO_NAME2(fio_buf, u64)(buf);
+    tmp ^= m;
     fio_u2buf64(buf, tmp);
-    mask += nonce;
+    m += nonce;
     buf += 8;
   }
+  mask = m;
   switch ((len & 7)) {
   case 0:
     return mask;
@@ -2411,19 +2417,19 @@ SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
 
   for (size_t i = len >> 5; i; --i) {
     /* vectorized 32 bytes / 256 bit access */
-    FIO_RISKY3_ROUND256(fio_buf2u64(data), fio_buf2u64(data + 8),
-                        fio_buf2u64(data + 16), fio_buf2u64(data + 24));
+    FIO_RISKY3_ROUND256(FIO_NAME2(fio_buf, u64)(data), FIO_NAME2(fio_buf, u64)(data + 8),
+                        FIO_NAME2(fio_buf, u64)(data + 16), FIO_NAME2(fio_buf, u64)(data + 24));
     data += 32;
   }
   switch (len & 24) {
   case 24:
-    FIO_RISKY3_ROUND64(2, fio_buf2u64(data + 16));
+    FIO_RISKY3_ROUND64(2, FIO_NAME2(fio_buf, u64)(data + 16));
     /* fallthrough */
   case 16:
-    FIO_RISKY3_ROUND64(1, fio_buf2u64(data + 8));
+    FIO_RISKY3_ROUND64(1, FIO_NAME2(fio_buf, u64)(data + 8));
     /* fallthrough */
   case 8:
-    FIO_RISKY3_ROUND64(0, fio_buf2u64(data + 0));
+    FIO_RISKY3_ROUND64(0, FIO_NAME2(fio_buf, u64)(data + 0));
     data += len & 24;
   }
 
@@ -2512,19 +2518,20 @@ SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
 
   for (size_t i = len >> 5; i; --i) {
     /* vectorized 32 bytes / 256 bit access */
-    FIO_RISKY3_ROUND256(fio_buf2u64(data), fio_buf2u64(data + 8),
-                        fio_buf2u64(data + 16), fio_buf2u64(data + 24));
+    FIO_RISKY3_ROUND256(
+        FIO_NAME2(fio_buf, u64)(data), FIO_NAME2(fio_buf, u64)(data + 8),
+        FIO_NAME2(fio_buf, u64)(data + 16), FIO_NAME2(fio_buf, u64)(data + 24));
     data += 32;
   }
   switch (len & 24) {
   case 24:
-    FIO_RISKY3_ROUND64(2, fio_buf2u64(data + 16));
+    FIO_RISKY3_ROUND64(2, FIO_NAME2(fio_buf, u64)(data + 16));
     /* fallthrough */
   case 16:
-    FIO_RISKY3_ROUND64(1, fio_buf2u64(data + 8));
+    FIO_RISKY3_ROUND64(1, FIO_NAME2(fio_buf, u64)(data + 8));
     /* fallthrough */
   case 8:
-    FIO_RISKY3_ROUND64(0, fio_buf2u64(data + 0));
+    FIO_RISKY3_ROUND64(0, FIO_NAME2(fio_buf, u64)(data + 0));
     data += len & 24;
   }
 
@@ -2583,8 +2590,12 @@ SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
  * Masks data using a Risky Hash and a counter mode nonce.
  */
 IFUNC void fio_risky_mask(char *buf, size_t len, uint64_t key, uint64_t nonce) {
-  if (!nonce) /* nonce can't be zero */
-    nonce = (uint64_t)0xDB1DD478B9E93B1;
+  { /* avoid zero nonce, make sure nonce is effective and odd */
+    nonce |= 1;
+    nonce *= 0xDB1DD478B9E93B1ULL;
+    nonce ^= ((nonce << 24) | (nonce >> 40));
+    nonce |= 1;
+  }
   uint64_t hash = fio_risky_hash(&key, sizeof(key), nonce);
   fio_xmask(buf, len, hash, nonce);
 }
@@ -2658,7 +2669,7 @@ IFUNC void fio_rand_feed2seed(void *buf_, size_t len) {
   uint8_t offset = (fio___rand_counter & 3);
   uint64_t tmp = 0;
   for (size_t i = 0; i < (len >> 3); ++i) {
-    tmp = fio_buf2u64(buf);
+    tmp = FIO_NAME2(fio_buf, u64)(buf);
     fio___rand_buffer[(offset++ & 3)] ^= tmp;
     buf += 8;
   }
