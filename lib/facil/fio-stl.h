@@ -760,8 +760,8 @@ HFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_xchange(lock, 0); }
 
 ***************************************************************************** */
 
-#if (defined(FIO_BITWISE) || defined(FIO_RAND) || defined(FIO_NTOL) ||         \
-     defined(FIO_RISKY_HASH)) &&                                               \
+#if (defined(FIO_BITWISE) || defined(FIO_NTOL) || defined(FIO_RAND) ||         \
+     defined(FIO_NTOL) || defined(FIO_RISKY_HASH)) &&                          \
     !defined(FIO_LROT)
 
 /* *****************************************************************************
@@ -799,6 +799,53 @@ HFUNC uint64_t fio_bswap64(uint64_t i) {
           (((i)&0xFF00000000000000ULL) >> 56));
 }
 #endif
+
+/* *****************************************************************************
+Big Endian / Small Endian
+***************************************************************************** */
+#if !defined(__BIG_ENDIAN__)
+/* nothing to do */
+#elif (defined(__LITTLE_ENDIAN__) && !__LITTLE_ENDIAN__) ||                    \
+    (defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__))
+#define __BIG_ENDIAN__ 1
+#elif !defined(__BIG_ENDIAN__) && !defined(__BYTE_ORDER__) &&                  \
+    !defined(__LITTLE_ENDIAN__)
+#error Could not detect byte order on this system.
+#endif
+
+#if __BIG_ENDIAN__
+
+/** Local byte order to Network byte order, 16 bit integer */
+#define fio_lton16(i) (i)
+/** Local byte order to Network byte order, 32 bit integer */
+#define fio_lton32(i) (i)
+/** Local byte order to Network byte order, 62 bit integer */
+#define fio_lton64(i) (i)
+
+/** Network byte order to Local byte order, 16 bit integer */
+#define fio_ntol16(i) (i)
+/** Network byte order to Local byte order, 32 bit integer */
+#define fio_ntol32(i) (i)
+/** Network byte order to Local byte order, 62 bit integer */
+#define fio_ntol64(i) (i)
+
+#else /* Little Endian */
+
+/** Local byte order to Network byte order, 16 bit integer */
+#define fio_lton16(i) fio_bswap16((i))
+/** Local byte order to Network byte order, 32 bit integer */
+#define fio_lton32(i) fio_bswap32((i))
+/** Local byte order to Network byte order, 62 bit integer */
+#define fio_lton64(i) fio_bswap64((i))
+
+/** Network byte order to Local byte order, 16 bit integer */
+#define fio_ntol16(i) fio_bswap16((i))
+/** Network byte order to Local byte order, 32 bit integer */
+#define fio_ntol32(i) fio_bswap32((i))
+/** Network byte order to Local byte order, 62 bit integer */
+#define fio_ntol64(i) fio_bswap64((i))
+
+#endif /* __BIG_ENDIAN__ */
 
 /* *****************************************************************************
 Bit rotation
@@ -903,6 +950,7 @@ Unaligned memory read / write operations
 HFUNC uint16_t FIO_NAME2(fio_buf, u16)(const void *c) { /* fio_buf2u16 */
   uint16_t tmp;
   __builtin_memcpy(&tmp, c, sizeof(tmp));
+  tmp = fio_lton16(tmp);
   return tmp;
 }
 
@@ -910,6 +958,7 @@ HFUNC uint16_t FIO_NAME2(fio_buf, u16)(const void *c) { /* fio_buf2u16 */
 HFUNC uint32_t FIO_NAME2(fio_buf, u32)(const void *c) { /* fio_buf2u32 */
   uint32_t tmp;
   __builtin_memcpy(&tmp, c, sizeof(tmp));
+  tmp = fio_lton32(tmp);
   return tmp;
 }
 
@@ -917,21 +966,25 @@ HFUNC uint32_t FIO_NAME2(fio_buf, u32)(const void *c) { /* fio_buf2u32 */
 HFUNC uint64_t FIO_NAME2(fio_buf, u64)(const void *c) { /* fio_buf2u64 */
   uint64_t tmp;
   __builtin_memcpy(&tmp, c, sizeof(tmp));
+  tmp = fio_lton64(tmp);
   return tmp;
 }
 
 /** Writes a local 16 bit number to an unaligned buffer in network order. */
 HFUNC void FIO_NAME2(fio_u, buf16)(void *buf, uint16_t i) { /* fio_u2buf16 */
+  i = fio_lton16(i);
   __builtin_memcpy(buf, &i, sizeof(i));
 }
 
 /** Writes a local 32 bit number to an unaligned buffer in network order. */
 HFUNC void FIO_NAME2(fio_u, buf32)(void *buf, uint32_t i) { /* fio_u2buf32 */
+  i = fio_lton32(i);
   __builtin_memcpy(buf, &i, sizeof(i));
 }
 
 /** Writes a local 64 bit number to an unaligned buffer in network order. */
 HFUNC void FIO_NAME2(fio_u, buf64)(void *buf, uint64_t i) { /* fio_u2buf64 */
+  i = fio_lton64(i);
   __builtin_memcpy(buf, &i, sizeof(i));
 }
 
@@ -1215,82 +1268,6 @@ HFUNC void fio_bitmap_flip(void *map, size_t bit) {
 
 #endif
 #undef FIO_BITMAP
-/* *****************************************************************************
-
-
-
-
-
-
-
-
-
-
-
-
-Network Byte Ordering
-
-
-
-
-
-
-
-
-
-
-
-
-***************************************************************************** */
-
-#if defined(FIO_NTOL) && !defined(fio_lton16)
-
-#if !defined(__BIG_ENDIAN__)
-/* nothing to do */
-#elif (defined(__LITTLE_ENDIAN__) && !__LITTLE_ENDIAN__) ||                    \
-    (defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__))
-#define __BIG_ENDIAN__ 1
-#elif !defined(__BIG_ENDIAN__) && !defined(__BYTE_ORDER__) &&                  \
-    !defined(__LITTLE_ENDIAN__)
-#error Could not detect byte order on this system.
-#endif
-
-#if __BIG_ENDIAN__
-
-/** Local byte order to Network byte order, 16 bit integer */
-#define fio_lton16(i) (i)
-/** Local byte order to Network byte order, 32 bit integer */
-#define fio_lton32(i) (i)
-/** Local byte order to Network byte order, 62 bit integer */
-#define fio_lton64(i) (i)
-
-/** Network byte order to Local byte order, 16 bit integer */
-#define fio_ntol16(i) (i)
-/** Network byte order to Local byte order, 32 bit integer */
-#define fio_ntol32(i) (i)
-/** Network byte order to Local byte order, 62 bit integer */
-#define fio_ntol64(i) (i)
-
-#else /* Little Endian */
-
-/** Local byte order to Network byte order, 16 bit integer */
-#define fio_lton16(i) fio_bswap16((i))
-/** Local byte order to Network byte order, 32 bit integer */
-#define fio_lton32(i) fio_bswap32((i))
-/** Local byte order to Network byte order, 62 bit integer */
-#define fio_lton64(i) fio_bswap64((i))
-
-/** Network byte order to Local byte order, 16 bit integer */
-#define fio_ntol16(i) fio_bswap16((i))
-/** Network byte order to Local byte order, 32 bit integer */
-#define fio_ntol32(i) fio_bswap32((i))
-/** Network byte order to Local byte order, 62 bit integer */
-#define fio_ntol64(i) fio_bswap64((i))
-
-#endif /* __BIG_ENDIAN__ */
-#endif /* H___FIO_NTOL_H */
-#undef FIO_NTOL
-
 /* *****************************************************************************
 
 

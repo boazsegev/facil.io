@@ -50,8 +50,6 @@ In addition, the core library includes helpers for common tasks, such as:
 
 * [Bit-Byte Operations](##bit-byte-operations) - defined by `FIO_BITWISE` and `FIO_BITMAP`
 
-* [Network Byte Ordering](#network-byte-ordering-helpers) - defined by `FIO_NTOL`
-
 * [Data Hashing (using Risky Hash)](#risky-hash-data-hashing) - defined by `FIO_RISKY_HASH`
 
 * [Pseudo Random Generation](#pseudo-random-generation) - defined by `FIO_RAND`
@@ -1889,11 +1887,13 @@ If the `FIO_BITWISE` macro is defined than the following macros will be
 defined:
 
 #### Byte Swapping
+
 - `fio_bswap16(i)`
 - `fio_bswap32(i)`
 - `fio_bswap64(i)`
 
 #### Bit rotation (left / right)
+
 - `fio_lrot32(i, bits)`
 - `fio_rrot32(i, bits)`
 - `fio_lrot64(i, bits)`
@@ -1901,17 +1901,32 @@ defined:
 - `FIO_LROT(i, bits)`
 - `FIO_RROT(i, bits)`
 
+#### Numbers to Numbers (network ordered)
+
+- `fio_lton16(i)`
+- `fio_ntol16(i)`
+- `fio_lton32(i)`
+- `fio_ntol32(i)`
+- `fio_lton64(i)`
+- `fio_ntol64(i)`
+
+On big-endian systems, these macros a NOOPs, whereas on little-endian systems
+these macros flip the byte order.
+
 #### Bytes to Numbers (network ordered)
+
 - `fio_buf2u16(c)`
 - `fio_buf2u32(c)`
 - `fio_buf2u64(c)`
 
 #### Numbers to Bytes (network ordered)
+
 - `fio_u2buf16(buffer, i)`
 - `fio_u2buf32(buffer, i)`
 - `fio_u2buf64(buffer, i)`
 
 #### Constant Time Bit Operations
+
 - `fio_ct_true(condition)`
 - `fio_ct_false(condition)`
 - `fio_ct_if(bool, a_if_true, b_if_false)`
@@ -1931,40 +1946,6 @@ the bitmap is implemented using atomic operations.
 - `fio_bitmap_get(void *map, size_t bit)`
 - `fio_bitmap_set(void *map, size_t bit)`   (an atomic operation, thread-safe)
 - `fio_bitmap_unset(void *map, size_t bit)` (an atomic operation, thread-safe)
-
--------------------------------------------------------------------------------
-
-## Network Byte Ordering Helpers
-
-This are commonly used for file and data storage / transmissions, since they
-allow for system-independent formatting.
-
-On big-endian systems, these macros a NOOPs, whereas on little-endian systems
-these macros flip the byte order.
-
-#### `fio_lton16(i)`
-
-Local byte order to Network byte order, 16 bit integer.
-
-#### `fio_ntol16(i)`
-
-Network byte order to Local byte order, 16 bit integer
-
-#### `fio_lton32(i)`
-
-Local byte order to Network byte order, 32 bit integer.
-
-#### `fio_ntol32(i)`
-
-Network byte order to Local byte order, 32 bit integer
-
-#### `fio_lton64(i)`
-
-Local byte order to Network byte order, 62 bit integer.
-
-#### `fio_ntol64(i)`
-
-Network byte order to Local byte order, 62 bit integer
 
 -------------------------------------------------------------------------------
 
