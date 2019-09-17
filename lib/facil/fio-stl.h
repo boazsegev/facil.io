@@ -2467,136 +2467,7 @@ Here's a few resources about hashes that might explain more:
 #define FIO_RISKY3_IV2 0x0000100000000100ULL
 #define FIO_RISKY3_IV3 0x0001000000001000ULL
 /* read u64 in little endian */
-#if 1
 #define FIO_RISKY_BUF2U64 fio_buf2u64_little
-#else
-#if __LITTLE_ENDIAN__
-HFUNC uint64_t FIO_RISKY_BUF2U64(const void *c) {
-  uint64_t tmp = 0;
-  __builtin_memcpy(&tmp, c, sizeof(tmp));
-  return tmp;
-}
-#else
-#define FIO_RISKY_BUF2U64(c)                                                   \
-  ((uint64_t)((((uint64_t)((const uint8_t *)(c))[7]) << 56) |                  \
-              (((uint64_t)((const uint8_t *)(c))[6]) << 48) |                  \
-              (((uint64_t)((const uint8_t *)(c))[5]) << 40) |                  \
-              (((uint64_t)((const uint8_t *)(c))[4]) << 32) |                  \
-              (((uint64_t)((const uint8_t *)(c))[3]) << 24) |                  \
-              (((uint64_t)((const uint8_t *)(c))[2]) << 16) |                  \
-              (((uint64_t)((const uint8_t *)(c))[1]) << 8) |                   \
-              (((uint8_t *)(c))[0])))
-#endif
-#endif
-#if 0 || FIO_RISKY_HASH_OPTIMIZER_LIKES_ARRAYS
-/*  Computes a facil.io Risky Hash. */
-SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
-  const uint64_t primes[] = {
-      FIO_RISKY3_PRIME0,
-      FIO_RISKY3_PRIME1,
-      FIO_RISKY3_PRIME2,
-      FIO_RISKY3_PRIME3,
-  };
-  uint64_t v[] = {
-      FIO_RISKY3_IV0,
-      FIO_RISKY3_IV1,
-      FIO_RISKY3_IV2,
-      FIO_RISKY3_IV3,
-  };
-  const uint8_t *data = (const uint8_t *)data_;
-
-#define FIO_RISKY3_ROUND64(vi, w)                                              \
-  v[vi] += w;                                                                  \
-  v[vi] = fio_lrot64(v[vi], 29);                                               \
-  v[vi] += w;                                                                  \
-  v[vi] *= primes[vi];
-
-#define FIO_RISKY3_ROUND256(w0, w1, w2, w3)                                    \
-  FIO_RISKY3_ROUND64(0, w0);                                                   \
-  FIO_RISKY3_ROUND64(1, w1);                                                   \
-  FIO_RISKY3_ROUND64(2, w2);                                                   \
-  FIO_RISKY3_ROUND64(3, w3);
-
-  if (seed) {
-    /* process the seed as if it was a prepended 8 Byte string. */
-    v[0] *= seed;
-    v[1] *= seed;
-    v[2] *= seed;
-    v[3] *= seed;
-    v[1] ^= seed;
-    v[2] ^= seed;
-    v[3] ^= seed;
-  }
-
-  for (size_t i = len >> 5; i; --i) {
-    /* vectorized 32 bytes / 256 bit access */
-    FIO_RISKY3_ROUND256(FIO_RISKY_BUF2U64(data), FIO_RISKY_BUF2U64(data + 8),
-                        FIO_RISKY_BUF2U64(data + 16), FIO_RISKY_BUF2U64(data + 24));
-    data += 32;
-  }
-  switch (len & 24) {
-  case 24:
-    FIO_RISKY3_ROUND64(2, FIO_RISKY_BUF2U64(data + 16));
-    /* fallthrough */
-  case 16:
-    FIO_RISKY3_ROUND64(1, FIO_RISKY_BUF2U64(data + 8));
-    /* fallthrough */
-  case 8:
-    FIO_RISKY3_ROUND64(0, FIO_RISKY_BUF2U64(data + 0));
-    data += len & 24;
-  }
-
-  uint64_t tmp = (len & 0xFF) << 56; /* add offset intformation to padding */
-  /* leftover bytes */
-  switch ((len & 7)) {
-  case 7:
-    tmp |= ((uint64_t)data[6]) << 48; /* fallthrough */
-  case 6:
-    tmp |= ((uint64_t)data[5]) << 40; /* fallthrough */
-  case 5:
-    tmp |= ((uint64_t)data[4]) << 32; /* fallthrough */
-  case 4:
-    tmp |= ((uint64_t)data[3]) << 24; /* fallthrough */
-  case 3:
-    tmp |= ((uint64_t)data[2]) << 16; /* fallthrough */
-  case 2:
-    tmp |= ((uint64_t)data[1]) << 8; /* fallthrough */
-  case 1:
-    tmp |= ((uint64_t)data[0]);
-    /* the last (now padded) byte's position */
-    switch ((len & 24)) {
-    case 24: /* offset 24 in 32 byte segment */
-      FIO_RISKY3_ROUND64(3, tmp);
-      break;
-    case 16: /* offset 16 in 32 byte segment */
-      FIO_RISKY3_ROUND64(2, tmp);
-      break;
-    case 8: /* offset 8 in 32 byte segment */
-      FIO_RISKY3_ROUND64(1, tmp);
-      break;
-    case 0: /* offset 0 in 32 byte segment */
-      FIO_RISKY3_ROUND64(0, tmp);
-      break;
-    }
-  }
-
-  /* irreversible avalanche... I think */
-  uint64_t r = (len)*0x0000001000000001ULL;
-  r += fio_lrot64(v[0], 17) + fio_lrot64(v[1], 13) + fio_lrot64(v[2], 47) +
-       fio_lrot64(v[3], 57);
-  r += v[0] ^ v[1];
-  r ^= fio_lrot64(r, 13);
-  r += v[1] ^ v[2];
-  r ^= fio_lrot64(r, 29);
-  r += v[2] ^ v[3];
-  r += fio_lrot64(r, 33);
-  r += v[3] ^ v[0];
-  r ^= fio_lrot64(r, 51);
-  r ^= (r >> 29) * FIO_RISKY3_PRIME4;
-  return r;
-}
-
-#else /* FIO_RISKY_HASH_OPTIMIZER_LIKES_ARRAYS */
 
 /*  Computes a facil.io Risky Hash. */
 SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
@@ -2697,7 +2568,6 @@ SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
   r ^= (r >> 29) * FIO_RISKY3_PRIME4;
   return r;
 }
-#endif
 
 /**
  * Masks data using a Risky Hash and a counter mode nonce.
