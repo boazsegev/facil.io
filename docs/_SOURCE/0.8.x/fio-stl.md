@@ -1913,17 +1913,57 @@ defined:
 On big-endian systems, these macros a NOOPs, whereas on little-endian systems
 these macros flip the byte order.
 
-#### Bytes to Numbers (network ordered)
+#### Bytes to Numbers (native / reversed / network ordered)
 
-- `fio_buf2u16(c)`
-- `fio_buf2u32(c)`
-- `fio_buf2u64(c)`
+Big Endian (default):
 
-#### Numbers to Bytes (network ordered)
+- `fio_buf2u16(buffer)`
+- `fio_buf2u32(buffer)`
+- `fio_buf2u64(buffer)`
+
+Little Endian:
+
+- `fio_buf2u16_little(buffer)`
+- `fio_buf2u32_little(buffer)`
+- `fio_buf2u64_little(buffer)`
+
+Native Byte Order:
+
+- `fio_buf2u16_local(buffer)`
+- `fio_buf2u32_local(buffer)`
+- `fio_buf2u64_local(buffer)`
+
+Reversed Byte Order:
+
+- `fio_buf2u16_bswap(buffer)`
+- `fio_buf2u32_bswap(buffer)`
+- `fio_buf2u64_bswap(buffer)`
+
+#### Numbers to Bytes (native / reversed / network ordered)
+
+Big Endian (default):
 
 - `fio_u2buf16(buffer, i)`
 - `fio_u2buf32(buffer, i)`
 - `fio_u2buf64(buffer, i)`
+
+Little Endian:
+
+- `fio_u2buf16_little(buffer, i)`
+- `fio_u2buf32_little(buffer, i)`
+- `fio_u2buf64_little(buffer, i)`
+
+Native Byte Order:
+
+- `fio_u2buf16_local(buffer, i)`
+- `fio_u2buf32_local(buffer, i)`
+- `fio_u2buf64_local(buffer, i)`
+
+Reversed Byte Order:
+
+- `fio_u2buf16_bswap(buffer, i)`
+- `fio_u2buf32_bswap(buffer, i)`
+- `fio_u2buf64_bswap(buffer, i)`
 
 #### Constant Time Bit Operations
 
