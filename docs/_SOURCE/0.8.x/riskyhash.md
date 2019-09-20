@@ -196,10 +196,10 @@ result = LROT(V1,17) + LROT(V2,13) + LROT(V3,47) + LROT(V4,57)
 
 At this point the length of the input data is finalized an can be added to the calculation.
 
-The consumed (unpadded) message length is treated as a 64 bit word. It is shifted left by 33 bits and XORed with itself. Then, the updated length value is added to the intermediate result:
+The consumed (unpadded) message length is treated as a 64 bit word. It is shifted left by 36 bits and XORed with itself. Then, the updated length value is added to the intermediate result:
 
 ```txt
-length = length * 0x0000001000000001
+length = length XOR (length << 36)
 result = result + length
 ```
 
@@ -396,7 +396,7 @@ uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
   }
 
   /* irreversible avalanche... I think */
-  uint64_t r = (len)*0x0000001000000001ULL;
+  uint64_t r = (len) ^ ((uint64_t)len << 36);
   r += fio_lrot64(v0, 17) + fio_lrot64(v1, 13) + fio_lrot64(v2, 47) +
        fio_lrot64(v3, 57);
   r += v0 ^ v1;

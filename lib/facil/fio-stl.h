@@ -159,11 +159,11 @@ Basic macros and included files
 #define FIO_HAVE_UNIX_TOOLS 1
 #endif
 
-// #if __amd64 || __amd64__ || __x86_64 || __x86_64__
-// #define FIO_UNALIGNED_MEMORY_ACCESS_OK 1
-// #else
-// #define FIO_UNALIGNED_MEMORY_ACCESS_OK 0
-// #endif
+#if FIO_UNALIGNED_ACCESS && (__amd64 || __amd64__ || __x86_64 || __x86_64__)
+#define FIO_UNALIGNED_MEMORY_ACCESS_OK 1
+#else
+#define FIO_UNALIGNED_MEMORY_ACCESS_OK 0
+#endif
 
 /* *****************************************************************************
 Macro Stringifier
@@ -977,6 +977,7 @@ HFUNC uint32_t FIO_NAME2(fio_buf, u32_local)(const void *c) { /* fio_buf2u32 */
 }
 /** Converts an unaligned byte stream to a 64 bit number (local byte order). */
 HFUNC uint64_t FIO_NAME2(fio_buf, u64_local)(const void *c) { /* fio_buf2u64 */
+
   uint64_t tmp;
   __builtin_memcpy(&tmp, c, sizeof(tmp));
   return tmp;
@@ -998,8 +999,42 @@ HFUNC void FIO_NAME2(fio_u, buf64_local)(void *buf,
   __builtin_memcpy(buf, &i, sizeof(i));
 }
 
-#else
+#elif FIO_UNALIGNED_MEMORY_ACCESS_OK
+/** Converts an unaligned byte stream to a 16 bit number (local byte order). */
+HFUNC uint16_t FIO_NAME2(fio_buf, u16_local)(const void *c) { /* fio_buf2u16 */
+  const uint16_t *tmp = (const uint16_t *)c;
+  return *tmp;
+}
+/** Converts an unaligned byte stream to a 32 bit number (local byte order). */
+HFUNC uint32_t FIO_NAME2(fio_buf, u32_local)(const void *c) { /* fio_buf2u32 */
+  const uint32_t *tmp = (const uint32_t *)c;
+  return *tmp;
+}
+/** Converts an unaligned byte stream to a 64 bit number (local byte order). */
+HFUNC uint64_t FIO_NAME2(fio_buf, u64_local)(const void *c) { /* fio_buf2u64 */
 
+  const uint64_t *tmp = (const uint64_t *)c;
+  return *tmp;
+}
+
+/** Writes a local 16 bit number to an unaligned buffer. */
+HFUNC void FIO_NAME2(fio_u, buf16_local)(void *buf,
+                                         uint16_t i) { /* fio_u2buf16 */
+  *((uint16_t *)buf) = i;
+}
+/** Writes a local 32 bit number to an unaligned buffer. */
+HFUNC void FIO_NAME2(fio_u, buf32_local)(void *buf,
+                                         uint32_t i) { /* fio_u2buf32 */
+  *((uint32_t *)buf) = i;
+}
+/** Writes a local 64 bit number to an unaligned buffer. */
+HFUNC void FIO_NAME2(fio_u, buf64_local)(void *buf,
+                                         uint64_t i) { /* fio_u2buf64 */
+  *((uint64_t *)buf) = i;
+}
+
+#else  /* no unaligned access, no builtin memcpy, use normal memcpy and hope.  \
+        */
 /** Converts an unaligned byte stream to a 16 bit number (local byte order). */
 HFUNC uint16_t FIO_NAME2(fio_buf, u16_local)(const void *c) { /* fio_buf2u16 */
   uint16_t tmp;
@@ -1034,7 +1069,7 @@ HFUNC void FIO_NAME2(fio_u, buf64_local)(void *buf,
                                          uint64_t i) { /* fio_u2buf64 */
   memcpy(buf, &i, sizeof(i));
 }
-#endif /* __has_builtin(__builtin_memcpy) */
+#endif /* __has_builtin(__builtin_memcpy) / FIO_UNALIGNED_MEMORY_ACCESS_OK */
 
 /** Converts an unaligned byte stream to a 16 bit number (reversed byte order).
  */
@@ -2554,7 +2589,7 @@ SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
   }
 
   /* irreversible avalanche... I think */
-  uint64_t r = (len)*0x0000001000000001ULL;
+  uint64_t r = (len) ^ ((uint64_t)len << 36);
   r += fio_lrot64(v0, 17) + fio_lrot64(v1, 13) + fio_lrot64(v2, 47) +
        fio_lrot64(v3, 57);
   r += v0 ^ v1;
@@ -2587,6 +2622,7 @@ Risky Hash - Cleanup
 ***************************************************************************** */
 #undef FIO_RISKY3_ROUND64
 #undef FIO_RISKY3_ROUND256
+#undef FIO_RISKY_BUF2U64
 
 #endif /* FIO_EXTERN_COMPLETE */
 #endif
@@ -12011,8 +12047,9 @@ Bit-Byte operations - test
 
 TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
   fprintf(stderr, "* Testing fio_bswapX macros.\n");
-  FIO_T_ASSERT(fio_bswap16(0x0102) == 0x0201, "fio_bswap16 failed");
-  FIO_T_ASSERT(fio_bswap32(0x01020304) == 0x04030201, "fio_bswap32 failed");
+  FIO_T_ASSERT(fio_bswap16(0x0102) == (uint16_t)0x0201, "fio_bswap16 failed");
+  FIO_T_ASSERT(fio_bswap32(0x01020304) == (uint32_t)0x04030201,
+               "fio_bswap32 failed");
   FIO_T_ASSERT(fio_bswap64(0x0102030405060708ULL) == 0x0807060504030201ULL,
                "fio_bswap64 failed");
 
@@ -12067,6 +12104,29 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
   }
 
   fprintf(stderr, "* Testing constant-time helpers.\n");
+  FIO_T_ASSERT(fio_ct_true(0) == 0, "fio_ct_true(0) should be zero!");
+  for (uintptr_t i = 1; i; i <<= 1) {
+    FIO_T_ASSERT(fio_ct_true(i) == 1, "fio_ct_true(%p) should be true!",
+                 (void *)i);
+  }
+  for (uintptr_t i = 1; i + 1 != 0; i = (i << 1) | 1) {
+    FIO_T_ASSERT(fio_ct_true(i) == 1, "fio_ct_true(%p) should be true!",
+                 (void *)i);
+  }
+  FIO_T_ASSERT(fio_ct_true((~0ULL)) == 1, "fio_ct_true(%p) should be true!",
+               (void *)(~0ULL));
+
+  FIO_T_ASSERT(fio_ct_false(0) == 1, "fio_ct_false(0) should be true!");
+  for (uintptr_t i = 1; i; i <<= 1) {
+    FIO_T_ASSERT(fio_ct_false(i) == 0, "fio_ct_false(%p) should be zero!",
+                 (void *)i);
+  }
+  for (uintptr_t i = 1; i + 1 != 0; i = (i << 1) | 1) {
+    FIO_T_ASSERT(fio_ct_false(i) == 0, "fio_ct_false(%p) should be zero!",
+                 (void *)i);
+  }
+  FIO_T_ASSERT(fio_ct_false((~0ULL)) == 0, "fio_ct_false(%p) should be zero!",
+               (void *)(~0ULL));
   FIO_T_ASSERT(fio_ct_true(8), "fio_ct_true should be true.");
   FIO_T_ASSERT(!fio_ct_true(0), "fio_ct_true should be false.");
   FIO_T_ASSERT(!fio_ct_false(8), "fio_ct_false should be false.");
@@ -12308,6 +12368,8 @@ TEST_FUNC void fio___dynamic_types_test___atomic(void) {
     unsigned long l;
     size_t w;
   } s = {.c = 0}, *p;
+  uint64_t val = 1;
+  fio_lock_i lock = FIO_LOCK_INIT;
   p = FIO_MEM_CALLOC(sizeof(*p), 1);
   s.c = fio_atomic_add(&p->c, 1);
   s.s = fio_atomic_add(&p->s, 1);
@@ -12338,6 +12400,38 @@ TEST_FUNC void fio___dynamic_types_test___atomic(void) {
   FIO_T_ASSERT(s.l == 1 && p->l == 99, "fio_atomic_xchange failed for l");
   FIO_T_ASSERT(s.w == 1 && p->w == 99, "fio_atomic_xchange failed for w");
   FIO_MEM_FREE(p, sizeof(*p));
+  FIO_T_ASSERT(fio_atomic_xchange(&val, 2) == 1,
+               "fio_atomic_xchange should return old value");
+  FIO_T_ASSERT(fio_atomic_add(&val, 2) == 4,
+               "fio_atomic_add should return new value");
+  FIO_T_ASSERT(val == 4, "fio_atomic_add should update value");
+  FIO_T_ASSERT(fio_atomic_sub(&val, 2) == 2,
+               "fio_atomic_sub should return new value");
+  FIO_T_ASSERT(val == 2, "fio_atomic_sub should update value");
+  FIO_T_ASSERT(fio_atomic_and(&val, 1) == 0,
+               "fio_atomic_and should return new value");
+  FIO_T_ASSERT(val == 0, "fio_atomic_and should update value");
+  FIO_T_ASSERT(fio_atomic_xor(&val, 1) == 1,
+               "fio_atomic_xor should return new value");
+  FIO_T_ASSERT(val == 1, "fio_atomic_xor should update value");
+  FIO_T_ASSERT(fio_atomic_or(&val, 2) == 3,
+               "fio_atomic_or should return new value");
+  FIO_T_ASSERT(val == 3, "fio_atomic_or should update value");
+  FIO_T_ASSERT(fio_atomic_nand(&val, 4) == ~0ULL,
+               "fio_atomic_nand should return new value");
+  FIO_T_ASSERT(val == ~0ULL, "fio_atomic_nand should update value");
+
+  FIO_T_ASSERT(!fio_is_locked(&lock),
+               "lock should be initialized in unlocked state");
+  FIO_T_ASSERT(!fio_trylock(&lock), "fio_trylock should succeed");
+  FIO_T_ASSERT(fio_trylock(&lock), "fio_trylock should fail");
+  FIO_T_ASSERT(fio_is_locked(&lock), "lock should be engaged");
+  fio_unlock(&lock);
+  FIO_T_ASSERT(!fio_is_locked(&lock), "lock should be released");
+  fio_lock(&lock);
+  FIO_T_ASSERT(fio_is_locked(&lock), "lock should be engaged (fio_lock)");
+  fio_unlock(&lock);
+  FIO_T_ASSERT(!fio_is_locked(&lock), "lock should be released");
 }
 /* *****************************************************************************
 Linked List - Test
