@@ -262,33 +262,32 @@ static uintptr_t sha1(char *data, size_t len) {
 
 static uintptr_t counter(char *data, size_t len) {
   static uintptr_t counter = 0;
-  volatile uint64_t optimization_stopper = 0;
+  uint64_t v[4];
+  // volatile uint64_t optimization_stopper = 0;
 
   for (size_t i = len >> 5; i; --i) {
     /* vectorized 32 bytes / 256 bit access */
-    uint64_t t0 = fio_buf2u64(data);
-    uint64_t t1 = fio_buf2u64(data + 8);
-    uint64_t t2 = fio_buf2u64(data + 16);
-    uint64_t t3 = fio_buf2u64(data + 24);
-    optimization_stopper += t0 + t1 + t2 + t3;
-    (void)t0;
-    (void)t1;
-    (void)t2;
-    (void)t3;
+    v[0] = fio_buf2u64_little(data);
+    v[1] = fio_buf2u64_little(data + 8);
+    v[2] = fio_buf2u64_little(data + 16);
+    v[3] = fio_buf2u64_little(data + 24);
+    // __builtin_memcpy(v, data, sizeof(uint64_t) * 4);
+    // optimization_stopper ^= v[0] ^ v[1] ^ v[2] ^ v[3];
     data += 32;
+    __asm__ volatile("" ::: "memory");
   }
   uint64_t tmp;
   /* 64 bit words  */
   switch (len & 24) {
   case 24:
-    tmp = fio_buf2u64(data + 16);
+    v[2] = fio_buf2u64_little(data + 16);
   case 16: /* overflow */
-    tmp = fio_buf2u64(data + 8);
+    v[1] = fio_buf2u64_little(data + 8);
   case 8: /* overflow */
-    tmp = fio_buf2u64(data);
+    v[0] = fio_buf2u64_little(data);
     data += len & 24;
   }
-
+  __asm__ volatile("" ::: "memory");
   tmp = 0;
   /* leftover bytes */
   switch ((len & 7)) {
@@ -309,16 +308,16 @@ static uintptr_t counter(char *data, size_t len) {
   }
   switch ((len & 24)) { /* information about position */
   case 24:              /* offset in 32 byte segment */
-    optimization_stopper += tmp;
+    v[3] = tmp;
     break;
   case 16: /* offset in 32 byte segment */
-    optimization_stopper += tmp;
+    v[2] = tmp;
     break;
   case 8: /* offset in 32 byte segment */
-    optimization_stopper += tmp;
+    v[1] = tmp;
     break;
   case 0: /* offset in 32 byte segment */
-    optimization_stopper += tmp;
+    v[0] = tmp;
     break;
   }
   __asm__ volatile("" ::: "memory");
@@ -375,19 +374,20 @@ static uint64_t fall(const void *data_, size_t len, uint64_t seed) {
 
   for (size_t i = len >> 5; i; --i) {
     /* vectorized 32 bytes / 256 bit access */
-    FIO_RISKY3_ROUND256(fio_buf2u64(data), fio_buf2u64(data + 8),
-                        fio_buf2u64(data + 16), fio_buf2u64(data + 24));
+    FIO_RISKY3_ROUND256(fio_buf2u64_little(data), fio_buf2u64_little(data + 8),
+                        fio_buf2u64_little(data + 16),
+                        fio_buf2u64_little(data + 24));
     data += 32;
   }
   switch (len & 24) {
   case 24:
-    FIO_RISKY3_ROUND64(2, fio_buf2u64(data + 16));
+    FIO_RISKY3_ROUND64(2, fio_buf2u64_little(data + 16));
     /* fallthrough */
   case 16:
-    FIO_RISKY3_ROUND64(1, fio_buf2u64(data + 8));
+    FIO_RISKY3_ROUND64(1, fio_buf2u64_little(data + 8));
     /* fallthrough */
   case 8:
-    FIO_RISKY3_ROUND64(0, fio_buf2u64(data + 0));
+    FIO_RISKY3_ROUND64(0, fio_buf2u64_little(data + 0));
     data += len & 24;
   }
 

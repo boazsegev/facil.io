@@ -1244,7 +1244,7 @@ Byte masking (XOR)
 HFUNC uint64_t fio___xmask_aligned64(uint64_t buf[], size_t byte_len,
                                      uint64_t mask, uint64_t nonce) {
 
-  uint64_t register m = mask;
+  register uint64_t m = mask;
   for (size_t i = byte_len >> 3; i; --i) {
     *buf ^= m;
     m += nonce;
@@ -1294,8 +1294,8 @@ HFUNC uint64_t fio___xmask_aligned64(uint64_t buf[], size_t byte_len,
 HFUNC uint64_t fio___xmask_unaligned_words(void *buf_, size_t len,
                                            uint64_t mask,
                                            const uint64_t nonce) {
-  uint8_t register *buf = (uint8_t *)buf_;
-  uint64_t register m = mask;
+  register uint8_t *buf = (uint8_t *)buf_;
+  register uint64_t m = mask;
   for (size_t i = len >> 3; i; --i) {
     uint64_t tmp;
     tmp = FIO_NAME2(fio_buf, u64_local)(buf);
