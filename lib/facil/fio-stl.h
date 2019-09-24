@@ -3358,31 +3358,38 @@ Example:
 #define FIO_SOCK
 #define FIO_CLI
 #define FIO_LOG
-#include "../../facilio/lib/facil/fio-stl.h"
+#include "fio-stl.h" // __FILE__
 
 typedef struct {
   int fd;
   unsigned char is_client;
 } state_s;
 
-static void on_data_server(int fd, void *udata) {
+static void on_data_server(int fd, size_t index, void *udata) {
   (void)udata; // unused for server
+  (void)index; // we don't use the array index in this example
   char buf[65536];
+  memcpy(buf, "echo: ", 6);
   ssize_t len = 0;
   struct sockaddr_storage peer;
   socklen_t peer_addrlen = sizeof(peer);
-  len = recvfrom(fd, buf, 65535, 0, (struct sockaddr *)&peer, &peer_addrlen);
+  len = recvfrom(fd, buf + 6, (65536 - 7), 0, (struct sockaddr *)&peer,
+                 &peer_addrlen);
   if (len <= 0)
     return;
-  buf[len] = 0;
-  fprintf(stderr, "Recieved: %s", buf);
-  sendto(fd, "echo: ", 6, 0, (const struct sockaddr *)&peer, peer_addrlen);
-  sendto(fd, buf, len, 0, (const struct sockaddr *)&peer, peer_addrlen);
+  buf[len + 6] = 0;
+  fprintf(stderr, "Recieved: %s", buf + 6);
+  // sends all data in UDP, with TCP sending may be partial
+  len =
+      sendto(fd, buf, len + 6, 0, (const struct sockaddr *)&peer, peer_addrlen);
+  if (len < 0)
+    perror("error");
 }
 
-static void on_data_client(int fd, void *udata) {
+static void on_data_client(int fd, size_t index, void *udata) {
   state_s *state = (state_s *)udata;
-  if (fd == fileno(stdin))
+  fprintf(stderr, "on_data_client %zu\n", index);
+  if (!index) // stdio is index 0 in the fd list
     goto is_stdin;
   char buf[65536];
   ssize_t len = 0;
@@ -3399,6 +3406,7 @@ is_stdin:
   if (len <= 0)
     return;
   buf[len] = 0;
+  // sends all data in UDP, with TCP sending may be partial
   len = send(state->fd, buf, len, 0);
   fprintf(stderr, "Sent: %zd bytes\n", len);
   if (len < 0)
@@ -3445,8 +3453,8 @@ int main(int argc, char const *argv[]) {
     while (fio_sock_poll(.on_data = on_data_client, .udata = (void *)&state,
                          .timeout = 1000,
                          .fds = FIO_SOCK_POLL_LIST(
-                             FIO_SOCK_POLL_R(state.fd),
-                             FIO_SOCK_POLL_R(fileno(stdin)))) >= 0)
+                             FIO_SOCK_POLL_R(fileno(stdin)),
+                             FIO_SOCK_POLL_R(state.fd))) >= 0)
       ;
   } else {
     while (fio_sock_poll(.on_data = on_data_server, .udata = (void *)&state,
@@ -3461,6 +3469,7 @@ int main(int argc, char const *argv[]) {
   return 0;
   (void)argv;
 }
+
 
 ***************************************************************************** */
 #if defined(FIO_SOCK) && FIO_HAVE_UNIX_TOOLS && !defined(FIO_SOCK_POLL_LIST)
@@ -3489,9 +3498,9 @@ IO Poll - API
 
 typedef struct {
   void (*before_events)(void *udata);
-  void (*on_ready)(int fd, void *udata);
-  void (*on_data)(int fd, void *udata);
-  void (*on_error)(int fd, void *udata);
+  void (*on_ready)(int fd, size_t index, void *udata);
+  void (*on_data)(int fd, size_t index, void *udata);
+  void (*on_error)(int fd, size_t index, void *udata);
   void (*after_events)(void *udata);
   void *udata;
   int timeout;
@@ -3567,8 +3576,9 @@ SFUNC int fio_sock_set_non_block(int fd);
 IO Poll - Implementation (always static / inlined)
 ***************************************************************************** */
 
+HFUNC int fio_sock_poll____(void); /* sublime text marker */
 HFUNC int fio_sock_poll FIO_NOOP(fio_sock_poll_args args) {
-  int tmp = 0;
+  size_t tmp = 0;
   while (args.fds[tmp].events)
     ++tmp;
   if (!tmp)
@@ -3578,15 +3588,15 @@ HFUNC int fio_sock_poll FIO_NOOP(fio_sock_poll_args args) {
     args.before_events(args.udata);
   if (tmp <= 0)
     goto finish;
-  for (int i = 0; args.fds[i].events; ++i) {
+  for (size_t i = 0; args.fds[i].events; ++i) {
     if (!args.fds[i].revents)
       continue;
     if (args.on_ready != NULL && (args.fds[i].revents | POLLOUT) == POLLOUT)
-      args.on_ready(args.fds[i].fd, args.udata);
+      args.on_ready(args.fds[i].fd, i, args.udata);
     if (args.on_data != NULL && (args.fds[i].revents | POLLIN) == POLLIN)
-      args.on_data(args.fds[i].fd, args.udata);
+      args.on_data(args.fds[i].fd, i, args.udata);
     if (args.on_error != NULL && (args.fds[i].revents | POLLERR) == POLLERR)
-      args.on_error(args.fds[i].fd, args.udata);
+      args.on_error(args.fds[i].fd, i, args.udata);
   }
 finish:
   if (args.after_events)
@@ -3813,6 +3823,353 @@ FIO_SOCK - cleanup
 ***************************************************************************** */
 #endif
 #undef FIO_SOCK
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                  URI Parsing
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if (defined(FIO_URL) || defined(FIO_URI)) && !defined(H___FIO_URL___H)
+#define H___FIO_URL___H
+/** the result returned by `fio_url_parse` */
+typedef struct {
+  fio_str_info_s scheme;
+  fio_str_info_s user;
+  fio_str_info_s password;
+  fio_str_info_s host;
+  fio_str_info_s port;
+  fio_str_info_s path;
+  fio_str_info_s query;
+  fio_str_info_s target;
+} fio_url_s;
+
+/**
+ * Parses the URI returning it's components and their lengths (no decoding
+ * performed, doesn't accept decoded URIs).
+ *
+ * The returned string are NOT NUL terminated, they are merely locations within
+ * the original string.
+ *
+ * This function attempts to accept many different formats, including any of the
+ * following:
+ *
+ * * `/complete_path?query#target`
+ *
+ *   i.e.: /index.html?page=1#list
+ *
+ * * `host:port/complete_path?query#target`
+ *
+ *   i.e.:
+ *      example.com
+ *      example.com:8080
+ *      example.com/index.html
+ *      example.com:8080/index.html
+ *      example.com:8080/index.html?key=val#target
+ *
+ * * `user:password@host:port/path?query#target`
+ *
+ *   i.e.: user:1234@example.com:8080/index.html
+ *
+ * * `username[:password]@host[:port][...]`
+ *
+ *   i.e.: john:1234@example.com
+ *
+ * * `schema://user:password@host:port/path?query#target`
+ *
+ *   i.e.: http://example.com/index.html?page=1#list
+ *
+ * Invalid formats might produce unexpected results. No error testing performed.
+ */
+SFUNC fio_url_s fio_url_parse(const char *url, size_t len);
+/* *****************************************************************************
+FIO_URL - Implementation
+***************************************************************************** */
+#if defined(FIO_EXTERN_COMPLETE)
+
+/**
+ * Parses the URI returning it's components and their lengths (no decoding
+ * performed, doesn't accept decoded URIs).
+ *
+ * The returned string are NOT NUL terminated, they are merely locations within
+ * the original string.
+ *
+ * This function expects any of the following formats:
+ *
+ * * `/complete_path?query#target`
+ *
+ *   i.e.: /index.html?page=1#list
+ *
+ * * `host:port/complete_path?query#target`
+ *
+ *   i.e.:
+ *      example.com/index.html
+ *      example.com:8080/index.html
+ *
+ * * `schema://user:password@host:port/path?query#target`
+ *
+ *   i.e.: http://example.com/index.html?page=1#list
+ *
+ * Invalid formats might produce unexpected results. No error testing performed.
+ */
+SFUNC fio_url_s fio_url_parse(const char *url, size_t len) {
+  /*
+  Intention:
+  [schema://][user[:]][password[@]][host.com[:/]][:port/][/path][?quary][#target]
+  */
+  const char *end = url + len;
+  const char *pos = url;
+  fio_url_s r = {.scheme = {.buf = (char *)url}};
+  if (len == 0) {
+    goto finish;
+  }
+
+  if (pos[0] == '/') {
+    /* start at path */
+    goto start_path;
+  }
+
+  while (pos < end && pos[0] != ':' && pos[0] != '/' && pos[0] != '@' &&
+         pos[0] != '#' && pos[0] != '?')
+    ++pos;
+
+  if (pos == end) {
+    /* was only host (path starts with '/') */
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    goto finish;
+  }
+  switch (pos[0]) {
+  case '@':
+    /* username@[host] */
+    r.user = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    ++pos;
+    goto start_host;
+  case '/':
+    /* host[/path] */
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    goto start_path;
+  case '?':
+    /* host?[query] */
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    ++pos;
+    goto start_query;
+  case '#':
+    /* host#[target] */
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    ++pos;
+    goto start_target;
+  case ':':
+    if (pos + 2 <= end && pos[1] == '/' && pos[2] == '/') {
+      /* scheme:// */
+      r.scheme.len = pos - url;
+      pos += 3;
+    } else {
+      /* username:[password] OR */
+      /* host:[port] */
+      r.user = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+      ++pos;
+      goto start_password;
+    }
+    break;
+  }
+
+  // start_username:
+  url = pos;
+  while (pos < end && pos[0] != ':' && pos[0] != '/' && pos[0] != '@'
+         /* && pos[0] != '#' && pos[0] != '?' */)
+    ++pos;
+
+  if (pos >= end) { /* scheme://host */
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    goto finish;
+  }
+
+  switch (pos[0]) {
+  case '/':
+    /* scheme://host[/path] */
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    goto start_path;
+  case '@':
+    /* scheme://username@[host]... */
+    r.user = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    ++pos;
+    goto start_host;
+  case ':':
+    /* scheme://username:[password]@[host]... OR */
+    /* scheme://host:[port][/...] */
+    r.user = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    ++pos;
+    break;
+  }
+
+start_password:
+  url = pos;
+  while (pos < end && pos[0] != '/' && pos[0] != '@')
+    ++pos;
+
+  if (pos >= end) {
+    /* was host:port */
+    r.port = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    r.host = r.user;
+    r.user.len = 0;
+    goto finish;
+    ;
+  }
+
+  switch (pos[0]) {
+  case '/':
+    r.port = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    r.host = r.user;
+    r.user.len = 0;
+    goto start_path;
+  case '@':
+    r.password = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    ++pos;
+    break;
+  }
+
+start_host:
+  url = pos;
+  while (pos < end && pos[0] != '/' && pos[0] != ':' && pos[0] != '#' &&
+         pos[0] != '?')
+    ++pos;
+
+  r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+  if (pos >= end) {
+    goto finish;
+  }
+  switch (pos[0]) {
+  case '/':
+    /* scheme://[...@]host[/path] */
+    goto start_path;
+  case '?':
+    /* scheme://[...@]host?[query] (bad)*/
+    ++pos;
+    goto start_query;
+  case '#':
+    /* scheme://[...@]host#[target] (bad)*/
+    ++pos;
+    goto start_target;
+    // case ':':
+    /* scheme://[...@]host:[port] */
+  }
+  ++pos;
+
+  // start_port:
+  url = pos;
+  while (pos < end && pos[0] != '/' && pos[0] != '#' && pos[0] != '?')
+    ++pos;
+
+  r.port = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+
+  if (pos >= end) {
+    /* scheme://[...@]host:port */
+    goto finish;
+  }
+  switch (pos[0]) {
+  case '?':
+    /* scheme://[...@]host:port?[query] (bad)*/
+    ++pos;
+    goto start_query;
+  case '#':
+    /* scheme://[...@]host:port#[target] (bad)*/
+    ++pos;
+    goto start_target;
+    // case '/':
+    /* scheme://[...@]host:port[/path] */
+  }
+
+start_path:
+  url = pos;
+  while (pos < end && pos[0] != '#' && pos[0] != '?')
+    ++pos;
+
+  r.path = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+
+  if (pos >= end) {
+    goto finish;
+  }
+  ++pos;
+  if (pos[-1] == '#')
+    goto start_target;
+
+start_query:
+  url = pos;
+  while (pos < end && pos[0] != '#')
+    ++pos;
+
+  r.query = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+  ++pos;
+
+  if (pos >= end)
+    goto finish;
+
+start_target:
+  r.target = (fio_str_info_s){.buf = (char *)pos, .len = end - pos};
+
+finish:
+
+  if (r.scheme.len == 4 && r.host.buf &&
+      (((r.scheme.buf[0] | 32) == 'f' && (r.scheme.buf[1] | 32) == 'i' &&
+        (r.scheme.buf[2] | 32) == 'l' && (r.scheme.buf[3] | 32) == 'e') ||
+       ((r.scheme.buf[0] | 32) == 'u' && (r.scheme.buf[1] | 32) == 'n' &&
+        (r.scheme.buf[2] | 32) == 'i' && (r.scheme.buf[3] | 32) == 'x'))) {
+    r.path.buf = r.host.buf;
+    r.path.len += r.host.len;
+    r.host.len = 0;
+  }
+
+  /* set any empty values to NULL */
+  if (!r.scheme.len)
+    r.scheme.buf = NULL;
+  if (!r.user.len)
+    r.user.buf = NULL;
+  if (!r.password.len)
+    r.password.buf = NULL;
+  if (!r.host.len)
+    r.host.buf = NULL;
+  if (!r.port.len)
+    r.port.buf = NULL;
+  if (!r.path.len)
+    r.path.buf = NULL;
+  if (!r.query.len)
+    r.query.buf = NULL;
+  if (!r.target.len)
+    r.target.buf = NULL;
+
+  return r;
+}
+
+/* *****************************************************************************
+FIO_URL - Cleanup
+***************************************************************************** */
+#endif /* FIO_EXTERN_COMPLETE */
+#undef FIO_URL
+#undef FIO_URI
+#endif /* FIO_URL || FIO_URI */
 /* *****************************************************************************
 
 
@@ -12433,6 +12790,267 @@ TEST_FUNC void fio___dynamic_types_test___atomic(void) {
   fio_unlock(&lock);
   FIO_T_ASSERT(!fio_is_locked(&lock), "lock should be released");
 }
+
+/* *****************************************************************************
+URL parsing - Test
+***************************************************************************** */
+
+#define FIO_URL
+#include __FILE__
+
+/* Test for URI variations:
+ *
+ * * `/complete_path?query#target`
+ *
+ *   i.e.: /index.html?page=1#list
+ *
+ * * `host:port/complete_path?query#target`
+ *
+ *   i.e.:
+ *      example.com
+ *      example.com:8080
+ *      example.com/index.html
+ *      example.com:8080/index.html
+ *      example.com:8080/index.html?key=val#target
+ *
+ * * `user:password@host:port/path?query#target`
+ *
+ *   i.e.: user:1234@example.com:8080/index.html
+ *
+ * * `username[:password]@host[:port][...]`
+ *
+ *   i.e.: john:1234@example.com
+ *
+ * * `schema://user:password@host:port/path?query#target`
+ *
+ *   i.e.: http://example.com/index.html?page=1#list
+ */
+TEST_FUNC void fio___dynamic_types_test___url(void) {
+  fprintf(stderr, "* Testing URL (URI) parser.\n");
+  struct {
+    char *url;
+    size_t len;
+    fio_url_s expected;
+  } tests[] = {
+      {
+          .url = "file://go/home/",
+          .len = 15,
+          .expected =
+              {
+                  .scheme = {.len = 4, .buf = "file"},
+                  .path = {.len = 8, .buf = "go/home/"},
+              },
+      },
+      {
+          .url = "unix:///go/home/",
+          .len = 16,
+          .expected =
+              {
+                  .scheme = {.len = 4, .buf = "unix"},
+                  .path = {.len = 9, .buf = "/go/home/"},
+              },
+      },
+      {
+          .url = "schema://user:password@host:port/path?query#target",
+          .len = 50,
+          .expected =
+              {
+                  .scheme = {.len = 6, .buf = "schema"},
+                  .user = {.len = 4, .buf = "user"},
+                  .password = {.len = 8, .buf = "password"},
+                  .host = {.len = 4, .buf = "host"},
+                  .port = {.len = 4, .buf = "port"},
+                  .path = {.len = 5, .buf = "/path"},
+                  .query = {.len = 5, .buf = "query"},
+                  .target = {.len = 6, .buf = "target"},
+              },
+      },
+      {
+          .url = "http://localhost.com:3000/home?is=1",
+          .len = 35,
+          .expected =
+              {
+                  .scheme = {.len = 4, .buf = "http"},
+                  .host = {.len = 13, .buf = "localhost.com"},
+                  .port = {.len = 4, .buf = "3000"},
+                  .path = {.len = 5, .buf = "/home"},
+                  .query = {.len = 4, .buf = "is=1"},
+              },
+      },
+      {
+          .url = "/complete_path?query#target",
+          .len = 27,
+          .expected =
+              {
+                  .path = {.len = 14, .buf = "/complete_path"},
+                  .query = {.len = 5, .buf = "query"},
+                  .target = {.len = 6, .buf = "target"},
+              },
+      },
+      {
+          .url = "/index.html?page=1#list",
+          .len = 23,
+          .expected =
+              {
+                  .path = {.len = 11, .buf = "/index.html"},
+                  .query = {.len = 6, .buf = "page=1"},
+                  .target = {.len = 4, .buf = "list"},
+              },
+      },
+      {
+          .url = "example.com",
+          .len = 11,
+          .expected =
+              {
+                  .host = {.len = 11, .buf = "example.com"},
+              },
+      },
+
+      {
+          .url = "example.com:8080",
+          .len = 16,
+          .expected =
+              {
+                  .host = {.len = 11, .buf = "example.com"},
+                  .port = {.len = 4, .buf = "8080"},
+              },
+      },
+      {
+          .url = "example.com/index.html",
+          .len = 22,
+          .expected =
+              {
+                  .host = {.len = 11, .buf = "example.com"},
+                  .path = {.len = 11, .buf = "/index.html"},
+              },
+      },
+      {
+          .url = "example.com:8080/index.html",
+          .len = 27,
+          .expected =
+              {
+                  .host = {.len = 11, .buf = "example.com"},
+                  .path = {.len = 11, .buf = "/index.html"},
+                  .port = {.len = 4, .buf = "8080"},
+              },
+      },
+      {
+          .url = "example.com:8080/index.html?key=val#target",
+          .len = 42,
+          .expected =
+              {
+                  .host = {.len = 11, .buf = "example.com"},
+                  .port = {.len = 4, .buf = "8080"},
+                  .path = {.len = 11, .buf = "/index.html"},
+                  .query = {.len = 7, .buf = "key=val"},
+                  .target = {.len = 6, .buf = "target"},
+              },
+      },
+      {
+          .url = "user:1234@example.com:8080/index.html",
+          .len = 37,
+          .expected =
+              {
+                  .user = {.len = 4, .buf = "user"},
+                  .password = {.len = 4, .buf = "1234"},
+                  .host = {.len = 11, .buf = "example.com"},
+                  .port = {.len = 4, .buf = "8080"},
+                  .path = {.len = 11, .buf = "/index.html"},
+              },
+      },
+      {.url = NULL},
+  };
+  for (size_t i = 0; tests[i].url; ++i) {
+    fio_url_s result = fio_url_parse(tests[i].url, tests[i].len);
+    if (0) {
+      fprintf(stderr,
+              "Result for: %s"
+              "\n\tscheme (%zu):\t\t%.*s"
+              "\n\tuser (%zu):\t\t%.*s"
+              "\n\tpassword (%zu):\t\t%.*s"
+              "\n\thost (%zu):\t\t%.*s"
+              "\n\tport (%zu):\t\t%.*s"
+              "\n\tpath (%zu):\t\t%.*s"
+              "\n\tquery (%zu):\t\t%.*s"
+              "\n\ttarget (%zu):\t\t%.*s\n",
+              tests[i].url, result.scheme.len, (int)result.scheme.len,
+              result.scheme.buf, result.user.len, (int)result.user.len,
+              result.user.buf, result.password.len, (int)result.password.len,
+              result.password.buf, result.host.len, (int)result.host.len,
+              result.host.buf, result.port.len, (int)result.port.len,
+              result.port.buf, result.path.len, (int)result.path.len,
+              result.path.buf, result.query.len, (int)result.query.len,
+              result.query.buf, result.target.len, (int)result.target.len,
+              result.target.buf);
+    }
+    FIO_T_ASSERT(result.scheme.len == tests[i].expected.scheme.len &&
+                     (!result.scheme.len ||
+                      !memcmp(result.scheme.buf, tests[i].expected.scheme.buf,
+                              tests[i].expected.scheme.len)),
+                 "scheme result failed for:\n\ttest[%zu]: %s\n\texpected: "
+                 "%s\n\tgot: %.*s",
+                 i, tests[i].url, tests[i].expected.scheme.buf,
+                 (int)result.scheme.len, result.scheme.buf);
+    FIO_T_ASSERT(
+        result.user.len == tests[i].expected.user.len &&
+            (!result.user.len ||
+             !memcmp(result.user.buf, tests[i].expected.user.buf,
+                     tests[i].expected.user.len)),
+        "user result failed for:\n\ttest[%zu]: %s\n\texpected: %s\n\tgot: %.*s",
+        i, tests[i].url, tests[i].expected.user.buf, (int)result.user.len,
+        result.user.buf);
+    FIO_T_ASSERT(
+        result.password.len == tests[i].expected.password.len &&
+            (!result.password.len ||
+             !memcmp(result.password.buf, tests[i].expected.password.buf,
+                     tests[i].expected.password.len)),
+        "password result failed for:\n\ttest[%zu]: %s\n\texpected: %s\n\tgot: "
+        "%.*s",
+        i, tests[i].url, tests[i].expected.password.buf,
+        (int)result.password.len, result.password.buf);
+    FIO_T_ASSERT(
+        result.host.len == tests[i].expected.host.len &&
+            (!result.host.len ||
+             !memcmp(result.host.buf, tests[i].expected.host.buf,
+                     tests[i].expected.host.len)),
+        "host result failed for:\n\ttest[%zu]: %s\n\texpected: %s\n\tgot: %.*s",
+        i, tests[i].url, tests[i].expected.host.buf, (int)result.host.len,
+        result.host.buf);
+    FIO_T_ASSERT(
+        result.port.len == tests[i].expected.port.len &&
+            (!result.port.len ||
+             !memcmp(result.port.buf, tests[i].expected.port.buf,
+                     tests[i].expected.port.len)),
+        "port result failed for:\n\ttest[%zu]: %s\n\texpected: %s\n\tgot: %.*s",
+        i, tests[i].url, tests[i].expected.port.buf, (int)result.port.len,
+        result.port.buf);
+    FIO_T_ASSERT(
+        result.path.len == tests[i].expected.path.len &&
+            (!result.path.len ||
+             !memcmp(result.path.buf, tests[i].expected.path.buf,
+                     tests[i].expected.path.len)),
+        "path result failed for:\n\ttest[%zu]: %s\n\texpected: %s\n\tgot: %.*s",
+        i, tests[i].url, tests[i].expected.path.buf, (int)result.path.len,
+        result.path.buf);
+    FIO_T_ASSERT(result.query.len == tests[i].expected.query.len &&
+                     (!result.query.len ||
+                      !memcmp(result.query.buf, tests[i].expected.query.buf,
+                              tests[i].expected.query.len)),
+                 "query result failed for:\n\ttest[%zu]: %s\n\texpected: "
+                 "%s\n\tgot: %.*s",
+                 i, tests[i].url, tests[i].expected.query.buf,
+                 (int)result.query.len, result.query.buf);
+    FIO_T_ASSERT(result.target.len == tests[i].expected.target.len &&
+                     (!result.target.len ||
+                      !memcmp(result.target.buf, tests[i].expected.target.buf,
+                              tests[i].expected.target.len)),
+                 "target result failed for:\n\ttest[%zu]: %s\n\texpected: "
+                 "%s\n\tgot: %.*s",
+                 i, tests[i].url, tests[i].expected.target.buf,
+                 (int)result.target.len, result.target.buf);
+  }
+}
+
 /* *****************************************************************************
 Linked List - Test
 ***************************************************************************** */
@@ -14215,6 +14833,8 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fio___dynamic_types_test___bitwise();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___atol();
+  fprintf(stderr, "===============\n");
+  fio___dynamic_types_test___url();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___linked_list_test();
   fprintf(stderr, "===============\n");

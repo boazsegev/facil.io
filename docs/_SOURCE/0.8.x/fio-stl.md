@@ -56,6 +56,8 @@ In addition, the core library includes helpers for common tasks, such as:
 
 * [String / Number conversion](#string-number-conversion) - defined by `FIO_ATOL`
 
+* [URL (URI) parsing](#url-uri-parsing) - defined by `FIO_URL`
+
 * [Command Line Interface helpers](#cli-command-line-interface) - defined by `FIO_CLI`
 
 * [Custom Memory Allocation](#memory-allocation) - defined by `FIO_MALLOC`
@@ -63,6 +65,10 @@ In addition, the core library includes helpers for common tasks, such as:
 * [Basic Socket / IO Helpers](#basic-socket-io-helpers) - defined by `FIO_SOCK`
 
 * [Custom JSON Parser](#custom-json-parser) - defined by `FIO_JSON`
+
+## Testing the Library (`FIO_TEST_CSTL`)
+
+To test the library, define the `FIO_TEST_CSTL` macro and include the header. A testing function called `fio_test_dynamic_types` will be defined. Call that function in your code to test the library.
 
 -------------------------------------------------------------------------------
 
@@ -2080,7 +2086,7 @@ Forces the random generator state to rotate. SHOULD be called after `fork` to pr
 
 -------------------------------------------------------------------------------
 
-# String / Number conversion
+## String / Number conversion
 
 If the `FIO_ATOL` macro is defined, the following functions will be defined:
 
@@ -2125,6 +2131,78 @@ to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the beginning of the
 string).
 
 Returns the number of bytes actually written (excluding the NUL terminator).
+
+
+-------------------------------------------------------------------------------
+
+## URL (URI) parsing
+
+URIs (Universal Resource Identifier), commonly referred to as URL (Uniform Resource Locator), are a common way to describe network and file addresses.
+
+A common use case for URIs is within the command line interface (CLI), allowing a client to point at a resource that may be local (i.e., `file:///users/etc/my.conf`) or remote (i.e. `http://example.com/conf`).
+
+By defining `FIO_URL`, the following types and functions will be defined:
+
+#### `fio_url_s`
+
+```c
+/** the result returned by `fio_url_parse` */
+typedef struct {
+  fio_str_info_s scheme;
+  fio_str_info_s user;
+  fio_str_info_s password;
+  fio_str_info_s host;
+  fio_str_info_s port;
+  fio_str_info_s path;
+  fio_str_info_s query;
+  fio_str_info_s target;
+} fio_url_s;
+```
+
+The `fio_url_s` contains a information about a URL (or, URI).
+
+When the information is returned from `fio_url_parse`, the strings in the `fio_url_s` (i.e., `url.scheme.buf`) are **not NUL terminated**, since the parser is non-destructive, with zero-copy and zero-allocation.
+
+#### `fio_url_parse`
+
+```c
+fio_url_s fio_url_parse(const char *url, size_t len);
+```
+
+Parses the URI returning it's components and their lengths (no decoding performed, **doesn't accept decoded URIs**).
+
+The returned string are **not NUL terminated**, they are merely locations within the original (unmodified) string.
+
+This function attempts to accept many different formats, including any of the following:
+
+* `/complete_path?query#target`
+
+  i.e.: `/index.html?page=1#list`
+
+* `host:port/complete_path?query#target`
+
+  i.e.:
+  - `example.com`
+  - `example.com:8080`
+  - `example.com/index.html`
+  - `example.com:8080/index.html`
+  - `example.com:8080/index.html?key=val#target`
+
+* `user:password@host:port/path?query#target`
+
+  i.e.: `user:1234@example.com:8080/index.html`
+
+* `username[:password]@host[:port][...]`
+
+  i.e.: `john:1234@example.com`
+
+* `schema://user:password@host:port/path?query#target`
+
+  i.e.: `http://example.com/index.html?page=1#list`
+
+Invalid formats might produce unexpected results. No error testing performed.
+
+The `file` and `unix` schemas are special in the sense that they produce no `host` (only `path`).
 
 -------------------------------------------------------------------------------
 
@@ -2279,6 +2357,14 @@ allocation system. The risk is more relevant for child processes.
 However, if a multi-threaded process, calling this function from the child
 process would perform a best attempt at mitigating any arising issues (at the
 expense of possible leaks).
+
+#### `FIO_MALLOC_FORCE_SYSTEM`
+
+If `FIO_MALLOC_FORCE_SYSTEM` is defined, the facil.io memory allocator functions will simply pass requests through to the system's memory allocator (`calloc` / `free`) rather then use the facil.io custom allocator.
+
+#### `FIO_MALLOC_OVERRIDE_SYSTEM`
+
+If `FIO_MALLOC_OVERRIDE_SYSTEM` is defined, the facil.io memory allocator will replace the system's memory allocator.
 
 -------------------------------------------------------------------------------
 
