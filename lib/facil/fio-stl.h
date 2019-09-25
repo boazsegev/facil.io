@@ -569,9 +569,9 @@ FIO_LOG2STDERR(const char *format, ...) {
   va_end(argv);
   if (len___log <= 0 || len___log >= FIO_LOG_LENGTH_LIMIT - 2) {
     if (len___log >= FIO_LOG_LENGTH_LIMIT - 2) {
-      memcpy(tmp___log + FIO_LOG____LENGTH_BORDER, "... (warning: truncated).",
-             25);
-      len___log = FIO_LOG____LENGTH_BORDER + 25;
+      memcpy(tmp___log + FIO_LOG____LENGTH_BORDER, "...\n\tWARNING: TRUNCATED!",
+             24);
+      len___log = FIO_LOG____LENGTH_BORDER + 24;
     } else {
       fwrite("ERROR: log output error (can't write).\n", 39, 1, stderr);
       return;
@@ -9240,6 +9240,7 @@ print_help:
 CLI Initialization
 ***************************************************************************** */
 
+SFUNC void fio_cli_start___(void); /* sublime text marker */
 SFUNC void fio_cli_start FIO_NOOP(int argc, char const *argv[], int unnamed_min,
                                   int unnamed_max, char const *description,
                                   char const **names) {
