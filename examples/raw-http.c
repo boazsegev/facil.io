@@ -138,7 +138,7 @@ The HTTP/1.1 Parsing Callbacks - we need to implememnt everything for the parser
 ***************************************************************************** */
 
 /** called when a request was received. */
-int light_http1_on_request(http1_parser_s *parser) {
+static int http1_on_request(http1_parser_s *parser) {
   int ret = on_http_request(parser2pr(parser));
   fio_str_destroy(&parser2pr(parser)->body);
   parser2pr(parser)->reset = 1;
@@ -146,14 +146,14 @@ int light_http1_on_request(http1_parser_s *parser) {
 }
 
 /** called when a response was received, this is for HTTP clients (error). */
-int light_http1_on_response(http1_parser_s *parser) {
+static int http1_on_response(http1_parser_s *parser) {
   return -1;
   (void)parser;
 }
 
 /** called when a request method is parsed. */
-int light_http1_on_method(http1_parser_s *parser, char *method,
-                          size_t method_len) {
+static int http1_on_method(http1_parser_s *parser, char *method,
+                           size_t method_len) {
   parser2pr(parser)->method = method;
   return 0;
   (void)method_len;
@@ -161,8 +161,8 @@ int light_http1_on_method(http1_parser_s *parser, char *method,
 
 /** called when a response status is parsed. the status_str is the string
  * without the prefixed numerical status indicator.*/
-int light_http1_on_status(http1_parser_s *parser, size_t status,
-                          char *status_str, size_t len) {
+static int http1_on_status(http1_parser_s *parser, size_t status,
+                           char *status_str, size_t len) {
   return -1;
   (void)parser;
   (void)status;
@@ -170,28 +170,27 @@ int light_http1_on_status(http1_parser_s *parser, size_t status,
   (void)len;
 }
 /** called when a request path (excluding query) is parsed. */
-int light_http1_on_path(http1_parser_s *parser, char *path, size_t path_len) {
+static int http1_on_path(http1_parser_s *parser, char *path, size_t path_len) {
   parser2pr(parser)->path = path;
   return 0;
   (void)path_len;
 }
 /** called when a request path (excluding query) is parsed. */
-int light_http1_on_query(http1_parser_s *parser, char *query,
-                         size_t query_len) {
+static int http1_on_query(http1_parser_s *parser, char *query,
+                          size_t query_len) {
   parser2pr(parser)->query = query;
   return 0;
   (void)query_len;
 }
 /** called when a the HTTP/1.x version is parsed. */
-int light_http1_on_http_version(http1_parser_s *parser, char *version,
-                                size_t len) {
+static int http1_on_version(http1_parser_s *parser, char *version, size_t len) {
   parser2pr(parser)->http_version = version;
   return 0;
   (void)len;
 }
 /** called when a header is parsed. */
-int light_http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
-                          char *data, size_t data_len) {
+static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
+                           char *data, size_t data_len) {
   if (parser2pr(parser)->header_count >= MAX_HTTP_HEADER_COUNT)
     return -1;
   parser2pr(parser)->headers[parser2pr(parser)->header_count] = name;
@@ -203,8 +202,8 @@ int light_http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
 }
 
 /** called when a body chunk is parsed. */
-int light_http1_on_body_chunk(http1_parser_s *parser, char *data,
-                              size_t data_len) {
+static int http1_on_body_chunk(http1_parser_s *parser, char *data,
+                               size_t data_len) {
   if (parser->state.content_length >= MAX_HTTP_BODY_MAX)
     return -1;
   if (fio_str_write(&parser2pr(parser)->body, data, data_len).len >=
@@ -214,7 +213,7 @@ int light_http1_on_body_chunk(http1_parser_s *parser, char *data,
 }
 
 /** called when a protocol error occurred. */
-int light_http1_on_error(http1_parser_s *parser) {
+static int http1_on_error(http1_parser_s *parser) {
   /* close the connection */
   fio_close(parser2pr(parser)->uuid);
   return 0;
@@ -271,19 +270,8 @@ void light_http_on_data(intptr_t uuid, fio_protocol_s *pr) {
   h->buf_writer += tmp;
   /* feed the parser until it's done consuminng data. */
   do {
-    tmp = http1_fio_parser(.parser = &h->parser,
-                           .buffer = (char *)(h + 1) + h->buf_reader,
-                           .length = h->buf_writer - h->buf_reader,
-                           .on_request = light_http1_on_request,
-                           .on_response = light_http1_on_response,
-                           .on_method = light_http1_on_method,
-                           .on_status = light_http1_on_status,
-                           .on_path = light_http1_on_path,
-                           .on_query = light_http1_on_query,
-                           .on_http_version = light_http1_on_http_version,
-                           .on_header = light_http1_on_header,
-                           .on_body_chunk = light_http1_on_body_chunk,
-                           .on_error = light_http1_on_error);
+    tmp = http1_parse(&h->parser, (char *)(h + 1) + h->buf_reader,
+                      h->buf_writer - h->buf_reader);
     if (fio_str_len(&h->body)) {
       /* when reading to a body, the data is copied */
       /* keep the reading position at buf_reader. */
