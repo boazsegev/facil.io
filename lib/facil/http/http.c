@@ -935,8 +935,6 @@ static http_settings_s *http_settings_new(http_settings_s s) {
 }
 
 static void http_settings_free(http_settings_s *s) {
-  if (s->on_finish)
-    s->on_finish(s);
   fiobj_free(s->static_headers);
   free(s);
 }
@@ -1294,8 +1292,6 @@ intptr_t http_hijack(http_s *h_, fio_str_info_s *leftover) {
 Websocket Upgrade (Server and Client connection establishment)
 ***************************************************************************** */
 
-void http_upgrade2ws___(void); /* SublimeText Marker */
-
 /**
  * Upgrades an HTTP/1.1 connection to a Websocket connection.
  *
@@ -1308,9 +1304,8 @@ void http_upgrade2ws___(void); /* SublimeText Marker */
  * A client connection's `on_finish` callback will be called (since the HTTP
  * stage has finished).
  */
+void http_upgrade2ws___(void); /* SublimeText Marker */
 int http_upgrade2ws FIO_NOOP(http_s *http, websocket_settings_s);
-
-void websocket_connect___(void); /* SublimeText Marker */
 
 /**
  * Connects to a Websocket service according to the provided address.
@@ -1324,13 +1319,13 @@ void websocket_connect___(void); /* SublimeText Marker */
  *
  * Returns -1 on error;
  */
+void websocket_connect___(void); /* SublimeText Marker */
 int websocket_connect FIO_NOOP(const char *url, websocket_settings_s settings);
 
 /* *****************************************************************************
 EventSource Support (SSE)
 ***************************************************************************** */
 
-void http_upgrade2sse___(void); /* SublimeText Marker */
 /**
  * Upgrades an HTTP connection to an EventSource (SSE) connection.
  *
@@ -1339,6 +1334,7 @@ void http_upgrade2sse___(void); /* SublimeText Marker */
  * On HTTP/1.1 connections, this will preclude future requests using the same
  * connection.
  */
+void http_upgrade2sse___(void); /* SublimeText Marker */
 int http_upgrade2sse FIO_NOOP(http_s *h, http_sse_s);
 
 /**
@@ -1346,7 +1342,6 @@ int http_upgrade2sse FIO_NOOP(http_s *h, http_sse_s);
  */
 void http_sse_set_timout(http_sse_s *sse, uint8_t timeout);
 
-void http_sse_subscribe___(void); /* SublimeText Marker */
 /**
  * Subscribes to a channel for direct message deliverance. See {struct
  * http_sse_subscribe_args} for possible arguments.
@@ -1358,6 +1353,7 @@ void http_sse_subscribe___(void); /* SublimeText Marker */
  *
  * All subscriptions are automatically cleared once the connection is closed.
  */
+void http_sse_subscribe___(void); /* SublimeText Marker */
 uintptr_t http_sse_subscribe FIO_NOOP(http_sse_s *sse,
                                       struct http_sse_subscribe_args args);
 
@@ -1373,13 +1369,12 @@ void http_sse_unsubscribe(http_sse_s *sse, uintptr_t subscription);
 //   intptr_t retry;
 // };
 
-void http_sse_write___(void); /* SublimeText Marker */
-
 /**
  * Writes data to an EventSource (SSE) connection.
  *
  * See the {struct http_sse_write_args} for possible named arguments.
  */
+void http_sse_write___(void); /* SublimeText Marker */
 int http_sse_write FIO_NOOP(http_sse_s *sse, struct http_sse_write_args);
 
 /**
