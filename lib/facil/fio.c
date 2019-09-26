@@ -2447,6 +2447,12 @@ intptr_t fio_accept(intptr_t srv_uuid) {
     return -1;
   }
 #endif
+
+  if ((uint32_t)client >= fio_data->capa) {
+    close(client);
+    return -1;
+  }
+
   // avoid the TCP delay algorithm.
   {
     int optval = 1;
@@ -2854,16 +2860,22 @@ size_t fio_pending(intptr_t uuid) {
  * `fio_flash` will be automatically scheduled.
  */
 void fio_close(intptr_t uuid) {
-  if (!uuid_is_valid(uuid)) {
-    errno = EBADF;
-    return;
-  }
+  if (!uuid_is_valid(uuid))
+    goto bad_fd;
   if (uuid_data(uuid).packet || uuid_data(uuid).sock_lock) {
     uuid_data(uuid).close = 1;
     fio_poll_add_write(fio_uuid2fd(uuid));
     return;
   }
   fio_force_close(uuid);
+  return;
+bad_fd:
+  if (uuid != -1 && (uint32_t)fio_uuid2fd(uuid) >= fio_data->capa)
+    goto too_high;
+  errno = EBADF;
+  return;
+too_high:
+  close(fio_uuid2fd(uuid));
 }
 
 /**
@@ -2872,10 +2884,8 @@ void fio_close(intptr_t uuid) {
  * connection buffer.
  */
 void fio_force_close(intptr_t uuid) {
-  if (!uuid_is_valid(uuid)) {
-    errno = EBADF;
-    return;
-  }
+  if (!uuid_is_valid(uuid))
+    goto bad_fd;
   // FIO_LOG_DEBUG("fio_force_close called for uuid %p", (void *)uuid);
   /* make sure the close marker is set */
   if (!uuid_data(uuid).close)
@@ -2910,6 +2920,14 @@ void fio_force_close(intptr_t uuid) {
 #endif
   if (fio_data->connection_count)
     fio_atomic_sub(&fio_data->connection_count, 1);
+  return;
+bad_fd:
+  if (uuid != -1 && (uint32_t)fio_uuid2fd(uuid) >= fio_data->capa)
+    goto too_high;
+  errno = EBADF;
+  return;
+too_high:
+  close(fio_uuid2fd(uuid));
 }
 
 /**

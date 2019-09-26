@@ -86,7 +86,7 @@ Compilation Macros
 /**
  * The maximum number of connections per worker process.
  */
-#define FIO_MAX_SOCK_CAPACITY 131072
+#define FIO_MAX_SOCK_CAPACITY 262144
 #endif
 
 #ifndef FIO_CPU_CORES_LIMIT
