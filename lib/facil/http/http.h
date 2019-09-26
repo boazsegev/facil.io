@@ -336,7 +336,7 @@ struct http_settings_s {
   /** CLIENT REQUIRED: a callback for the HTTP response. */
   void (*on_response)(http_s *response);
   /** (optional) the callback to be performed when the HTTP service closes. */
-  void (*on_finish)(struct http_settings_s *settings);
+  void (*on_finish)(http_settings_s *settings);
   /** Opaque user data. Facil.io will ignore this field, but you can use it. */
   void *udata;
   /**
@@ -381,12 +381,12 @@ struct http_settings_s {
   intptr_t max_clients;
   /** SSL/TLS support. */
   void *tls;
+  /** Default headers for any static files served using `http_sendfile2`. */
+  FIOBJ static_headers;
   /** reserved for future use. */
   intptr_t reserved1;
   /** reserved for future use. */
   intptr_t reserved2;
-  /** reserved for future use. */
-  intptr_t reserved3;
   /**
    * The maximum websocket message size/buffer (in bytes) for Websocket
    * connections. Defaults to ~250KB.
@@ -423,11 +423,10 @@ struct http_settings_s {
  *
  * the `on_finish` callback is always called.
  */
-intptr_t http_listen(const char *port, const char *binding,
-                     struct http_settings_s);
+intptr_t http_listen(const char *port, const char *binding, http_settings_s);
 /** Listens to HTTP connections at the specified `port` and `binding`. */
 #define http_listen(port, binding, ...)                                        \
-  http_listen((port), (binding), (struct http_settings_s){__VA_ARGS__})
+  http_listen((port), (binding), (http_settings_s){__VA_ARGS__})
 
 /**
  * Connects to an HTTP server as a client.
@@ -457,14 +456,14 @@ intptr_t http_listen(const char *port, const char *binding,
  * The `on_finish` callback is always called.
  */
 intptr_t http_connect(const char *url, const char *unix_address,
-                      struct http_settings_s);
+                      http_settings_s);
 #define http_connect(url, unix_address, ...)                                   \
-  http_connect((url), (unix_address), (struct http_settings_s){__VA_ARGS__})
+  http_connect((url), (unix_address), (http_settings_s){__VA_ARGS__})
 
 /**
  * Returns the settings used to setup the connection or NULL on error.
  */
-struct http_settings_s *http_settings(http_s *h);
+http_settings_s *http_settings(http_s *h);
 
 /**
  * Returns the direct address of the connected peer (likely an intermediary).

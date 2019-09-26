@@ -199,6 +199,11 @@ static inline void set_header_if_missing(FIOBJ hash, FIOBJ name, FIOBJ value) {
   fiobj_hash_set(hash, name_hash, name, old, NULL);
 }
 
+/** sets an outgoing header only if it doesn't exist */
+static inline void set_header_overwite(FIOBJ hash, FIOBJ name, FIOBJ value) {
+  fiobj_hash_set2(hash, name, value);
+}
+
 /** sets an outgoing header, collecting duplicates in an Array (i.e. cookies) */
 static inline void set_header_add(FIOBJ hash, FIOBJ name, FIOBJ value) {
   FIOBJ old = FIOBJ_INVALID;
