@@ -44,7 +44,7 @@ typedef struct {
 
 #define FIOBJ_IO_INIT (fiobj_io_s){.buf = NULL, .fd = -1};
 
-#define FIOBJ2IO(io_) FIO_PTR_MATH_RMASK(fiobj_io_s, io_, 3)
+#define FIOBJ2IO(io_) ((fiobj_io_s *)FIOBJ_PTR_UNTAG(io_))
 
 FIO_IFUNC void fiobj_io_init(fiobj_io_s *io) { *io = FIOBJ_IO_INIT; }
 /**
@@ -755,7 +755,7 @@ extern FIOBJ_class_vtable_s FIOBJ___IO_CLASS_VTBL;
     FIOBJ_MARK_MEMORY_FREE();                                                  \
   } while (0)
 #define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_OTHER)
-#define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
+#define FIO_PTR_UNTAG(p) FIOBJ_PTR_UNTAG(p)
 #define FIO_PTR_TAG_TYPE FIOBJ
 #include "fio-stl.h"
 

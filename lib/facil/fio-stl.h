@@ -10566,7 +10566,7 @@ typedef enum {
 /** Tests if the object is (probably) a valid FIOBJ */
 #define FIOBJ_IS_INVALID(o) (((uintptr_t)(o)&7UL) == 0)
 #define FIOBJ_TYPE_CLASS(o) ((fiobj_class_en)(((uintptr_t)o) & 7UL))
-
+#define FIOBJ_PTR_UNTAG(o) ((uintptr_t)o & (~7ULL))
 /** Returns an objects type. This isn't limited to known types. */
 FIO_IFUNC size_t fiobj_type(FIOBJ o);
 
@@ -10694,7 +10694,7 @@ FIOBJ_EXTERN_OBJ FIOBJ_class_vtable_s FIOBJ___OBJECT_CLASS_VTBL;
     FIOBJ_MARK_MEMORY_FREE();                                                  \
   } while (0)
 #define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_OTHER)
-#define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
+#define FIO_PTR_UNTAG(p) FIOBJ_PTR_UNTAG(p)
 #define FIO_PTR_TAG_TYPE FIOBJ
 #include __FILE__
 
@@ -10761,7 +10761,7 @@ FIOBJ Strings
   } while (0)
 #define FIO_REF_METADATA uint32_t /* for 32bit system padding */
 #define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_STRING)
-#define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
+#define FIO_PTR_UNTAG(p) FIOBJ_PTR_UNTAG(p)
 #define FIO_PTR_TAG_TYPE FIOBJ
 #include __FILE__
 
@@ -10840,7 +10840,7 @@ FIOBJ Arrays
     dest = fiobj_dup(obj);                                                     \
   } while (0)
 #define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_ARRAY)
-#define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
+#define FIO_PTR_UNTAG(p) FIOBJ_PTR_UNTAG(p)
 #define FIO_PTR_TAG_TYPE FIOBJ
 #include __FILE__
 
@@ -10869,7 +10869,7 @@ FIOBJ Hash Maps
 #define FIO_MAP_KEY_COPY(dest, o) (dest = fiobj_dup(o))
 #define FIO_MAP_KEY_DESTROY(o) fiobj_free(o)
 #define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_HASH)
-#define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
+#define FIO_PTR_UNTAG(p) FIOBJ_PTR_UNTAG(p)
 #define FIO_PTR_TAG_TYPE FIOBJ
 #include __FILE__
 
@@ -11250,7 +11250,7 @@ FIOBJ Integers
     FIOBJ_MARK_MEMORY_FREE();                                                  \
   } while (0)
 #define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_OTHER)
-#define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
+#define FIO_PTR_UNTAG(p) FIOBJ_PTR_UNTAG(p)
 #define FIO_PTR_TAG_TYPE FIOBJ
 #include __FILE__
 
@@ -11311,7 +11311,7 @@ FIOBJ Floats
     FIOBJ_MARK_MEMORY_FREE();                                                  \
   } while (0)
 #define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_OTHER)
-#define FIO_PTR_UNTAG(p) ((uintptr_t)p & (~7ULL))
+#define FIO_PTR_UNTAG(p) FIOBJ_PTR_UNTAG(p)
 #define FIO_PTR_TAG_TYPE FIOBJ
 #include __FILE__
 
