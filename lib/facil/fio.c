@@ -2532,8 +2532,12 @@ intptr_t fio_socket(const char *address, const char *port,
                  (uint16_t)FIO_SOCKET_UNIX)))
     flags |= FIO_SOCKET_TCP;
   int fd = fio_sock_open(address, port, flags);
-  if (fd == -1)
+  if (fd == -1) {
+    FIO_LOG_DEBUG2("Couldn't open a socket for %s : %s (flags: %u)\r\n\t",
+                   (address ? address : "---"), (port ? port : "0"),
+                   (unsigned int)flags, strerror(errno));
     return -1;
+  }
 
 #if defined(TCP_FASTOPEN) && defined(IPPROTO_TCP)
   if ((flags & (FIO_SOCKET_SERVER | FIO_SOCKET_TCP)) ==
@@ -4242,7 +4246,6 @@ static void fio_connect_on_ready_tls_alpn(intptr_t uuid, fio_protocol_s *pr_) {
 
 /* stub for sublime text function navigation */
 intptr_t fio_connect___(struct fio_connect_args args);
-
 intptr_t fio_connect FIO_NOOP(struct fio_connect_args args) {
   if ((!args.on_connect && (!args.tls || !fio_tls_alpn_count(args.tls))) ||
       (!args.address && !args.port)) {
@@ -4252,7 +4255,7 @@ intptr_t fio_connect FIO_NOOP(struct fio_connect_args args) {
   const intptr_t uuid =
       fio_socket(args.address, args.port,
                  (args.port ? FIO_SOCKET_TCP : FIO_SOCKET_UNIX) |
-                     FIO_SOCKET_SERVER | FIO_SOCKET_NONBLOCK);
+                     FIO_SOCKET_CLIENT | FIO_SOCKET_NONBLOCK);
   if (uuid == -1)
     goto error;
   fio_timeout_set(uuid, args.timeout);
@@ -5524,6 +5527,7 @@ static void fio_cluster_listen_on_close(intptr_t uuid,
 
 static void fio_listen2cluster(void *ignore) {
   /* this is called for each `fork`, but we only need this to run once. */
+  fio_lock(&fio_fork_lock); /* prevent forking. */
   fio_lock(&cluster_data.lock);
   cluster_data.uuid =
       fio_socket(cluster_data.name, NULL,
@@ -5545,6 +5549,7 @@ static void fio_listen2cluster(void *ignore) {
   FIO_LOG_DEBUG("(%d) Listening to cluster: %s", (int)getpid(),
                 cluster_data.name);
   fio_attach(cluster_data.uuid, p);
+  fio_unlock(&fio_fork_lock); /* allow forking. */
   (void)ignore;
 }
 
@@ -5626,7 +5631,7 @@ static void fio_cluster_on_connect(intptr_t uuid, void *udata) {
  * is passed along.
  */
 static void fio_cluster_on_fail(intptr_t uuid, void *udata) {
-  FIO_LOG_FATAL("(facil.io) unknown cluster connection error");
+  FIO_LOG_FATAL("[%d] (facil.io) unknown cluster connection error", getpid());
   perror("       errno");
   kill(fio_master_pid(), SIGINT);
   fio_stop();
