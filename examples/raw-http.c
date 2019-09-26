@@ -117,7 +117,10 @@ int main(int argc, char const *argv[]) {
                 "Custom HTTP example for the facil.io framework.",
                 FIO_CLI_INT("-port -p Port to bind to. Default: 3000"),
                 FIO_CLI_INT("-workers -w Number of workers (processes)."),
-                FIO_CLI_INT("-threads -t Number of threads."));
+                FIO_CLI_INT("-threads -t Number of threads."),
+                FIO_CLI_BOOL("-verbose -v Debug level verbosity"));
+  if (fio_cli_get_bool("-v"))
+    FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
   /* Default to port 3000. */
   fio_cli_set_default("-p", "3000");
   /* Default to single thread. */
