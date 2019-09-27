@@ -66,8 +66,7 @@ typedef struct {
   {                                                                            \
     .vtbl = (vtbl_), .pr = (owner_), .headers_out = fiobj_hash_new(),          \
     .public = {                                                                \
-        .status = 200,                                                         \
-        .received_at = fio_last_tick(),                                        \
+        .status = 200, /* .received_at = fio_last_tick(), */                   \
     },                                                                         \
   }
 

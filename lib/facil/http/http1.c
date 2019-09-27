@@ -35,6 +35,9 @@ typedef struct http1pr_s {
 
 #define parser2http(x) FIO_PTR_FROM_FIELD(http1pr_s, parser, (x))
 
+/** initializes the protocol object */
+inline static void http1_init_protocol(http1pr_s *, uintptr_t,
+                                       http_settings_s *);
 inline static void h1_reset(http1pr_s *p) { p->header_size = 0; }
 
 #define http1proto2handle(pr) (((http1pr_s *)(pr))->request)
@@ -55,6 +58,10 @@ static inline void http1_after_finish(http_s *h_) {
   if (p->close)
     fio_close(p->p.uuid);
 }
+
+/* *****************************************************************************
+Protocol Callbacks
+***************************************************************************** */
 
 /* *****************************************************************************
 VTable FUNCTIONS
@@ -133,15 +140,31 @@ void *http1_vtable(void) { return &HTTP1_VTABLE; }
  */
 fio_protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
                           void *unread_data, size_t unread_length) {
-  return NULL;
-  (void)uuid;
-  (void)settings;
-  (void)unread_data;
-  (void)unread_length;
+  if (unread_data && unread_length > HTTP_MAX_HEADER_LENGTH)
+    return NULL;
+  http1pr_s *p = fio_malloc(sizeof(*p) + HTTP_MAX_HEADER_LENGTH);
+  // FIO_LOG_DEBUG("Allocated HTTP/1.1 protocol at. %p", (void *)p);
+  FIO_ASSERT_ALLOC(p);
+  http1_init_protocol(p, uuid, settings);
+  if (unread_data) {
+    memcpy(p->buf, unread_data, unread_length);
+    p->buf_len = unread_length;
+  }
+  fio_attach(uuid, &p->p.protocol);
+  if (unread_data) {
+    fio_force_event(uuid, FIO_EVENT_ON_DATA);
+  }
+  return &p->p.protocol;
 }
 
 /** Destroys the HTTP1 protocol object. */
-void http1_destroy(fio_protocol_s *);
+void http1_destroy(fio_protocol_s *pr) {
+  http1pr_s *p = (http1pr_s *)pr;
+  http1proto2handle(p).public.status = 0;
+  http_h_destroy(&http1proto2handle(p), 0);
+  fio_free(p);
+  // FIO_LOG_DEBUG("Deallocated HTTP/1.1 protocol at. %p", (void *)p);
+}
 
 /* *****************************************************************************
 
@@ -328,32 +351,270 @@ static int http1_sse_write(http_sse_s *sse, FIOBJ str);
 static int http1_sse_close(http_sse_s *sse);
 
 /* *****************************************************************************
+HTTP/1.1 Protocol Callbacks
+***************************************************************************** */
+
+static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
+  if (fio_pending(uuid) > 4) {
+    goto throttle;
+  }
+  ssize_t i = 0;
+  size_t org_len = p->buf_len;
+  int pipeline_limit = 8;
+  if (!p->buf_len)
+    return;
+  do {
+    i = http1_parse(&p->parser, p->buf + (org_len - p->buf_len), p->buf_len);
+    p->buf_len -= i;
+    --pipeline_limit;
+  } while (i && p->buf_len && pipeline_limit && !p->stop);
+
+  if (p->buf_len && org_len != p->buf_len) {
+    memmove(p->buf, p->buf + (org_len - p->buf_len), p->buf_len);
+  }
+
+  if (p->buf_len == HTTP_MAX_HEADER_LENGTH) {
+    /* no room to read... parser not consuming data */
+    if (p->request.public.method)
+      http_send_error(&p->request.public, 413);
+    else {
+      FIOBJ_STR_TEMP_VAR(tmp_method);
+      fiobj_str_write(tmp_method, "GET", 3);
+      p->request.public.method = tmp_method;
+      http_send_error(&p->request.public, 413);
+    }
+  }
+
+  if (!pipeline_limit) {
+    fio_force_event(uuid, FIO_EVENT_ON_DATA);
+  }
+  return;
+
+throttle:
+  /* throttle busy clients (slowloris) */
+  p->stop |= 4;
+  fio_suspend(uuid);
+  FIO_LOG_DEBUG("(HTTP/1,1) throttling client at %.*s",
+                (int)fio_peer_addr(uuid).len, fio_peer_addr(uuid).buf);
+}
+
+/** Called when a data is available, but will not run concurrently */
+static void http1_on_data(intptr_t uuid, fio_protocol_s *protocol) {
+  http1pr_s *p = (http1pr_s *)protocol;
+  if (p->stop) {
+    fio_suspend(uuid);
+    return;
+  }
+  ssize_t i = 0;
+  if (HTTP_MAX_HEADER_LENGTH - p->buf_len)
+    i = fio_read(uuid, p->buf + p->buf_len,
+                 HTTP_MAX_HEADER_LENGTH - p->buf_len);
+  if (i > 0) {
+    p->buf_len += i;
+  }
+  http1_consume_data(uuid, p);
+}
+
+/** called when a data is available for the first time */
+static void http1_on_data_first_time(intptr_t uuid, fio_protocol_s *protocol) {
+  http1pr_s *p = (http1pr_s *)protocol;
+  ssize_t i;
+
+  i = fio_read(uuid, p->buf + p->buf_len, HTTP_MAX_HEADER_LENGTH - p->buf_len);
+
+  if (i <= 0)
+    return;
+  p->buf_len += i;
+
+  /* ensure future reads skip this first time HTTP/2.0 test */
+  p->p.protocol.on_data = http1_on_data;
+  if (i >= 24 && !memcmp(p->buf, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24)) {
+    FIO_LOG_WARNING("client claimed unsupported HTTP/2 prior knowledge.");
+    fio_close(uuid);
+    return;
+  }
+
+  /* Finish handling the same way as the normal `on_data` */
+  http1_consume_data(uuid, p);
+}
+
+/** called once all pending `fio_write` calls are finished. */
+static void http1_on_ready(intptr_t uuid, fio_protocol_s *protocol) {
+  /* resume slow clients from suspension */
+  http1pr_s *p = (http1pr_s *)protocol;
+  if (p->stop & 4) {
+    p->stop ^= 4; /* flip back the bit, so it's zero */
+    fio_force_event(uuid, FIO_EVENT_ON_DATA);
+  }
+  (void)protocol;
+}
+
+/** Called when the connection was closed, but will not run concurrently */
+static void http1_on_close(intptr_t uuid, fio_protocol_s *protocol) {
+  http1_destroy(protocol);
+  (void)uuid;
+}
+
+/** initializes the protocol object */
+inline static void http1_init_protocol(http1pr_s *pr, uintptr_t uuid,
+                                       http_settings_s *s) {
+  *pr = (http1pr_s){
+      .p =
+          {
+              .protocol =
+                  {
+                      .on_data = http1_on_data_first_time,
+                      .on_ready = http1_on_ready,
+                      .on_close = http1_on_close,
+                  },
+              .uuid = uuid,
+              .settings = s,
+          },
+      .parser = HTTP1_PARSER_INIT,
+      .request = HTTP_H_INIT(&HTTP1_VTABLE, &pr->p),
+      .max_header_size = s->max_header_size,
+      .is_client = s->is_client,
+  };
+}
+
+/* *****************************************************************************
 HTTP/1.1 Parser Callbacks
 ***************************************************************************** */
 
 /** called when a request was received. */
-static int http1_on_request(http1_parser_s *parser);
+static int http1_on_request(http1_parser_s *parser) {
+  http1pr_s *p = parser2http(parser);
+  http_on_request_handler______internal(&http1proto2handle(p).public,
+                                        p->p.settings);
+  if (p->request.public.method && !p->stop)
+    http_finish(&p->request.public);
+  h1_reset(p);
+  return fio_is_closed(p->p.uuid);
+}
+
 /** called when a response was received. */
-static int http1_on_response(http1_parser_s *parser);
+static int http1_on_response(http1_parser_s *parser) {
+  http1pr_s *p = parser2http(parser);
+  http_on_response_handler______internal(&http1proto2handle(p).public,
+                                         p->p.settings);
+  if (p->request.public.status_str && !p->stop)
+    http_finish(&p->request.public);
+  h1_reset(p);
+  return fio_is_closed(p->p.uuid);
+}
+
 /** called when a request method is parsed. */
-static int http1_on_method(http1_parser_s *parser, char *method,
-                           size_t method_len);
+static int http1_on_method(http1_parser_s *parser, char *method, size_t len) {
+  http1proto2handle(parser2http(parser)).public.method =
+      fiobj_str_new_cstr(method, len);
+  parser2http(parser)->header_size += len;
+  return 0;
+}
+
 /** called when a response status is parsed. the status_str is the string
  * without the prefixed numerical status indicator.*/
 static int http1_on_status(http1_parser_s *parser, size_t status,
-                           char *status_str, size_t len);
+                           char *status_str, size_t len) {
+  http1proto2handle(parser2http(parser)).public.status_str =
+      fiobj_str_new_cstr(status_str, len);
+  http1proto2handle(parser2http(parser)).public.status = status;
+  parser2http(parser)->header_size += len;
+  return 0;
+}
+
 /** called when a request path (excluding query) is parsed. */
-static int http1_on_path(http1_parser_s *parser, char *path, size_t path_len);
+static int http1_on_path(http1_parser_s *parser, char *path, size_t len) {
+  http1proto2handle(parser2http(parser)).public.path =
+      fiobj_str_new_cstr(path, len);
+  parser2http(parser)->header_size += len;
+  return 0;
+}
+
 /** called when a request path (excluding query) is parsed. */
-static int http1_on_query(http1_parser_s *parser, char *query,
-                          size_t query_len);
+static int http1_on_query(http1_parser_s *parser, char *query, size_t len) {
+  http1proto2handle(parser2http(parser)).public.query =
+      fiobj_str_new_cstr(query, len);
+  parser2http(parser)->header_size += len;
+  return 0;
+}
+
 /** called when a the HTTP/1.x version is parsed. */
-static int http1_on_version(http1_parser_s *parser, char *version, size_t len);
+static int http1_on_version(http1_parser_s *parser, char *version, size_t len) {
+  http1proto2handle(parser2http(parser)).public.version =
+      fiobj_str_new_cstr(version, len);
+  parser2http(parser)->header_size += len;
+/* start counting - occurs on the first line of both requests and responses */
+#if FIO_HTTP_EXACT_LOGGING
+  clock_gettime(CLOCK_REALTIME,
+                &http1proto2handle(parser2http(parser)).public.received_at);
+#else
+  http1proto2handle(parser2http(parser)).public.received_at = fio_last_tick();
+#endif
+  return 0;
+}
+
 /** called when a header is parsed. */
 static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
-                           char *data, size_t data_len);
+                           char *data, size_t data_len) {
+  FIOBJ sym = FIOBJ_INVALID;
+  FIOBJ obj = FIOBJ_INVALID;
+  if (!http1proto2handle(parser2http(parser)).public.headers) {
+    FIO_LOG_ERROR("(http1 parse ordering error) missing HashMap for header "
+                  "%s: %s",
+                  name, data);
+    http_send_error2(500, parser2http(parser)->p.uuid,
+                     parser2http(parser)->p.settings);
+    return -1;
+  }
+  parser2http(parser)->header_size += name_len + data_len;
+  if (parser2http(parser)->header_size >=
+          parser2http(parser)->max_header_size ||
+      fiobj_hash_count(http1proto2handle(parser2http(parser)).public.headers) >
+          HTTP_MAX_HEADER_COUNT) {
+    if (parser2http(parser)->p.settings->log) {
+      FIO_LOG_WARNING("(HTTP) security alert - header flood detected.");
+    }
+    http_send_error(&http1proto2handle(parser2http(parser)).public, 413);
+    return -1;
+  }
+  sym = fiobj_str_new_cstr(name, name_len);
+  obj = fiobj_str_new_cstr(data, data_len);
+  set_header_add(http1proto2handle(parser2http(parser)).public.headers, sym,
+                 obj);
+  fiobj_free(sym);
+  return 0;
+}
+
 /** called when a body chunk is parsed. */
 static int http1_on_body_chunk(http1_parser_s *parser, char *data,
-                               size_t data_len);
+                               size_t data_len) {
+  if (!parser->state.read) {
+    if (parser->state.content_length > 0) {
+      if (parser->state.content_length >
+          (ssize_t)parser2http(parser)->p.settings->max_body_size)
+        goto too_big;
+      http1proto2handle(parser2http(parser)).public.body =
+          fiobj_io_new2(parser->state.content_length);
+    } else {
+      http1proto2handle(parser2http(parser)).public.body = fiobj_io_new();
+    }
+  } else if (parser->state.read >
+             (ssize_t)parser2http(parser)->p.settings->max_body_size)
+    goto too_big; /* tested in case combined chuncked data is too long */
+  fiobj_io_write(http1proto2handle(parser2http(parser)).public.body, data,
+                 data_len);
+  return 0;
+
+too_big:
+  http_send_error(&http1proto2handle(parser2http(parser)).public, 413);
+  return -1;
+}
+
 /** called when a protocol error occurred. */
-static int http1_on_error(http1_parser_s *parser);
+static int http1_on_error(http1_parser_s *parser) {
+  if (parser2http(parser)->close)
+    return -1;
+  FIO_LOG_DEBUG("HTTP parser error.");
+  fio_close(parser2http(parser)->p.uuid);
+  return -1;
+}

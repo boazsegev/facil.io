@@ -53,6 +53,10 @@ typedef struct http1_parser_s {
   } state;
 } http1_parser_s;
 
+#define HTTP1_PARSER_INIT                                                      \
+  {                                                                            \
+    { 0 }                                                                      \
+  }
 /**
  * Returns the amount of data actually consumed by the parser.
  *
