@@ -15,8 +15,10 @@ License: MIT
 #define HTTP1_READ_BUFFER (8 * 1024) /* ~8kb */
 #endif
 
-/** Creates an HTTP1 protocol object and handles any unread data in the buffer
- * (if any). */
+/**
+ * Creates an HTTP1 protocol object and handles any unread data in the buffer
+ * (if any).
+ */
 fio_protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
                           void *unread_data, size_t unread_length);
 

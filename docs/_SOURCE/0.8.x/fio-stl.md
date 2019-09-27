@@ -2366,6 +2366,18 @@ If `FIO_MALLOC_FORCE_SYSTEM` is defined, the facil.io memory allocator functions
 
 If `FIO_MALLOC_OVERRIDE_SYSTEM` is defined, the facil.io memory allocator will replace the system's memory allocator.
 
+#### `FIO_MEMORY_ARENA_COUNT_MAX`
+
+Sets the maximum number of memory arenas to initialize. Defaults to 64.
+
+When set to `0` the number of arenas will always match the maximum number of detected CPU cores.
+
+#### `FIO_MEMORY_ARENA_COUNT_DEFAULT`
+
+The default number of memory arenas to initialize when CPU core detection fails or isn't available. Defaults to `5`.
+
+Normally, facil.io tries to initialize as many memory allocation arenas as the number of CPU cores. This value will only be used if core detection isn't available or fails.
+
 -------------------------------------------------------------------------------
 
 ## Basic Socket / IO Helpers

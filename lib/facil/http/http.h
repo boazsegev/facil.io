@@ -43,8 +43,25 @@ Compile Time Settings
 #endif
 
 #ifndef FIO_HTTP_LOG_LINE_TRUNCATION
-/** the default maximum length for a single log line - maximum: 32KB */
+/** the default maximum length for a single log line in bytes */
 #define FIO_HTTP_LOG_LINE_TRUNCATION 1023
+#endif
+
+#ifndef HTTP_MIME_REGISTRY_AUTO
+/**
+ * When above zero, fills the mime-type registry with known values.
+ *
+ * When zero (false), no mime-type values will be automatically registered.
+ *
+ * When negative, minimal mime-type values will be automatically registered,
+ * including only mime types for the file extensions: html, htm, txt, js, css
+ * and json.
+ *
+ * On embedded systems, consider filling the mime registy manually or sitting
+ * this to a negative value, since the large number of prefilled values could
+ * increase memory usage and executable size.
+ */
+#define HTTP_MIME_REGISTRY_AUTO 1
 #endif
 
 #ifndef FIO_HTTP_EXACT_LOGGING
@@ -894,10 +911,10 @@ HTTP General Helper functions that could be used globally
 ***************************************************************************** */
 
 /**
- * Returns a String object representing the unparsed HTTP request (HTTP version
- * is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.
+ * Returns a String object representing the unparsed HTTP request/response (HTTP
+ * version is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.
  */
-FIOBJ http_req2str(http_s *h);
+FIOBJ http2str(http_s *h);
 
 /**
  * Writes a log line to `stderr` about the request / response object.

@@ -122,19 +122,19 @@ struct http_vtable_s {
   /** Push for files. */
   int (*const push_file)(http_internal_s *h, FIOBJ filename, FIOBJ mime_type);
   /** Pauses the request / response handling. */
-  void (*on_pause)(http_internal_s *, http_fio_protocol_s *);
+  void (*const on_pause)(http_internal_s *, http_fio_protocol_s *);
 
   /** Resumes a request / response handling. */
-  void (*on_resume)(http_internal_s *, http_fio_protocol_s *);
+  void (*const on_resume)(http_internal_s *, http_fio_protocol_s *);
   /** hijacks the socket aaway from the protocol. */
   intptr_t (*hijack)(http_internal_s *h, fio_str_info_s *leftover);
 
   /** Upgrades an HTTP connection to an EventSource (SSE) connection. */
-  int (*upgrade2sse)(http_internal_s *h, http_sse_s *sse);
+  int (*const upgrade2sse)(http_internal_s *h, http_sse_s *sse);
   /** Writes data to an EventSource (SSE) connection. MUST free the FIOBJ. */
-  int (*sse_write)(http_sse_s *sse, FIOBJ str);
+  int (*const sse_write)(http_sse_s *sse, FIOBJ str);
   /** Closes an EventSource (SSE) connection. */
-  int (*sse_close)(http_sse_s *sse);
+  int (*const sse_close)(http_sse_s *sse);
 };
 
 /* *****************************************************************************

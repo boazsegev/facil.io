@@ -1541,6 +1541,27 @@ SFUNC void fio_malloc_after_fork(void);
 #define FIO_MEMORY_BLOCKS_PER_ALLOCATION 256
 #endif
 
+/*
+ * The maximum number of memory arenas to initialize.
+ *
+ * When 0 - maximum detected cores.
+ */
+#ifndef FIO_MEMORY_ARENA_COUNT_MAX
+#define FIO_MEMORY_ARENA_COUNT_MAX 64
+#endif
+
+/*
+ * The default number of memory arenas to initialize when CPU core detection
+ * fails.
+ *
+ * Normally, fio_malloc tries to initialize as many memory allocation arenas as
+ * the number of CPU cores. This value will only be used if core detection isn't
+ * available or fails.
+ */
+#ifndef FIO_MEMORY_ARENA_COUNT_DEFAULT
+#define FIO_MEMORY_ARENA_COUNT_DEFAULT 5
+#endif
+
 /* *****************************************************************************
 Memory Allocation - redefine default allocation macros
 ***************************************************************************** */
@@ -1896,12 +1917,20 @@ HSFUNC void __attribute__((constructor)) fio___mem_state_allocate(void) {
     return;
 #ifdef _SC_NPROCESSORS_ONLN
   size_t cores = sysconf(_SC_NPROCESSORS_ONLN);
+  if ((intptr_t)cores <= 0)
+    cores = FIO_MEMORY_ARENA_COUNT_DEFAULT;
 #else
-#warning Dynamic CPU core count is unavailable - assuming 8 cores for memory allocation pools.
-  size_t cores = 5;
+#warning Dynamic CPU core count is unavailable - assuming FIO_MEMORY_ARENA_COUNT_DEFAULT cores.
+  size_t cores = FIO_MEMORY_ARENA_COUNT_DEFAULT;
+  if ((intptr_t)cores <= 0)
+    cores = 1;
 #endif
-  if (cores <= 0)
-    cores = 8;
+#if FIO_MEMORY_ARENA_COUNT_MAX
+  if (cores >= FIO_MEMORY_ARENA_COUNT_MAX)
+    cores = FIO_MEMORY_ARENA_COUNT_MAX;
+  if ((intptr_t)cores <= 0)
+    cores = 1;
+#endif
   const size_t pages = FIO_MEM_BYTES2PAGES(sizeof(*fio___mem_state) +
                                            (cores * sizeof(fio___mem_arena_s)));
   fio___mem_state = FIO_MEM_PAGE_ALLOC(pages, 1);
@@ -10807,6 +10836,8 @@ FIO_IFUNC fio_str_info_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
 #define FIOBJ_STR_TEMP_VAR(str_name)                                           \
   FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), s)                            \
   FIO_NAME(str_name, __tmp)[2] = {FIO_STRING_INIT, FIO_STRING_INIT};           \
+  memset(FIO_NAME(str_name, __tmp), 0x7f,                                      \
+         sizeof(FIO_NAME(str_name, __tmp)[0]));                                \
   FIOBJ str_name = (FIOBJ)(((uintptr_t) & (FIO_NAME(str_name, __tmp)[1])) |    \
                            FIOBJ_T_STRING);
 

@@ -2532,12 +2532,10 @@ intptr_t fio_socket(const char *address, const char *port,
                  (uint16_t)FIO_SOCKET_UNIX)))
     flags |= FIO_SOCKET_TCP;
   int fd = fio_sock_open(address, port, flags);
-  if (fd == -1) {
-    FIO_LOG_DEBUG2("Couldn't open a socket for %s : %s (flags: %u)\r\n\t",
-                   (address ? address : "---"), (port ? port : "0"),
-                   (unsigned int)flags, strerror(errno));
-    return -1;
-  }
+  if (fd == -1)
+    goto failed_to_open;
+  if ((uint32_t)fd >= fio_data->capa)
+    goto too_big;
 
 #if defined(TCP_FASTOPEN) && defined(IPPROTO_TCP)
   if ((flags & (FIO_SOCKET_SERVER | FIO_SOCKET_TCP)) ==
@@ -2573,6 +2571,17 @@ intptr_t fio_socket(const char *address, const char *port,
   fd_data(fd).addr[fd_data(fd).addr_len] = 0;
   /* TODO: setup default read/write hooks for UDP */
   return fd2uuid(fd);
+too_big:
+  close(fd);
+  FIO_LOG_DEBUG2(
+      "Couldn't open a new socket - reactor capacity reached %d >= %zu", fd,
+      (size_t)fio_data->capa);
+  return -1;
+failed_to_open:
+  FIO_LOG_DEBUG2("Couldn't open a socket for %s : %s (flags: %u)\r\n\t",
+                 (address ? address : "---"), (port ? port : "0"),
+                 (unsigned int)flags, strerror(errno));
+  return -1;
 }
 
 /* *****************************************************************************

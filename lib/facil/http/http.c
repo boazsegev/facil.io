@@ -19,7 +19,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <unistd.h>
 
 /* *****************************************************************************
-Compile Time Settings
+External functions
 ***************************************************************************** */
 
 // #define HTTP_BUSY_UNLESS_HAS_FDS 64
@@ -28,16 +28,7 @@ Compile Time Settings
 // #define HTTP_MAX_HEADER_LENGTH 8192
 // #define FIO_HTTP_EXACT_LOGGING 0
 
-fio_protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
-                          void *unread_data, size_t unread_length) {
-  return NULL;
-  (void)uuid;
-  (void)settings;
-  (void)unread_data;
-  (void)unread_length;
-}
-
-void *http1_vtable(void) { return NULL; }
+#include <http1.h>
 
 /* *****************************************************************************
 Small Helpers
@@ -59,7 +50,6 @@ static inline FIOBJ get_date___(void) {
   static char date_buf[48];
   static size_t date_len;
   static time_t last_date_added;
-  memset(date___tmp, 0x7f, sizeof(date___tmp[0])); /* prevent fiobj_free */
   if (fio_last_tick().tv_sec > last_date_added) {
     const time_t now = fio_last_tick().tv_sec;
     struct tm tm;
@@ -71,6 +61,9 @@ static inline FIOBJ get_date___(void) {
   return date;
 }
 static inline void add_date(http_internal_s *h) {
+  if (fiobj_hash_get2(h->headers_out, HTTP_HEADER_DATE) &&
+      fiobj_hash_get2(h->headers_out, HTTP_HEADER_LAST_MODIFIED))
+    return;
   FIOBJ date = get_date___(); /* no fiobj_dup, since it's a static tmp var. */
   set_header_if_missing(h->headers_out, HTTP_HEADER_DATE, date);
   set_header_if_missing(h->headers_out, HTTP_HEADER_LAST_MODIFIED, date);
@@ -372,8 +365,11 @@ int http_send_error(http_s *h_, size_t error) {
   buffer[pos] = 0;
   if (http_sendfile2(h_, h->pr->settings->public_folder,
                      h->pr->settings->public_folder_length, buffer, pos)) {
-    http_set_header(h_, HTTP_HEADER_CONTENT_TYPE,
-                    http_mimetype_find((char *)"html", 3));
+    FIOBJ mime_type = http_mimetype_find((char *)"html", 3);
+    if (mime_type) {
+      http_set_header(h_, HTTP_HEADER_CONTENT_TYPE,
+                      http_mimetype_find((char *)"html", 3));
+    }
     fio_str_info_s t = http_status2str(error);
     http_send_body(h_, t.buf, t.len);
   }
@@ -2196,10 +2192,10 @@ static int http___write_header(FIOBJ o, void *w_) {
 }
 
 /**
- * Returns a String object representing the unparsed HTTP request (HTTP version
- * is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.
+ * Returns a String object representing the unparsed HTTP request/response (HTTP
+ * version is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.
  */
-FIOBJ http_req2str(http_s *h_) {
+FIOBJ http2str(http_s *h_) {
   http_internal_s *h = HTTP2PRIVATE(h_);
   if (!HTTP_S_INVALID(h_))
     return FIOBJ_INVALID;

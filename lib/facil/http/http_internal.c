@@ -240,6 +240,16 @@ static void http_lib_init(void *ignr_) {
   http_mimetype_register((char *)ext, sizeof(ext) - 1,                         \
                          fiobj_str_new_cstr((char *)type, sizeof(type) - 1))
 
+#if HTTP_MIME_REGISTRY_AUTO
+  REGISTER_MIME("html", "text/html");
+  REGISTER_MIME("txt", "text/plain");
+  REGISTER_MIME("htm", "text/html");
+  REGISTER_MIME("css", "text/css");
+  REGISTER_MIME("js", "application/javascript");
+  REGISTER_MIME("json", "application/json");
+#endif
+
+#if HTTP_MIME_REGISTRY_AUTO > 0
   REGISTER_MIME("123", "application/vnd.lotus-1-2-3");
   REGISTER_MIME("3dml", "text/vnd.in3d.3dml");
   REGISTER_MIME("3ds", "image/x-3ds");
@@ -379,7 +389,6 @@ static void http_lib_init(void *ignr_) {
   REGISTER_MIME("csh", "application/x-csh");
   REGISTER_MIME("csml", "chemical/x-csml");
   REGISTER_MIME("csp", "application/vnd.commonspace");
-  REGISTER_MIME("css", "text/css");
   REGISTER_MIME("cst", "application/x-director");
   REGISTER_MIME("csv", "text/csv");
   REGISTER_MIME("cu", "application/cu-seeme");
@@ -557,8 +566,6 @@ static void http_lib_init(void *ignr_) {
   REGISTER_MIME("hps", "application/vnd.hp-hps");
   REGISTER_MIME("hqx", "application/mac-binhex40");
   REGISTER_MIME("htke", "application/vnd.kenameaapp");
-  REGISTER_MIME("htm", "text/html");
-  REGISTER_MIME("html", "text/html");
   REGISTER_MIME("hvd", "application/vnd.yamaha.hv-dic");
   REGISTER_MIME("hvp", "application/vnd.yamaha.hv-voice");
   REGISTER_MIME("hvs", "application/vnd.yamaha.hv-script");
@@ -606,8 +613,6 @@ static void http_lib_init(void *ignr_) {
   REGISTER_MIME("jpgm", "video/jpm");
   REGISTER_MIME("jpgv", "video/jpeg");
   REGISTER_MIME("jpm", "video/jpm");
-  REGISTER_MIME("js", "application/javascript");
-  REGISTER_MIME("json", "application/json");
   REGISTER_MIME("jsonml", "application/jsonml+json");
   REGISTER_MIME("kar", "audio/midi");
   REGISTER_MIME("karbon", "application/vnd.kde.karbon");
@@ -1069,7 +1074,6 @@ static void http_lib_init(void *ignr_) {
   REGISTER_MIME("twds", "application/vnd.simtech-mindmapper");
   REGISTER_MIME("txd", "application/vnd.genomatix.tuxedo");
   REGISTER_MIME("txf", "application/vnd.mobius.txf");
-  REGISTER_MIME("txt", "text/plain");
   REGISTER_MIME("u32", "application/x-authorware-bin");
   REGISTER_MIME("udeb", "application/x-debian-package");
   REGISTER_MIME("ufd", "application/vnd.ufdl");
@@ -1251,6 +1255,8 @@ static void http_lib_init(void *ignr_) {
   REGISTER_MIME("zirz", "application/vnd.zul");
   REGISTER_MIME("zmm", "application/vnd.handheld-entertainment+xml");
 
+#endif /* HTTP_MIME_REGISTRY_AUTO > 0*/
 #undef REGISTER_MIME
+
   http_mimetype_stats();
 }
