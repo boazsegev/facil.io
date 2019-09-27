@@ -77,19 +77,27 @@ A few pointers about code styling (pun intended).
 
 `facil.io` is comprised of the following module "families":
 
-* The Core:
+* The Simple Type Library Core (`facil.io` STL):
 
-    This module family comprises `facil.io`'s core. Although it can (mostly) be used outside of `facil.io`, none of the modules in this family can be removed.
+    The module in comprised of a single file header library: `fio-stl.h`
+
+    The `fio-stl.h` file can be included more then once and offers some core types and features, such as binary String support, Arrays, Hash Maps, atomic operations, etc' (see documentation).
+
+    For example, this module contains the code for the Dynamic Types (`FIOBJ`), the code for the built-in JSON support features, the code for the CLI parser and the code for the custom memory allocator.
+
+* The IO Core Library:
+
+    This module comprises `facil.io`'s IO core and requires the STL Core module.
 
     The module in comprised of two files: `fio.h` and `fio.c`.
 
-    The `fio.h` file can be included more then once and includes some core types, such as binary String support, Arrays, Hash Maps, spinlocks, etc' (see documentation).
+* FIOBJ:
 
-* Dynamic Types (`FIOBJ`) with native JSON support.
+    This module, in the `fiobj` folder, extends the core FIOBJ type system.
 
-    This soft type system was designed to make some network oriented tasks easier and is therefore used by many of the other modules.
+    This module adds features used by the HTTP / WebSockets module, such as the mustache template engine, or the extension that routes large HTTP payloads to temporary files.
 
-    Unlike most modules, this module is only optional if the core is used independently.
+    If this module was removed, the HTTP / WebSockets module would need to be adjusted.
 
 * HTTP / WebSockets:
 
@@ -99,20 +107,11 @@ A few pointers about code styling (pun intended).
 
     HTTP request and response modules support virtual function tables for future HTTP/2 extensions. The actual request/response implementations might vary between protocol implementation, but their interface should be version agnostic.
 
-    Like most modules, it is optional and can be removed from facil.io without any side-effects.
-
 * Redis:
 
     The redis engine is in it's own folder, both because it's clearly an "add-on" (even though it's a pub/sub add-on) and because it's as optional as it gets.
 
     This is also a good example for my preference for modular design. The RESP parser is a single file library. It can be easily ported to different projects and is totally separate from the network layer.
-
-* CLI:
-
-    The command line interface extension / module is in the folder `cli` and should be considered and optional add-on. Other modules shouldn't rely on it's existence or absence.
-
-    This too, much like the Redis module, is a good example of the preferred modular approach.
-
 
 ### Where to start / Roadmap
 
@@ -128,12 +127,12 @@ These are the features that have been requested so far. Even if any of them are 
 |-------------------|--------------------|----------------------------|
 |   Documentation   |     🙏 Help 🙏    | Placed at [`docs/_SOURCE`](docs/_SOURCE) |
 |       Tests       |    Never enough    | run through [`tests.c`](tests/tests.c) but implement in source files. |
-| Early Hints HTTP/1.1 |               |                            |
+| Early Hints HTTP/1.1 |                 |                            |
 |      SSL/TLS      |                    | See [TLS in `fio.c`](lib/facil/fio.c) for example. |
-|  WebSocket Client |                    | Missing cookie retention.  |
-|    HTTP Client    |                    | Missing SSL/TLS, cookie retention and auto-redirect(?)  |
+|  WebSocket Client |                    | Missing cookie retention / headers  |
+|    HTTP Client    |                    | Cookie retention and auto-redirect(?)  |
 |      HTTP/2       |                    |                            |
-|    HTTP Router    |                    | RESTfuk without RegEx. i.e.: `/users/(:id)` |
+|    HTTP Router    |                    | RESTful without RegEx. i.e.: `/users/(:id)` |
 |     PostgreSQL    |                    | Wrap `libpq.h` for events + pub/sub engine (?) |
 |     Gossip (?)    |                    | For Pub/Sub engine scaling |
 
