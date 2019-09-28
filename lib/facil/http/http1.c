@@ -330,11 +330,21 @@ static int http1_sendfile(http_internal_s *h, int fd, uintptr_t offset,
   FIOBJ headers = http1_format_headers(h);
   if (!headers)
     goto headers_error;
+  if ((fiobj_str_len(headers) + length) <= (FIO_MEMORY_BLOCK_ALLOC_LIMIT - 32))
+    goto combine_headers_and_file; /* optimize away small files */
   fiobj_send_free(internal2http1(h)->p.uuid, headers);
   if (length)
     fio_sendfile(internal2http1(h)->p.uuid, fd, offset, length);
   http1_after_finish(h);
   return 0;
+
+combine_headers_and_file:
+  fiobj_str_readfd(headers, fd, offset, length);
+  fiobj_send_free(internal2http1(h)->p.uuid, headers);
+  http1_after_finish(h);
+  close(fd);
+  return 0;
+
 headers_error:
   if (fd >= 0)
     close(fd);

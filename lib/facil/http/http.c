@@ -720,7 +720,7 @@ int http_sendfile2(http_s *h_, const char *prefix, size_t prefix_len,
   fio_str_info_s enc[7]; /* holds default tests + accept-encoding headers */
   size_t enc_count = 0;
   {
-    /* add the `br` and `gz` extensions to the `ext` array, if supported */
+    /* add any supported encoding options, such as gzip, deflate, br, etc' */
     FIOBJ encodeings =
         fiobj_hash_get2(h_->headers, HTTP_HEADER_ACCEPT_ENCODING);
     if (encodeings) {
