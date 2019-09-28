@@ -29,6 +29,7 @@ typedef struct http1pr_s {
   uintptr_t header_size;
   uint8_t close;
   uint8_t is_client;
+  uint8_t log;
   uint8_t stop;
   uint8_t buf[];
 } http1pr_s;
@@ -51,7 +52,7 @@ static void http1_after_finish(http_internal_s *h) {
     http_h_destroy(h, 0);
     fio_free(h);
   } else {
-    http_h_clear(h, h->headers_out && p->p.settings->log);
+    http_h_clear(h, h->headers_out && p->log);
   }
   if (p->close)
     fio_close(p->p.uuid);
@@ -501,8 +502,18 @@ static int http1_upgrade2sse(http_internal_s *h, http_sse_s *sse) {
     return -1;
   set_header_overwite(h->headers_out, HTTP_HEADER_CONTENT_ENCODING,
                       fiobj_dup(HTTP_HVALUE_SSE_MIME));
+  if (http1_stream(h, NULL, 0) == -1)
+    goto upgrade_failed;
+
   (void)sse; /* FIXME */
-  return http1_stream(h, NULL, 0);
+
+  if (sse->on_open)
+    sse->on_open(sse);
+  return 0;
+upgrade_failed:
+  if (sse->on_close)
+    sse->on_close(sse);
+  return -1;
 }
 /** Writes data to an EventSource (SSE) connection. MUST free the FIOBJ. */
 static int http1_sse_write(http_sse_s *sse, FIOBJ str) {
@@ -639,6 +650,7 @@ inline static void http1_init_protocol(http1pr_s *pr, uintptr_t uuid,
       .request = HTTP_H_INIT(&HTTP1_VTABLE, &pr->p),
       .max_header_size = s->max_header_size,
       .is_client = s->is_client,
+      .log = s->log,
   };
 }
 
@@ -740,7 +752,7 @@ static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
           parser2http(parser)->max_header_size ||
       fiobj_hash_count(http1proto2handle(parser2http(parser)).public.headers) >
           HTTP_MAX_HEADER_COUNT) {
-    if (parser2http(parser)->p.settings->log) {
+    if (parser2http(parser)->log) {
       FIO_LOG_WARNING("(HTTP) security alert - header flood detected.");
     }
     http_send_error(&http1proto2handle(parser2http(parser)).public, 413);

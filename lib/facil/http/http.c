@@ -328,10 +328,17 @@ int http_sendfile(http_s *h_, int fd, uintptr_t offset, uintptr_t length) {
     goto handle_invalid;
   if (!length || fd == -1)
     goto input_error;
+  if (!length) {
+    FIO_LOG_WARNING("(HTTP) http_sendfile length missing\n");
+    struct stat s;
+    if (-1 == fstat(fd, &s) || (uintptr_t)s.st_size < offset)
+      goto input_error;
+    length = s.st_size - offset;
+  }
   add_content_length(h, length);
   add_content_type(h);
   add_date(h);
-  return h->vtbl->sendfile(h, fd, length, offset);
+  return h->vtbl->sendfile(h, fd, offset, length);
 input_error:
   http_finish(h_);
   if (fd >= 0)
@@ -459,6 +466,7 @@ HTTP `sendfile2` - Sending a File by Name
 /* internal helper - tests for a file and prepers response */
 static int http_sendfile___test_filename(http_s *h, fio_str_info_s filename,
                                          fio_str_info_s enc) {
+  // FIO_LOG_DEBUG2("(HTTP) sendfile testing: %s", filename.buf);
   http_internal_s *hpriv = HTTP2PRIVATE(h);
   struct stat file_data = {.st_size = 0};
   int file = -1;
@@ -466,6 +474,7 @@ static int http_sendfile___test_filename(http_s *h, fio_str_info_s filename,
       (!S_ISREG(file_data.st_mode) && !S_ISLNK(file_data.st_mode)))
     return -1;
   /*** file name Okay, handle request ***/
+  // FIO_LOG_DEBUG2("(HTTP) sendfile found: %s", filename.buf);
   if (hpriv->pr->settings->static_headers) { /* copy default headers */
     FIOBJ defs = hpriv->pr->settings->static_headers;
     FIO_MAP_EACH(((fiobj_hash_s *)FIOBJ_PTR_UNTAG(defs)), pos) {
@@ -623,6 +632,20 @@ open_file:
   return http_sendfile(h, file, offset, length);
 }
 
+static inline int http_test_encoded_path(const char *mem, size_t len) {
+  const char *pos = NULL;
+  const char *end = mem + len;
+  while (mem < end && (pos = memchr(mem, '/', (size_t)len))) {
+    len = end - pos;
+    mem = pos + 1;
+    if (len >= 1 && pos[1] == '/')
+      return -1;
+    if (len > 3 && pos[1] == '.' && pos[2] == '.' && pos[4] == '/')
+      return -1;
+  }
+  return 0;
+}
+
 /**
  * Sends the response headers and the specified file (the response's body).
  *
@@ -649,30 +672,25 @@ int http_sendfile2(http_s *h_, const char *prefix, size_t prefix_len,
   if (prefix && prefix_len) {
     fiobj_str_write(fn, prefix, prefix_len);
     if (prefix[prefix_len] - 1 == '/' && encoded) {
-      while (encoded_len && encoded[0] == '/') {
-        --encoded_len;
+      if (encoded_len && encoded[0] == '/') {
         ++encoded;
+        --encoded_len;
       }
     }
   }
   if (encoded) {
     char tmp[128];
-    size_t len = 0;
-    while (encoded_len) {
-      if ((encoded_len >= 2 && encoded[0] == '/' && encoded[1] == '/') ||
-          (encoded_len >= 4 && encoded[0] == '/' && encoded[1] == '.' &&
-           encoded[2] == '.' && encoded[3] == '/'))
-        goto path_error;
-      if (*encoded == '%' && encoded_len >= 3) {
+    uint8_t len = 0;
+    while (encoded_len--) {
+      if (*encoded == '%' && encoded_len >= 2) {
         if (hex2byte((uint8_t *)(tmp + len), (const uint8_t *)(encoded + 1)))
           goto path_error;
         ++len;
         encoded += 3;
-        encoded_len -= 3;
+        encoded_len -= 2;
       } else {
-        tmp[++len] = *encoded;
+        tmp[len++] = *encoded;
         ++encoded;
-        --encoded_len;
       }
       if (len >= 125) {
         /* minimize calls to `write`, because the test memory capacity */
@@ -683,40 +701,68 @@ int http_sendfile2(http_s *h_, const char *prefix, size_t prefix_len,
     if (len) {
       fiobj_str_write(fn, tmp, len);
     }
+    tmp[len] = 0;
+    fio_str_info_s fn_inf = fiobj_str2cstr(fn);
+    if (http_test_encoded_path(fn_inf.buf + prefix_len,
+                               fn_inf.len - prefix_len))
+      goto path_error;
   }
-  /* raw file name is now stored at `fn`, we need to test for variations */
+  /* store original length and test for folder (index) */
   size_t org_len = fiobj_str_len(fn);
-  const fio_str_info_s ext[7] = {/* br, gzip */
-                                 {.buf = "", .len = 0},
-                                 {.buf = ".html", .len = 5},
-                                 {.buf = NULL}};
-  fio_str_info_s enc[7];
+  if (fiobj_str2ptr(fn)[org_len - 1] == '/')
+    org_len = fiobj_str_write(fn, "index.html", 10).len;
+
+  /* raw file name is now stored at `fn`, we need to test for variations */
+  const fio_str_info_s ext[] = {/* holds default changes */
+                                {.buf = "", .len = 0},
+                                {.buf = ".html", .len = 5},
+                                {.buf = NULL}};
+  fio_str_info_s enc[7]; /* holds default tests + accept-encoding headers */
   size_t enc_count = 0;
   {
     /* add the `br` and `gz` extensions to the `ext` array, if supported */
     FIOBJ encodeings =
         fiobj_hash_get2(h_->headers, HTTP_HEADER_ACCEPT_ENCODING);
-    fio_str_info_s i = fiobj2cstr(encodeings);
-    while (i.len && enc_count < 7) {
-      while (*i.buf == ',' || *i.buf == ' ') {
-        ++i.buf;
-        --i.len;
+    if (encodeings) {
+      fio_str_info_s i = fiobj2cstr(encodeings);
+      while (i.len && enc_count < 7) {
+        while (i.len && (*i.buf == ',' || *i.buf == ' ')) {
+          ++i.buf;
+          --i.len;
+        }
+        if (!i.len)
+          break;
+        size_t end = 0;
+        while (end < i.len && i.buf[end] != ',' && i.buf[end] != ' ')
+          ++end;
+        if (end && end < 64) { /* avoid malicious encoding information */
+          if (end == 4 && !memcmp(i.buf, "gzip", 4)) {
+            enc[enc_count++] = (fio_str_info_s){.buf = "gz", .len = 2};
+          } else if (end == 7 && !memcmp(i.buf, "deflate", 7)) {
+            /* don't support "deflate" files, they may cause problems, I'm told
+             */
+            // enc[enc_count++] = (fio_str_info_s){.buf = "gz", .len = 2};
+          } else { /* passthrough / unknown variations */
+            enc[enc_count++] = (fio_str_info_s){.buf = i.buf, .len = end};
+          }
+        }
+        i.len -= end;
+        i.buf += end;
       }
-      if (!i.len)
-        break;
-      char *tok = memchr(i.buf, ',', i.len);
-      if (!tok)
-        tok = i.buf;
-      if (tok - i.buf < 64) /* avoid malicious encoding information */
-        enc[enc_count++] = (fio_str_info_s){.buf = i.buf, .len = tok - i.buf};
-      i.len -= tok - i.buf;
-      i.buf = tok;
     }
   }
   size_t pos = 0;
   do {
     /* add extension */
-    fio_str_info_s n = fiobj_str_write(fn, ext[pos].buf, ext[pos].len);
+    fio_str_info_s n = fiobj_str2cstr(fn);
+    if (ext[pos].len) {
+      if (n.len > ext[pos].len &&
+          !memcmp(n.buf - ext[pos].len, ext[pos].buf, ext[pos].len)) {
+        ++pos;
+        continue;
+      }
+      n = fiobj_str_write(fn, ext[pos].buf, ext[pos].len);
+    }
     size_t ext_len = n.len;
     /* test each supported encoding option */
     for (size_t i = 0; i < enc_count; ++i) {
