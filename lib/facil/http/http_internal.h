@@ -35,6 +35,7 @@ extern FIOBJ HTTP_HEADER_ACCEPT_RANGES;
 extern FIOBJ HTTP_HEADER_WS_SEC_CLIENT_KEY;
 extern FIOBJ HTTP_HEADER_WS_SEC_KEY;
 extern FIOBJ HTTP_HVALUE_BYTES;
+extern FIOBJ HTTP_HVALUE_CHUNKED_ENCODING;
 extern FIOBJ HTTP_HVALUE_CLOSE;
 extern FIOBJ HTTP_HVALUE_CONTENT_TYPE_DEFAULT;
 extern FIOBJ HTTP_HVALUE_GZIP;
@@ -107,18 +108,18 @@ struct http_vtable_s {
   /** Should send existing headers and data */
   int (*const send_body)(http_internal_s *h, void *data, uintptr_t length);
   /** Should send existing headers and file */
-  int (*const sendfile)(http_internal_s *h, int fd, uintptr_t length,
-                        uintptr_t offset);
+  int (*const sendfile)(http_internal_s *h, int fd, uintptr_t offset,
+                        uintptr_t length);
   /** Should send existing headers and data and prepare for streaming */
   int (*const stream)(http_internal_s *h, void *data, uintptr_t length);
   /** Should send existing headers or complete streaming */
   void (*const finish)(http_internal_s *h);
-  /** Push for data. */
+  /** Push for data. MUST free the FIOBJ argument. */
   int (*const push_data)(http_internal_s *h, void *data, uintptr_t length,
                          FIOBJ mime_type);
   /** Upgrades a connection to Websockets. */
   int (*const http2websocket)(http_internal_s *h, websocket_settings_s *arg);
-  /** Push for files. */
+  /** Push for files. MUST free the FIOBJ arguments. */
   int (*const push_file)(http_internal_s *h, FIOBJ filename, FIOBJ mime_type);
   /** Pauses the request / response handling. */
   void (*const on_pause)(http_internal_s *, http_fio_protocol_s *);

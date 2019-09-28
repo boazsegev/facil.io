@@ -99,7 +99,7 @@ The HTTP hanndler (Request / Response) functions
  * Returns -1 on error and 0 on success.
  */
 int http_set_header(http_s *h_, FIOBJ name, FIOBJ value) {
-  if (!HTTP_S_INVALID(h_) || value == FIOBJ_INVALID)
+  if (HTTP_S_INVALID(h_) || value == FIOBJ_INVALID)
     goto error;
   http_internal_s *h = HTTP2PRIVATE(h_);
   set_header_add(h->headers_out, name, value);
@@ -115,7 +115,7 @@ error:
  * Returns -1 on error and 0 on success.
  */
 int http_set_header2(http_s *h_, fio_str_info_s name, fio_str_info_s value) {
-  if (!HTTP_S_INVALID(h_))
+  if (HTTP_S_INVALID(h_))
     return -1;
   http_internal_s *h = HTTP2PRIVATE(h_);
   FIOBJ k = fiobj_str_new_cstr(name.buf, name.len);
@@ -298,7 +298,7 @@ int http_set_cookie FIO_NOOP(http_s *h_, http_cookie_args_s cookie) {
  */
 int http_send_body(http_s *h_, void *data, uintptr_t length) {
   http_internal_s *h = HTTP2PRIVATE(h_);
-  if (!HTTP_S_INVALID(h_))
+  if (HTTP_S_INVALID(h_))
     return -1;
   if (!length || !data) {
     http_finish(h_);
@@ -319,10 +319,10 @@ int http_send_body(http_s *h_, void *data, uintptr_t length) {
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_sendfile(http_s *h_, int fd, uintptr_t length, uintptr_t offset) {
+int http_sendfile(http_s *h_, int fd, uintptr_t offset, uintptr_t length) {
   http_internal_s *h = HTTP2PRIVATE(h_);
-  if (!HTTP_S_INVALID(h_))
-    return -1;
+  if (HTTP_S_INVALID(h_))
+    goto handle_invalid;
   if (!length || fd == -1)
     goto input_error;
   add_content_length(h, length);
@@ -334,6 +334,10 @@ input_error:
   if (fd >= 0)
     close(fd);
   return 0;
+handle_invalid:
+  if (fd >= 0)
+    close(fd);
+  return -1;
 }
 
 /**
@@ -348,7 +352,7 @@ input_error:
  */
 int http_send_error(http_s *h_, size_t error) {
   http_internal_s *h = HTTP2PRIVATE(h_);
-  if (!HTTP_S_INVALID(h_))
+  if (HTTP_S_INVALID(h_))
     return -1;
 
   if (error < 100 || error >= 1000)
@@ -383,11 +387,13 @@ int http_send_error(http_s *h_, size_t error) {
  */
 void http_finish(http_s *h_) {
   http_internal_s *h = HTTP2PRIVATE(h_);
-  if (!HTTP_S_INVALID(h_))
+  if (HTTP_S_INVALID(h_)) {
     return;
-
-  add_content_length(h, 0);
-  add_date(h);
+  }
+  if (FIOBJ_TYPE_IS(h->headers_out, FIOBJ_T_HASH)) {
+    add_content_length(h, 0);
+    add_date(h);
+  }
   h->vtbl->finish(h);
 }
 
@@ -403,19 +409,24 @@ void http_finish(http_s *h_) {
  */
 int http_stream(http_s *h_, void *data, uintptr_t length) {
   http_internal_s *h = HTTP2PRIVATE(h_);
-  if (!HTTP_S_INVALID(h_))
+  if (HTTP_S_INVALID(h_))
     return -1;
+  if (FIOBJ_TYPE_IS(h->headers_out,
+                    FIOBJ_T_HASH)) /* may be altered if already sent */
+    add_date(h);
   return h->vtbl->stream(h, data, length);
 }
 
 /**
  * Pushes a data response when supported (HTTP/2 only).
  *
+ * `mime_type` will be automatically freed by the `push` function.
+ *
  * Returns -1 on error and 0 on success.
  */
 int http_push_data(http_s *h_, void *data, uintptr_t length, FIOBJ mime_type) {
   http_internal_s *h = HTTP2PRIVATE(h_);
-  if (!HTTP_S_INVALID(h_))
+  if (HTTP_S_INVALID(h_))
     return -1;
   return h->vtbl->push_data(h, data, length, mime_type);
 }
@@ -426,11 +437,14 @@ int http_push_data(http_s *h_, void *data, uintptr_t length, FIOBJ mime_type) {
  * If `mime_type` is NULL, an attempt at automatic detection using `filename`
  * will be made.
  *
+ * `filename` and `mime_type` will be automatically freed by the `push`
+ * function.
+ *
  * Returns -1 on error and 0 on success.
  */
 int http_push_file(http_s *h_, FIOBJ filename, FIOBJ mime_type) {
   http_internal_s *h = HTTP2PRIVATE(h_);
-  if (!HTTP_S_INVALID(h_))
+  if (HTTP_S_INVALID(h_))
     return -1;
   return h->vtbl->push_file(h, filename, mime_type);
 }
@@ -603,7 +617,7 @@ open_file:
     if (mime)
       set_header_if_missing(hpriv->headers_out, HTTP_HEADER_CONTENT_TYPE, mime);
   }
-  return http_sendfile(h, file, length, offset);
+  return http_sendfile(h, file, offset, length);
 }
 
 /**
@@ -622,7 +636,7 @@ open_file:
  */
 int http_sendfile2(http_s *h_, const char *prefix, size_t prefix_len,
                    const char *encoded, size_t encoded_len) {
-  if (!HTTP_S_INVALID(h_))
+  if (HTTP_S_INVALID(h_))
     return -1;
   FIOBJ_STR_TEMP_VAR(fn);
   /* stack allocated buffer for filename data */
@@ -802,7 +816,7 @@ protocol_invalid:
  */
 void http_pause(http_s *h_, void (*task)(http_pause_handle_s *http)) {
   http_internal_s *h = HTTP2PRIVATE(h_);
-  if (!HTTP_S_INVALID(h_))
+  if (HTTP_S_INVALID(h_))
     return;
 
   http_fio_protocol_s *p = h->pr;
@@ -1237,7 +1251,7 @@ HTTP connection information
  */
 http_settings_s *http_settings(http_s *h_) {
   http_internal_s *h = HTTP2PRIVATE(h_);
-  if (!HTTP_S_INVALID(h_))
+  if (HTTP_S_INVALID(h_))
     return NULL;
   return h->pr->settings;
 }
@@ -1247,7 +1261,7 @@ http_settings_s *http_settings(http_s *h_) {
  */
 fio_str_info_s http_peer_addr(http_s *h_) {
   http_internal_s *h = HTTP2PRIVATE(h_);
-  if (!HTTP_S_INVALID(h_))
+  if (HTTP_S_INVALID(h_))
     return (fio_str_info_s){.buf = NULL};
   /* TODO: test headers for address */
   return fio_peer_addr(h->pr->uuid);
@@ -1278,7 +1292,7 @@ HTTP Connection Hijacking
  */
 intptr_t http_hijack(http_s *h_, fio_str_info_s *leftover) {
   http_internal_s *h = HTTP2PRIVATE(h_);
-  if (!HTTP_S_INVALID(h_))
+  if (HTTP_S_INVALID(h_))
     return -1;
   /* TODO: test headers for address */
   return h->vtbl->hijack(h, leftover);
@@ -2197,7 +2211,7 @@ static int http___write_header(FIOBJ o, void *w_) {
  */
 FIOBJ http2str(http_s *h_) {
   http_internal_s *h = HTTP2PRIVATE(h_);
-  if (!HTTP_S_INVALID(h_))
+  if (HTTP_S_INVALID(h_))
     return FIOBJ_INVALID;
 
   struct header_writer_s w;
@@ -2246,7 +2260,7 @@ FIOBJ http2str(http_s *h_) {
  * This function is called automatically if the `.log` setting is enabled.
  */
 void http_write_log(http_s *h_) {
-  if (!HTTP_S_INVALID(h_))
+  if (HTTP_S_INVALID(h_))
     return;
   char mem___[FIO_HTTP_LOG_LINE_TRUNCATION + 1];
   http_internal_s *h = HTTP2PRIVATE(h_);
@@ -2319,6 +2333,7 @@ void http_write_log(http_s *h_) {
     HTTP___WRITE_STATIC2LOG("ms\r\n", 4);
   }
   fwrite(i.buf, 1, i.len, stderr);
+  return;
 
 line_truncated:
   if (i.len + 5 > i.capa)

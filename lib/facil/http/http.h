@@ -227,7 +227,7 @@ int http_send_body(http_s *h, void *data, uintptr_t length);
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_sendfile(http_s *h, int fd, uintptr_t length, uintptr_t offset);
+int http_sendfile(http_s *h, int fd, uintptr_t offset, uintptr_t length);
 
 /**
  * Sends the response headers and the specified file (the response's body).
@@ -251,6 +251,25 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
                    const char *encoded, size_t encoded_len);
 
 /**
+ * Sends the response headers (if not sent) and streams the data.
+ *
+ * **Note**: The body is *copied* to the HTTP stream and it's memory should be
+ * freed by the calling function.
+ *
+ * Returns -1 on error and 0 on success.
+ *
+ * The `http_s` object remsains valid. Remember to call `http_finish`.
+ */
+int http_stream(http_s *h_, void *data, uintptr_t length);
+
+/**
+ * Sends the response headers for a header only response.
+ *
+ * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
+ */
+void http_finish(http_s *h);
+
+/**
  * Sends an HTTP error response.
  *
  * Returns -1 on error and 0 on success.
@@ -263,14 +282,9 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
 int http_send_error(http_s *h, size_t error_code);
 
 /**
- * Sends the response headers for a header only response.
- *
- * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
- */
-void http_finish(http_s *h);
-
-/**
  * Pushes a data response when supported (HTTP/2 only).
+ *
+ * `mime_type` will be automatically freed by the `push` function.
  *
  * Returns -1 on error and 0 on success.
  */
@@ -281,6 +295,9 @@ int http_push_data(http_s *h, void *data, uintptr_t length, FIOBJ mime_type);
  *
  * If `mime_type` is NULL, an attempt at automatic detection using `filename`
  * will be made.
+ *
+ * `filename` and `mime_type` will be automatically freed by the `push`
+ * function.
  *
  * Returns -1 on error and 0 on success.
  */

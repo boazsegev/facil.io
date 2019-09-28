@@ -12,7 +12,7 @@ License: MIT
  * The size of a single `read` command, it sets the limit for an HTTP/1.1
  * header line.
  */
-#define HTTP1_READ_BUFFER (8 * 1024) /* ~8kb */
+#define HTTP1_READ_BUFFER HTTP_MAX_HEADER_LENGTH /* ~8kb */
 #endif
 
 /**

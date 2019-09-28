@@ -1440,7 +1440,7 @@ HFUNC void fio_bitmap_flip(void *map, size_t bit) {
 
 
                           Custom Memory Allocation
-
+                  Memory allocator for short lived objects
 
 
 
@@ -1456,10 +1456,6 @@ HFUNC void fio_bitmap_flip(void *map, size_t bit) {
 
 /* *****************************************************************************
 Memory Allocation - API
-***************************************************************************** */
-
-/* *****************************************************************************
-Memory allocator for short lived objects
 ***************************************************************************** */
 
 /* inform the compiler that the returned value is aligned on 16 byte marker */
@@ -1560,6 +1556,20 @@ SFUNC void fio_malloc_after_fork(void);
  */
 #ifndef FIO_MEMORY_ARENA_COUNT_DEFAULT
 #define FIO_MEMORY_ARENA_COUNT_DEFAULT 5
+#endif
+
+#undef FIO_MEMORY_BLOCK_SIZE
+/** The resulting memory block size, depends on `FIO_MEMORY_BLOCK_SIZE_LOG` */
+#define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << FIO_MEMORY_BLOCK_SIZE_LOG)
+
+/**
+ * The maximum allocation size, after which `mmap` will be called instead of the
+ * facil.io allocator.
+ *
+ * Defaults to 50% of the block (16Kb), after which `mmap` is used instead
+ */
+#ifndef FIO_MEMORY_BLOCK_ALLOC_LIMIT
+#define FIO_MEMORY_BLOCK_ALLOC_LIMIT (FIO_MEMORY_BLOCK_SIZE >> 1)
 #endif
 
 /* *****************************************************************************
@@ -1850,20 +1860,6 @@ HFUNC void FIO_MEM_PAGE_FREE_def_func(void *mem, size_t pages) {
 /* *****************************************************************************
 Allocator default
 ***************************************************************************** */
-
-#undef FIO_MEMORY_BLOCK_SIZE
-/** The resulting memoru block size, depends on `FIO_MEMORY_BLOCK_SIZE_LOG` */
-#define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << FIO_MEMORY_BLOCK_SIZE_LOG)
-
-/**
- * The maximum allocation size, after which `mmap` will be called instead of the
- * facil.io allocator.
- *
- * Defaults to 50% of the block (16Kb), after which `mmap` is used instead
- */
-#ifndef FIO_MEMORY_BLOCK_ALLOC_LIMIT
-#define FIO_MEMORY_BLOCK_ALLOC_LIMIT (FIO_MEMORY_BLOCK_SIZE >> 1)
-#endif
 
 /* don't change these */
 #undef FIO_MEMORY_BLOCK_SLICES
@@ -2393,10 +2389,8 @@ Memory Allocation - cleanup
 #undef FIO_MEMORY_PRINT_BLOCK_STAT
 #undef FIO_MEMORY_PRINT_BLOCK_STAT_END
 #endif /* FIO_EXTERN_COMPLETE */
-#undef FIO_MEMORY_BLOCK_ALLOC_LIMIT
 #undef FIO_MEMORY_BLOCK_HEADER_SIZE
 #undef FIO_MEMORY_BLOCK_MASK
-#undef FIO_MEMORY_BLOCK_SIZE
 #undef FIO_MEMORY_BLOCK_SLICES
 #undef FIO_MEMORY_BLOCK_START_POS
 #undef FIO_MEMORY_MAX_SLICES_PER_BLOCK

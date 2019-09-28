@@ -958,7 +958,7 @@ FIO_IFUNC ssize_t fiobj_send_free(intptr_t uuid, FIOBJ o) {
   }
   fio_str_info_s s = fiobj_str_info(o);
   return fio_write2(uuid, .data.buf = (char *)o,
-                    .offset = ((uintptr_t)o - (uintptr_t)s.buf), .len = s.len,
+                    .offset = ((uintptr_t)s.buf - (uintptr_t)o), .len = s.len,
                     .after.dealloc = fiobj___free_after_send);
 }
 /**

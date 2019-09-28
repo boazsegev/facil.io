@@ -20,6 +20,8 @@ I though about it as a small STL, much like C++ has, only for C, and moved the b
 
 - Major API changes!
 
+   **Important**: Some API changes were made just to unify argument ordering across API functions. For example, `http_sendfile` argument orders had changed to fit `fio_sendfile`. This argument reordering is **silent** and **won't raise compilation errors**.
+
 - Multiple core rewrites / refinements (while, possibly, replacing old boring bugs with new and interesting one).
 
 - Core types and common helpers have been re-written and moved to a separate, stand alone, header-library: `fio-stl.h`
