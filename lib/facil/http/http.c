@@ -739,9 +739,7 @@ int http_sendfile2(http_s *h_, const char *prefix, size_t prefix_len,
           if (end == 4 && !memcmp(i.buf, "gzip", 4)) {
             enc[enc_count++] = (fio_str_info_s){.buf = "gz", .len = 2};
           } else if (end == 7 && !memcmp(i.buf, "deflate", 7)) {
-            /* don't support "deflate" files, they may cause problems, I'm told
-             */
-            // enc[enc_count++] = (fio_str_info_s){.buf = "gz", .len = 2};
+            enc[enc_count++] = (fio_str_info_s){.buf = "zz", .len = 2};
           } else { /* passthrough / unknown variations */
             enc[enc_count++] = (fio_str_info_s){.buf = i.buf, .len = end};
           }
