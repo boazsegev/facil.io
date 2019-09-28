@@ -717,7 +717,8 @@ int http_sendfile2(http_s *h_, const char *prefix, size_t prefix_len,
                                 {.buf = "", .len = 0},
                                 {.buf = ".html", .len = 5},
                                 {.buf = NULL}};
-  fio_str_info_s enc[7]; /* holds default tests + accept-encoding headers */
+  fio_str_info_s enc_src[7]; /* holds default tests + accept-encoding headers */
+  fio_str_info_s enc_ext[7]; /* holds default tests + accept-encoding headers */
   size_t enc_count = 0;
   {
     /* add any supported encoding options, such as gzip, deflate, br, etc' */
@@ -737,11 +738,14 @@ int http_sendfile2(http_s *h_, const char *prefix, size_t prefix_len,
           ++end;
         if (end && end < 64) { /* avoid malicious encoding information */
           if (end == 4 && !memcmp(i.buf, "gzip", 4)) {
-            enc[enc_count++] = (fio_str_info_s){.buf = "gz", .len = 2};
+            enc_ext[enc_count] = (fio_str_info_s){.buf = "gz", .len = 2};
+            enc_src[enc_count++] = (fio_str_info_s){.buf = i.buf, .len = end};
           } else if (end == 7 && !memcmp(i.buf, "deflate", 7)) {
-            enc[enc_count++] = (fio_str_info_s){.buf = "zz", .len = 2};
+            enc_ext[enc_count] = (fio_str_info_s){.buf = "zz", .len = 2};
+            enc_src[enc_count++] = (fio_str_info_s){.buf = i.buf, .len = end};
           } else { /* passthrough / unknown variations */
-            enc[enc_count++] = (fio_str_info_s){.buf = i.buf, .len = end};
+            enc_ext[enc_count] = (fio_str_info_s){.buf = i.buf, .len = end};
+            enc_src[enc_count++] = (fio_str_info_s){.buf = i.buf, .len = end};
           }
         }
         i.len -= end;
@@ -765,9 +769,9 @@ int http_sendfile2(http_s *h_, const char *prefix, size_t prefix_len,
     /* test each supported encoding option */
     for (size_t i = 0; i < enc_count; ++i) {
       fiobj_str_write(fn, ".", 1);
-      n = fiobj_str_write(fn, enc[i].buf, enc[i].len);
+      n = fiobj_str_write(fn, enc_ext[i].buf, enc_ext[i].len);
       /* test filename */
-      if (!http_sendfile___test_filename(h_, n, enc[i]))
+      if (!http_sendfile___test_filename(h_, n, enc_src[i]))
         goto found_file;
       n = fiobj_str_resize(fn, ext_len);
     }
