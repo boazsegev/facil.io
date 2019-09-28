@@ -99,9 +99,9 @@ The HTTP hanndler (Request / Response) functions
  * Returns -1 on error and 0 on success.
  */
 int http_set_header(http_s *h_, FIOBJ name, FIOBJ value) {
-  if (HTTP_S_INVALID(h_) || value == FIOBJ_INVALID)
-    goto error;
   http_internal_s *h = HTTP2PRIVATE(h_);
+  if (!h_ || !name || !FIOBJ_TYPE_IS(h->headers_out, FIOBJ_T_HASH))
+    goto error;
   set_header_add(h->headers_out, name, value);
   return 0;
 error:
@@ -115,11 +115,14 @@ error:
  * Returns -1 on error and 0 on success.
  */
 int http_set_header2(http_s *h_, fio_str_info_s name, fio_str_info_s value) {
-  if (HTTP_S_INVALID(h_))
-    return -1;
   http_internal_s *h = HTTP2PRIVATE(h_);
+  if (!h_ || !FIOBJ_TYPE_IS(h->headers_out, FIOBJ_T_HASH) || !name.buf)
+    return -1;
   FIOBJ k = fiobj_str_new_cstr(name.buf, name.len);
-  set_header_add(h->headers_out, k, fiobj_str_new_cstr(value.buf, value.len));
+  FIOBJ v = FIOBJ_INVALID;
+  if (value.len)
+    v = fiobj_str_new_cstr(value.buf, value.len);
+  set_header_add(h->headers_out, k, v);
   fiobj_free(k);
   return 0;
 }
