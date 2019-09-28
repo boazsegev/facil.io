@@ -377,18 +377,27 @@ static int http1_stream(http_internal_s *h, void *data, uintptr_t length) {
   if (should_chunk) {
     /* add chuncked encoding header */
     char buffer[32];
-    size_t hex_len = fio_ltoa(buffer, length, 16);
-    if (hex_len <= 2)
+    size_t hex_len = 0;
+    if (length) {
+      /* write length in Hex, no leading zeros or "0x" */
+      char *dest = buffer;
+      uint64_t n = length;
+      uint8_t i = 0;
+      while (i < 16 && (n & 0xF000000000000000) == 0) {
+        n = n << 4;
+        i++;
+      }
+      /* write the damn thing, high to low */
+      while (i < 16) {
+        uint8_t tmp = (n & 0xF000000000000000) >> 60;
+        dest[hex_len++] = ((tmp <= 9) ? ('0' + tmp) : (('A' - 10) + tmp));
+        i++;
+        n = n << 4;
+      }
+    } else
       goto finish;
-    char *pbuf = buffer + 2; /* skip the "0x" prefix */
-    if (pbuf[0] == '0') {
-      ++pbuf;
-      --hex_len;
-      if (hex_len <= 2)
-        goto finish;
-    }
     fiobj_str_reserve(out, fiobj_str_len(out) + length + hex_len + 2);
-    fiobj_str_write(out, pbuf, hex_len - 2);
+    fiobj_str_write(out, buffer, hex_len);
     fiobj_str_write(out, "\r\n", 2);
     fiobj_str_write(out, data, length);
     fiobj_str_write(out, "\r\n", 2);
