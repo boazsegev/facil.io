@@ -3599,7 +3599,7 @@ SFUNC int fio_sock_set_non_block(int fd);
 IO Poll - Implementation (always static / inlined)
 ***************************************************************************** */
 
-HFUNC int fio_sock_poll____(void); /* sublime text marker */
+int fio_sock_poll____(void); /* sublime text marker */
 HFUNC int fio_sock_poll FIO_NOOP(fio_sock_poll_args args) {
   size_t tmp = 0;
   while (args.fds[tmp].events)

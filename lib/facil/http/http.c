@@ -935,10 +935,10 @@ static http_settings_s *http_settings_new(http_settings_s s) {
   if (s.public_folder) {
     cpy->public_folder = (char *)(cpy + 1);
     if (home) {
-      memcmp(cpy->public_folder, home, home_len);
+      memcpy((char *)cpy->public_folder, home, home_len);
       cpy->public_folder_length += home_len;
     }
-    memcmp(cpy->public_folder + home_len, s.public_folder,
+    memcpy((char *)cpy->public_folder + home_len, s.public_folder,
            s.public_folder_length);
   }
   return cpy;
