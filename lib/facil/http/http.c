@@ -478,8 +478,8 @@ static int http_sendfile___test_filename(http_s *h, fio_str_info_s filename,
   if (hpriv->pr->settings->static_headers) { /* copy default headers */
     FIOBJ defs = hpriv->pr->settings->static_headers;
     FIO_MAP_EACH(((fiobj_hash_s *)FIOBJ_PTR_UNTAG(defs)), pos) {
-      set_header_if_missing(hpriv->headers_out, pos->obj.value,
-                            fiobj_dup(pos->obj.key));
+      set_header_if_missing(hpriv->headers_out, pos->obj.key,
+                            fiobj_dup(pos->obj.value));
     }
   }
   {
