@@ -701,22 +701,36 @@ int http_sendfile2(http_s *h_, const char *prefix, size_t prefix_len,
     if (len) {
       fiobj_str_write(fn, tmp, len);
     }
-    tmp[len] = 0;
     fio_str_info_s fn_inf = fiobj_str2cstr(fn);
     if (http_test_encoded_path(fn_inf.buf + prefix_len,
                                fn_inf.len - prefix_len))
       goto path_error;
   }
-  /* store original length and test for folder (index) */
-  size_t org_len = fiobj_str_len(fn);
-  if (fiobj_str2ptr(fn)[org_len - 1] == '/')
-    org_len = fiobj_str_write(fn, "index.html", 10).len;
 
   /* raw file name is now stored at `fn`, we need to test for variations */
-  const fio_str_info_s ext[] = {/* holds default changes */
-                                {.buf = "", .len = 0},
-                                {.buf = ".html", .len = 5},
-                                {.buf = NULL}};
+  fio_str_info_s ext[] = {/* holds default changes */
+                          {.buf = "", .len = 0},
+                          {.buf = ".html", .len = 5},
+                          {.buf = "/index.html", .len = 11},
+                          {.buf = NULL}};
+
+  /* store original length and test for folder (index) */
+  size_t org_len = fiobj_str_len(fn);
+  {
+    char *ptr = fiobj_str2ptr(fn);
+    if (fiobj_str2ptr(fn)[org_len - 1] == '/') {
+      org_len = fiobj_str_write(fn, "index.html", 10).len;
+      ext[1] = (fio_str_info_s){.buf = NULL};
+    } else {
+      /* avoid extension & folder testing for files with extensions */
+      size_t i = org_len - 1;
+      while (i && ptr[i] != '.' && ptr[i] != '/')
+        --i;
+      if (ptr[i] == '.')
+        ext[1] = (fio_str_info_s){.buf = NULL};
+    }
+  }
+
   fio_str_info_s enc_src[7]; /* holds default tests + accept-encoding headers */
   fio_str_info_s enc_ext[7]; /* holds default tests + accept-encoding headers */
   size_t enc_count = 0;

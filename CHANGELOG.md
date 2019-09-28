@@ -42,6 +42,8 @@ I though about it as a small STL, much like C++ has, only for C, and moved the b
 
 - Risky Hash algorithm was updated.
 
+- The HTTP static file service just got a lot smarter, with customizable default headers, tests for missing `.html` file extensions, tests for `index.html` in folders and automatic support for `gzip` (`.gz`), `deflate` (`.zz`), `br` pre-compressed resources. 
+
 ### v. 0.7.3
 
 **Fix**: (`fio`) fixes an issue where timer cleanup wasn't performed after `fio_stop` (or SIGINT/SIGTERM). No a "clean slate" will be provided if `fio_start` is called more then once. Note: this may **break previous behavior**, which should be considered undocumented and unexpected behavior. (this fax **may** be deferred to version 0.8.x, still undecided). Credit to @fbrausse for opening issue #72. 
