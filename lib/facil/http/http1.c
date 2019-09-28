@@ -354,9 +354,10 @@ static int http1_stream(http_internal_s *h, void *data, uintptr_t length) {
       should_chunk = 0;
     } else {
       /* add chunking related headers... */
-      FIOBJ tmp = fiobj_hash_get2(h->headers_out, HTTP_HEADER_CONTENT_ENCODING);
-      if (tmp && !fiobj_is_eq(tmp, HTTP_HVALUE_CHUNKED_ENCODING))
-        set_header_add(h->headers_out, HTTP_HEADER_CONTENT_ENCODING,
+      FIOBJ tmp =
+          fiobj_hash_get2(h->headers_out, HTTP_HEADER_TRANSFER_ENCODING);
+      if (!tmp || !fiobj_is_eq(tmp, HTTP_HVALUE_CHUNKED_ENCODING))
+        set_header_add(h->headers_out, HTTP_HEADER_TRANSFER_ENCODING,
                        fiobj_dup(HTTP_HVALUE_CHUNKED_ENCODING));
     }
   } else if (h->headers_out == fiobj_false()) {
@@ -375,17 +376,19 @@ static int http1_stream(http_internal_s *h, void *data, uintptr_t length) {
   }
   if (should_chunk) {
     /* add chuncked encoding header */
-    // fiobj_str_write_hex(FIOBJ s, int64_t num)
-  }
-  fiobj_str_write(out, data, length);
-  if (should_chunk) {
-    /* add chuncked encoding header */
     char buffer[32];
     size_t hex_len = fio_ltoa(buffer, length, 16);
     if (hex_len <= 2)
       goto finish;
+    char *pbuf = buffer + 2; /* skip the "0x" prefix */
+    if (pbuf[0] == '0') {
+      ++pbuf;
+      --hex_len;
+      if (hex_len <= 2)
+        goto finish;
+    }
     fiobj_str_reserve(out, fiobj_str_len(out) + length + hex_len + 2);
-    fiobj_str_write(out, buffer + 2, hex_len - 2); /* skip the "0x" prefix */
+    fiobj_str_write(out, pbuf, hex_len - 2);
     fiobj_str_write(out, "\r\n", 2);
     fiobj_str_write(out, data, length);
     fiobj_str_write(out, "\r\n", 2);
