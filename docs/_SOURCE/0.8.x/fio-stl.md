@@ -2494,9 +2494,9 @@ typedef struct {
 
 The `fio_queue_s` object is the queue object.
 
-This object could be placed on the stack or allocated on the heap (using `fio_queue_new`).
+This object could be placed on the stack or allocated on the heap (using [`fio_queue_new`](#fio_queue_new)).
 
-Once the object is no longer in use call `fio_queue_destroy` (if placed on the stack) of `fio_queue_free` (if allocated using `fio_queue_new`).
+Once the object is no longer in use call [`fio_queue_destroy`](#fio_queue_destroy) (if placed on the stack) of [`fio_queue_free`](#fio_queue_free) (if allocated using [`fio_queue_new`](#fio_queue_new)).
 
 ### Queue API
 
@@ -2559,6 +2559,20 @@ Returns 0 if `task.fn == NULL` or if the task was successfully added to the queu
 
 Returns -1 on error (no memory).
 
+
+#### `fio_queue_push_urgent`
+
+```c
+int fio_queue_push_urgent(fio_queue_s *q, fio_queue_task_s task);
+#define fio_queue_push_urgent(q, ...)                                          \
+  fio_queue_push_urgent((q), (fio_queue_task_s){__VA_ARGS__})
+```
+
+Pushes a task to the head of the queue (LIFO).
+
+Returns -1 on error (no memory).
+
+See [`fio_queue_push`](#fio_queue_push) for details.
 
 #### `fio_queue_pop`
 

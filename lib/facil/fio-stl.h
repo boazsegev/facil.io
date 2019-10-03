@@ -8840,7 +8840,7 @@ Queue Type(s)
 ***************************************************************************** */
 
 #ifndef FIO_QUEUE_TASKS_PER_ALLOC
-#define FIO_QUEUE_TASKS_PER_ALLOC 168 /* fits the fio_queue_s in one page */
+#define FIO_QUEUE_TASKS_PER_ALLOC 168 /* fits fio_queue_s in one page */
 #endif
 
 /** Task information */
@@ -8898,6 +8898,16 @@ SFUNC int fio_queue_push(fio_queue_s *q, fio_queue_task_s task);
  */
 #define fio_queue_push(q, ...)                                                 \
   fio_queue_push((q), (fio_queue_task_s){__VA_ARGS__})
+
+/** Pushes a task to the head of the queue. Returns -1 on error (no memory). */
+SFUNC int fio_queue_push_urgent(fio_queue_s *q, fio_queue_task_s task);
+
+/**
+ * Pushes a task to the queue, offering named arguments for the task.
+ * Returns -1 on error.
+ */
+#define fio_queue_push_urgent(q, ...)                                          \
+  fio_queue_push_urgent((q), (fio_queue_task_s){__VA_ARGS__})
 
 /** Pops a task from the queue (FIFO). Returns a NULL task on error. */
 SFUNC fio_queue_task_s fio_queue_pop(fio_queue_s *q);
@@ -8959,8 +8969,18 @@ HFUNC int fio___task_ring_push(fio___task_ring_s *r, fio_queue_task_s task) {
   }
   return 0;
 }
-#define fio___task_ring_push(r, ...)                                           \
-  fio___task_ring_push((r), (fio_queue_task_s){__VA_ARGS__})
+
+HFUNC int fio___task_ring_unpop(fio___task_ring_s *r, fio_queue_task_s task) {
+  if (r->dir && r->r == r->w)
+    return -1;
+  if (!r->r) {
+    r->r = FIO_QUEUE_TASKS_PER_ALLOC;
+    r->dir = ~r->dir;
+  }
+  --r->r;
+  r->buf[r->r] = task;
+  return 0;
+}
 
 HFUNC fio_queue_task_s fio___task_ring_pop(fio___task_ring_s *r) {
   fio_queue_task_s t = {.fn = NULL};
@@ -8976,12 +8996,13 @@ HFUNC fio_queue_task_s fio___task_ring_pop(fio___task_ring_s *r) {
   return t;
 }
 
+int fio_queue_push___(void); /* sublimetext marker */
 /** Pushes a task to the queue. Returns -1 on error. */
 SFUNC int fio_queue_push FIO_NOOP(fio_queue_s *q, fio_queue_task_s task) {
   if (!task.fn)
     return 0;
   fio_lock(&q->lock);
-  while (fio___task_ring_push FIO_NOOP(q->w, task)) {
+  if (fio___task_ring_push(q->w, task)) {
     if (q->w != &q->mem && q->mem.next == NULL) {
       q->w->next = &q->mem;
       q->mem.w = q->mem.r = q->mem.dir = 0;
@@ -8991,6 +9012,33 @@ SFUNC int fio_queue_push FIO_NOOP(fio_queue_s *q, fio_queue_task_s task) {
         goto no_mem;
     }
     q->w = q->w->next;
+    fio___task_ring_push(q->w, task);
+  }
+  ++q->count;
+  fio_unlock(&q->lock);
+  return 0;
+no_mem:
+  fio_unlock(&q->lock);
+  return -1;
+}
+
+int fio_queue_push_urgent___(void); /* sublimetext marker */
+/** Pushes a task to the head of the queue. Returns -1 on error (no memory). */
+SFUNC int fio_queue_push_urgent FIO_NOOP(fio_queue_s *q,
+                                         fio_queue_task_s task) {
+  if (!task.fn)
+    return 0;
+  fio_lock(&q->lock);
+  if (fio___task_ring_unpop(q->r, task)) {
+    /* such a shame... but we must allocate a while task block for one task */
+    fio___task_ring_s *tmp = FIO_MEM_CALLOC_(sizeof(*q->w->next), 1);
+    if (!tmp)
+      goto no_mem;
+    tmp->next = q->r;
+    q->r = tmp;
+    tmp->w = 1;
+    tmp->dir = tmp->r = 0;
+    tmp->buf[0] = task;
   }
   ++q->count;
   fio_unlock(&q->lock);
@@ -14616,10 +14664,34 @@ FIO_SFUNC void fio___dynamic_types_test___queue(void) {
     }
     FIO_ASSERT(i_count == i_count_should_be, "ERROR: queue count invalid\n");
   }
+  if (!(FIO___QUEUE_TEST_PRINT))
+    fprintf(stderr, "\n");
   FIO_ASSERT(q->w == &q->mem,
              "queue library didn't release dynamic queue (should be static)");
   fio_queue_free(q);
-  fprintf(stderr, "\n* passed.\n");
+  {
+    fprintf(stderr, "* testing urgent insertion\n");
+    fio_queue_s q2 = FIO_QUEUE_INIT(q2);
+    for (size_t i = 0; i < (FIO_QUEUE_TASKS_PER_ALLOC * 3); ++i) {
+      FIO_T_ASSERT(
+          !fio_queue_push_urgent(&q2, .fn = (void (*)(void *, void *))(i + 1),
+                                 .udata1 = (void *)(i + 1)),
+          "fio_queue_push_urgent failed");
+    }
+    FIO_T_ASSERT(q2.r->next && q2.r->next->next && !q2.r->next->next->next,
+                 "should have filled only three task blocks");
+    for (size_t i = 0; i < (FIO_QUEUE_TASKS_PER_ALLOC * 3); ++i) {
+      fio_queue_task_s t = fio_queue_pop(&q2);
+      FIO_T_ASSERT(
+          t.fn && (size_t)t.udata1 == (FIO_QUEUE_TASKS_PER_ALLOC * 3) - i,
+          "fio_queue_push_urgent pop ordering error [%zu] %zu != %zu (%p)", i,
+          (size_t)t.udata1, (FIO_QUEUE_TASKS_PER_ALLOC * 3) - i, (void *)t.fn);
+    }
+    FIO_T_ASSERT(fio_queue_pop(&q2).fn == NULL,
+                 "pop overflow after urgent tasks");
+    fio_queue_destroy(&q2);
+  }
+  fprintf(stderr, "* passed.\n");
 }
 
 /* *****************************************************************************
