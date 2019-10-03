@@ -14,7 +14,7 @@ I think one of the pieces I kept reusing most was the CLI (command line interfac
 
 This made me think "I should really separate the non-IO library from the IO library", which would also make it easier for other developers to enjoy facil.io.
 
-I though about it as a small STL, much like C++ has, only for C, and moved the best non-network features facil.io offers into a single library, the facil.io Simple Type Library, `fio-stl.h`.
+I though about it as a small STL, much like C++ has, only for C, and moved the best non-network features facil.io offers into a single library, the facil.io Simple Template Library, `fio-stl.h`.
 
 **Overview**:
 

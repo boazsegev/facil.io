@@ -56,13 +56,15 @@ In addition, the core library includes helpers for common tasks, such as:
 
 * [String / Number conversion](#string-number-conversion) - defined by `FIO_ATOL`
 
+* [Basic Socket / IO Helpers](#basic-socket-io-helpers) - defined by `FIO_SOCK`
+
 * [URL (URI) parsing](#url-uri-parsing) - defined by `FIO_URL`
 
 * [Command Line Interface helpers](#cli-command-line-interface) - defined by `FIO_CLI`
 
-* [Custom Memory Allocation](#memory-allocation) - defined by `FIO_MALLOC`
+* [Task Queue](#task-queue) - defined by `FIO_QUEUE`
 
-* [Basic Socket / IO Helpers](#basic-socket-io-helpers) - defined by `FIO_SOCK`
+* [Custom Memory Allocation](#memory-allocation) - defined by `FIO_MALLOC`
 
 * [Custom JSON Parser](#custom-json-parser) - defined by `FIO_JSON`
 
@@ -2132,252 +2134,6 @@ string).
 
 Returns the number of bytes actually written (excluding the NUL terminator).
 
-
--------------------------------------------------------------------------------
-
-## URL (URI) parsing
-
-URIs (Universal Resource Identifier), commonly referred to as URL (Uniform Resource Locator), are a common way to describe network and file addresses.
-
-A common use case for URIs is within the command line interface (CLI), allowing a client to point at a resource that may be local (i.e., `file:///users/etc/my.conf`) or remote (i.e. `http://example.com/conf`).
-
-By defining `FIO_URL`, the following types and functions will be defined:
-
-#### `fio_url_s`
-
-```c
-/** the result returned by `fio_url_parse` */
-typedef struct {
-  fio_str_info_s scheme;
-  fio_str_info_s user;
-  fio_str_info_s password;
-  fio_str_info_s host;
-  fio_str_info_s port;
-  fio_str_info_s path;
-  fio_str_info_s query;
-  fio_str_info_s target;
-} fio_url_s;
-```
-
-The `fio_url_s` contains a information about a URL (or, URI).
-
-When the information is returned from `fio_url_parse`, the strings in the `fio_url_s` (i.e., `url.scheme.buf`) are **not NUL terminated**, since the parser is non-destructive, with zero-copy and zero-allocation.
-
-#### `fio_url_parse`
-
-```c
-fio_url_s fio_url_parse(const char *url, size_t len);
-```
-
-Parses the URI returning it's components and their lengths (no decoding performed, **doesn't accept decoded URIs**).
-
-The returned string are **not NUL terminated**, they are merely locations within the original (unmodified) string.
-
-This function attempts to accept many different formats, including any of the following:
-
-* `/complete_path?query#target`
-
-  i.e.: `/index.html?page=1#list`
-
-* `host:port/complete_path?query#target`
-
-  i.e.:
-  - `example.com`
-  - `example.com:8080`
-  - `example.com/index.html`
-  - `example.com:8080/index.html`
-  - `example.com:8080/index.html?key=val#target`
-
-* `user:password@host:port/path?query#target`
-
-  i.e.: `user:1234@example.com:8080/index.html`
-
-* `username[:password]@host[:port][...]`
-
-  i.e.: `john:1234@example.com`
-
-* `schema://user:password@host:port/path?query#target`
-
-  i.e.: `http://example.com/index.html?page=1#list`
-
-Invalid formats might produce unexpected results. No error testing performed.
-
-The `file` and `unix` schemas are special in the sense that they produce no `host` (only `path`).
-
--------------------------------------------------------------------------------
-
-## CLI (command line interface)
-
-The simple template library includes a CLI parser, since parsing command line
-arguments is a common task.
-
-By defining `FIO_CLI`, the following functions will be defined.
-
-In addition, `FIO_CLI` automatically includes the `FIO_ATOL` flag, since CLI
-parsing depends on the `fio_atol` function.
-
-#### `fio_cli_start(argc, argv, unnamed_min, unnamed_max, description, ...)`
-
-The **macro** shadows the `fio_cli_start` function and defines the CLI interface
-to be parsed. i.e.,
-
-      int main(int argc, char const *argv[]) {
-        fio_cli_start(argc, argv, 0, -1,
-                      "this is a CLI example.",
-                      FIO_CLI_PRINT_HEADER("CLI type validation"),
-                      FIO_CLI_STRING("-str -s any data goes here"),
-                      FIO_CLI_INT("-int -i numeral data goes here"),
-                      FIO_CLI_BOOL("-bool -b flag (boolean) only - no data"),
-                      FIO_CLI_PRINT("This test allows for unlimited arguments "
-                                    "that will simply pass-through"));
-        if (fio_cli_get("-s"))
-          fprintf(stderr, "String: %s\n", fio_cli_get("-s"));
-
-        if (fio_cli_get("-i"))
-          fprintf(stderr, "Integer: %d\n", fio_cli_get_i("-i"));
-
-        fprintf(stderr, "Boolean: %d\n", fio_cli_get_i("-b"));
-
-        if (fio_cli_unnamed_count()) {
-          fprintf(stderr, "Printing unlisted / unrecognized arguments:\n");
-          for (size_t i = 0; i < fio_cli_unnamed_count(); ++i) {
-            fprintf(stderr, "%s\n", fio_cli_unnamed(i));
-          }
-        }
-
-        fio_cli_end();
-        return 0;
-      }
-
-The `fio_cli_start` macro accepts the `argc` and `argv`, as received by the
-`main` functions, a maximum and minimum number of unspecified CLI arguments
-(beneath which or after which the parser will fail), an application description
-string and a variable list of (specified) command line arguments.
-
-Command line arguments can be either String, Integer or Boolean, as indicated by
-the `FIO_CLI_STRING("-arg [-alias] desc.")`, `FIO_CLI_INT("-arg [-alias]
-desc.")` and `FIO_CLI_BOOL("-arg [-alias] desc.")` macros. Extra descriptions or
-text can be added using the `FIO_CLI_PRINT_HEADER(str)` and `FIO_CLI_PRINT(str)`
-macros.
-
-#### `fio_cli_end()`
-
-Clears the CLI data storage.
-
-#### `char const *fio_cli_get(char const *name);`
-
-Returns the argument's value as a string, or NULL if the argument wasn't
-provided.
-
-#### `int fio_cli_get_i(char const *name);`
-
-Returns the argument's value as an integer, or 0 if the argument wasn't
-provided.
-
-#### `fio_cli_get_bool(name)`
-
-True the argument was boolean and provided.
-
-#### `unsigned int fio_cli_unnamed_count(void)`
-
-Returns the number of unrecognized arguments (arguments unspecified, in
-`fio_cli_start`).
-
-#### `char const *fio_cli_unnamed(unsigned int index)`
-
-Returns a String containing the unrecognized argument at the stated `index`
-(indexes are zero based).
-
-#### `void fio_cli_set(char const *name, char const *value)`
-
-Sets a value for the named argument (but **not** it's aliases).
-
-#### `fio_cli_set_default(name, value)`
-
-Sets a value for the named argument (but **not** it's aliases) **only if** the
-argument wasn't set by the user.
-
--------------------------------------------------------------------------------
-
-## Memory Allocation
-
-The simple template library includes a fast, concurrent, memory allocator
-designed for shot-medium object life-spans.
-
-It's ideal if all long-term allocations are performed during the start-up phase
-or using a different memory allocator.
-
-By defining `FIO_MALLOC`, the following functions will be defined.
-
-#### `void * fio_malloc(size_t size)`
-
-Allocates memory using a per-CPU core block memory pool. Memory is zeroed out.
-
-Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
-will be redirected to `mmap`, as if `fio_mmap` was called.
-
-#### `void * fio_calloc(size_t size_per_unit, size_t unit_count)`
-
-Same as calling `fio_malloc(size_per_unit * unit_count)`;
-
-Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
-will be redirected to `mmap`, as if `fio_mmap` was called.
-
-#### `void fio_free(void *ptr)`
-
-Frees memory that was allocated using this library.
-
-#### `void * fio_realloc(void *ptr, size_t new_size)`
-
-Re-allocates memory. An attempt to avoid copying the data is made only for big
-memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
-
-#### `void * fio_realloc2(void *ptr, size_t new_size, size_t copy_length)`
-
-Re-allocates memory. An attempt to avoid copying the data is made only for big
-memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
-
-This variation is slightly faster as it might copy less data.
-
-#### `void * fio_mmap(size_t size)`
-
-Allocates memory directly using `mmap`, this is preferred for objects that both
-require almost a page of memory (or more) and expect a long lifetime.
-
-However, since this allocation will invoke the system call (`mmap`), it will be
-inherently slower.
-
-`fio_free` can be used for deallocating the memory.
-
-#### `void fio_malloc_after_fork(void)`
-
-Never fork a multi-threaded process. Doing so might corrupt the memory
-allocation system. The risk is more relevant for child processes.
-
-However, if a multi-threaded process, calling this function from the child
-process would perform a best attempt at mitigating any arising issues (at the
-expense of possible leaks).
-
-#### `FIO_MALLOC_FORCE_SYSTEM`
-
-If `FIO_MALLOC_FORCE_SYSTEM` is defined, the facil.io memory allocator functions will simply pass requests through to the system's memory allocator (`calloc` / `free`) rather then use the facil.io custom allocator.
-
-#### `FIO_MALLOC_OVERRIDE_SYSTEM`
-
-If `FIO_MALLOC_OVERRIDE_SYSTEM` is defined, the facil.io memory allocator will replace the system's memory allocator.
-
-#### `FIO_MEMORY_ARENA_COUNT_MAX`
-
-Sets the maximum number of memory arenas to initialize. Defaults to 64.
-
-When set to `0` the number of arenas will always match the maximum number of detected CPU cores.
-
-#### `FIO_MEMORY_ARENA_COUNT_DEFAULT`
-
-The default number of memory arenas to initialize when CPU core detection fails or isn't available. Defaults to `5`.
-
-Normally, facil.io tries to initialize as many memory allocation arenas as the number of CPU cores. This value will only be used if core detection isn't available or fails.
-
 -------------------------------------------------------------------------------
 
 ## Basic Socket / IO Helpers
@@ -2546,6 +2302,421 @@ int fio_sock_open_unix(const char *address, int is_client, int nonblock);
 ```
 
 Creates a new Unix socket and binds it to a local address.
+
+-------------------------------------------------------------------------------
+
+## URL (URI) parsing
+
+URIs (Universal Resource Identifier), commonly referred to as URL (Uniform Resource Locator), are a common way to describe network and file addresses.
+
+A common use case for URIs is within the command line interface (CLI), allowing a client to point at a resource that may be local (i.e., `file:///users/etc/my.conf`) or remote (i.e. `http://example.com/conf`).
+
+By defining `FIO_URL`, the following types and functions will be defined:
+
+#### `fio_url_s`
+
+```c
+/** the result returned by `fio_url_parse` */
+typedef struct {
+  fio_str_info_s scheme;
+  fio_str_info_s user;
+  fio_str_info_s password;
+  fio_str_info_s host;
+  fio_str_info_s port;
+  fio_str_info_s path;
+  fio_str_info_s query;
+  fio_str_info_s target;
+} fio_url_s;
+```
+
+The `fio_url_s` contains a information about a URL (or, URI).
+
+When the information is returned from `fio_url_parse`, the strings in the `fio_url_s` (i.e., `url.scheme.buf`) are **not NUL terminated**, since the parser is non-destructive, with zero-copy and zero-allocation.
+
+#### `fio_url_parse`
+
+```c
+fio_url_s fio_url_parse(const char *url, size_t len);
+```
+
+Parses the URI returning it's components and their lengths (no decoding performed, **doesn't accept decoded URIs**).
+
+The returned string are **not NUL terminated**, they are merely locations within the original (unmodified) string.
+
+This function attempts to accept many different formats, including any of the following:
+
+* `/complete_path?query#target`
+
+  i.e.: `/index.html?page=1#list`
+
+* `host:port/complete_path?query#target`
+
+  i.e.:
+  - `example.com`
+  - `example.com:8080`
+  - `example.com/index.html`
+  - `example.com:8080/index.html`
+  - `example.com:8080/index.html?key=val#target`
+
+* `user:password@host:port/path?query#target`
+
+  i.e.: `user:1234@example.com:8080/index.html`
+
+* `username[:password]@host[:port][...]`
+
+  i.e.: `john:1234@example.com`
+
+* `schema://user:password@host:port/path?query#target`
+
+  i.e.: `http://example.com/index.html?page=1#list`
+
+Invalid formats might produce unexpected results. No error testing performed.
+
+The `file` and `unix` schemas are special in the sense that they produce no `host` (only `path`).
+
+-------------------------------------------------------------------------------
+
+## CLI (command line interface)
+
+The Simple Template Library includes a CLI parser, since parsing command line arguments is a common task.
+
+By defining `FIO_CLI`, the following functions will be defined.
+
+In addition, `FIO_CLI` automatically includes the `FIO_ATOL` flag, since CLI parsing depends on the `fio_atol` function.
+
+#### `fio_cli_start(argc, argv, unnamed_min, unnamed_max, description, ...)`
+
+The **macro** shadows the `fio_cli_start` function and defines the CLI interface to be parsed. i.e.,
+
+      int main(int argc, char const *argv[]) {
+        fio_cli_start(argc, argv, 0, -1,
+                      "this is a CLI example.",
+                      FIO_CLI_PRINT_HEADER("CLI type validation"),
+                      FIO_CLI_STRING("-str -s any data goes here"),
+                      FIO_CLI_INT("-int -i numeral data goes here"),
+                      FIO_CLI_BOOL("-bool -b flag (boolean) only - no data"),
+                      FIO_CLI_PRINT("This test allows for unlimited arguments "
+                                    "that will simply pass-through"));
+        if (fio_cli_get("-s"))
+          fprintf(stderr, "String: %s\n", fio_cli_get("-s"));
+
+        if (fio_cli_get("-i"))
+          fprintf(stderr, "Integer: %d\n", fio_cli_get_i("-i"));
+
+        fprintf(stderr, "Boolean: %d\n", fio_cli_get_i("-b"));
+
+        if (fio_cli_unnamed_count()) {
+          fprintf(stderr, "Printing unlisted / unrecognized arguments:\n");
+          for (size_t i = 0; i < fio_cli_unnamed_count(); ++i) {
+            fprintf(stderr, "%s\n", fio_cli_unnamed(i));
+          }
+        }
+
+        fio_cli_end();
+        return 0;
+      }
+
+The `fio_cli_start` macro accepts the `argc` and `argv`, as received by the `main` functions, a maximum and minimum number of unspecified CLI arguments (beneath which or after which the parser will fail), an application description string and a variable list of (specified) command line arguments.
+
+Command line arguments can be either String, Integer or Boolean, as indicated by the `FIO_CLI_STRING("-arg [-alias] desc.")`, `FIO_CLI_INT("-arg [-alias] desc.")` and `FIO_CLI_BOOL("-arg [-alias] desc.")` macros. Extra descriptions or text can be added using the `FIO_CLI_PRINT_HEADER(str)` and `FIO_CLI_PRINT(str)` macros.
+
+#### `fio_cli_end()`
+
+Clears the CLI data storage.
+
+#### `char const *fio_cli_get(char const *name);`
+
+Returns the argument's value as a string, or NULL if the argument wasn't provided.
+
+#### `int fio_cli_get_i(char const *name);`
+
+Returns the argument's value as an integer, or 0 if the argument wasn't provided.
+
+#### `fio_cli_get_bool(name)`
+
+True the argument was boolean and provided.
+
+#### `unsigned int fio_cli_unnamed_count(void)`
+
+Returns the number of unrecognized arguments (arguments unspecified, in `fio_cli_start`).
+
+#### `char const *fio_cli_unnamed(unsigned int index)`
+
+Returns a String containing the unrecognized argument at the stated `index` (indexes are zero based).
+
+#### `void fio_cli_set(char const *name, char const *value)`
+
+Sets a value for the named argument (but **not** it's aliases).
+
+#### `fio_cli_set_default(name, value)`
+
+Sets a value for the named argument (but **not** it's aliases) **only if** the argument wasn't set by the user.
+
+-------------------------------------------------------------------------------
+
+## Task Queue
+
+The Simple Template Library includes a simple, thread-safe, task queue based on a linked list of ring buffers.
+
+Since delayed processing is a common task, this queue is provides an easy way to schedule and perform delayed tasks.
+
+### Queue Related Types
+
+#### `fio_queue_task_s`
+
+```c
+/** Task information */
+typedef struct {
+  /** The function to call */
+  void (*fn)(void *, void *);
+  /** User opaque data */
+  void *udata1;
+  /** User opaque data */
+  void *udata2;
+} fio_queue_task_s;
+```
+
+The `fio_queue_task_s` type contains information about a delayed task. The information is important for the `fio_queue_push` MACRO, where it is used as named arguments for the task information.
+
+#### `fio_queue_s`
+
+```c
+/** The queue object - should be considered opaque (or, at least, read only). */
+typedef struct {
+  fio___task_ring_s *r;
+  fio___task_ring_s *w;
+  /** the number of tasks waiting to be performed (read-only). */
+  size_t count;
+  fio_lock_i lock;
+  fio___task_ring_s mem;
+} fio_queue_s;
+```
+
+The `fio_queue_s` object is the queue object.
+
+This object could be placed on the stack or allocated on the heap (using `fio_queue_new`).
+
+Once the object is no longer in use call `fio_queue_destroy` (if placed on the stack) of `fio_queue_free` (if allocated using `fio_queue_new`).
+
+### Queue API
+
+#### `FIO_QUEUE_INIT(queue)`
+
+```c
+/** Used to initialize a fio_queue_s object. */
+#define FIO_QUEUE_INIT(name)                                                   \
+  { .r = &(name).mem, .w = &(name).mem, .lock = FIO_LOCK_INIT }
+```
+
+#### `fio_queue_destroy`
+
+```c
+void fio_queue_destroy(fio_queue_s *q);
+```
+
+Destroys a queue and reinitializes it, after freeing any used resources.
+
+#### `fio_queue_new`
+
+```c
+fio_queue_s *fio_queue_new(void);
+```
+
+Creates a new queue object (allocated on the heap).
+
+#### `fio_queue_free`
+
+```c
+void fio_queue_free(fio_queue_s *q);
+```
+
+Frees a queue object after calling fio_queue_destroy.
+
+#### `fio_queue_push`
+
+```c
+int fio_queue_push(fio_queue_s *q, fio_queue_task_s task);
+#define fio_queue_push(q, ...)                                                 \
+  fio_queue_push((q), (fio_queue_task_s){__VA_ARGS__})
+
+```
+
+Pushes a **valid** (non-NULL) task to the queue.
+
+This function is shadowed by the `fio_queue_push` MACRO, allowing named arguments to be used.
+
+For example:
+
+```c
+void tsk(void *, void *);
+fio_queue_s q = FIO_QUEUE_INIT(q);
+fio_queue_push(q, .fn = tsk);
+// ...
+fio_queue_destroy(q);
+```
+
+Returns 0 if `task.fn == NULL` or if the task was successfully added to the queue.
+
+Returns -1 on error (no memory).
+
+
+#### `fio_queue_pop`
+
+```c
+fio_queue_task_s fio_queue_pop(fio_queue_s *q);
+```
+
+Pops a task from the queue (FIFO).
+
+Returns a NULL task on error (`task.fn == NULL`).
+
+**Note**: The task isn't performed automatically, it's just returned. This is useful for queues that don't necessarily contain callable functions.
+
+#### `fio_queue_perform`
+
+```c
+int fio_queue_perform(fio_queue_s *q);
+```
+
+Pops and performs a task from the queue (FIFO).
+
+Returns -1 on error (queue empty).
+
+#### `fio_queue_perform_all`
+
+```c
+void fio_queue_perform_all(fio_queue_s *q);
+```
+
+Performs all tasks in the queue.
+
+#### `fio_queue_count`
+
+```c
+size_t fio_queue_count(fio_queue_s *q);
+```
+
+Returns the number of tasks in the queue.
+
+-------------------------------------------------------------------------------
+
+## Memory Allocation
+
+The facil.io Simple Template Library includes a fast, concurrent, memory allocator designed for shot-medium object life-spans.
+
+It's ideal if all long-term allocations are performed during the start-up phase or using a different memory allocator.
+
+The allocator is very fast and protects against fragmentation issues when used correctly (when abused, fragmentation may increase).
+
+Allocated memory is always zeroed out and aligned on a 16 byte boundary.
+
+Reallocated memory is always aligned on a 16 byte boundary but it might be filled with junk data after the valid data. This can be minimized to (up to) 16 bytes of junk data by using [`fio_realloc2`](#fio_realloc2).
+
+Memory allocation overhead is ~ 0.05% (1/2048 bytes per byte, or 16 bytes per 32Kb). In addition there's a small per-process overhead for the allocator's state-machine (usually just 1 page / 4Kb per process, unless you have more then 250 CPU cores). 
+
+The memory allocator assumes multiple concurrent allocation/deallocation, short to medium life spans (memory is freed shortly, but not immediately, after it was allocated) and relatively small allocations - anything over `FIO_MEMORY_BLOCK_ALLOC_LIMIT` (16Kb) is forwarded to `mmap`.
+
+The memory allocator can be used in conjuncture with the system's `malloc` to minimize heap fragmentation (long-life objects use `malloc`, short life objects use `fio_malloc`) or as a memory pool for specific objects (when used as static functions in a specific C file).
+
+Long term allocation can use `fio_mmap` to directly allocate memory from the system. The overhead for `fio_mmap` is 16 bytes per allocation (freed with `fio_free`).
+
+**Note**: this custom allocator could increase memory fragmentation if long-life allocations are performed periodically (rather than performed during startup). Use [`fio_mmap`](#fio_mmap) or the system's `malloc` for long-term allocations.
+
+### Memory Allocator Overview
+
+The memory allocator uses `mmap` to collect memory from the system.
+
+Each allocation collects ~8Mb from the system, aligned on a 32Kb alignment boundary (except direct `mmap` allocation for large `fio_malloc` or `fio_mmap` calls). This memory is divided into 32Kb blocks which are added to a doubly linked "free" list.
+
+The allocator utilizes per-CPU arenas / bins to allow for concurrent memory allocations across threads and to minimize lock contention.
+
+Each arena / bin collects a 32Kb block and allocates "slices" as required by `fio_malloc`/`fio_realloc`.
+
+The `fio_free` function will free the whole 32Kb block as a single unit once the whole of the allocations for that block were freed (no small-allocation "free list" and no per-slice meta-data).
+
+The memory collected from the system (the 8Mb) will be returned to the system once all the memory was both allocated and freed (or during cleanup).
+
+To replace the system's `malloc` function family compile with the `FIO_OVERRIDE_MALLOC` defined (`-DFIO_OVERRIDE_MALLOC`).
+
+It should be possible to use tcmalloc or jemalloc alongside facil.io's allocator. It's also possible to prevent facil.io's custom allocator from compiling by defining `FIO_MALLOC_FORCE_SYSTEM` (`-DFIO_MALLOC_FORCE_SYSTEM`).
+
+### The Memory Allocator's API
+
+The functions were designed to be a drop in replacement to the system's memory allocation functions (`malloc`, `free` and friends).
+
+Where some improvement could be made, it was made using an added function name to add improved functionality (such as `fio_realloc2`).
+
+By defining `FIO_MALLOC`, the following functions will be defined:
+
+#### `void * fio_malloc(size_t size)`
+
+Allocates memory using a per-CPU core block memory pool. Memory is zeroed out.
+
+Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
+will be redirected to `mmap`, as if `fio_mmap` was called.
+
+#### `void * fio_calloc(size_t size_per_unit, size_t unit_count)`
+
+Same as calling `fio_malloc(size_per_unit * unit_count)`;
+
+Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
+will be redirected to `mmap`, as if `fio_mmap` was called.
+
+#### `void fio_free(void *ptr)`
+
+Frees memory that was allocated using this library.
+
+#### `void * fio_realloc(void *ptr, size_t new_size)`
+
+Re-allocates memory. An attempt to avoid copying the data is made only for big
+memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
+
+#### `void * fio_realloc2(void *ptr, size_t new_size, size_t copy_length)`
+
+Re-allocates memory. An attempt to avoid copying the data is made only for big
+memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
+
+This variation is slightly faster as it might copy less data.
+
+#### `void * fio_mmap(size_t size)`
+
+Allocates memory directly using `mmap`, this is preferred for objects that both
+require almost a page of memory (or more) and expect a long lifetime.
+
+However, since this allocation will invoke the system call (`mmap`), it will be
+inherently slower.
+
+`fio_free` can be used for deallocating the memory.
+
+#### `void fio_malloc_after_fork(void)`
+
+Never fork a multi-threaded process. Doing so might corrupt the memory
+allocation system. The risk is more relevant for child processes.
+
+However, if a multi-threaded process, calling this function from the child
+process would perform a best attempt at mitigating any arising issues (at the
+expense of possible leaks).
+
+#### `FIO_MALLOC_FORCE_SYSTEM`
+
+If `FIO_MALLOC_FORCE_SYSTEM` is defined, the facil.io memory allocator functions will simply pass requests through to the system's memory allocator (`calloc` / `free`) rather then use the facil.io custom allocator.
+
+#### `FIO_MALLOC_OVERRIDE_SYSTEM`
+
+If `FIO_MALLOC_OVERRIDE_SYSTEM` is defined, the facil.io memory allocator will replace the system's memory allocator.
+
+#### `FIO_MEMORY_ARENA_COUNT_MAX`
+
+Sets the maximum number of memory arenas to initialize. Defaults to 64.
+
+When set to `0` the number of arenas will always match the maximum number of detected CPU cores.
+
+#### `FIO_MEMORY_ARENA_COUNT_DEFAULT`
+
+The default number of memory arenas to initialize when CPU core detection fails or isn't available. Defaults to `5`.
+
+Normally, facil.io tries to initialize as many memory allocation arenas as the number of CPU cores. This value will only be used if core detection isn't available or fails.
+
 
 -------------------------------------------------------------------------------
 

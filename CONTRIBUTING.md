@@ -77,7 +77,7 @@ A few pointers about code styling (pun intended).
 
 `facil.io` is comprised of the following module "families":
 
-* The Simple Type Library Core (`facil.io` STL):
+* The Simple Template Library Core (`facil.io` STL):
 
     The module in comprised of a single file header library: `fio-stl.h`
 

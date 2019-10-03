@@ -7,8 +7,7 @@ html
         title== self['title'] || "facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box."
         meta name="description" content=(self['title'] || SCHEMA_ABOUT)
         link href='https://fonts.googleapis.com/css?family=Montserrat|Quicksand|Karla' rel='stylesheet' type='text/css'
-        / link href='/assets/javascripts/styles/monokai_sublime.css' rel='stylesheet' type='text/css'
-        script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"
+        / script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"
 
         / CSS
         link href='/assets/styles/main.css' rel='stylesheet' type='text/css'
@@ -68,14 +67,17 @@ html
         / script src="/assets/javascripts/highlight.pack.js"
         javascript:
             function change_themes() {
-                if(localStorage.getItem("theme") == 'dark') {
+                var obj = document.getElementById("theme");
+                if(obj.text[0] == 'D') {
                     localStorage.setItem("theme", "light");
                 } else {
                     localStorage.setItem("theme", "dark");
                 }
-                $('body')[0].className = localStorage.getItem("theme");
+                obj = document.body;
+                obj.className = localStorage.getItem("theme");
                 set_theme_link();
-                $('#show_nav').attr('checked', false);
+                obj = document.getElementById("show_nav");
+                obj.checked = false;
                 return false;
             };
             function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
@@ -115,14 +117,26 @@ html
             };
             load_sidebar_pos();
             function set_theme_link() {
-                $("#theme").html( ( (localStorage.getItem("theme") == 'dark') ? "Day" : "Night") + " Theme" );
-                }
-            $('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
+                var obj = document.getElementById("theme");
+                obj.text = ( (localStorage.getItem("theme") == 'dark') ? "Day" : "Night") + " Theme";
+            }
             set_theme_link();
+            if(localStorage.getItem("theme")) {
+                document.body.className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
+            } else if(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                document.body.className = "dark";
+                var obj = document.getElementById("theme");
+                obj.text = "Day Theme";
+            } else {
+                document.body.className = "light";
+            }
             function show_notice() { document.getElementById("notice").classList.remove('hidden'); };
             function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
-            $('#toc').on("touchstart", function (e) { return true; } );
-            $('#toc').on("hover", function (e) { return true; } );
+            if(document.getElementById("toc")){
+                var obj = document.getElementById("toc");
+                obj.ontouchstart = function (e) { return true; };
+                obj.onhover = function (e) { return true; };
+            }
             // hljs.initHighlighting();
             // Google Analytics
             // if(location.hostname != "localhost") {
