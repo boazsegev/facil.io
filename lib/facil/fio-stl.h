@@ -8840,7 +8840,13 @@ Queue Type(s)
 ***************************************************************************** */
 
 #ifndef FIO_QUEUE_TASKS_PER_ALLOC
-#define FIO_QUEUE_TASKS_PER_ALLOC 168 /* fits fio_queue_s in one page */
+#if UINTPTR_MAX <= 0xFFFFFFFF
+/* fits fio_queue_s in one page on most 32 bit machines */
+#define FIO_QUEUE_TASKS_PER_ALLOC 338
+#else
+/* fits fio_queue_s in one page on most 64 bit machines */
+#define FIO_QUEUE_TASKS_PER_ALLOC 168
+#endif
 #endif
 
 /** Task information */
