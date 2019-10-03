@@ -61,10 +61,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FIO_POLL_TICK 1000
 #endif
 
-#ifndef FIO_USE_URGENT_QUEUE
-#define FIO_USE_URGENT_QUEUE 1
-#endif
-
 #ifndef DEBUG_SPINLOCK
 #define DEBUG_SPINLOCK 0
 #endif
@@ -900,213 +896,37 @@ Section Start Marker
 
 ***************************************************************************** */
 
-#ifndef DEFER_QUEUE_BLOCK_COUNT
-#if UINTPTR_MAX <= 0xFFFFFFFF
-/* Almost a page of memory on most 32 bit machines: ((4096/4)-8)/3 */
-#define DEFER_QUEUE_BLOCK_COUNT 338
-#else
-/* Almost a page of memory on most 64 bit machines: ((4096/8)-8)/3 */
-#define DEFER_QUEUE_BLOCK_COUNT 168
-#endif
-#endif
-
-/* task node data */
-typedef struct {
-  void (*func)(void *, void *);
-  void *arg1;
-  void *arg2;
-} fio_defer_task_s;
-
-/* task queue block */
-typedef struct fio_defer_queue_block_s fio_defer_queue_block_s;
-struct fio_defer_queue_block_s {
-  fio_defer_task_s tasks[DEFER_QUEUE_BLOCK_COUNT];
-  fio_defer_queue_block_s *next;
-  size_t write;
-  size_t read;
-  unsigned char state;
-};
-
-/* task queue object */
-typedef struct { /* a lock for the state machine, used for multi-threading
-                    support */
-  fio_lock_i lock;
-  /* current active block to pop tasks */
-  fio_defer_queue_block_s *reader;
-  /* current active block to push tasks */
-  fio_defer_queue_block_s *writer;
-  /* static, built-in, queue */
-  fio_defer_queue_block_s static_queue;
-} fio_task_queue_s;
+#define FIO_QUEUE
+#include <fio-stl.h>
 
 /* the state machine - this holds all the data about the task queue and pool */
-static fio_task_queue_s task_queue_normal = {
-    .reader = &task_queue_normal.static_queue,
-    .writer = &task_queue_normal.static_queue};
+static fio_queue_s facil_io_task_queue = FIO_QUEUE_INIT(facil_io_task_queue);
 
-static fio_task_queue_s task_queue_urgent = {
-    .reader = &task_queue_urgent.static_queue,
-    .writer = &task_queue_urgent.static_queue};
 
 /* *****************************************************************************
 Internal Task API
 ***************************************************************************** */
 
-#if TEST || DEBUG
-static size_t fio_defer_count_alloc, fio_defer_count_dealloc;
-#define COUNT_ALLOC fio_atomic_add(&fio_defer_count_alloc, 1)
-#define COUNT_DEALLOC fio_atomic_add(&fio_defer_count_dealloc, 1)
-#define COUNT_RESET                                                            \
-  do {                                                                         \
-    fio_defer_count_alloc = fio_defer_count_dealloc = 0;                       \
-  } while (0)
-#else
-#define COUNT_ALLOC
-#define COUNT_DEALLOC
-#define COUNT_RESET
-#endif
-
-static inline void fio_defer_push_task_fn(fio_defer_task_s task,
-                                          fio_task_queue_s *queue) {
-  fio_lock(&queue->lock);
-
-  /* test if full */
-  if (queue->writer->state && queue->writer->write == queue->writer->read) {
-    /* return to static buffer or allocate new buffer */
-    if (queue->static_queue.state == 2) {
-      queue->writer->next = &queue->static_queue;
-    } else {
-      queue->writer->next = fio_malloc(sizeof(*queue->writer->next));
-      COUNT_ALLOC;
-      if (!queue->writer->next)
-        goto critical_error;
-    }
-    queue->writer = queue->writer->next;
-    queue->writer->write = 0;
-    queue->writer->read = 0;
-    queue->writer->state = 0;
-    queue->writer->next = NULL;
-  }
-
-  /* place task and finish */
-  queue->writer->tasks[queue->writer->write++] = task;
-  /* cycle buffer */
-  if (queue->writer->write == DEFER_QUEUE_BLOCK_COUNT) {
-    queue->writer->write = 0;
-    queue->writer->state = 1;
-  }
-  fio_unlock(&queue->lock);
-  return;
-
-critical_error:
-  fio_unlock(&queue->lock);
-  FIO_ASSERT_ALLOC(NULL)
-}
 
 #define fio_defer_push_task(func_, arg1_, arg2_)                               \
   do {                                                                         \
-    fio_defer_push_task_fn(                                                    \
-        (fio_defer_task_s){.func = func_, .arg1 = arg1_, .arg2 = arg2_},       \
-        &task_queue_normal);                                                   \
+    fio_queue_push(&facil_io_task_queue, .fn = func_, .udata1 = arg1_, .udata2 = arg2_);                                                   \
     fio_defer_thread_signal();                                                 \
   } while (0)
 
-#if FIO_USE_URGENT_QUEUE
 #define fio_defer_push_urgent(func_, arg1_, arg2_)                             \
-  fio_defer_push_task_fn(                                                      \
-      (fio_defer_task_s){.func = func_, .arg1 = arg1_, .arg2 = arg2_},         \
-      &task_queue_urgent)
-#else
-#define fio_defer_push_urgent(func_, arg1_, arg2_)                             \
-  fio_defer_push_task(func_, arg1_, arg2_)
-#endif
+  do {                                                                         \
+    fio_queue_push_urgent(&facil_io_task_queue, .fn = func_, .udata1 = arg1_, .udata2 = arg2_);                                                   \
+    fio_defer_thread_signal();                                                 \
+  } while (0)
 
-static inline fio_defer_task_s fio_defer_pop_task(fio_task_queue_s *queue) {
-  fio_defer_task_s ret = (fio_defer_task_s){.func = NULL};
-  fio_defer_queue_block_s *to_free = NULL;
-  /* lock the state machine, grab/create a task and place it at the tail */
-  fio_lock(&queue->lock);
-
-  /* empty? */
-  if (queue->reader->write == queue->reader->read && !queue->reader->state)
-    goto finish;
-  /* collect task */
-  ret = queue->reader->tasks[queue->reader->read++];
-  /* cycle */
-  if (queue->reader->read == DEFER_QUEUE_BLOCK_COUNT) {
-    queue->reader->read = 0;
-    queue->reader->state = 0;
-  }
-  /* did we finish the queue in the buffer? */
-  if (queue->reader->write == queue->reader->read) {
-    if (queue->reader->next) {
-      to_free = queue->reader;
-      queue->reader = queue->reader->next;
-    } else {
-      if (queue->reader != &queue->static_queue &&
-          queue->static_queue.state == 2) {
-        to_free = queue->reader;
-        queue->writer = &queue->static_queue;
-        queue->reader = &queue->static_queue;
-      }
-      queue->reader->write = queue->reader->read = queue->reader->state = 0;
-    }
-  }
-
-finish:
-  if (to_free == &queue->static_queue) {
-    queue->static_queue.state = 2;
-    queue->static_queue.next = NULL;
-  }
-  fio_unlock(&queue->lock);
-
-  if (to_free && to_free != &queue->static_queue) {
-    fio_free(to_free);
-    COUNT_DEALLOC;
-  }
-  return ret;
-}
-
-/* same as fio_defer_clear_queue , just inlined */
-static inline void fio_defer_clear_tasks_for_queue(fio_task_queue_s *queue) {
-  fio_lock(&queue->lock);
-  while (queue->reader) {
-    fio_defer_queue_block_s *tmp = queue->reader;
-    queue->reader = queue->reader->next;
-    if (tmp != &queue->static_queue) {
-      COUNT_DEALLOC;
-      free(tmp);
-    }
-  }
-  queue->static_queue = (fio_defer_queue_block_s){.next = NULL};
-  queue->reader = queue->writer = &queue->static_queue;
-  fio_unlock(&queue->lock);
-}
-
-/**
- * Performs a single task from the queue, returning -1 if the queue was empty.
- */
-static inline int
-fio_defer_perform_single_task_for_queue(fio_task_queue_s *queue) {
-  fio_defer_task_s task = fio_defer_pop_task(queue);
-  if (!task.func)
-    return -1;
-  task.func(task.arg1, task.arg2);
-  return 0;
-}
 
 static inline void fio_defer_clear_tasks(void) {
-  fio_defer_clear_tasks_for_queue(&task_queue_normal);
-#if FIO_USE_URGENT_QUEUE
-  fio_defer_clear_tasks_for_queue(&task_queue_urgent);
-#endif
+  fio_queue_destroy(&facil_io_task_queue);
 }
 
 static void fio_defer_on_fork(void) {
-  task_queue_normal.lock = FIO_LOCK_INIT;
-#if FIO_USE_URGENT_QUEUE
-  task_queue_urgent.lock = FIO_LOCK_INIT;
-#endif
+  facil_io_task_queue.lock = FIO_LOCK_INIT;
 }
 
 /* *****************************************************************************
@@ -1127,39 +947,12 @@ call_error:
 
 /** Performs all deferred functions until the queue had been depleted. */
 void fio_defer_perform(void) {
-#if FIO_USE_URGENT_QUEUE
-  while (fio_defer_perform_single_task_for_queue(&task_queue_urgent) == 0 ||
-         fio_defer_perform_single_task_for_queue(&task_queue_normal) == 0)
-    ;
-#else
-  while (fio_defer_perform_single_task_for_queue(&task_queue_normal) == 0)
-    ;
-#endif
-  //   for (;;) {
-  // #if FIO_USE_URGENT_QUEUE
-  //     fio_defer_task_s task = fio_defer_pop_task(&task_queue_urgent);
-  //     if (!task.func)
-  //       task = fio_defer_pop_task(&task_queue_normal);
-  // #else
-  //     fio_defer_task_s task = fio_defer_pop_task(&task_queue_normal);
-  // #endif
-  //     if (!task.func)
-  //       return;
-  //     task.func(task.arg1, task.arg2);
-  //   }
+  fio_queue_perform_all(&facil_io_task_queue);
 }
 
 /** Returns true if there are deferred functions waiting for execution. */
 int fio_defer_has_queue(void) {
-#if FIO_USE_URGENT_QUEUE
-  return task_queue_urgent.reader != task_queue_urgent.writer ||
-         task_queue_urgent.reader->write != task_queue_urgent.reader->read ||
-         task_queue_normal.reader != task_queue_normal.writer ||
-         task_queue_normal.reader->write != task_queue_normal.reader->read;
-#else
-  return task_queue_normal.reader != task_queue_normal.writer ||
-         task_queue_normal.reader->write != task_queue_normal.reader->read;
-#endif
+  return fio_queue_count(&facil_io_task_queue) != 0;
 }
 
 /** Clears the queue. */
@@ -7872,18 +7665,15 @@ FIO_SFUNC void fio_defer_test(void) {
   end = clock();
   if (FIO_DEFER_TEST_PRINT) {
     fprintf(stderr,
-            "Deferless (direct call) counter: %lu cycles with i_count = %lu, "
-            "%lu/%lu free/malloc\n",
-            (unsigned long)(end - start), (unsigned long)i_count,
-            (unsigned long)fio_defer_count_dealloc,
-            (unsigned long)fio_defer_count_alloc);
+            "Deferless (direct call) counter: %lu cycles with i_count = %lu\n",
+            (unsigned long)(end - start), (unsigned long)i_count);
   }
   size_t i_count_should_be = i_count;
   i_count = 0;
   start = clock();
   for (size_t i = 0; i < FIO_DEFER_TOTAL_COUNT; i++) {
     fio_defer(sample_task, (void *)&i_count, NULL);
-    fio_defer_perform_single_task_for_queue(&task_queue_normal);
+    fio_queue_perform(&facil_io_task_queue);
   }
   end = clock();
   if (FIO_DEFER_TEST_PRINT) {
@@ -7910,22 +7700,14 @@ FIO_SFUNC void fio_defer_test(void) {
     if (FIO_DEFER_TEST_PRINT) {
       fprintf(stderr,
               "- Defer %zu threads, %zu scheduling loops (%zu each):\n"
-              "    %lu cycles with i_count = %lu, %lu/%lu "
-              "free/malloc\n",
+              "    %lu cycles with i_count = %lu\n",
               ((i % cpu_cores) + 1), tasks, per_task,
-              (unsigned long)(end - start), (unsigned long)i_count,
-              (unsigned long)fio_defer_count_dealloc,
-              (unsigned long)fio_defer_count_alloc);
+              (unsigned long)(end - start), (unsigned long)i_count);
     } else {
       fprintf(stderr, ".");
     }
     FIO_ASSERT(i_count == i_count_should_be, "ERROR: defer count invalid\n");
-    FIO_ASSERT(fio_defer_count_dealloc == fio_defer_count_alloc,
-               "defer deallocation vs. allocation error, %zu != %zu",
-               fio_defer_count_dealloc, fio_defer_count_alloc);
   }
-  FIO_ASSERT(task_queue_normal.writer == &task_queue_normal.static_queue,
-             "defer library didn't release dynamic queue (should be static)");
   fprintf(stderr, "\n* passed.\n");
 }
 
