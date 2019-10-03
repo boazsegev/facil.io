@@ -18,17 +18,11 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/types.h>
 #include <unistd.h>
 
-/* *****************************************************************************
-External functions
-***************************************************************************** */
-
 // #define HTTP_BUSY_UNLESS_HAS_FDS 64
 // #define HTTP_DEFAULT_BODY_LIMIT (1024 * 1024 * 50)
 // #define HTTP_MAX_HEADER_COUNT 128
 // #define HTTP_MAX_HEADER_LENGTH 8192
 // #define FIO_HTTP_EXACT_LOGGING 0
-
-#include <http1.h>
 
 /* *****************************************************************************
 Small Helpers
