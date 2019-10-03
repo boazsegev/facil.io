@@ -7879,6 +7879,18 @@ FIO_SFUNC void fio_defer_test(void) {
             (unsigned long)fio_defer_count_alloc);
   }
   size_t i_count_should_be = i_count;
+  i_count = 0;
+  start = clock();
+  for (size_t i = 0; i < FIO_DEFER_TOTAL_COUNT; i++) {
+    fio_defer(sample_task, (void *)&i_count, NULL);
+    fio_defer_perform_single_task_for_queue(&task_queue_normal);
+  }
+  end = clock();
+  if (FIO_DEFER_TEST_PRINT) {
+    fprintf(stderr, "\t- single task counter: %lu cycles with i_count = %lu\n",
+            (unsigned long)(end - start), (unsigned long)i_count);
+  }
+  FIO_ASSERT(i_count == i_count_should_be, "ERROR: queue count invalid\n");
 
   if (FIO_DEFER_TEST_PRINT) {
     fprintf(stderr, "\n");

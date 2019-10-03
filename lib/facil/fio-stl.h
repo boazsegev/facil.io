@@ -42,6 +42,8 @@ This file also contains common helper macros / primitives, such as:
 
 * String / Number conversion - defined by `FIO_ATOL`
 
+* Task Queue (Event Loop Engine) - defined by `FIO_QUEUE`
+
 * Command Line Interface helpers - defined by `FIO_CLI`
 
 * Custom Memory Allocation - defined by `FIO_MALLOC`
@@ -95,7 +97,7 @@ library for the first time.
 
 
 
-                              Constants (included once)
+                            Constants (included once)
 
 
 
@@ -672,6 +674,11 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 
 /* C11 Atomics are defined? */
 #if defined(__ATOMIC_RELAXED)
+/** An atomic load operation, returns value in pointer. */
+#define fio_atomic_load(dest, p_obj)                                           \
+  do {                                                                         \
+    dest = __atomic_load_n((p_obj), __ATOMIC_SEQ_CST);                         \
+  } while (0)
 /** An atomic exchange operation, returns previous value */
 #define fio_atomic_xchange(p_obj, value)                                       \
   __atomic_exchange_n((p_obj), (value), __ATOMIC_SEQ_CST)
@@ -697,6 +704,11 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 
 /* Select the correct compiler builtin method. */
 #elif __has_builtin(__sync_add_and_fetch) || (__GNUC__ > 3)
+/** An atomic load operation, returns value in pointer. */
+#define fio_atomic_load(dest, p_obj)                                           \
+  do {                                                                         \
+    dest = *(p_obj);                                                           \
+  } while (!__sync_bool_compare_and_swap((p_obj), dest, dest))
 /** An atomic exchange operation, ruturns previous value */
 #define fio_atomic_xchange(p_obj, value)                                       \
   __sync_val_compare_and_swap((p_obj), *(p_obj), (value))
@@ -1907,6 +1919,47 @@ typedef struct {
 /* The memory allocators persistent state */
 static fio___mem_state_s *fio___mem_state = (fio___mem_state_s *)NULL;
 
+/* *****************************************************************************
+Slices and Blocks - types
+***************************************************************************** */
+
+struct fio___mem_block_s {
+  uint64_t reserved;          /* should always be zero, or page sized */
+  uint16_t root;              /* REQUIRED, root == 0 => is root to self */
+  volatile uint16_t root_ref; /* root reference memory padding */
+  volatile uint16_t ref;      /* reference count (per memory page) */
+  uint16_t pos;               /* position into the block */
+};
+
+typedef struct fio___mem_block_node_s fio___mem_block_node_s;
+struct fio___mem_block_node_s {
+  fio___mem_block_s
+      dont_touch;     /* prevent block internal data from being corrupted */
+  FIO_LIST_NODE node; /* next block */
+};
+
+#define FIO_LIST_NAME fio___mem_available_blocks
+#define FIO_LIST_TYPE fio___mem_block_node_s
+#ifndef FIO_STL_KEEP__
+#define FIO_STL_KEEP__ 1
+#endif
+#include __FILE__
+#if FIO_STL_KEEP__ == 1
+#undef FIO_STL_KEEP__
+#endif
+/* Address returned when allocating 0 bytes ( fio_malloc(0) ) */
+static long double fio___mem_on_malloc_zero;
+
+/* retrieve root block */
+HSFUNC fio___mem_block_s *fio___mem_block_root(fio___mem_block_s *b) {
+  return FIO_PTR_MATH_SUB(fio___mem_block_s, b,
+                          b->root * FIO_MEMORY_BLOCK_SIZE);
+}
+
+/* *****************************************************************************
+Arena allocation / deallocation
+***************************************************************************** */
+
 /* see destructor at: fio___mem_destroy */
 HSFUNC void __attribute__((constructor)) fio___mem_state_allocate(void) {
   if (fio___mem_state)
@@ -1937,9 +1990,17 @@ HSFUNC void __attribute__((constructor)) fio___mem_state_allocate(void) {
       .available = FIO_LIST_INIT(fio___mem_state->available),
   };
 #if DEBUG && defined(FIO_LOG_INFO)
-  FIO_LOG_INFO("facil.io memory allocation initialized with %zu concurrent "
-               "arenas (@%p).",
-               cores, (void *)fio___mem_state);
+  FIO_LOG_INFO("facil.io memory allocation initialized:\n"
+               "\t* %zu concurrent arenas (@%p).\n"
+               "\t* %zu pages required for arenas (~%zu bytes).\n"
+               "\t* system allocation size:                     %zu bytes\n"
+               "\t* memory block size (allocation slice / bin): %zu bytes\n"
+               "\t* memory blocks per system allocation:        %zu blocks\n"
+               "\t* memory block overhead:                      %zu bytes\n",
+               cores, (void *)fio___mem_state, pages, (pages << 12),
+               (FIO_MEMORY_BLOCKS_PER_ALLOCATION * FIO_MEMORY_BLOCK_SIZE),
+               FIO_MEMORY_BLOCK_SIZE, FIO_MEMORY_BLOCKS_PER_ALLOCATION,
+               FIO_MEMORY_BLOCK_HEADER_SIZE);
 #endif
 }
 
@@ -1981,43 +2042,6 @@ HSFUNC void fio___mem_arena_aquire(void) {
 }
 
 HFUNC void fio___mem_arena_release() { fio_unlock(&fio___mem_arena->lock); }
-
-/* *****************************************************************************
-Slices and Blocks - types
-***************************************************************************** */
-
-struct fio___mem_block_s {
-  size_t reserved;            /* should always be zero, or page sized */
-  uint16_t root;              /* REQUIRED, root == 0 => is root to self */
-  volatile uint16_t root_ref; /* root reference memory padding */
-  volatile uint16_t ref;      /* reference count (per memory page) */
-  uint16_t pos;               /* position into the block */
-};
-
-typedef struct fio___mem_block_node_s fio___mem_block_node_s;
-struct fio___mem_block_node_s {
-  fio___mem_block_s
-      dont_touch;     /* prevent block internal data from being corrupted */
-  FIO_LIST_NODE node; /* next block */
-};
-
-#define FIO_LIST_NAME fio___mem_available_blocks
-#define FIO_LIST_TYPE fio___mem_block_node_s
-#ifndef FIO_STL_KEEP__
-#define FIO_STL_KEEP__ 1
-#endif
-#include __FILE__
-#if FIO_STL_KEEP__ == 1
-#undef FIO_STL_KEEP__
-#endif
-/* Address returned when allocating 0 bytes ( fio_malloc(0) ) */
-static long double fio___mem_on_malloc_zero;
-
-/* retrieve root block */
-HSFUNC fio___mem_block_s *fio___mem_block_root(fio___mem_block_s *b) {
-  return FIO_PTR_MATH_SUB(fio___mem_block_s, b,
-                          b->root * FIO_MEMORY_BLOCK_SIZE);
-}
 
 /* *****************************************************************************
 Allocator debugging helpers
@@ -2245,6 +2269,7 @@ test_reserved:
   /* zero out memory before returning it to the system */
   memset(ptr, 0, (b->reserved) - sizeof(*b));
   FIO_MEM_PAGE_FREE(b, (b->reserved >> FIO_MEM_PAGE_SIZE_LOG));
+  FIO_MEMORY_ON_BLOCK_FREE();
 }
 
 /**
@@ -2354,6 +2379,7 @@ SFUNC void *FIO_ALIGN_NEW fio_mmap(size_t size) {
   fio___mem_block_s *b = FIO_MEM_PAGE_ALLOC(pages, FIO_MEMORY_BLOCK_SIZE_LOG);
   if (!b)
     return NULL;
+  FIO_MEMORY_ON_BLOCK_ALLOC();
   b->reserved = pages << FIO_MEM_PAGE_SIZE_LOG;
   return (void *)(b + 1);
 }
@@ -8793,6 +8819,253 @@ Small String Cleanup
 
 
 
+                                    Task Queue
+                                (Event Loop Engine)
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if defined(FIO_QUEUE) && !defined(H___FIO_QUEUE___H)
+#define H___FIO_QUEUE___H
+
+/* *****************************************************************************
+Queue Type(s)
+***************************************************************************** */
+
+#ifndef FIO_QUEUE_TASKS_PER_ALLOC
+#define FIO_QUEUE_TASKS_PER_ALLOC 168 /* fits the fio_queue_s in one page */
+#endif
+
+/** Task information */
+typedef struct {
+  /** The function to call */
+  void (*fn)(void *, void *);
+  /** User opaque data */
+  void *udata1;
+  /** User opaque data */
+  void *udata2;
+} fio_queue_task_s;
+
+/* internal use */
+typedef struct fio___task_ring_s {
+  uint16_t r;   /* reader position */
+  uint16_t w;   /* writer position */
+  uint16_t dir; /* direction */
+  struct fio___task_ring_s *next;
+  fio_queue_task_s buf[FIO_QUEUE_TASKS_PER_ALLOC];
+} fio___task_ring_s;
+
+/** The queue object - should be considered opaque (or, at least, read only). */
+typedef struct {
+  fio___task_ring_s *r;
+  fio___task_ring_s *w;
+  /** the number of tasks waiting to be performed. */
+  size_t count;
+  fio_lock_i lock;
+  fio___task_ring_s mem;
+} fio_queue_s;
+
+/* *****************************************************************************
+Queue API
+***************************************************************************** */
+
+/** Used to initialize a fio_queue_s object. */
+#define FIO_QUEUE_INIT(name)                                                   \
+  { .r = &(name).mem, .w = &(name).mem, .lock = FIO_LOCK_INIT }
+
+/** Destroys a queue and reinitializes it, after freeing any used resources. */
+SFUNC void fio_queue_destroy(fio_queue_s *q);
+
+/** Creates a new queue object (allocated on the heap). */
+HFUNC fio_queue_s *fio_queue_new(void);
+
+/** Frees a queue object after calling fio_queue_destroy. */
+SFUNC void fio_queue_free(fio_queue_s *q);
+
+/** Pushes a task to the queue. Returns -1 on error. */
+SFUNC int fio_queue_push(fio_queue_s *q, fio_queue_task_s task);
+
+/**
+ * Pushes a task to the queue, offering named arguments for the task.
+ * Returns -1 on error.
+ */
+#define fio_queue_push(q, ...)                                                 \
+  fio_queue_push((q), (fio_queue_task_s){__VA_ARGS__})
+
+/** Pops a task from the queue (FIFO). Returns a NULL task on error. */
+SFUNC fio_queue_task_s fio_queue_pop(fio_queue_s *q);
+
+/** Performs a task from the queue. Returns -1 on error (queue empty). */
+SFUNC int fio_queue_perform(fio_queue_s *q);
+
+/** Performs all tasks in the queue. */
+SFUNC void fio_queue_perform_all(fio_queue_s *q);
+
+/** returns the number of tasks in the queue. */
+HFUNC size_t fio_queue_count(fio_queue_s *q);
+
+/* *****************************************************************************
+Queue Inline Helpers
+***************************************************************************** */
+
+/** Creates a new queue object (allocated on the heap). */
+HFUNC fio_queue_s *fio_queue_new(void) {
+  fio_queue_s *q = FIO_MEM_CALLOC_(sizeof(*q), 1);
+  *q = (fio_queue_s)FIO_QUEUE_INIT(*q);
+  return q;
+}
+
+/** returns the number of tasks in the queue. */
+HFUNC size_t fio_queue_count(fio_queue_s *q) { return q->count; }
+
+/* *****************************************************************************
+Queue Implementation
+***************************************************************************** */
+#if defined(FIO_EXTERN_COMPLETE)
+
+/** Destroys a queue and reinitializes it, after freeing any used resources. */
+SFUNC void fio_queue_destroy(fio_queue_s *q) {
+  fio_lock(&q->lock);
+  while (q->r) {
+    fio___task_ring_s *tmp = q->r;
+    q->r = q->r->next;
+    if (tmp != &q->mem)
+      FIO_MEM_FREE_(tmp, sizeof(*tmp));
+  }
+  *q = (fio_queue_s)FIO_QUEUE_INIT(*q);
+}
+
+/** Frees a queue object after calling fio_queue_destroy. */
+SFUNC void fio_queue_free(fio_queue_s *q) {
+  fio_queue_destroy(q);
+  FIO_MEM_FREE_(q, sizeof(*q));
+}
+
+HFUNC int fio___task_ring_push(fio___task_ring_s *r, fio_queue_task_s task) {
+  if (r->dir && r->r == r->w)
+    return -1;
+  r->buf[r->w] = task;
+  ++r->w;
+  if (r->w == FIO_QUEUE_TASKS_PER_ALLOC) {
+    r->w = 0;
+    r->dir = ~r->dir;
+  }
+  return 0;
+}
+#define fio___task_ring_push(r, ...)                                           \
+  fio___task_ring_push((r), (fio_queue_task_s){__VA_ARGS__})
+
+HFUNC fio_queue_task_s fio___task_ring_pop(fio___task_ring_s *r) {
+  fio_queue_task_s t = {.fn = NULL};
+  if (!r->dir && r->r == r->w) {
+    return t;
+  }
+  t = r->buf[r->r];
+  ++r->r;
+  if (r->r == FIO_QUEUE_TASKS_PER_ALLOC) {
+    r->r = 0;
+    r->dir = ~r->dir;
+  }
+  return t;
+}
+
+/** Pushes a task to the queue. Returns -1 on error. */
+SFUNC int fio_queue_push FIO_NOOP(fio_queue_s *q, fio_queue_task_s task) {
+  if (!task.fn)
+    return 0;
+  fio_lock(&q->lock);
+  while (fio___task_ring_push FIO_NOOP(q->w, task)) {
+    if (q->w != &q->mem && q->mem.next == NULL) {
+      q->w->next = &q->mem;
+      q->mem.w = q->mem.r = q->mem.dir = 0;
+    } else {
+      q->w->next = FIO_MEM_CALLOC_(sizeof(*q->w->next), 1);
+      if (!q->w->next)
+        goto no_mem;
+    }
+    q->w = q->w->next;
+  }
+  ++q->count;
+  fio_unlock(&q->lock);
+  return 0;
+no_mem:
+  fio_unlock(&q->lock);
+  return -1;
+}
+
+/** Pops a task from the queue (FIFO). Returns a NULL task on error. */
+SFUNC fio_queue_task_s fio_queue_pop(fio_queue_s *q) {
+  fio_queue_task_s t = {.fn = NULL};
+  fio___task_ring_s *to_free = NULL;
+  if (!q->count)
+    return t;
+  fio_lock(&q->lock);
+  if (!q->count)
+    goto finish;
+  if (!(t = fio___task_ring_pop(q->r)).fn) {
+    to_free = q->r;
+    q->r = to_free->next;
+    to_free->next = NULL;
+    t = fio___task_ring_pop(q->r);
+  }
+  if (t.fn && !(--q->count) && q->r != &q->mem) {
+    if (to_free && to_free != &q->mem) { // should never happen...
+      FIO_MEM_FREE_(to_free, sizeof(*to_free));
+    }
+    to_free = q->r;
+    q->r = q->w = &q->mem;
+    q->mem.w = q->mem.r = q->mem.dir = 0;
+  }
+finish:
+  fio_unlock(&q->lock);
+  if (to_free && to_free != &q->mem) {
+    FIO_MEM_FREE_(to_free, sizeof(*to_free));
+  }
+  return t;
+}
+
+/** Performs a task from the queue. Returns -1 on error (queue empty). */
+SFUNC int fio_queue_perform(fio_queue_s *q) {
+  fio_queue_task_s t = fio_queue_pop(q);
+  if (t.fn) {
+    t.fn(t.udata1, t.udata2);
+    return 0;
+  }
+  return -1;
+}
+
+/** Performs all tasks in the queue. */
+SFUNC void fio_queue_perform_all(fio_queue_s *q) {
+  fio_queue_task_s t;
+  while ((t = fio_queue_pop(q)).fn)
+    t.fn(t.udata1, t.udata2);
+}
+
+/* *****************************************************************************
+Queue Cleanup
+***************************************************************************** */
+#endif /* FIO_EXTERN_COMPLETE */
+#undef FIO_QUEUE
+#endif /* FIO_QUEUE */
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
                   CLI helpers - command line interface parsing
 
 
@@ -14234,6 +14507,122 @@ TEST_FUNC void fio___dynamic_types_test___small_str(void) {
 }
 
 /* *****************************************************************************
+Queue - test
+***************************************************************************** */
+#define FIO_QUEUE
+#include __FILE__
+
+#ifndef FIO___QUEUE_TEST_PRINT
+#define FIO___QUEUE_TEST_PRINT 0
+#endif
+
+#include "pthread.h"
+
+#define FIO___QUEUE_TOTAL_COUNT (512 * 1024)
+
+typedef struct {
+  fio_queue_s *q;
+  uintptr_t count;
+} fio___queue_test_s;
+
+FIO_SFUNC void fio___queue_test_sample_task(void *i_count, void *unused2) {
+  (void)(unused2);
+  fio_atomic_add((uintptr_t *)i_count, 1);
+}
+
+FIO_SFUNC void fio___queue_test_sched_sample_task(void *t_, void *i_count) {
+  fio___queue_test_s *t = (fio___queue_test_s *)t_;
+  for (size_t i = 0; i < t->count; i++) {
+    fio_queue_push(t->q, .fn = fio___queue_test_sample_task, .udata1 = i_count);
+  }
+}
+
+FIO_SFUNC void fio___dynamic_types_test___queue(void) {
+  fprintf(stderr, "* Testing facil.io task scheduling (fio_queue)\n");
+  fio_queue_s *q = fio_queue_new();
+
+  fprintf(stderr, "\t- size of queue object (fio_queue_s): %zu\n", sizeof(*q));
+  fprintf(stderr, "\t- size of queue ring buffer (per allocation): %zu\n",
+          sizeof(q->mem));
+
+  const size_t max_threads = 12; // assumption / pure conjuncture...
+  uintptr_t i_count;
+  clock_t start, end;
+  i_count = 0;
+  start = clock();
+  for (size_t i = 0; i < FIO___QUEUE_TOTAL_COUNT; i++) {
+    fio___queue_test_sample_task(&i_count, NULL);
+  }
+  end = clock();
+  if (FIO___QUEUE_TEST_PRINT) {
+    fprintf(
+        stderr,
+        "\t- Queueless (direct call) counter: %lu cycles with i_count = %lu\n",
+        (unsigned long)(end - start), (unsigned long)i_count);
+  }
+  size_t i_count_should_be = i_count;
+  i_count = 0;
+  start = clock();
+  for (size_t i = 0; i < FIO___QUEUE_TOTAL_COUNT; i++) {
+    fio_queue_push(q, .fn = fio___queue_test_sample_task,
+                   .udata1 = (void *)&i_count);
+    fio_queue_perform(q);
+  }
+  end = clock();
+  if (FIO___QUEUE_TEST_PRINT) {
+    fprintf(stderr, "\t- single task counter: %lu cycles with i_count = %lu\n",
+            (unsigned long)(end - start), (unsigned long)i_count);
+  }
+  FIO_ASSERT(i_count == i_count_should_be, "ERROR: queue count invalid\n");
+
+  if (FIO___QUEUE_TEST_PRINT) {
+    fprintf(stderr, "\n");
+  }
+
+  for (size_t i = 1; FIO___QUEUE_TOTAL_COUNT >> i; ++i) {
+    i_count = 0;
+    fio___queue_test_s info = {.q = q, .count = FIO___QUEUE_TOTAL_COUNT >> i};
+    const size_t tasks = 1 << i;
+    start = clock();
+    for (size_t j = 0; j < tasks; ++j) {
+      fio_queue_push(q, fio___queue_test_sched_sample_task, (void *)&info,
+                     &i_count);
+    }
+    FIO_ASSERT(fio_queue_count(q), "tasks not counted?!") {
+      const size_t t_count = (i % max_threads) + 1;
+      pthread_t *threads = FIO_MEM_CALLOC(sizeof(*threads), t_count);
+      for (size_t j = 0; j < t_count; ++j) {
+        if (pthread_create(threads + j, NULL,
+                           (void *(*)(void *))fio_queue_perform_all, q)) {
+          abort();
+        }
+      }
+      for (size_t j = 0; j < t_count; ++j) {
+        pthread_join(threads[j], NULL);
+      }
+      FIO_MEM_FREE(threads, sizeof(*threads) * t_count);
+    }
+
+    end = clock();
+    if (FIO___QUEUE_TEST_PRINT) {
+      fprintf(stderr,
+              "- queue performed using %zu threads, %zu scheduling loops (%zu "
+              "each):\n"
+              "    %lu cycles with i_count = %lu\n",
+              ((i % max_threads) + 1), tasks, info.count,
+              (unsigned long)(end - start), (unsigned long)i_count);
+    } else {
+      fprintf(stderr, ".");
+    }
+    FIO_ASSERT(i_count == i_count_should_be, "ERROR: queue count invalid\n");
+  }
+  FIO_ASSERT(q->w == &q->mem,
+             "queue library didn't release dynamic queue (should be static)");
+  fio_queue_free(q);
+  fprintf(stderr, "\n* passed.\n");
+}
+
+/* *****************************************************************************
 CLI - test
 ***************************************************************************** */
 
@@ -14873,6 +15262,8 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fio___dynamic_types_test___str();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___small_str();
+  fprintf(stderr, "===============\n");
+  fio___dynamic_types_test___queue();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___cli();
   fprintf(stderr, "===============\n");
