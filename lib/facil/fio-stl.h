@@ -14704,7 +14704,8 @@ FIO_SFUNC void fio___dynamic_types_test___queue(void) {
       FIO_T_ASSERT(
           t.fn && (size_t)t.udata1 == (FIO_QUEUE_TASKS_PER_ALLOC * 3) - i,
           "fio_queue_push_urgent pop ordering error [%zu] %zu != %zu (%p)", i,
-          (size_t)t.udata1, (FIO_QUEUE_TASKS_PER_ALLOC * 3) - i, (void *)t.fn);
+          (size_t)t.udata1, (FIO_QUEUE_TASKS_PER_ALLOC * 3) - i,
+          (void *)(uintptr_t)t.fn);
     }
     FIO_T_ASSERT(fio_queue_pop(&q2).fn == NULL,
                  "pop overflow after urgent tasks");
