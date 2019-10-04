@@ -93,7 +93,13 @@ C++ extern start
 #ifdef __cplusplus
 extern "C" {
 /* C++ keyword was deprecated */
+#ifndef register
 #define register
+#endif
+/* C keyword - unavailable in C++ */
+#ifndef restrict
+#define restrict
+#endif
 #endif
 
 /* *****************************************************************************
@@ -591,9 +597,7 @@ FIO_LOG2STDERR(const char *format, ...) {
 
 // clang-format off
 #undef FIO_LOG2STDERR2
-#define FIO_LOG2STDERR2(...)                                                   \
-  FIO_LOG2STDERR("(" __FILE__                                                  \
-                 ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
+#define FIO_LOG2STDERR2(...) FIO_LOG2STDERR("(" __FILE__ ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
 // clang-format on
 
 /** Logging level of zero (no logging). */
@@ -625,26 +629,20 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
       FIO_LOG2STDERR(__VA_ARGS__);                                             \
   } while (0)
 
+// clang-format off
 #undef FIO_LOG_DEBUG
-#define FIO_LOG_DEBUG(...)                                                     \
-  FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG,                                         \
-                  "DEBUG ("__FILE__                                            \
-                  ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
+#define FIO_LOG_DEBUG(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG,"DEBUG (" __FILE__ ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
 #undef FIO_LOG_DEBUG2
-#define FIO_LOG_DEBUG2(...)                                                    \
-  FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG, "DEBUG: " __VA_ARGS__)
+#define FIO_LOG_DEBUG2(...)  FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG, "DEBUG: " __VA_ARGS__)
 #undef FIO_LOG_INFO
-#define FIO_LOG_INFO(...)                                                      \
-  FIO_LOG_PRINT__(FIO_LOG_LEVEL_INFO, "INFO: " __VA_ARGS__)
+#define FIO_LOG_INFO(...)    FIO_LOG_PRINT__(FIO_LOG_LEVEL_INFO, "INFO: " __VA_ARGS__)
 #undef FIO_LOG_WARNING
-#define FIO_LOG_WARNING(...)                                                   \
-  FIO_LOG_PRINT__(FIO_LOG_LEVEL_WARNING, "WARNING: " __VA_ARGS__)
+#define FIO_LOG_WARNING(...) FIO_LOG_PRINT__(FIO_LOG_LEVEL_WARNING, "WARNING: " __VA_ARGS__)
 #undef FIO_LOG_ERROR
-#define FIO_LOG_ERROR(...)                                                     \
-  FIO_LOG_PRINT__(FIO_LOG_LEVEL_ERROR, "ERROR: " __VA_ARGS__)
+#define FIO_LOG_ERROR(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_ERROR, "ERROR: " __VA_ARGS__)
 #undef FIO_LOG_FATAL
-#define FIO_LOG_FATAL(...)                                                     \
-  FIO_LOG_PRINT__(FIO_LOG_LEVEL_FATAL, "FATAL: " __VA_ARGS__)
+#define FIO_LOG_FATAL(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_FATAL, "FATAL: " __VA_ARGS__)
+// clang-format on
 
 #endif /* FIO_LOG */
 #undef FIO_LOG
@@ -1987,7 +1985,7 @@ HSFUNC void __attribute__((constructor)) fio___mem_state_allocate(void) {
 #endif
   const size_t pages = FIO_MEM_BYTES2PAGES(sizeof(*fio___mem_state) +
                                            (cores * sizeof(fio___mem_arena_s)));
-  fio___mem_state = FIO_MEM_PAGE_ALLOC(pages, 1);
+  fio___mem_state = (fio___mem_state_s *)FIO_MEM_PAGE_ALLOC(pages, 1);
   FIO_ASSERT_ALLOC(fio___mem_state);
   *fio___mem_state = (fio___mem_state_s){
       .cores = cores,
@@ -2119,10 +2117,10 @@ Block allocation and rotation
 ***************************************************************************** */
 
 HSFUNC fio___mem_block_s *fio___mem_block_alloc(void) {
-  fio___mem_block_s *b =
-      FIO_MEM_PAGE_ALLOC(FIO_MEM_BYTES2PAGES(FIO_MEMORY_BLOCKS_PER_ALLOCATION *
-                                             FIO_MEMORY_BLOCK_SIZE),
-                         FIO_MEMORY_BLOCK_SIZE_LOG);
+  fio___mem_block_s *b = (fio___mem_block_s *)FIO_MEM_PAGE_ALLOC(
+      FIO_MEM_BYTES2PAGES(FIO_MEMORY_BLOCKS_PER_ALLOCATION *
+                          FIO_MEMORY_BLOCK_SIZE),
+      FIO_MEMORY_BLOCK_SIZE_LOG);
   FIO_ASSERT_ALLOC(b);
 #if DEBUG
   FIO_LOG_DEBUG2("memory allocator allocated %zu pages from the system: %p",
@@ -2359,9 +2357,9 @@ big_realloc:
     FIO_MEM_PAGE_FREE(b, b->reserved);
     return mem;
   }
-  fio___mem_block_s *tmp =
-      FIO_MEM_PAGE_REALLOC(b, b->reserved >> FIO_MEM_PAGE_SIZE_LOG,
-                           new_page_len, FIO_MEMORY_BLOCK_SIZE_LOG);
+  fio___mem_block_s *tmp = (fio___mem_block_s *)FIO_MEM_PAGE_REALLOC(
+      b, b->reserved >> FIO_MEM_PAGE_SIZE_LOG, new_page_len,
+      FIO_MEMORY_BLOCK_SIZE_LOG);
   if (!tmp)
     return NULL;
   tmp->reserved = new_page_len << FIO_MEM_PAGE_SIZE_LOG;
@@ -2381,7 +2379,8 @@ SFUNC void *FIO_ALIGN_NEW fio_mmap(size_t size) {
   if (!size)
     return &fio___mem_on_malloc_zero;
   size_t pages = FIO_MEM_BYTES2PAGES(size + FIO_MEMORY_BLOCK_HEADER_SIZE);
-  fio___mem_block_s *b = FIO_MEM_PAGE_ALLOC(pages, FIO_MEMORY_BLOCK_SIZE_LOG);
+  fio___mem_block_s *b =
+      (fio___mem_block_s *)FIO_MEM_PAGE_ALLOC(pages, FIO_MEMORY_BLOCK_SIZE_LOG);
   if (!b)
     return NULL;
   FIO_MEMORY_ON_BLOCK_ALLOC();
@@ -2738,7 +2737,7 @@ static __thread uint64_t fio___rand_buffer[4] = {
 
 IFUNC void fio_rand_feed2seed(void *buf_, size_t len) {
   len &= 1023;
-  uint8_t *buf = buf_;
+  uint8_t *buf = (uint8_t *)buf_;
   uint8_t offset = (fio___rand_counter & 3);
   uint64_t tmp = 0;
   for (size_t i = 0; i < (len >> 3); ++i) {
@@ -3149,7 +3148,7 @@ binary_raw:
   union {
     uint64_t i;
     double d;
-  } punned = {.i = fio_atol(pstr)};
+  } punned = {.i = (uint64_t)fio_atol(pstr)};
   return punned.d;
 }
 
@@ -3344,6 +3343,8 @@ SFUNC size_t fio_ftoa(char *dest, double num, uint8_t base) {
     return fio_ltoa(dest, *i, base);
   }
   size_t written = 0;
+  uint8_t need_zero = 1;
+  char *start = dest;
 
   if (isinf(num))
     goto is_inifinity;
@@ -3351,8 +3352,6 @@ SFUNC size_t fio_ftoa(char *dest, double num, uint8_t base) {
     goto is_nan;
 
   written = sprintf(dest, "%g", num);
-  uint8_t need_zero = 1;
-  char *start = dest;
   while (*start) {
     if (*start == 'e')
       goto finish;
@@ -4012,27 +4011,27 @@ SFUNC fio_url_s fio_url_parse(const char *url, size_t len) {
 
   if (pos == end) {
     /* was only host (path starts with '/') */
-    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     goto finish;
   }
   switch (pos[0]) {
   case '@':
     /* username@[host] */
-    r.user = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    r.user = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     ++pos;
     goto start_host;
   case '/':
     /* host[/path] */
-    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     goto start_path;
   case '?':
     /* host?[query] */
-    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     ++pos;
     goto start_query;
   case '#':
     /* host#[target] */
-    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     ++pos;
     goto start_target;
   case ':':
@@ -4043,7 +4042,7 @@ SFUNC fio_url_s fio_url_parse(const char *url, size_t len) {
     } else {
       /* username:[password] OR */
       /* host:[port] */
-      r.user = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+      r.user = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
       ++pos;
       goto start_password;
     }
@@ -4057,24 +4056,24 @@ SFUNC fio_url_s fio_url_parse(const char *url, size_t len) {
     ++pos;
 
   if (pos >= end) { /* scheme://host */
-    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     goto finish;
   }
 
   switch (pos[0]) {
   case '/':
     /* scheme://host[/path] */
-    r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    r.host = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     goto start_path;
   case '@':
     /* scheme://username@[host]... */
-    r.user = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    r.user = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     ++pos;
     goto start_host;
   case ':':
     /* scheme://username:[password]@[host]... OR */
     /* scheme://host:[port][/...] */
-    r.user = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    r.user = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     ++pos;
     break;
   }
@@ -4086,7 +4085,7 @@ start_password:
 
   if (pos >= end) {
     /* was host:port */
-    r.port = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    r.port = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     r.host = r.user;
     r.user.len = 0;
     goto finish;
@@ -4095,12 +4094,13 @@ start_password:
 
   switch (pos[0]) {
   case '/':
-    r.port = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    r.port = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     r.host = r.user;
     r.user.len = 0;
     goto start_path;
   case '@':
-    r.password = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+    r.password =
+        (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     ++pos;
     break;
   }
@@ -4111,7 +4111,7 @@ start_host:
          pos[0] != '?')
     ++pos;
 
-  r.host = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+  r.host = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
   if (pos >= end) {
     goto finish;
   }
@@ -4137,7 +4137,7 @@ start_host:
   while (pos < end && pos[0] != '/' && pos[0] != '#' && pos[0] != '?')
     ++pos;
 
-  r.port = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+  r.port = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
 
   if (pos >= end) {
     /* scheme://[...@]host:port */
@@ -4161,7 +4161,7 @@ start_path:
   while (pos < end && pos[0] != '#' && pos[0] != '?')
     ++pos;
 
-  r.path = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+  r.path = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
 
   if (pos >= end) {
     goto finish;
@@ -4175,14 +4175,14 @@ start_query:
   while (pos < end && pos[0] != '#')
     ++pos;
 
-  r.query = (fio_str_info_s){.buf = (char *)url, .len = pos - url};
+  r.query = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
   ++pos;
 
   if (pos >= end)
     goto finish;
 
 start_target:
-  r.target = (fio_str_info_s){.buf = (char *)pos, .len = end - pos};
+  r.target = (fio_str_info_s){.buf = (char *)pos, .len = (size_t)(end - pos)};
 
 finish:
 
@@ -8633,7 +8633,7 @@ IFUNC void FIO_NAME(FIO_SMALL_STR_NAME, set_copy)(FIO_SMALL_STR_PTR s_,
           "facil.io small string intialization failed - data too long");
       return; /* too big */
     }
-    char *buf = FIO_MEM_CALLOC_(1, len + 1);
+    char *buf = (char *)FIO_MEM_CALLOC_(1, len + 1);
     memcpy(buf, str, len);
     buf[len] = 0;
     FIO_SMALL_STR_SET_DYNAMIC(s);
@@ -8646,7 +8646,7 @@ IFUNC void FIO_NAME(FIO_SMALL_STR_NAME, set_copy)(FIO_SMALL_STR_PTR s_,
           "facil.io small string intialization failed - data too long");
       return; /* too big */
     }
-    char *buf = FIO_MEM_CALLOC_(1, len + 1);
+    char *buf = (char *)FIO_MEM_CALLOC_(1, len + 1);
     memcpy(buf, str, len);
     buf[len] = 0;
     FIO_SMALL_STR_SET_DYNAMIC(s);
@@ -8938,7 +8938,7 @@ Queue Inline Helpers
 
 /** Creates a new queue object (allocated on the heap). */
 HFUNC fio_queue_s *fio_queue_new(void) {
-  fio_queue_s *q = FIO_MEM_CALLOC_(sizeof(*q), 1);
+  fio_queue_s *q = (fio_queue_s *)FIO_MEM_CALLOC_(sizeof(*q), 1);
   *q = (fio_queue_s)FIO_QUEUE_INIT(*q);
   return q;
 }
@@ -9018,7 +9018,7 @@ SFUNC int fio_queue_push FIO_NOOP(fio_queue_s *q, fio_queue_task_s task) {
       q->w->next = &q->mem;
       q->mem.w = q->mem.r = q->mem.dir = 0;
     } else {
-      q->w->next = FIO_MEM_CALLOC_(sizeof(*q->w->next), 1);
+      q->w->next = (fio___task_ring_s *)FIO_MEM_CALLOC_(sizeof(*q->w->next), 1);
       if (!q->w->next)
         goto no_mem;
     }
@@ -9042,7 +9042,8 @@ SFUNC int fio_queue_push_urgent FIO_NOOP(fio_queue_s *q,
   fio_lock(&q->lock);
   if (fio___task_ring_unpop(q->r, task)) {
     /* such a shame... but we must allocate a while task block for one task */
-    fio___task_ring_s *tmp = FIO_MEM_CALLOC_(sizeof(*q->w->next), 1);
+    fio___task_ring_s *tmp =
+        (fio___task_ring_s *)FIO_MEM_CALLOC_(sizeof(*q->w->next), 1);
     if (!tmp)
       goto no_mem;
     tmp->next = q->r;
@@ -9348,8 +9349,8 @@ HSFUNC void fio___cli_map_line2alias(char const *line) {
       ++n.len;
     }
     const char *old = NULL;
-    fio___cli_hash_set(&fio___cli_aliases, FIO_CLI_HASH_VAL(n), n, (void *)line,
-                       &old);
+    fio___cli_hash_set(&fio___cli_aliases, FIO_CLI_HASH_VAL(n), n,
+                       (char const *)line, &old);
 #ifdef FIO_LOG_ERROR
     if (old) {
       FIO_LOG_ERROR("CLI argument name conflict detected\n"
@@ -9402,6 +9403,7 @@ found:
 
 HSFUNC void fio___cli_set_arg(fio___cli_cstr_s arg, char const *value,
                               char const *line, fio_cli_parser_data_s *parser) {
+  char const *type = NULL;
   /* handle unnamed argument */
   if (!line || !arg.len) {
     if (!value) {
@@ -9411,7 +9413,7 @@ HSFUNC void fio___cli_set_arg(fio___cli_cstr_s arg, char const *value,
         !strcasecmp(value, "-help") || !strcasecmp(value, "--help")) {
       goto print_help;
     }
-    fio___cli_cstr_s n = {.len = ++parser->unnamed_count};
+    fio___cli_cstr_s n = {.len = (size_t)++parser->unnamed_count};
     fio___cli_hash_set(&fio___cli_values, n.len, n, value, NULL);
     if (parser->unnamed_max >= 0 &&
         parser->unnamed_count > parser->unnamed_max) {
@@ -9422,7 +9424,7 @@ HSFUNC void fio___cli_set_arg(fio___cli_cstr_s arg, char const *value,
   }
 
   /* validate data types */
-  char const *type = fio___cli_get_line_type(parser, line);
+  type = fio___cli_get_line_type(parser, line);
   switch ((size_t)type) {
   case FIO_CLI_BOOL__TYPE_I:
     if (value && value != parser->argv[parser->pos + 1]) {
@@ -9889,7 +9891,8 @@ SFUNC int FIO_NAME(FIO_HMAP_NAME, rehash)(FIO_HMAP_PTR m_) {
       (FIO_NAME(FIO_HMAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   if (m->map)
     FIO_MEM_FREE_(m->map, (1UL << m->bits) * sizeof(*m->map));
-  m->map = FIO_MEM_CALLOC_(sizeof(*m->map), (1UL << m->bits));
+  m->map = (FIO_NAME(FIO_HMAP_NAME, ___map_s) *)FIO_MEM_CALLOC_(
+      sizeof(*m->map), (1UL << m->bits));
   if (!m->map)
     return -1;
   const uint32_t used_count = m->count + m->offset;
@@ -9950,7 +9953,7 @@ add_and_rehash:
     FIO_MEM_FREE_(m->map, (1UL << m->bits) * sizeof(*m->map));
     m->map = NULL;
   }
-  m->data = FIO_MEM_REALLOC_(
+  m->data = (FIO_NAME(FIO_HMAP_NAME, __data_s) *)FIO_MEM_REALLOC_(
       m->data, (m->bits ? (1UL << m->bits) : 0) * sizeof(*m->data),
       (1UL << (m->bits + 1)) * sizeof(*m->data),
       (m->count + m->offset) * sizeof(*m->data));
@@ -10332,12 +10335,12 @@ HFUNC const char *fio___json_skip_comments(const char *buffer,
   if (*buffer == '#' ||
       ((stop - buffer) > 2 && buffer[0] == '/' && buffer[1] == '/')) {
     /* EOL style comment, C style or Bash/Ruby style*/
-    buffer = memchr(buffer + 1, '\n', stop - (buffer + 1));
+    buffer = (const char *)memchr(buffer + 1, '\n', stop - (buffer + 1));
     return buffer;
   }
   if (((stop - buffer) > 3 && buffer[0] == '/' && buffer[1] == '*')) {
-    while ((buffer = memchr(buffer, '/', stop - buffer)) && buffer &&
-           ++buffer && buffer[-2] != '*')
+    while ((buffer = (const char *)memchr(buffer, '/', stop - buffer)) &&
+           buffer && ++buffer && buffer[-2] != '*')
       ;
     return buffer;
   }
@@ -10349,7 +10352,7 @@ HFUNC const char *fio___json_consume_string(fio_json_parser_s *p,
                                             const char *stop) {
   const char *start = ++buffer;
   for (;;) {
-    buffer = memchr(buffer, '\"', stop - buffer);
+    buffer = (const char *)memchr(buffer, '\"', stop - buffer);
     if (!buffer)
       return NULL;
     size_t escaped = 1;
@@ -10506,7 +10509,7 @@ HFUNC const char *fio___json_identify(fio_json_parser_s *p, const char *buffer,
       if (buffer + 3 > stop || (buffer[1] | 32) != 'a' ||
           (buffer[2] | 32) != 'n')
         return NULL;
-      char *nan_str = "NaN";
+      char *nan_str = (char *)"NaN";
       fio_json_on_float(p, fio_atof(&nan_str));
       buffer += 3;
       break;
@@ -10576,7 +10579,8 @@ HFUNC const char *fio___json_identify(fio_json_parser_s *p, const char *buffer,
      */
   default:
     FIO_LOG_DEBUG("unrecognized JSON identifier at:\n%.*s",
-                  ((stop - buffer > 48) ? 48 : ((int)(stop - buffer))), buffer);
+                  ((stop - buffer > 48) ? (int)48 : ((int)(stop - buffer))),
+                  buffer);
     return NULL;
   }
   /* p->expect should be either 0 (key) or 2 (value) */
@@ -11489,7 +11493,7 @@ FIO_IFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
     case FIOBJ_T_FALSE:
       return (fio_str_info_s){.buf = (char *)"false", .len = 5};
     };
-    return (fio_str_info_s){.buf = ""};
+    return (fio_str_info_s){.buf = (char *)""};
   case FIOBJ_T_NUMBER:
     return FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), cstr)(o);
   case FIOBJ_T_FLOAT:
@@ -12978,7 +12982,7 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
   fprintf(stderr, "* Testing randomness "
                   "- bit frequency / hemming distance / chi-square.\n");
   const size_t test_len = (TEST_REPEAT << 7);
-  uint64_t *rs = FIO_MEM_CALLOC(sizeof(*rs), test_len);
+  uint64_t *rs = (uint64_t *)FIO_MEM_CALLOC(sizeof(*rs), test_len);
   clock_t start, end;
   FIO_ASSERT_ALLOC(rs);
 
@@ -13078,7 +13082,7 @@ Atomic operations - test
 
 TEST_FUNC void fio___dynamic_types_test___atomic(void) {
   fprintf(stderr, "* Testing atomic operation macros.\n");
-  struct { /* force padding / misalignment */
+  struct fio___atomic_test_s { /* force padding / misalignment */
     unsigned char c;
     unsigned short s;
     unsigned long l;
@@ -13086,7 +13090,7 @@ TEST_FUNC void fio___dynamic_types_test___atomic(void) {
   } s = {.c = 0}, *p;
   uint64_t val = 1;
   fio_lock_i lock = FIO_LOCK_INIT;
-  p = FIO_MEM_CALLOC(sizeof(*p), 1);
+  p = (struct fio___atomic_test_s *)FIO_MEM_CALLOC(sizeof(*p), 1);
   s.c = fio_atomic_add(&p->c, 1);
   s.s = fio_atomic_add(&p->s, 1);
   s.l = fio_atomic_add(&p->l, 1);
@@ -13192,129 +13196,129 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
     fio_url_s expected;
   } tests[] = {
       {
-          .url = "file://go/home/",
+          .url = (char *)"file://go/home/",
           .len = 15,
           .expected =
               {
-                  .scheme = {.len = 4, .buf = "file"},
-                  .path = {.len = 8, .buf = "go/home/"},
+                  .scheme = {.len = 4, .buf = (char *)"file"},
+                  .path = {.len = 8, .buf = (char *)"go/home/"},
               },
       },
       {
-          .url = "unix:///go/home/",
+          .url = (char *)"unix:///go/home/",
           .len = 16,
           .expected =
               {
-                  .scheme = {.len = 4, .buf = "unix"},
-                  .path = {.len = 9, .buf = "/go/home/"},
+                  .scheme = {.len = 4, .buf = (char *)"unix"},
+                  .path = {.len = 9, .buf = (char *)"/go/home/"},
               },
       },
       {
-          .url = "schema://user:password@host:port/path?query#target",
+          .url = (char *)"schema://user:password@host:port/path?query#target",
           .len = 50,
           .expected =
               {
-                  .scheme = {.len = 6, .buf = "schema"},
-                  .user = {.len = 4, .buf = "user"},
-                  .password = {.len = 8, .buf = "password"},
-                  .host = {.len = 4, .buf = "host"},
-                  .port = {.len = 4, .buf = "port"},
-                  .path = {.len = 5, .buf = "/path"},
-                  .query = {.len = 5, .buf = "query"},
-                  .target = {.len = 6, .buf = "target"},
+                  .scheme = {.len = 6, .buf = (char *)"schema"},
+                  .user = {.len = 4, .buf = (char *)"user"},
+                  .password = {.len = 8, .buf = (char *)"password"},
+                  .host = {.len = 4, .buf = (char *)"host"},
+                  .port = {.len = 4, .buf = (char *)"port"},
+                  .path = {.len = 5, .buf = (char *)"/path"},
+                  .query = {.len = 5, .buf = (char *)"query"},
+                  .target = {.len = 6, .buf = (char *)"target"},
               },
       },
       {
-          .url = "http://localhost.com:3000/home?is=1",
+          .url = (char *)"http://localhost.com:3000/home?is=1",
           .len = 35,
           .expected =
               {
-                  .scheme = {.len = 4, .buf = "http"},
-                  .host = {.len = 13, .buf = "localhost.com"},
-                  .port = {.len = 4, .buf = "3000"},
-                  .path = {.len = 5, .buf = "/home"},
-                  .query = {.len = 4, .buf = "is=1"},
+                  .scheme = {.len = 4, .buf = (char *)"http"},
+                  .host = {.len = 13, .buf = (char *)"localhost.com"},
+                  .port = {.len = 4, .buf = (char *)"3000"},
+                  .path = {.len = 5, .buf = (char *)"/home"},
+                  .query = {.len = 4, .buf = (char *)"is=1"},
               },
       },
       {
-          .url = "/complete_path?query#target",
+          .url = (char *)"/complete_path?query#target",
           .len = 27,
           .expected =
               {
-                  .path = {.len = 14, .buf = "/complete_path"},
-                  .query = {.len = 5, .buf = "query"},
-                  .target = {.len = 6, .buf = "target"},
+                  .path = {.len = 14, .buf = (char *)"/complete_path"},
+                  .query = {.len = 5, .buf = (char *)"query"},
+                  .target = {.len = 6, .buf = (char *)"target"},
               },
       },
       {
-          .url = "/index.html?page=1#list",
+          .url = (char *)"/index.html?page=1#list",
           .len = 23,
           .expected =
               {
-                  .path = {.len = 11, .buf = "/index.html"},
-                  .query = {.len = 6, .buf = "page=1"},
-                  .target = {.len = 4, .buf = "list"},
+                  .path = {.len = 11, .buf = (char *)"/index.html"},
+                  .query = {.len = 6, .buf = (char *)"page=1"},
+                  .target = {.len = 4, .buf = (char *)"list"},
               },
       },
       {
-          .url = "example.com",
+          .url = (char *)"example.com",
           .len = 11,
           .expected =
               {
-                  .host = {.len = 11, .buf = "example.com"},
+                  .host = {.len = 11, .buf = (char *)"example.com"},
               },
       },
 
       {
-          .url = "example.com:8080",
+          .url = (char *)"example.com:8080",
           .len = 16,
           .expected =
               {
-                  .host = {.len = 11, .buf = "example.com"},
-                  .port = {.len = 4, .buf = "8080"},
+                  .host = {.len = 11, .buf = (char *)"example.com"},
+                  .port = {.len = 4, .buf = (char *)"8080"},
               },
       },
       {
-          .url = "example.com/index.html",
+          .url = (char *)"example.com/index.html",
           .len = 22,
           .expected =
               {
-                  .host = {.len = 11, .buf = "example.com"},
-                  .path = {.len = 11, .buf = "/index.html"},
+                  .host = {.len = 11, .buf = (char *)"example.com"},
+                  .path = {.len = 11, .buf = (char *)"/index.html"},
               },
       },
       {
-          .url = "example.com:8080/index.html",
+          .url = (char *)"example.com:8080/index.html",
           .len = 27,
           .expected =
               {
-                  .host = {.len = 11, .buf = "example.com"},
-                  .path = {.len = 11, .buf = "/index.html"},
-                  .port = {.len = 4, .buf = "8080"},
+                  .host = {.len = 11, .buf = (char *)"example.com"},
+                  .path = {.len = 11, .buf = (char *)"/index.html"},
+                  .port = {.len = 4, .buf = (char *)"8080"},
               },
       },
       {
-          .url = "example.com:8080/index.html?key=val#target",
+          .url = (char *)"example.com:8080/index.html?key=val#target",
           .len = 42,
           .expected =
               {
-                  .host = {.len = 11, .buf = "example.com"},
-                  .port = {.len = 4, .buf = "8080"},
-                  .path = {.len = 11, .buf = "/index.html"},
-                  .query = {.len = 7, .buf = "key=val"},
-                  .target = {.len = 6, .buf = "target"},
+                  .host = {.len = 11, .buf = (char *)"example.com"},
+                  .port = {.len = 4, .buf = (char *)"8080"},
+                  .path = {.len = 11, .buf = (char *)"/index.html"},
+                  .query = {.len = 7, .buf = (char *)"key=val"},
+                  .target = {.len = 6, .buf = (char *)"target"},
               },
       },
       {
-          .url = "user:1234@example.com:8080/index.html",
+          .url = (char *)"user:1234@example.com:8080/index.html",
           .len = 37,
           .expected =
               {
-                  .user = {.len = 4, .buf = "user"},
-                  .password = {.len = 4, .buf = "1234"},
-                  .host = {.len = 11, .buf = "example.com"},
-                  .port = {.len = 4, .buf = "8080"},
-                  .path = {.len = 11, .buf = "/index.html"},
+                  .user = {.len = 4, .buf = (char *)"user"},
+                  .password = {.len = 4, .buf = (char *)"1234"},
+                  .host = {.len = 11, .buf = (char *)"example.com"},
+                  .port = {.len = 4, .buf = (char *)"8080"},
+                  .path = {.len = 11, .buf = (char *)"/index.html"},
               },
       },
       {.url = NULL},
@@ -13429,7 +13433,8 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
   fprintf(stderr, "* Testing linked lists.\n");
   FIO_LIST_HEAD ls = FIO_LIST_INIT(ls);
   for (int i = 0; i < TEST_REPEAT; ++i) {
-    ls____test_s *node = ls____test_push(&ls, FIO_MEM_CALLOC(sizeof(*node), 1));
+    ls____test_s *node =
+        ls____test_push(&ls, (ls____test_s *)FIO_MEM_CALLOC(sizeof(*node), 1));
     node->data = i;
   }
   int tester = 0;
@@ -13448,8 +13453,8 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
   }
   tester = TEST_REPEAT;
   for (int i = 0; i < TEST_REPEAT; ++i) {
-    ls____test_s *node =
-        ls____test_unshift(&ls, FIO_MEM_CALLOC(sizeof(*node), 1));
+    ls____test_s *node = ls____test_unshift(
+        &ls, (ls____test_s *)FIO_MEM_CALLOC(sizeof(*node), 1));
     node->data = i;
   }
   FIO_LIST_EACH(ls____test_s, node, &ls, pos) {
@@ -13471,7 +13476,8 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
   FIO_T_ASSERT(FIO_NAME_BL(ls____test, empty)(&ls),
                "Linked list empty should have been true");
   for (int i = 0; i < TEST_REPEAT; ++i) {
-    ls____test_s *node = ls____test_push(&ls, FIO_MEM_CALLOC(sizeof(*node), 1));
+    ls____test_s *node =
+        ls____test_push(&ls, (ls____test_s *)FIO_MEM_CALLOC(sizeof(*node), 1));
     node->data = i;
   }
   FIO_LIST_EACH(ls____test_s, node, &ls, pos) {
@@ -13785,7 +13791,7 @@ Hash Map / Set - test
 
 TEST_FUNC size_t map_____test_key_copy_counter = 0;
 TEST_FUNC void map_____test_key_copy(char **dest, char *src) {
-  *dest = FIO_MEM_CALLOC(strlen(src) + 1, sizeof(*dest));
+  *dest = (char *)FIO_MEM_CALLOC(strlen(src) + 1, sizeof(*dest));
   FIO_T_ASSERT(*dest, "not memory to allocate key in map_test")
   strcpy(*dest, src);
   ++map_____test_key_copy_counter;
@@ -14641,7 +14647,8 @@ FIO_SFUNC void fio___dynamic_types_test___queue(void) {
 
   for (size_t i = 1; FIO___QUEUE_TOTAL_COUNT >> i; ++i) {
     i_count = 0;
-    fio___queue_test_s info = {.q = q, .count = FIO___QUEUE_TOTAL_COUNT >> i};
+    fio___queue_test_s info = {
+        .q = q, .count = (uintptr_t)(FIO___QUEUE_TOTAL_COUNT >> i)};
     const size_t tasks = 1 << i;
     start = clock();
     for (size_t j = 0; j < tasks; ++j) {
@@ -14650,7 +14657,8 @@ FIO_SFUNC void fio___dynamic_types_test___queue(void) {
     }
     FIO_ASSERT(fio_queue_count(q), "tasks not counted?!") {
       const size_t t_count = (i % max_threads) + 1;
-      pthread_t *threads = FIO_MEM_CALLOC(sizeof(*threads), t_count);
+      pthread_t *threads =
+          (pthread_t *)FIO_MEM_CALLOC(sizeof(*threads), t_count);
       for (size_t j = 0; j < t_count; ++j) {
         if (pthread_create(threads + j, NULL,
                            (void *(*)(void *))fio_queue_perform_all, q)) {
@@ -14763,20 +14771,21 @@ TEST_FUNC void fio___dynamic_types_test___mem(void) {
     fprintf(stderr, "* Testing %zu byte allocation blocks.\n",
             (size_t)(1UL << cycles));
     const size_t limit = (three_blocks >> cycles);
-    char **ary = fio_calloc(sizeof(*ary), limit);
+    char **ary = (char **)fio_calloc(sizeof(*ary), limit);
     FIO_T_ASSERT(ary, "allocation failed for test container");
     for (size_t i = 0; i < limit; ++i) {
-      ary[i] = fio_malloc(1UL << cycles);
+      ary[i] = (char *)fio_malloc(1UL << cycles);
       FIO_T_ASSERT(ary[i], "allocation failed!")
       FIO_T_ASSERT(!ary[i][0], "allocated memory not zero");
       memset(ary[i], 0xff, (1UL << cycles));
     }
     for (size_t i = 0; i < limit; ++i) {
-      char *tmp = fio_realloc2(ary[i], (2UL << cycles), (1UL << cycles));
+      char *tmp =
+          (char *)fio_realloc2(ary[i], (2UL << cycles), (1UL << cycles));
       FIO_T_ASSERT(tmp, "re-allocation failed!")
       ary[i] = tmp;
       FIO_T_ASSERT(!ary[i][(2UL << cycles) - 1], "fio_realloc2 copy overflow!");
-      tmp = fio_realloc2(ary[i], (1UL << cycles), (2UL << cycles));
+      tmp = (char *)fio_realloc2(ary[i], (1UL << cycles), (2UL << cycles));
       FIO_T_ASSERT(tmp, "re-allocation (shrinking) failed!")
       ary[i] = tmp;
       FIO_T_ASSERT(ary[i][(1UL << cycles) - 1] == (char)0xFF,
@@ -14910,15 +14919,15 @@ TEST_FUNC void fio___dynamic_types_test___risky(void) {
             "bytes.\n",
             (int)(alignment_test_offset & 7));
   fio_test_hash_function(fio___dynamic_types_test___risky_wrapper,
-                         "fio_risky_hash", alignment_test_offset);
+                         (char *)"fio_risky_hash", alignment_test_offset);
   // fio_test_hash_function(fio___dynamic_types_test___risky_stream_wrapper,
   //                        "fio_risky_hash (streaming)",
   //                        alignment_test_offset);
   fio_test_hash_function(fio___dynamic_types_test___risky_mask_wrapper,
-                         "fio_risky_mask (Risky XOR + counter)",
+                         (char *)"fio_risky_mask (Risky XOR + counter)",
                          alignment_test_offset);
   fio_test_hash_function(fio___dynamic_types_test___risky_mask_wrapper,
-                         "fio_risky_mask (unaligned)", 1);
+                         (char *)"fio_risky_mask (unaligned)", 1);
 }
 
 /* *****************************************************************************
@@ -15310,7 +15319,7 @@ Testing functiun
 ***************************************************************************** */
 
 TEST_FUNC void fio_test_dynamic_types(void) {
-  char *filename = __FILE__;
+  char *filename = (char *)__FILE__;
   while (filename[0] == '.' && filename[1] == '/')
     filename += 2;
   fprintf(stderr, "===============\n");

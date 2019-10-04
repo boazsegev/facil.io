@@ -220,7 +220,9 @@ C++ extern start
 #ifdef __cplusplus
 extern "C" {
 /* C++ keyword was deprecated */
+#ifndef register
 #define register
+#endif
 #endif
 
 /* *****************************************************************************

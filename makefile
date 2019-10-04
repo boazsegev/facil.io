@@ -81,11 +81,15 @@ FLAGS:=
 # c compiler
 CC?=gcc
 # c++ compiler
-CPP?=g++
+CXX?=g++
+# C specific compiler options
+C_EXTRA_OPT:=
+# C++ specific compiler options
+CXX_EXTRA_OPT:=-Wno-keyword-macro -Wno-c99-extensions -Wno-zero-length-array
 # c standard
 CSTD?=c11
 # c++ standard
-CPPSTD?=gnu++11
+CXXSTD?=gnu++11
 # pkg-config
 PKG_CONFIG?=pkg-config
 # for internal use - don't change
@@ -519,8 +523,8 @@ endif
 #############################################################################
 
 FLAGS_STR=$(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
-CFLAGS:=$(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR)
-CPPFLAGS:=$(CPPFLAGS) -std=$(CPPSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR)
+CFLAGS:=$(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR) $(C_EXTRA_OPT)
+CXXFLAGS:=$(CXXFLAGS) -std=$(CXXSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR) $(CXX_EXTRA_OPT)
 LINKER_FLAGS=$(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
 CFLAGS_DEPENDENCY=-MT $@ -MMD -MP
 
@@ -544,7 +548,9 @@ $(NAME): build
 build: | create_tree build_objects
 
 build_objects: $(LIB_OBJS) $(MAIN_OBJS)
+	@echo "* Linking..."
 	@$(CCL) -o $(BIN) $^ $(OPTIMIZATION) $(LINKER_FLAGS)
+	@echo "* Finished: $(BIN)"
 	@$(DOCUMENTATION)
 
 .PHONY : clean
@@ -594,14 +600,14 @@ $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
 	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
-	@echo "- compiling $<"
-	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CPPFLAGS) $(OPTIMIZATION)
-	$(eval CCL=$(CPP))
+	@echo "* Compiling $<"
+	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CXXFLAGS) $(OPTIMIZATION)
+	$(eval CCL=$(CXX))
 
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
 	@echo "* Compiling $<"
-	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CPPFLAGS) $(OPTIMIZATION)
-	$(eval CCL=$(CPP))
+	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CXXFLAGS) $(OPTIMIZATION)
+	$(eval CCL=$(CXX))
 
 #### add diassembling stage (testing / slower)
 else
@@ -612,14 +618,14 @@ $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
 	@echo "* Compiling $<"
-	@$(CPP) -o $@ -c $< $(CFLAGS_DEPENDENCY) $(CPPFLAGS) $(OPTIMIZATION)
-	$(eval CCL=$(CPP))
+	@$(CXX) -o $@ -c $< $(CFLAGS_DEPENDENCY) $(CXXFLAGS) $(OPTIMIZATION)
+	$(eval CCL=$(CXX))
 	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
 	@echo "* Compiling $<"
-	@$(CPP) -o $@ -c $< $(CFLAGS_DEPENDENCY) $(CPPFLAGS) $(OPTIMIZATION)
-	$(eval CCL=$(CPP))
+	@$(CXX) -o $@ -c $< $(CFLAGS_DEPENDENCY) $(CXXFLAGS) $(OPTIMIZATION)
+	$(eval CCL=$(CXX))
 	@$(DISAMS) $@ > $@.s
 endif
 
@@ -648,11 +654,14 @@ test/c99:| clean
 .PHONY : test/set_test_flag
 test/set_test_flag:
 	$(eval CFLAGS+=-DTEST=1)
+	$(eval CXXFLAGS+=-DTEST=1)
+
 
 .PHONY : test/set_debug_flags
 test/set_debug_flags:
 	$(eval OPTIMIZATION=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer)
 	$(eval CFLAGS+=-coverage -DDEBUG=1 -Werror)
+	$(eval CXXFLAGS+=-coverage -DDEBUG=1)
 	$(eval LINKER_FLAGS=-coverage -DDEBUG=1 $(LINKER_FLAGS))
 
 .PHONY : test/run
@@ -664,7 +673,7 @@ test/run: | test/set_test_flag $(LIB_OBJS) $(TEST_OBJS)
 .PHONY : test/collisions
 test/collisions: | create_tree
 	@$(CC) -c ./tests/collisions.c -o $(TMP_ROOT)/collisions.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
-	@$(CCL) -o $(BIN) $(TMP_ROOT)/collisions.o $(OPTIMIZATION) $(LINKER_FLAGS) $(OPTIMIZATION)
+	@$(CCL) -o $(BIN) $(TMP_ROOT)/collisions.o $(LINKER_FLAGS) $(OPTIMIZATION)
 	@$(BIN)
 
 
@@ -674,6 +683,15 @@ test/ci:| clean cmake test/set_debug_flags test/run
 .PHONY : test/poll
 test/poll:
 	@DEBUG=1 FIO_POLL=1 $(MAKE) test
+
+.PHONY : test/cpp
+test/cpp: | create_tree
+	@echo "* Compiling C++ test"
+	@$(CXX) -c ./tests/cpp_test.cpp -o $(TMP_ROOT)/cpp_test.o $(CFLAGS_DEPENDENCY) $(CXXFLAGS) $(OPTIMIZATION)
+	@echo "* Linking C++ test"
+	@$(CXX) -o $(BIN) $(TMP_ROOT)/cpp_test.o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@echo "* Running test"
+	@$(BIN)
 
 endif
 
@@ -811,9 +829,9 @@ vars:
 	@echo ""
 	@echo "CFLAGS: $(CFLAGS)"
 	@echo ""
-	@echo "OPTIMIZATIONOPTIMIZATION: $(OPTIMIZATION)"
+	@echo "OPTIMIZATION: $(OPTIMIZATION)"
 	@echo ""
-	@echo "CPPFLAGS: $(CPPFLAGS)"
+	@echo "CXXFLAGS: $(CXXFLAGS)"
 	@echo ""
 	@echo "LINKER_LIBS: $(LINKER_LIBS)"
 	@echo ""

@@ -9,6 +9,11 @@ License: MIT
 
 #include <mustache_parser.h>
 
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Loads a mustache template, converting it into an opaque instruction array.
  *
@@ -61,6 +66,11 @@ void fiobj_mustache_test(void);
 #define fiobj_mustache_test()                                                  \
   fprintf(stderr, "* FIOBJ mustache template testing reqiures DEBUG mode.\n")
 
+#endif
+
+/* support C++ */
+#ifdef __cplusplus
+}
 #endif
 
 #endif /* H_FIOBJ_MUSTACHE_H */
