@@ -371,7 +371,7 @@ Sleep / Thread Scheduling Macros
  */
 #define FIO_THREAD_RESCHEDULE()                                                \
   do {                                                                         \
-    const struct timespec tm = {.tv_nsec = 1};                                 \
+    const struct timespec tm = {.tv_nsec = (long)1L};                          \
     nanosleep(&tm, (struct timespec *)NULL);                                   \
   } while (0)
 #endif
@@ -5135,10 +5135,10 @@ finish:
     FIO_MEM_FREE_(ary->ary, ary->capa * sizeof(*ary->ary));
   }
   *ary = (FIO_NAME(FIO_ARRAY_NAME, s)){
-      .start = 0,
-      .end = (ary->end - ary->start),
       .ary = tmp,
       .capa = (ary->end - ary->start),
+      .start = 0,
+      .end = (ary->end - ary->start),
   };
 }
 
@@ -6623,7 +6623,7 @@ typedef struct {
  */
 #define FIO_STRING_INIT_EXISTING(buffer, length, capacity, dealloc_)           \
   {                                                                            \
-    .buf = (buffer), .len = (length), .capa = (capacity),                      \
+    .capa = (capacity), .len = (length), .buf = (buffer),                      \
     .dealloc = (dealloc_)                                                      \
   }
 
@@ -6632,14 +6632,14 @@ typedef struct {
  * that shouldn't be freed.
  */
 #define FIO_STRING_INIT_STATIC(buffer)                                         \
-  { .buf = (char *)(buffer), .len = strlen((buffer)), .dealloc = NULL }
+  { .len = strlen((buffer)), .buf = (char *)(buffer), .dealloc = NULL }
 
 /**
  * This macro allows the container to be initialized with existing static data,
  * that shouldn't be freed.
  */
 #define FIO_STRING_INIT_STATIC2(buffer, length)                                \
-  { .buf = (char *)(buffer), .len = (length), .dealloc = NULL }
+  { .len = (length), .buf = (char *)(buffer), .dealloc = NULL }
 
 #endif /* FIO_STRING_INIT */
 
@@ -7277,8 +7277,8 @@ is_small:
   *s = (FIO_NAME(FIO_STRING_NAME, s)){
       .capa = amount,
       .len = FIO_STRING_SMALL_LEN(s),
-      .dealloc = FIO_NAME(FIO_STRING_NAME, __default_dealloc),
       .buf = tmp,
+      .dealloc = FIO_NAME(FIO_STRING_NAME, __default_dealloc),
   };
   return (fio_str_info_s){
       .capa = amount, .len = FIO_STRING_SMALL_LEN(s), .buf = s->buf};
@@ -11331,7 +11331,7 @@ FIOBJ_FUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
 FIO_IFUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                           update_json2)(FIOBJ hash, char *ptr, size_t len) {
   return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
-                  update_json)(hash, (fio_str_info_s){.buf = ptr, .len = len});
+                  update_json)(hash, (fio_str_info_s){.len = len, .buf = ptr});
 }
 
 /**
@@ -11490,11 +11490,11 @@ FIO_IFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
   case FIOBJ_T_PRIMITIVE:
     switch ((uintptr_t)(o)) {
     case FIOBJ_T_NULL:
-      return (fio_str_info_s){.buf = (char *)"null", .len = 4};
+      return (fio_str_info_s){.len = 4, .buf = (char *)"null"};
     case FIOBJ_T_TRUE:
-      return (fio_str_info_s){.buf = (char *)"true", .len = 4};
+      return (fio_str_info_s){.len = 4, .buf = (char *)"true"};
     case FIOBJ_T_FALSE:
-      return (fio_str_info_s){.buf = (char *)"false", .len = 5};
+      return (fio_str_info_s){.len = 5, .buf = (char *)"false"};
     };
     return (fio_str_info_s){.buf = (char *)""};
   case FIOBJ_T_NUMBER:
@@ -11509,10 +11509,10 @@ FIO_IFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
     if (!j || FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(j) >=
                   FIOBJ2CSTR_BUFFER_LIMIT) {
       fiobj_free(j);
-      return (fio_str_info_s){.buf = (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_ARRAY
+      return (fio_str_info_s){.len = 5,
+                              .buf = (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_ARRAY
                                           ? (char *)"[...]"
-                                          : (char *)"{...}"),
-                              .len = 5};
+                                          : (char *)"{...}")};
     }
     fio_str_info_s i = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), info)(j);
     memcpy(fiobj___2cstr___buffer__perthread, i.buf, i.len + 1);
@@ -11524,7 +11524,7 @@ FIO_IFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
     return (*fiobj_object_metadata(o))->to_s(o);
   }
   if (!o)
-    return (fio_str_info_s){.buf = (char *)"null", .len = 4};
+    return (fio_str_info_s){.len = 4, .buf = (char *)"null"};
   return (fio_str_info_s){.buf = (char *)""};
 }
 

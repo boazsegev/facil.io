@@ -818,7 +818,7 @@ endif
 .PHONY : vars
 vars:
 	@echo "CC: $(CC)"
-	@echo ""
+	@echo "CXX: $(CXX)"
 	@echo "BIN: $(BIN)"
 	@echo ""
 	@echo "LIBDIR_PUB: $(LIBDIR_PUB)"
