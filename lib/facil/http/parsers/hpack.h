@@ -805,13 +805,13 @@ void hpack_test(void) {
         } else if (tmp != 56) {
           fprintf(stderr,
                   "* HPACK STRING UNPACKING ERROR AT %zu - got string "
-                  "length %u instead of 56: %.*s\n",
+                  "length %d instead of 56: %.*s\n",
                   (repeats - 1) - i, tmp, 56, result);
           exit(-1);
         }
         if (memcmp(str1, result, 56)) {
           fprintf(stderr,
-                  "* HPACK STRING UNPACKING ERROR AT %zu. Got (%u) %.*s\n",
+                  "* HPACK STRING UNPACKING ERROR AT %zu. Got (%d) %.*s\n",
                   (repeats - 1) - i, tmp, tmp, result);
           exit(-1);
         }

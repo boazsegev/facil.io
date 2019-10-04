@@ -691,7 +691,7 @@ FIO_IFUNC void fiobj_io_write_test_convert(fiobj_io_s *io, uintptr_t len) {
 
 #else /* FIO_HAVE_UNIX_TOOLS */
 #warning The FIOBJ stream extension (fiobj_io) requires a POSIX system
-#define fiobj_io_write_test_convert()
+#define fiobj_io_write_test_convert(...)
 #define fiobj_io_fd_tmpfile(io)
 #endif /* FIO_HAVE_UNIX_TOOLS */
 
