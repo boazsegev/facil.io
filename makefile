@@ -676,7 +676,7 @@ test/optimized: | optimized.___clean cmake optimized.___clean optimized.test_bui
 .PHONY : test/c99
 test/c99:| c99.___clean
 	@echo "* Starting C99 test"
-	@CSTD=c99 DEBUG=1 $(MAKE) test/build
+	@CSTD=-std=c99 DEBUG=1 $(MAKE) test/build
 	@echo "* C99 compilation success!"
 
 .PHONY : test/collisions
