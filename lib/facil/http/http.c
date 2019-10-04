@@ -821,7 +821,7 @@ struct http_pause_handle_s {
   void (*task)(http_s *);
   void (*fallback)(void *);
 };
-typedef struct http_pause_handle_s http_pause_handle_s;
+// typedef struct http_pause_handle_s http_pause_handle_s; // placed in http.h
 
 /* perform the pause task outside of the connection's lock */
 static void http_pause_wrapper(void *h_, void *task_) {
