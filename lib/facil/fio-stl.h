@@ -87,6 +87,16 @@ library for the first time.
 ***************************************************************************** */
 
 /* *****************************************************************************
+C++ extern start
+***************************************************************************** */
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+/* C++ keyword was deprecated */
+#define register
+#endif
+
+/* *****************************************************************************
 
 
 
@@ -388,10 +398,11 @@ Miscellaneous helper macros
 #define FIO_LOG2STDERR(...)
 #define FIO_LOG2STDERR2(...)
 
+// clang-format off
 /* Asserts a condition is true, or kills the application using SIGINT. */
 #define FIO_ASSERT(cond, ...)                                                  \
   if (!(cond)) {                                                               \
-    FIO_LOG_FATAL("(" __FILE__ ":" FIO_MACRO2STR(__LINE__) ") "__VA_ARGS__);   \
+    FIO_LOG_FATAL("(" __FILE__ ":" FIO_MACRO2STR(__LINE__) ") " __VA_ARGS__);  \
     perror("     errno");                                                      \
     kill(0, SIGINT);                                                           \
     exit(-1);                                                                  \
@@ -401,12 +412,13 @@ Miscellaneous helper macros
 /** Tests for an allocation failure. The behavior can be overridden. */
 #define FIO_ASSERT_ALLOC(ptr)                                                  \
   if (!(ptr)) {                                                                \
-    FIO_LOG_FATAL("memory allocation error "__FILE__                           \
+    FIO_LOG_FATAL("memory allocation error " __FILE__                          \
                   ":" FIO_MACRO2STR(__LINE__));                                \
     kill(0, SIGINT);                                                           \
     exit(-1);                                                                  \
   }
 #endif
+// clang-format on
 
 #ifdef DEBUG
 /** If `DEBUG` is defined, acts as `FIO_ASSERT`, otherwise a NOOP. */
@@ -503,15 +515,6 @@ Common macros
 #define SFUNC HSFUNC
 #define IFUNC HFUNC
 #endif /* SFUNC_ vs FIO_STL_KEEP__*/
-/* *****************************************************************************
-C++ extern start
-***************************************************************************** */
-/* support C++ */
-#ifdef __cplusplus
-extern "C" {
-/* C++ keyword was deprecated */
-#define register
-#endif
 
 /* *****************************************************************************
 
@@ -586,10 +589,12 @@ FIO_LOG2STDERR(const char *format, ...) {
 #undef FIO_LOG____LENGTH_ON_STACK
 #undef FIO_LOG____LENGTH_BORDER
 
+// clang-format off
 #undef FIO_LOG2STDERR2
 #define FIO_LOG2STDERR2(...)                                                   \
-  FIO_LOG2STDERR("("__FILE__                                                   \
+  FIO_LOG2STDERR("(" __FILE__                                                  \
                  ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
+// clang-format on
 
 /** Logging level of zero (no logging). */
 #define FIO_LOG_LEVEL_NONE 0
@@ -11478,11 +11483,11 @@ FIO_IFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
   case FIOBJ_T_PRIMITIVE:
     switch ((uintptr_t)(o)) {
     case FIOBJ_T_NULL:
-      return (fio_str_info_s){.buf = "null", .len = 4};
+      return (fio_str_info_s){.buf = (char *)"null", .len = 4};
     case FIOBJ_T_TRUE:
-      return (fio_str_info_s){.buf = "true", .len = 4};
+      return (fio_str_info_s){.buf = (char *)"true", .len = 4};
     case FIOBJ_T_FALSE:
-      return (fio_str_info_s){.buf = "false", .len = 5};
+      return (fio_str_info_s){.buf = (char *)"false", .len = 5};
     };
     return (fio_str_info_s){.buf = ""};
   case FIOBJ_T_NUMBER:
@@ -11497,9 +11502,10 @@ FIO_IFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
     if (!j || FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(j) >=
                   FIOBJ2CSTR_BUFFER_LIMIT) {
       fiobj_free(j);
-      return (fio_str_info_s){
-          .buf = (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_ARRAY ? "[...]" : "{...}"),
-          .len = 5};
+      return (fio_str_info_s){.buf = (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_ARRAY
+                                          ? (char *)"[...]"
+                                          : (char *)"{...}"),
+                              .len = 5};
     }
     fio_str_info_s i = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), info)(j);
     memcpy(fiobj___2cstr___buffer__perthread, i.buf, i.len + 1);
@@ -11511,8 +11517,8 @@ FIO_IFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
     return (*fiobj_object_metadata(o))->to_s(o);
   }
   if (!o)
-    return (fio_str_info_s){.buf = "null", .len = 4};
-  return (fio_str_info_s){.buf = ""};
+    return (fio_str_info_s){.buf = (char *)"null", .len = 4};
+  return (fio_str_info_s){.buf = (char *)""};
 }
 
 /** Returns an integer representation for any FIOBJ object. */
