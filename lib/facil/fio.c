@@ -2970,7 +2970,7 @@ ssize_t fio_flush(intptr_t uuid) {
     goto test_errno;
   }
 
-  if (uuid_data(uuid).packet_count >= 1024 &&
+  if (uuid_data(uuid).packet_count >= FIO_SLOWLORIS_LIMIT &&
       uuid_data(uuid).packet == old_packet &&
       uuid_data(uuid).sent >= old_sent &&
       (uuid_data(uuid).sent - old_sent) < 32768) {
