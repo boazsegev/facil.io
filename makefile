@@ -554,17 +554,20 @@ build_objects: $(LIB_OBJS) $(MAIN_OBJS)
 	@$(DOCUMENTATION)
 
 .PHONY : clean
-clean:
+clean: | _.___clean
+
+.PHONY : %.___clean
+%.___clean:
 	-@rm -f $(BIN) 2> /dev/null || echo "" >> /dev/null
 	-@rm -R -f $(TMP_ROOT) 2> /dev/null || echo "" >> /dev/null
-	-@mkdir -p $(BUILDTREE)
+	-@mkdir -p $(BUILDTREE) 2> /dev/null
 
 .PHONY : run
 run: | build
 	@$(BIN)
 
 .PHONY : db
-db: | clean
+db: | db.___clean
 	DEBUG=1 $(MAKE) build
 	$(DB) $(BIN)
 
@@ -640,22 +643,10 @@ $(TMP_ROOT)/%.d: ;
 
 ifneq ($(TESTSRC),)
 
-.PHONY : test
-test: | clean cmake test/set_debug_flags test/run clean
-
-.PHONY : test/optimized
-test/optimized: | clean cmake test/run clean
-
-.PHONY : test/c99
-test/c99:| clean
-	@CSTD=c99 DEBUG=1 $(MAKE) test
-
-
 .PHONY : test/set_test_flag
 test/set_test_flag:
 	$(eval CFLAGS+=-DTEST=1)
 	$(eval CXXFLAGS+=-DTEST=1)
-
 
 .PHONY : test/set_debug_flags
 test/set_debug_flags:
@@ -664,11 +655,29 @@ test/set_debug_flags:
 	$(eval CXXFLAGS+=-coverage -DDEBUG=1)
 	$(eval LINKER_FLAGS=-coverage -DDEBUG=1 $(LINKER_FLAGS))
 
-.PHONY : test/run
-test/run: | test/set_test_flag $(LIB_OBJS) $(TEST_OBJS)
+.PHONY : test/build
+test/build: | test/__.test_build
 	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TEST_OBJS) $(OPTIMIZATION) $(LINKER_FLAGS)
+
+.PHONY : %.test_build
+%.test_build: | test/set_test_flag $(LIB_OBJS) $(TEST_OBJS)
+	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TEST_OBJS) $(OPTIMIZATION) $(LINKER_FLAGS)
+
+.PHONY : test/%.run
+test/%.run:
 	@$(BIN)
 
+.PHONY : test
+test: | cmake test/set_debug_flags test.___clean test.test_build test/test.run test_finished.___clean
+
+.PHONY : test/optimized
+test/optimized: | optimized.___clean cmake optimized.___clean optimized.test_build test/optimized.run
+
+.PHONY : test/c99
+test/c99:| c99.___clean
+	@echo "* Starting C99 test"
+	@CSTD=c99 DEBUG=1 $(MAKE) test/build
+	@echo "* C99 compilation success!"
 
 .PHONY : test/collisions
 test/collisions: | create_tree
@@ -676,22 +685,29 @@ test/collisions: | create_tree
 	@$(CCL) -o $(BIN) $(TMP_ROOT)/collisions.o $(LINKER_FLAGS) $(OPTIMIZATION)
 	@$(BIN)
 
-
 .PHONY : test/ci
-test/ci:| clean cmake test/set_debug_flags test/run
+test/ci:| ci.___clean cmake test/set_debug_flags test/ci.___clean ci.test_build test/ci.run
+	@echo "* testing complete."
 
 .PHONY : test/poll
-test/poll:
+test/poll:| poll.___clean
+	@echo "* Starting FIO_FORCE_POLL test (testing poll engine)."
 	@DEBUG=1 FIO_POLL=1 $(MAKE) test
+	@echo "* FIO_FORCE_POLL testing complete."
 
 .PHONY : test/cpp
-test/cpp: | create_tree
+test/cpp: | cpp.___clean
 	@echo "* Compiling C++ test"
 	@$(CXX) -c ./tests/cpp_test.cpp -o $(TMP_ROOT)/cpp_test.o $(CFLAGS_DEPENDENCY) $(CXXFLAGS) $(OPTIMIZATION)
 	@echo "* Linking C++ test"
 	@$(CXX) -o $(BIN) $(TMP_ROOT)/cpp_test.o $(LINKER_FLAGS) $(OPTIMIZATION)
-	@echo "* Running test"
-	@$(BIN)
+	@echo "* C++ compilation success!"
+	@echo "* To run test:"
+	@echo "  $(BIN)"
+
+.PHONY : test/all
+test/all: | test/optimized test/cpp test/c99 test/poll
+	@$(MAKE) test/ci
 
 endif
 
