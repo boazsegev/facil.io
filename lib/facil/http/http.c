@@ -356,6 +356,21 @@ int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
   return ((http_vtable_s *)r->private_data.vtbl)
       ->http_sendfile(r, fd, length, offset);
 }
+
+static inline int http_test_encoded_path(const char *mem, size_t len) {
+  const char *pos = NULL;
+  const char *end = mem + len;
+  while (mem < end && (pos = memchr(mem, '/', (size_t)len))) {
+    len = end - pos;
+    mem = pos + 1;
+    if (len >= 1 && pos[1] == '/')
+      return -1;
+    if (len > 3 && pos[1] == '.' && pos[2] == '.' && pos[4] == '/')
+      return -1;
+  }
+  return 0;
+}
+
 /**
  * Sends the response headers and the specified file (the response's body).
  *
@@ -391,14 +406,8 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
       char *pos = (char *)encoded;
       const char *end = encoded + encoded_len;
       while (pos < end) {
-        /* test for path manipulations while decoding */
-        if (*pos == '/' && (pos[1] == '/' ||
-                            (((uintptr_t)end - (uintptr_t)pos >= 4) &&
-                             pos[1] == '.' && pos[2] == '.' && pos[3] == '/')))
-          return -1;
         if (*pos == '%') {
-          // decode hex value
-          // this is a percent encoded value.
+          // decode hex value (this is a percent encoded value).
           if (hex2byte((uint8_t *)tmp.data + tmp.len, (uint8_t *)pos + 1))
             return -1;
           tmp.len++;
@@ -408,6 +417,9 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
       }
       tmp.data[tmp.len] = 0;
       fiobj_str_resize(filename, tmp.len);
+      /* test for path manipulations after decoding */
+      if (http_test_encoded_path(tmp.data + prefix_len, tmp.len - prefix_len))
+        return -1;
     }
     if (tmp.data[tmp.len - 1] == '/')
       fiobj_str_write(filename, "index.html", 10);
