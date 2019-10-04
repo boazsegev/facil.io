@@ -311,12 +311,12 @@ String Information Helper Type
 
 /** An information type for reporting the string's state. */
 typedef struct fio_str_info_s {
-  /** The buffer's capacity. Zero (0) indicates the buffer is read-only. */
-  size_t capa;
-  /** The string's length, if any. */
-  size_t len;
   /** The string's buffer (pointer to first byte) or NULL on error. */
   char *buf;
+  /** The string's length, if any. */
+  size_t len;
+  /** The buffer's capacity. Zero (0) indicates the buffer is read-only. */
+  size_t capa;
 } fio_str_info_s;
 
 /** Compares two `fio_str_info_s` objects for content equality. */
@@ -382,8 +382,8 @@ Sleep / Thread Scheduling Macros
  */
 #define FIO_THREAD_WAIT(nano_sec)                                              \
   do {                                                                         \
-    const struct timespec tm = {.tv_nsec = ((nano_sec) % 1000000000),          \
-                                .tv_sec = ((nano_sec) / 1000000000)};          \
+    const struct timespec tm = {.tv_sec = ((nano_sec) / 1000000000),           \
+                                .tv_nsec = ((nano_sec) % 1000000000)};         \
     nanosleep(&tm, (struct timespec *)NULL);                                   \
   } while (0)
 #endif
@@ -1988,9 +1988,9 @@ HSFUNC void __attribute__((constructor)) fio___mem_state_allocate(void) {
   fio___mem_state = (fio___mem_state_s *)FIO_MEM_PAGE_ALLOC(pages, 1);
   FIO_ASSERT_ALLOC(fio___mem_state);
   *fio___mem_state = (fio___mem_state_s){
+      .available = FIO_LIST_INIT(fio___mem_state->available),
       .cores = cores,
       .lock = FIO_LOCK_INIT,
-      .available = FIO_LIST_INIT(fio___mem_state->available),
   };
 #if DEBUG && defined(FIO_LOG_INFO)
   FIO_LOG_INFO("facil.io memory allocation initialized:\n"
@@ -5944,8 +5944,8 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, __remap2bits)(FIO_NAME(FIO_MAP_NAME, s) * m,
   dest = {
       .map = (FIO_NAME(FIO_MAP_NAME, __map_s) *)FIO_MEM_CALLOC_(
           sizeof(*dest.map), (uint32_t)1 << (bits & 31)),
-      .used_bits = bits,
       .head = (uint32_t)(-1),
+      .used_bits = bits,
       .under_attack = m->under_attack,
   };
   if (!m->map || m->head == (uint32_t)-1) {
@@ -7054,15 +7054,15 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, info)(const FIO_STRING_PTR s_) {
     return (fio_str_info_s){.len = 0};
   if (FIO_STRING_IS_SMALL(s))
     return (fio_str_info_s){
-        .capa = (FIO_STRING_IS_FROZEN(s) ? 0 : FIO_STRING_SMALL_CAPA(s)),
-        .len = FIO_STRING_SMALL_LEN(s),
         .buf = FIO_STRING_SMALL_DATA(s),
+        .len = FIO_STRING_SMALL_LEN(s),
+        .capa = (FIO_STRING_IS_FROZEN(s) ? 0 : FIO_STRING_SMALL_CAPA(s)),
     };
 
   return (fio_str_info_s){
-      .capa = (FIO_STRING_IS_FROZEN(s) ? 0 : s->capa),
-      .len = s->len,
       .buf = s->buf,
+      .len = s->len,
+      .capa = (FIO_STRING_IS_FROZEN(s) ? 0 : s->capa),
   };
 }
 
@@ -7164,9 +7164,9 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, resize)(FIO_STRING_PTR s_,
     if (size <= FIO_STRING_SMALL_CAPA(s)) {
       FIO_STRING_SMALL_LEN_SET(s, size);
       FIO_STRING_SMALL_DATA(s)[size] = 0;
-      return (fio_str_info_s){.capa = FIO_STRING_SMALL_CAPA(s),
+      return (fio_str_info_s){.buf = FIO_STRING_SMALL_DATA(s),
                               .len = size,
-                              .buf = FIO_STRING_SMALL_DATA(s)};
+                              .capa = FIO_STRING_SMALL_CAPA(s)};
     }
     FIO_STRING_SMALL_LEN_SET(s, FIO_STRING_SMALL_CAPA(s));
     FIO_NAME(FIO_STRING_NAME, reserve)(s_, size);
@@ -7181,7 +7181,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, resize)(FIO_STRING_PTR s_,
 big:
   s->len = size;
   s->buf[size] = 0;
-  return (fio_str_info_s){.capa = s->capa, .len = size, .buf = s->buf};
+  return (fio_str_info_s){.buf = s->buf, .len = size, .capa = s->capa};
 }
 
 /**
@@ -7233,14 +7233,14 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, reserve)(FIO_STRING_PTR s_,
   char *tmp;
   if (FIO_STRING_IS_SMALL(s)) {
     if (amount <= FIO_STRING_SMALL_CAPA(s)) {
-      return (fio_str_info_s){.capa = FIO_STRING_SMALL_CAPA(s),
+      return (fio_str_info_s){.buf = FIO_STRING_SMALL_DATA(s),
                               .len = FIO_STRING_SMALL_LEN(s),
-                              .buf = FIO_STRING_SMALL_DATA(s)};
+                              .capa = FIO_STRING_SMALL_CAPA(s)};
     }
     goto is_small;
   }
   if (amount < s->capa) {
-    return (fio_str_info_s){.capa = s->capa, .len = s->len, .buf = s->buf};
+    return (fio_str_info_s){.buf = s->buf, .len = s->len, .capa = s->capa};
   }
   amount = FIO_STRING_CAPA2WORDS(amount);
   if (s->dealloc == FIO_NAME(FIO_STRING_NAME, __default_dealloc)) {
@@ -7261,7 +7261,7 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, reserve)(FIO_STRING_PTR s_,
   s->capa = amount;
   s->buf = tmp;
   s->buf[amount] = 0;
-  return (fio_str_info_s){.capa = s->capa, .len = s->len, .buf = s->buf};
+  return (fio_str_info_s){.buf = s->buf, .len = s->len, .capa = s->capa};
 
 is_small:
   /* small string (string data is within the container) */
@@ -7281,7 +7281,7 @@ is_small:
       .dealloc = FIO_NAME(FIO_STRING_NAME, __default_dealloc),
   };
   return (fio_str_info_s){
-      .capa = amount, .len = FIO_STRING_SMALL_LEN(s), .buf = s->buf};
+      .buf = s->buf, .len = FIO_STRING_SMALL_LEN(s), .capa = amount};
 no_mem:
   return FIO_NAME(FIO_STRING_NAME, info)(s_);
 }
@@ -8689,21 +8689,17 @@ IFUNC fio_str_info_s FIO_NAME(FIO_SMALL_STR_NAME,
   FIO_NAME(FIO_SMALL_STR_NAME, s) *s =
       (FIO_NAME(FIO_SMALL_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
   if (FIO_SMALL_STR_IS_SMALL(s)) {
-    return (fio_str_info_s){.len = FIO_SMALL_STR_SMALL_LEN(s),
-                            .buf = FIO_SMALL_STR_SMALL_DATA(s)};
+    return (fio_str_info_s){.buf = FIO_SMALL_STR_SMALL_DATA(s),
+                            .len = FIO_SMALL_STR_SMALL_LEN(s)};
   }
   if (sizeof(char *) == 4) {
     /* 32 bit systems */
-    return (fio_str_info_s){
-        .len = FIO_SMALL_STR_BIG_LEN32(s),
-        .buf = (char *)FIO_SMALL_STR_BIG_BUF32(s),
-    };
+    return (fio_str_info_s){.buf = (char *)FIO_SMALL_STR_BIG_BUF32(s),
+                            .len = FIO_SMALL_STR_BIG_LEN32(s)};
   }
   /* 64 bit systems */
-  return (fio_str_info_s){
-      .len = FIO_SMALL_STR_BIG_LEN64(s),
-      .buf = (char *)FIO_SMALL_STR_BIG_BUF64(s),
-  };
+  return (fio_str_info_s){.buf = (char *)FIO_SMALL_STR_BIG_BUF64(s),
+                          .len = FIO_SMALL_STR_BIG_LEN64(s)};
 }
 
 /** Returns a pointer (`char *`) to the String's content. */
@@ -9305,8 +9301,8 @@ CLI Data Stores
 ***************************************************************************** */
 
 typedef struct {
-  size_t len;
   const char *buf;
+  size_t len;
 } fio___cli_cstr_s;
 
 #define FIO_RISKY_HASH
@@ -9609,11 +9605,11 @@ SFUNC void fio_cli_start FIO_NOOP(int argc, char const *argv[], int unnamed_min,
   fio_cli_parser_data_s parser = {
       .unnamed_min = unnamed_min,
       .unnamed_max = unnamed_max,
-      .description = description,
+      .pos = 0,
       .argc = argc,
       .argv = argv,
+      .description = description,
       .names = names,
-      .pos = 0,
   };
 
   if (fio___cli_hash_count(&fio___cli_values)) {
@@ -11331,7 +11327,7 @@ FIOBJ_FUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
 FIO_IFUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                           update_json2)(FIOBJ hash, char *ptr, size_t len) {
   return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
-                  update_json)(hash, (fio_str_info_s){.len = len, .buf = ptr});
+                  update_json)(hash, (fio_str_info_s){.buf = ptr, .len = len});
 }
 
 /**
@@ -11490,11 +11486,11 @@ FIO_IFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
   case FIOBJ_T_PRIMITIVE:
     switch ((uintptr_t)(o)) {
     case FIOBJ_T_NULL:
-      return (fio_str_info_s){.len = 4, .buf = (char *)"null"};
+      return (fio_str_info_s){.buf = (char *)"null", .len = 4};
     case FIOBJ_T_TRUE:
-      return (fio_str_info_s){.len = 4, .buf = (char *)"true"};
+      return (fio_str_info_s){.buf = (char *)"true", .len = 4};
     case FIOBJ_T_FALSE:
-      return (fio_str_info_s){.len = 5, .buf = (char *)"false"};
+      return (fio_str_info_s){.buf = (char *)"false", .len = 5};
     };
     return (fio_str_info_s){.buf = (char *)""};
   case FIOBJ_T_NUMBER:
@@ -11509,10 +11505,10 @@ FIO_IFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
     if (!j || FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(j) >=
                   FIOBJ2CSTR_BUFFER_LIMIT) {
       fiobj_free(j);
-      return (fio_str_info_s){.len = 5,
-                              .buf = (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_ARRAY
+      return (fio_str_info_s){.buf = (FIOBJ_TYPE_CLASS(o) == FIOBJ_T_ARRAY
                                           ? (char *)"[...]"
-                                          : (char *)"{...}")};
+                                          : (char *)"{...}"),
+                              .len = 5};
     }
     fio_str_info_s i = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), info)(j);
     memcpy(fiobj___2cstr___buffer__perthread, i.buf, i.len + 1);
@@ -11524,7 +11520,7 @@ FIO_IFUNC fio_str_info_s FIO_NAME2(fiobj, cstr)(FIOBJ o) {
     return (*fiobj_object_metadata(o))->to_s(o);
   }
   if (!o)
-    return (fio_str_info_s){.len = 4, .buf = (char *)"null"};
+    return (fio_str_info_s){.buf = (char *)"null", .len = 4};
   return (fio_str_info_s){.buf = (char *)""};
 }
 
@@ -11974,10 +11970,10 @@ FIOBJ_FUNC uint32_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ child, void *arg),
                                 void *arg) {
   /* FIXME - move to recursion with nesting limiter? */
   fiobj_____each2_data_s d = {
-      .stack = FIO_ARRAY_INIT,
       .task = task,
       .arg = arg,
       .next = FIOBJ_INVALID,
+      .stack = FIO_ARRAY_INIT,
   };
   fiobj____stack_element_s i = {.obj = o, .pos = 0};
   uint32_t end = fiobj____each2_element_count(o);
@@ -13203,8 +13199,8 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
           .len = 15,
           .expected =
               {
-                  .scheme = {.len = 4, .buf = (char *)"file"},
-                  .path = {.len = 8, .buf = (char *)"go/home/"},
+                  .scheme = {.buf = (char *)"file", .len = 4},
+                  .path = {.buf = (char *)"go/home/", .len = 8},
               },
       },
       {
@@ -13212,8 +13208,8 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
           .len = 16,
           .expected =
               {
-                  .scheme = {.len = 4, .buf = (char *)"unix"},
-                  .path = {.len = 9, .buf = (char *)"/go/home/"},
+                  .scheme = {.buf = (char *)"unix", .len = 4},
+                  .path = {.buf = (char *)"/go/home/", .len = 9},
               },
       },
       {
@@ -13221,14 +13217,14 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
           .len = 50,
           .expected =
               {
-                  .scheme = {.len = 6, .buf = (char *)"schema"},
-                  .user = {.len = 4, .buf = (char *)"user"},
-                  .password = {.len = 8, .buf = (char *)"password"},
-                  .host = {.len = 4, .buf = (char *)"host"},
-                  .port = {.len = 4, .buf = (char *)"port"},
-                  .path = {.len = 5, .buf = (char *)"/path"},
-                  .query = {.len = 5, .buf = (char *)"query"},
-                  .target = {.len = 6, .buf = (char *)"target"},
+                  .scheme = {.buf = (char *)"schema", .len = 6},
+                  .user = {.buf = (char *)"user", .len = 4},
+                  .password = {.buf = (char *)"password", .len = 8},
+                  .host = {.buf = (char *)"host", .len = 4},
+                  .port = {.buf = (char *)"port", .len = 4},
+                  .path = {.buf = (char *)"/path", .len = 5},
+                  .query = {.buf = (char *)"query", .len = 5},
+                  .target = {.buf = (char *)"target", .len = 6},
               },
       },
       {
@@ -13236,11 +13232,11 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
           .len = 35,
           .expected =
               {
-                  .scheme = {.len = 4, .buf = (char *)"http"},
-                  .host = {.len = 13, .buf = (char *)"localhost.com"},
-                  .port = {.len = 4, .buf = (char *)"3000"},
-                  .path = {.len = 5, .buf = (char *)"/home"},
-                  .query = {.len = 4, .buf = (char *)"is=1"},
+                  .scheme = {.buf = (char *)"http", .len = 4},
+                  .host = {.buf = (char *)"localhost.com", .len = 13},
+                  .port = {.buf = (char *)"3000", .len = 4},
+                  .path = {.buf = (char *)"/home", .len = 5},
+                  .query = {.buf = (char *)"is=1", .len = 4},
               },
       },
       {
@@ -13248,9 +13244,9 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
           .len = 27,
           .expected =
               {
-                  .path = {.len = 14, .buf = (char *)"/complete_path"},
-                  .query = {.len = 5, .buf = (char *)"query"},
-                  .target = {.len = 6, .buf = (char *)"target"},
+                  .path = {.buf = (char *)"/complete_path", .len = 14},
+                  .query = {.buf = (char *)"query", .len = 5},
+                  .target = {.buf = (char *)"target", .len = 6},
               },
       },
       {
@@ -13258,9 +13254,9 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
           .len = 23,
           .expected =
               {
-                  .path = {.len = 11, .buf = (char *)"/index.html"},
-                  .query = {.len = 6, .buf = (char *)"page=1"},
-                  .target = {.len = 4, .buf = (char *)"list"},
+                  .path = {.buf = (char *)"/index.html", .len = 11},
+                  .query = {.buf = (char *)"page=1", .len = 6},
+                  .target = {.buf = (char *)"list", .len = 4},
               },
       },
       {
@@ -13268,7 +13264,7 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
           .len = 11,
           .expected =
               {
-                  .host = {.len = 11, .buf = (char *)"example.com"},
+                  .host = {.buf = (char *)"example.com", .len = 11},
               },
       },
 
@@ -13277,8 +13273,8 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
           .len = 16,
           .expected =
               {
-                  .host = {.len = 11, .buf = (char *)"example.com"},
-                  .port = {.len = 4, .buf = (char *)"8080"},
+                  .host = {.buf = (char *)"example.com", .len = 11},
+                  .port = {.buf = (char *)"8080", .len = 4},
               },
       },
       {
@@ -13286,8 +13282,8 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
           .len = 22,
           .expected =
               {
-                  .host = {.len = 11, .buf = (char *)"example.com"},
-                  .path = {.len = 11, .buf = (char *)"/index.html"},
+                  .host = {.buf = (char *)"example.com", .len = 11},
+                  .path = {.buf = (char *)"/index.html", .len = 11},
               },
       },
       {
@@ -13295,9 +13291,9 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
           .len = 27,
           .expected =
               {
-                  .host = {.len = 11, .buf = (char *)"example.com"},
-                  .path = {.len = 11, .buf = (char *)"/index.html"},
-                  .port = {.len = 4, .buf = (char *)"8080"},
+                  .host = {.buf = (char *)"example.com", .len = 11},
+                  .port = {.buf = (char *)"8080", .len = 4},
+                  .path = {.buf = (char *)"/index.html", .len = 11},
               },
       },
       {
@@ -13305,11 +13301,11 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
           .len = 42,
           .expected =
               {
-                  .host = {.len = 11, .buf = (char *)"example.com"},
-                  .port = {.len = 4, .buf = (char *)"8080"},
-                  .path = {.len = 11, .buf = (char *)"/index.html"},
-                  .query = {.len = 7, .buf = (char *)"key=val"},
-                  .target = {.len = 6, .buf = (char *)"target"},
+                  .host = {.buf = (char *)"example.com", .len = 11},
+                  .port = {.buf = (char *)"8080", .len = 4},
+                  .path = {.buf = (char *)"/index.html", .len = 11},
+                  .query = {.buf = (char *)"key=val", .len = 7},
+                  .target = {.buf = (char *)"target", .len = 6},
               },
       },
       {
@@ -13317,11 +13313,11 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
           .len = 37,
           .expected =
               {
-                  .user = {.len = 4, .buf = (char *)"user"},
-                  .password = {.len = 4, .buf = (char *)"1234"},
-                  .host = {.len = 11, .buf = (char *)"example.com"},
-                  .port = {.len = 4, .buf = (char *)"8080"},
-                  .path = {.len = 11, .buf = (char *)"/index.html"},
+                  .user = {.buf = (char *)"user", .len = 4},
+                  .password = {.buf = (char *)"1234", .len = 4},
+                  .host = {.buf = (char *)"example.com", .len = 11},
+                  .port = {.buf = (char *)"8080", .len = 4},
+                  .path = {.buf = (char *)"/index.html", .len = 11},
               },
       },
       {.url = NULL},
@@ -14850,23 +14846,24 @@ TEST_FUNC void fio___dynamic_types_test___sock(void) {
     fprintf(stderr, "* Testing %s socket API\n", server_tests[i].msg);
     int srv = fio_sock_open(server_tests[i].address, server_tests[i].port,
                             server_tests[i].flag | FIO_SOCK_SERVER);
-    FIO_T_ASSERT(srv != -1, "server socket failed to open");
+    FIO_T_ASSERT(srv != -1, "server socket failed to open: %s",
+                 strerror(errno));
     fio_sock_poll(.before_events = fio___sock_test_before_events,
-                  .after_events = fio___sock_test_after_events,
                   .on_ready = NULL, .on_data = NULL,
-                  .on_error = fio___sock_test_on_event, .udata = &flag,
+                  .on_error = fio___sock_test_on_event,
+                  .after_events = fio___sock_test_after_events, .udata = &flag,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(srv)));
     FIO_T_ASSERT(!flag, "No event should have occured here! (%zu)", flag);
     fio_sock_poll(.before_events = fio___sock_test_before_events,
-                  .after_events = fio___sock_test_after_events,
                   .on_ready = NULL, .on_data = fio___sock_test_on_event,
-                  .on_error = NULL, .udata = &flag,
+                  .on_error = NULL,
+                  .after_events = fio___sock_test_after_events, .udata = &flag,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(srv)));
     FIO_T_ASSERT(!flag, "No event should have occured here! (%zu)", flag);
     fio_sock_poll(.before_events = fio___sock_test_before_events,
-                  .after_events = fio___sock_test_after_events,
                   .on_ready = fio___sock_test_on_event, .on_data = NULL,
-                  .on_error = NULL, .udata = &flag,
+                  .on_error = NULL,
+                  .after_events = fio___sock_test_after_events, .udata = &flag,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(srv)));
     FIO_T_ASSERT(!flag, "No event should have occured here! (%zu)", flag);
 
@@ -14874,15 +14871,15 @@ TEST_FUNC void fio___dynamic_types_test___sock(void) {
                            server_tests[i].flag | FIO_SOCK_CLIENT);
     FIO_T_ASSERT(cl != -1, "client socket failed to open");
     fio_sock_poll(.before_events = fio___sock_test_before_events,
-                  .after_events = fio___sock_test_after_events,
-                  .on_ready = NULL, .on_data = NULL, .timeout = 100,
-                  .on_error = fio___sock_test_on_event, .udata = &flag,
+                  .on_ready = NULL, .on_data = NULL,
+                  .on_error = fio___sock_test_on_event,
+                  .after_events = fio___sock_test_after_events, .udata = &flag,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(cl)));
     FIO_T_ASSERT(!flag, "No event should have occured here! (%zu)", flag);
     fio_sock_poll(.before_events = fio___sock_test_before_events,
-                  .after_events = fio___sock_test_after_events,
                   .on_ready = NULL, .on_data = fio___sock_test_on_event,
-                  .on_error = NULL, .udata = &flag,
+                  .on_error = NULL,
+                  .after_events = fio___sock_test_after_events, .udata = &flag,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(cl)));
     FIO_T_ASSERT(!flag, "No event should have occured here! (%zu)", flag);
     // // is it possible to write to a still-connecting socket?
@@ -14893,45 +14890,49 @@ TEST_FUNC void fio___dynamic_types_test___sock(void) {
     //               .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(cl)));
     // FIO_T_ASSERT(!flag, "No event should have occured here! (%zu)", flag);
     fio_sock_poll(.before_events = fio___sock_test_before_events,
-                  .after_events = fio___sock_test_after_events,
                   .on_ready = NULL, .on_data = fio___sock_test_on_event,
-                  .on_error = NULL, .udata = &flag, .timeout = 100,
+                  .on_error = NULL,
+                  .after_events = fio___sock_test_after_events, .udata = &flag,
+                  .timeout = 100,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(srv)));
     FIO_T_ASSERT(flag == 2, "Event should have occured here! (%zu)", flag);
 
     int accepted = accept(srv, NULL, NULL);
     FIO_T_ASSERT(accepted != -1, "client socket failed to open");
     fio_sock_poll(.before_events = fio___sock_test_before_events,
-                  .after_events = fio___sock_test_after_events,
                   .on_ready = fio___sock_test_on_event, .on_data = NULL,
-                  .on_error = NULL, .timeout = 100, .udata = &flag,
+                  .on_error = NULL,
+                  .after_events = fio___sock_test_after_events, .udata = &flag,
+                  .timeout = 100,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(cl)));
     FIO_T_ASSERT(flag, "Event should have occured here! (%zu)", flag);
     fio_sock_poll(.before_events = fio___sock_test_before_events,
-                  .after_events = fio___sock_test_after_events,
                   .on_ready = fio___sock_test_on_event, .on_data = NULL,
-                  .on_error = NULL, .timeout = 100, .udata = &flag,
+                  .on_error = NULL,
+                  .after_events = fio___sock_test_after_events, .udata = &flag,
+                  .timeout = 100,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(accepted)));
     FIO_T_ASSERT(flag, "Event should have occured here! (%zu)", flag);
     fio_sock_poll(.before_events = fio___sock_test_before_events,
-                  .after_events = fio___sock_test_after_events,
                   .on_ready = NULL, .on_data = fio___sock_test_on_event,
-                  .on_error = NULL, .udata = &flag,
+                  .on_error = NULL,
+                  .after_events = fio___sock_test_after_events, .udata = &flag,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(cl)));
     FIO_T_ASSERT(!flag, "No event should have occured here! (%zu)", flag);
 
     if (write(accepted, "hello", 5) > 0) {
       // wait for read
       fio_sock_poll(.before_events = fio___sock_test_before_events,
-                    .after_events = fio___sock_test_after_events,
                     .on_ready = NULL, .on_data = fio___sock_test_on_event,
-                    .on_error = NULL, .udata = &flag, .timeout = 100,
+                    .on_error = NULL,
+                    .after_events = fio___sock_test_after_events,
+                    .udata = &flag, .timeout = 100,
                     .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_R(cl)));
       // test read/write
       fio_sock_poll(.before_events = fio___sock_test_before_events,
-                    .after_events = fio___sock_test_after_events,
                     .on_ready = fio___sock_test_on_event,
                     .on_data = fio___sock_test_on_event, .on_error = NULL,
+                    .after_events = fio___sock_test_after_events,
                     .udata = &flag, .timeout = 100,
                     .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(cl)));
       {
@@ -14949,9 +14950,9 @@ TEST_FUNC void fio___dynamic_types_test___sock(void) {
     close(cl);
     close(srv);
     fio_sock_poll(.before_events = fio___sock_test_before_events,
-                  .after_events = fio___sock_test_after_events,
                   .on_ready = NULL, .on_data = NULL,
-                  .on_error = fio___sock_test_on_event, .udata = &flag,
+                  .on_error = fio___sock_test_on_event,
+                  .after_events = fio___sock_test_after_events, .udata = &flag,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(cl)));
     FIO_T_ASSERT(flag, "Event should have occured here! (%zu)", flag);
   }

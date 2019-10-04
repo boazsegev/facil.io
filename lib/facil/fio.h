@@ -919,8 +919,8 @@ FIO_IFUNC ssize_t fio_write(const intptr_t uuid, const void *buf,
   if (!cpy)
     return -1;
   memcpy(cpy, buf, len);
-  return fio_write2(uuid, .data.buf = cpy, .len = len,
-                    .after.dealloc = fio_free);
+  return fio_write2(uuid, .data = {.buf = cpy}, .after = {.dealloc = fio_free},
+                    .len = len);
 }
 
 /**
@@ -940,8 +940,8 @@ FIO_IFUNC ssize_t fio_write(const intptr_t uuid, const void *buf,
  */
 FIO_IFUNC ssize_t fio_sendfile(intptr_t uuid, intptr_t source_fd, off_t offset,
                                size_t len) {
-  return fio_write2(uuid, .data.fd = source_fd, .len = len, .is_fd = 1,
-                    .offset = (uintptr_t)offset);
+  return fio_write2(uuid, .data = {.fd = source_fd}, .len = len,
+                    .offset = (uintptr_t)offset, .is_fd = 1);
 }
 
 /* internal helper */
@@ -959,9 +959,9 @@ FIO_IFUNC ssize_t fiobj_send_free(intptr_t uuid, FIOBJ o) {
       return 0;
   }
   fio_str_info_s s = fiobj_str_info(o);
-  return fio_write2(uuid, .data.buf = (char *)o,
-                    .offset = ((uintptr_t)s.buf - (uintptr_t)o), .len = s.len,
-                    .after.dealloc = fiobj___free_after_send);
+  return fio_write2(uuid, .data = {.buf = (char *)o},
+                    .after = {.dealloc = fiobj___free_after_send}, .len = s.len,
+                    .offset = ((uintptr_t)s.buf - (uintptr_t)o));
 }
 /**
  * Returns the number of `fio_write` calls that are waiting in the socket's

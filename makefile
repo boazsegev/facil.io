@@ -85,11 +85,11 @@ CXX?=g++
 # C specific compiler options
 C_EXTRA_OPT:=
 # C++ specific compiler options
-CXX_EXTRA_OPT:=-Wno-keyword-macro -Wno-c99-extensions -Wno-zero-length-array
-# c standard
-CSTD?=c11
-# c++ standard
-CXXSTD?=gnu++11
+CXX_EXTRA_OPT:=-Wno-keyword-macro -Wno-c99-extensions -Wno-zero-length-array -Wno-variadic-macros
+# c standard (if any, prefix using `-std=`)
+CSTD?=-std=c11
+# c++ standard (if any, prefix using `-std=`)
+CXXSTD?=-std=c++11
 # pkg-config
 PKG_CONFIG?=pkg-config
 # for internal use - don't change
@@ -523,8 +523,8 @@ endif
 #############################################################################
 
 FLAGS_STR=$(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
-CFLAGS:=$(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR) $(C_EXTRA_OPT)
-CXXFLAGS:=$(CXXFLAGS) -std=$(CXXSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR) $(CXX_EXTRA_OPT)
+CFLAGS:=$(CFLAGS) -g $(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR) $(C_EXTRA_OPT)
+CXXFLAGS:=$(CXXFLAGS) $(CXXSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR) $(CXX_EXTRA_OPT)
 LINKER_FLAGS=$(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
 CFLAGS_DEPENDENCY=-MT $@ -MMD -MP
 

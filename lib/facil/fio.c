@@ -8290,15 +8290,15 @@ FIO_SFUNC void fio_pubsub_test(void) {
   ++expect;
   fio_defer_perform();
   FIO_ASSERT(counter == expect, "unsubscribe wasn't called for filter 1!");
-  s = fio_subscribe(.channel = {0, 4, "name"}, .udata1 = &counter,
+  s = fio_subscribe(.channel = {"name", 4, 0}, .udata1 = &counter,
                     .on_message = fio_pubsub_test_on_message,
                     .on_unsubscribe = fio_pubsub_test_on_unsubscribe);
   FIO_ASSERT(s, "fio_subscribe FAILED on named subscription.");
-  fio_publish(.channel = {0, 4, "name"});
+  fio_publish(.channel = {"name", 4, 0});
   ++expect;
   fio_defer_perform();
   FIO_ASSERT(counter == expect, "publishing failed to named channel!");
-  fio_publish(.channel = {0, 4, "none"});
+  fio_publish(.channel = {"none", 4, 0});
   fio_defer_perform();
   FIO_ASSERT(counter == expect,
              "publishing arrived to named channel with wrong name!");

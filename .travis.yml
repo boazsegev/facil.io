@@ -1,11 +1,8 @@
 language: cpp
-before_install:
-  - sudo apt-get update
-  - sudo apt-get install -y libssl-dev
 script:
   - make vars
   - DEBUG=1 make vars
-  - CC="time $CC" ASAN_OPTIONS=detect_leaks=0 make test/all
+  - CC="time $CC" ASAN_OPTIONS=detect_leaks=0 make test/ci
 os:
   - linux
   - osx

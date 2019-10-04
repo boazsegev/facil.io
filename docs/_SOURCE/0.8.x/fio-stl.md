@@ -1119,9 +1119,9 @@ This helper type is defined like so:
 
 ```c
 typedef struct fio_str_info_s {
-  size_t capa; /* String capacity, if the string is writable. */
-  size_t len;  /* String length, if any. */
-  char *data;  /* Pointer to the string's first byte, if the string is valid . */
+  char *buf;   /* The string's buffer (pointer to first byte) or NULL on error. */
+  size_t len;  /* The string's length, if any. */
+  size_t capa; /* The buffer's capacity. Zero (0) indicates the buffer is read-only. */
 } fio_str_info_s;
 ```
 
