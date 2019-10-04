@@ -620,7 +620,7 @@ fio_str_info_s fiobj_io_fd_pread(fiobj_io_s *io, intptr_t pos, uintptr_t len) {
     if (pos < 0)
       pos = 0;
   }
-  if (pos == 0 && len <= 0)
+  if (pos == 0 && len == 0)
     return fiobj_io2cstr((FIOBJ)io);
   return (fio_str_info_s){.buf = NULL};
 }
