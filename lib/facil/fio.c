@@ -902,24 +902,23 @@ Section Start Marker
 /* the state machine - this holds all the data about the task queue and pool */
 static fio_queue_s facil_io_task_queue = FIO_QUEUE_INIT(facil_io_task_queue);
 
-
 /* *****************************************************************************
 Internal Task API
 ***************************************************************************** */
 
-
 #define fio_defer_push_task(func_, arg1_, arg2_)                               \
   do {                                                                         \
-    fio_queue_push(&facil_io_task_queue, .fn = func_, .udata1 = arg1_, .udata2 = arg2_);                                                   \
+    fio_queue_push(&facil_io_task_queue, .fn = func_, .udata1 = arg1_,         \
+                   .udata2 = arg2_);                                           \
     fio_defer_thread_signal();                                                 \
   } while (0)
 
 #define fio_defer_push_urgent(func_, arg1_, arg2_)                             \
   do {                                                                         \
-    fio_queue_push_urgent(&facil_io_task_queue, .fn = func_, .udata1 = arg1_, .udata2 = arg2_);                                                   \
+    fio_queue_push_urgent(&facil_io_task_queue, .fn = func_, .udata1 = arg1_,  \
+                          .udata2 = arg2_);                                    \
     fio_defer_thread_signal();                                                 \
   } while (0)
-
 
 static inline void fio_defer_clear_tasks(void) {
   fio_queue_destroy(&facil_io_task_queue);
@@ -946,9 +945,7 @@ call_error:
 }
 
 /** Performs all deferred functions until the queue had been depleted. */
-void fio_defer_perform(void) {
-  fio_queue_perform_all(&facil_io_task_queue);
-}
+void fio_defer_perform(void) { fio_queue_perform_all(&facil_io_task_queue); }
 
 /** Returns true if there are deferred functions waiting for execution. */
 int fio_defer_has_queue(void) {
@@ -2767,7 +2764,7 @@ ssize_t fio_flush(intptr_t uuid) {
     goto test_errno;
   }
 
-  if (uuid_data(uuid).packet_count >= 1024 &&
+  if (uuid_data(uuid).packet_count >= FIO_SLOWLORIS_LIMIT &&
       uuid_data(uuid).packet == old_packet &&
       uuid_data(uuid).sent >= old_sent &&
       (uuid_data(uuid).sent - old_sent) < 32768) {
