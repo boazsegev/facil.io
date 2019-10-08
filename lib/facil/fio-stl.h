@@ -825,6 +825,7 @@ HFUNC uint64_t fio_bswap64(uint64_t i) {
 Big Endian / Small Endian
 ***************************************************************************** */
 #if (defined(__LITTLE_ENDIAN__) && __LITTLE_ENDIAN__) ||                       \
+    (defined(__BIG_ENDIAN__) && !__BIG_ENDIAN__) ||                            \
     (defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
 #ifndef __BIG_ENDIAN__
 #define __BIG_ENDIAN__ 0
@@ -832,7 +833,8 @@ Big Endian / Small Endian
 #ifndef __LITTLE_ENDIAN__
 #define __LITTLE_ENDIAN__ 1
 #endif
-#elif (defined(__LITTLE_ENDIAN__) && !__LITTLE_ENDIAN__) ||                    \
+#elif (defined(__BIG_ENDIAN__) && __BIG_ENDIAN__) ||                           \
+    (defined(__LITTLE_ENDIAN__) && !__LITTLE_ENDIAN__) ||                      \
     (defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__))
 #ifndef __BIG_ENDIAN__
 #define __BIG_ENDIAN__ 1
@@ -1048,8 +1050,7 @@ HFUNC void FIO_NAME2(fio_u, buf64_local)(void *buf,
   *((uint64_t *)buf) = i;
 }
 
-#else  /* no unaligned access, no builtin memcpy, use normal memcpy and hope.  \
-        */
+#else  /* no unaligned access, no builtin memcpy, use hope.. */
 /** Converts an unaligned byte stream to a 16 bit number (local byte order). */
 HFUNC uint16_t FIO_NAME2(fio_buf, u16_local)(const void *c) { /* fio_buf2u16 */
   uint16_t tmp;
@@ -1086,18 +1087,15 @@ HFUNC void FIO_NAME2(fio_u, buf64_local)(void *buf,
 }
 #endif /* __has_builtin(__builtin_memcpy) / FIO_UNALIGNED_MEMORY_ACCESS_OK */
 
-/** Converts an unaligned byte stream to a 16 bit number (reversed byte order).
- */
+/** Converts an unaligned byte stream to a 16 bit number (reversed order). */
 HFUNC uint16_t FIO_NAME2(fio_buf, u16_bswap)(const void *c) { /* fio_buf2u16 */
   return fio_bswap16(FIO_NAME2(fio_buf, u16_local)(c));
 }
-/** Converts an unaligned byte stream to a 32 bit number (reversed byte order).
- */
+/** Converts an unaligned byte stream to a 32 bit number (reversed order). */
 HFUNC uint32_t FIO_NAME2(fio_buf, u32_bswap)(const void *c) { /* fio_buf2u32 */
   return fio_bswap32(FIO_NAME2(fio_buf, u32_local)(c));
 }
-/** Converts an unaligned byte stream to a 64 bit number (reversed byte order).
- */
+/** Converts an unaligned byte stream to a 64 bit number (reversed order). */
 HFUNC uint64_t FIO_NAME2(fio_buf, u64_bswap)(const void *c) { /* fio_buf2u64 */
   return fio_bswap64(FIO_NAME2(fio_buf, u64_local)(c));
 }
@@ -11236,17 +11234,15 @@ FIOBJ Hash Maps
 /** Calculates an object's hash value for a specific hash map object. */
 FIO_IFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ object_key);
 
-/** Inserts a value to a hash map, automatically calculating the hash value.
- */
+/** Inserts a value to a hash map, with a default hash value calculation. */
 FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                          set2)(FIOBJ hash, FIOBJ key, FIOBJ value);
 
-/** Finds a value in a hash map, automatically calculating the hash value. */
+/** Finds a value in a hash map, with a default hash value calculation. */
 FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), get2)(FIOBJ hash,
                                                                    FIOBJ key);
 
-/** Removes a value from a hash map, automatically calculating the hash value.
- */
+/** Removes a value from a hash map, with a default hash value calculation. */
 FIO_IFUNC int FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                        remove2)(FIOBJ hash, FIOBJ key, FIOBJ *old);
 
@@ -11808,7 +11804,7 @@ FIO_IFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ o) {
   return 0;
 }
 
-/** Inserts a value to a hash map, automatically calculating the hash value. */
+/** Inserts a value to a hash map, with a default hash value calculation. */
 FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                          set2)(FIOBJ hash, FIOBJ key, FIOBJ value) {
   return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), set)(
@@ -11822,8 +11818,7 @@ FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), get2)(FIOBJ hash,
                   get)(hash, FIO_NAME2(fiobj, hash)(hash, key), key);
 }
 
-/** Removes a value from a hash map, automatically calculating the hash value.
- */
+/** Removes a value from a hash map, with a default hash value calculation. */
 FIO_IFUNC int FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                        remove2)(FIOBJ hash, FIOBJ key, FIOBJ *old) {
   return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),

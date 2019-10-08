@@ -4,8 +4,9 @@
 # Copyright (c) 2016-2019 Boaz Segev
 # License MIT or ISC
 #
-# This makefile should be easilty portable on
-# X-nix systems for different projects.
+# This makefile should be easilty portable.
+#
+# Should work on any POSIX system for any project.
 #
 #############################################################################
 
@@ -33,16 +34,16 @@ CMAKE_LIBFILE_NAME=CMakeLists.txt
 # Source Code Folder Settings
 #############################################################################
 
-# The development, non-library .c file(s) (i.e., the one with `int main(void)`).
+# the main source .c and .cpp source files root folder
 MAIN_ROOT=src
-# Development subfolders under the main development root
+# subfolders under the main source root
 MAIN_SUBFOLDERS=
 
 #############################################################################
 # Library Folder Settings
 #############################################################################
 
-# the .c and .cpp source files root folder
+# the library .c and .cpp source files root folder
 LIB_ROOT=lib
 
 # publicly used subfolders in the lib root
@@ -61,8 +62,7 @@ TEST_ROOT=./tests
 # Testing subfolders under the main testing root
 TEST_SUBFOLDERS=
 # Fill this in if the test folder contains more then a single file with a `main` function
-TESTSRC:=./tests/tests.c
-
+TEST_SRC:=./tests/tests.c
 
 #############################################################################
 # Compiler / Linker Settings
@@ -110,6 +110,21 @@ ifeq ($(DEBUG), 1)
 else
 	FLAGS:=$(FLAGS) NDEBUG NODEBUG
 endif
+
+#############################################################################
+# Makefile Runtime Tests (sets flags, such as HAVE_OPENSSL)
+#############################################################################
+
+# Tests are performed unless the value is empty / missing
+
+TEST4POLL:=1      # HAVE_KQUEUE / HAVE_EPOLL / HAVE_POLL
+TEST4SOCKET:=1    # --- adds linker flags, not compilation flags
+TEST4SSL:=1       # HAVE_OPENSSL / HAVE_BEARSSL + HAVE_S2N
+TEST4SENDFILE:=1  # HAVE_SENDFILE
+TEST4TM_ZONE:=1   # HAVE_TM_TM_ZONE
+TEST4ZLIB:=       # HAVE_ZLIB
+TEST4PG:=         # HAVE_POSTGRESQL
+TEST4ENDIAN:=1    # __BIG_ENDIAN__=?
 
 #############################################################################
 # facil.io compilation flag helpers
@@ -165,8 +180,8 @@ MAINDIR=$(MAIN_ROOT) $(foreach main_root, $(MAIN_ROOT) , $(foreach dir, $(MAIN_S
 MAINSRC=$(foreach dir, $(MAINDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c*))
 
 TESTDIR=$(TEST_ROOT) $(foreach folder_root, $(TEST_ROOT) , $(foreach dir, $(TEST_SUBFOLDERS), $(addsuffix /,$(basename $(folder_root)))$(dir)))
-ifeq (, $(TESTSRC))
-TESTSRC=$(foreach dir, $(TESTDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c*))
+ifeq (, $(TEST_SRC))
+TEST_SRC=$(foreach dir, $(TESTDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c*))
 endif
 
 FOLDERS=$(LIBDIR) $(MAINDIR) $(TESTDIR)
@@ -180,7 +195,7 @@ INCLUDE_STR=$(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(FO
 
 MAIN_OBJS=$(foreach source, $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 LIB_OBJS=$(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
-TEST_OBJS=$(foreach source, $(TESTSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+TEST_OBJS=$(foreach source, $(TEST_SRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 
 OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d) $(TEST_OBJS:.o=.d)
 
@@ -214,6 +229,7 @@ EMPTY:=
 # kqueue / epoll / poll Selection / Detection
 # (no need to edit)
 #############################################################################
+ifdef TEST4POLL
 
 FIO_POLL_TEST_KQUEUE:="\\n\
 \#define _GNU_SOURCE\\n\
@@ -251,33 +267,35 @@ int main(void) {\\n\
 # Test for manual selection and then TRY_COMPILE with each polling engine
 ifdef FIO_POLL
   $(info * Skipping polling tests, enforcing manual selection of: poll)
-	FLAGS+=FIO_ENGINE_POLL
+	FLAGS+=FIO_ENGINE_POLL HAVE_POLL
 else ifdef FIO_FORCE_POLL
   $(info * Skipping polling tests, enforcing manual selection of: poll)
-	FLAGS+=FIO_ENGINE_POLL
+	FLAGS+=FIO_ENGINE_POLL HAVE_POLL
 else ifdef FIO_FORCE_EPOLL
   $(info * Skipping polling tests, enforcing manual selection of: epoll)
-	FLAGS+=FIO_ENGINE_EPOLL
+	FLAGS+=FIO_ENGINE_EPOLL HAVE_EPOLL
 else ifdef FIO_FORCE_KQUEUE
   $(info * Skipping polling tests, enforcing manual selection of: kqueue)
-	FLAGS+=FIO_ENGINE_KQUEUE
+	FLAGS+=FIO_ENGINE_KQUEUE HAVE_KQUEUE
 else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_EPOLL), $(EMPTY)), 0)
   $(info * Detected `epoll`)
-	FLAGS+=FIO_ENGINE_EPOLL
+	FLAGS+=FIO_ENGINE_EPOLL HAVE_EPOLL
 else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_KQUEUE), $(EMPTY)), 0)
   $(info * Detected `kqueue`)
-	FLAGS+=FIO_ENGINE_KQUEUE
+	FLAGS+=FIO_ENGINE_KQUEUE HAVE_KQUEUE
 else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_POLL), $(EMPTY)), 0)
   $(info * Detected `poll` - this is suboptimal fallback!)
-	FLAGS+=FIO_ENGINE_POLL
+	FLAGS+=FIO_ENGINE_POLL HAVE_POLL
 else
 	$(warning No supported polling engine! won't be able to compile facil.io)
 endif
 
+endif # TEST4POLL
 #############################################################################
 # Detecting The `sendfile` System Call
 # (no need to edit)
 #############################################################################
+ifdef TEST4SENDFILE
 
 # Linux variation
 FIO_SENDFILE_TEST_LINUX:="\\n\
@@ -323,22 +341,24 @@ int main(void) {\\n\
 
 ifeq ($(call TRY_COMPILE, $(FIO_SENDFILE_TEST_LINUX), $(EMPTY)), 0)
   $(info * Detected `sendfile` (Linux))
-	FLAGS:=$(FLAGS) USE_SENDFILE_LINUX
+	FLAGS+=USE_SENDFILE_LINUX HAVE_SENDFILE
 else ifeq ($(call TRY_COMPILE, $(FIO_SENDFILE_TEST_BSD), $(EMPTY)), 0)
   $(info * Detected `sendfile` (BSD))
-	FLAGS:=$(FLAGS) USE_SENDFILE_BSD
+	FLAGS+=USE_SENDFILE_BSD HAVE_SENDFILE
 else ifeq ($(call TRY_COMPILE, $(FIO_SENDFILE_TEST_APPLE), $(EMPTY)), 0)
   $(info * Detected `sendfile` (Apple))
-	FLAGS:=$(FLAGS) USE_SENDFILE_APPLE
+	FLAGS+=USE_SENDFILE_APPLE HAVE_SENDFILE
 else
   $(info * No `sendfile` support detected.)
 	FLAGS:=$(FLAGS) USE_SENDFILE=0
 endif
 
+endif # TEST4SENDFILE
 #############################################################################
 # Detecting 'struct tm' fields
 # (no need to edit)
 #############################################################################
+ifdef TEST4TM_ZONE
 
 FIO_TEST_STRUCT_TM_TM_ZONE:="\\n\
 \#define _GNU_SOURCE\\n\
@@ -355,10 +375,12 @@ ifeq ($(call TRY_COMPILE, $(FIO_TEST_STRUCT_TM_TM_ZONE), $(EMPTY)), 0)
 	FLAGS:=$(FLAGS) HAVE_TM_TM_ZONE=1
 endif
 
+endif # TEST4TM_ZONE
 #############################################################################
 # Detecting SystemV socket libraries
 # (no need to edit)
 #############################################################################
+ifdef TEST4SOCKET
 
 FIO_TEST_SOCKET_AND_NETWORK_SERVICE:="\\n\
 \#include <sys/types.h>\\n\
@@ -375,7 +397,7 @@ int main(void) {\\n\
 "
 
 ifeq ($(call TRY_COMPILE, $(FIO_TEST_SOCKET_AND_NETWORK_SERVICE), $(EMPTY)), 0)
-  $(info * Detected socket API without additional libraries)
+  $(info * Detected native socket API, without additional libraries)
 else ifeq ($(call TRY_COMPILE, $(FIO_TEST_SOCKET_AND_NETWORK_SERVICE), "-lsocket" "-lnsl"), 0)
   $(info * Detected socket API from libsocket and libnsl)
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) socket nsl
@@ -383,10 +405,12 @@ else
   $(error No socket API available)
 endif
 
+endif # TEST4SOCKET
 #############################################################################
 # SSL/ TLS Library Detection
 # (no need to edit)
 #############################################################################
+ifdef TEST4SSL
 
 # BearSSL requirement C application code
 # (source code variation)
@@ -473,10 +497,12 @@ ifeq ($(call TRY_COMPILE, "\#include <s2n.h>\\n int main(void) {}", "-ls2n") , 0
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
 endif
 
+endif # TEST4SSL
 #############################################################################
 # ZLib Library Detection
 # (no need to edit)
 #############################################################################
+ifdef TEST4ZLIB
 
 ifeq ($(call TRY_COMPILE, "\#include <zlib.h>\\nint main(void) {}", "-lz") , 0)
   $(info * Detected the zlib library, setting HAVE_ZLIB)
@@ -486,10 +512,12 @@ ifeq ($(call TRY_COMPILE, "\#include <zlib.h>\\nint main(void) {}", "-lz") , 0)
 	PKGC_REQ+=$$(PKGC_REQ_ZLIB)
 endif
 
+endif #TEST4ZLIB
 #############################################################################
 # PostgreSQL Library Detection
 # (no need to edit)
 #############################################################################
+ifdef TEST4PG
 
 ifeq ($(call TRY_COMPILE, "\#include <libpq-fe.h>\\n int main(void) {}", "-lpg") , 0)
   $(info * Detected the PostgreSQL library, setting HAVE_POSTGRESQL)
@@ -502,10 +530,12 @@ else ifeq ($(call TRY_COMPILE, "\#include </usr/include/postgresql/libpq-fe.h>\\
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) pg
 endif
 
+endif # TEST4PG
 #############################################################################
 # Endian  Detection
 # (no need to edit)
 #############################################################################
+ifdef TEST4ENDIAN
 
 ifeq ($(call TRY_COMPILE_AND_RUN, "int main(void) {int i = 1; return (int)(i & ((unsigned char *)&i)[sizeof(i)-1]);}\n",$(EMPTY)), 1)
   $(info * Detected Big Endian byte order.)
@@ -517,6 +547,7 @@ else
   $(info * Byte ordering (endianness) detection failed)
 endif
 
+endif # TEST4ENDIAN
 #############################################################################
 # Updated flags and final values
 # (don't edit)
@@ -641,7 +672,7 @@ $(TMP_ROOT)/%.d: ;
 #############################################################################
 
 
-ifneq ($(TESTSRC),)
+ifneq ($(TEST_SRC),)
 
 .PHONY : test/set_test_flag
 test/set_test_flag:

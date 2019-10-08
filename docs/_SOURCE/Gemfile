@@ -1,6 +1,6 @@
 source 'https://rubygems.org'
 
-gem 'iodine'
+gem 'iodine', ">=0.7.34"
 gem 'redcarpet'
 gem 'slim'
 gem 'sass'
