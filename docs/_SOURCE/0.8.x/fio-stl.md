@@ -2172,6 +2172,19 @@ The `flag` integer can be a combination of any of the following flags:
 
 If neither `FIO_SOCK_SERVER` nor `FIO_SOCK_CLIENT` are specified, the function will default to a server socket.
 
+**Note**:
+
+UDP Server Sockets might need to handle traffic from multiple clients, which could require a significantly larger OS buffer then the default buffer offered.
+
+Consider (from [this SO answer](https://stackoverflow.com/questions/2090850/specifying-udp-receive-buffer-size-at-runtime-in-linux/2090902#2090902), see [this blog post](https://medium.com/@CameronSparr/increase-os-udp-buffers-to-improve-performance-51d167bb1360) and [this article](http://fasterdata.es.net/network-tuning/udp-tuning/)):
+
+```c
+int n = 32*1024*1024;
+while (n >= (4*1024*1024) && setsockopt(socket, SOL_SOCKET, SO_RCVBUF, &n, sizeof(n)) == -1) {
+  n -= 1024*1024;
+}
+```
+
 #### `fio_sock_poll`
 
 ```c
