@@ -2849,14 +2849,14 @@ SFUNC void fio_rand_bytes(void *data_, size_t len) {
   for (size_t i = (len >> 4); i; --i) {
     uint64_t t0 = fio_rand64();
     uint64_t t1 = fio_rand64();
-    FIO_NAME2(fio_u, buf64)(data, t0);
-    FIO_NAME2(fio_u, buf64)(data + 8, t1);
+    FIO_NAME2(fio_u, buf64_local)(data, t0);
+    FIO_NAME2(fio_u, buf64_local)(data + 8, t1);
     data += 16;
   }
   /* 64 random bits at tail */
   if ((len & 8)) {
     uint64_t t0 = fio_rand64();
-    FIO_NAME2(fio_u, buf64)(data, t0);
+    FIO_NAME2(fio_u, buf64_local)(data, t0);
   }
 
 small_random:
@@ -3243,7 +3243,7 @@ SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
       uint8_t i = 0;    /* counting bits */
       dest[len++] = '0';
       dest[len++] = 'x';
-      while (i < 8 && (n & 0xFF00000000000000) == 0) {
+      while ((n & 0xFF00000000000000) == 0) { // since n != 0, then i < 8
         n = n << 8;
         i++;
       }
@@ -3256,9 +3256,8 @@ SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
       while (i < 8) {
         uint8_t tmp = (n & 0xF000000000000000) >> 60;
         uint8_t tmp2 = (n & 0x0F00000000000000) >> 56;
-        dest[len] = notation[tmp];
-        dest[len + 1] = notation[tmp2];
-        len += 2;
+        dest[len++] = notation[tmp];
+        dest[len++] = notation[tmp2];
         i++;
         n = n << 8;
       }
@@ -3638,6 +3637,8 @@ HFUNC int fio_sock_poll FIO_NOOP(fio_sock_poll_args args) {
   size_t poll_count = 0;
   size_t event_count = 0;
   size_t limit = 0;
+  if (!args.fds)
+    goto empty_list;
   while (args.fds[poll_count].events)
     ++poll_count;
   if (!poll_count)
@@ -5838,14 +5839,6 @@ Hash Map / Set - helpers
 ***************************************************************************** */
 #ifdef FIO_EXTERN_COMPLETE
 
-HFUNC void FIO_NAME(FIO_MAP_NAME, __report_attack)(const char *msg) {
-#ifdef FIO_LOG2STDERR
-  fwrite(msg, strlen(msg), 1, stderr);
-#else
-  (void)msg;
-#endif
-}
-
 SFUNC int FIO_NAME(FIO_MAP_NAME, __remap2bits)(FIO_NAME(FIO_MAP_NAME, s) * m,
                                                const uint8_t bits);
 
@@ -5886,9 +5879,8 @@ HFUNC FIO_NAME(FIO_MAP_NAME, __map_s) *
       m->has_collisions |= 1;
       if (++full_attack_counter >= FIO_MAP_MAX_FULL_COLLISIONS) {
         m->under_attack = 1;
-        FIO_NAME(FIO_MAP_NAME, __report_attack)
-        ("SECURITY: (core type) Hash Map under attack? "
-         "(multiple full collisions)\n");
+        FIO_LOG2STDERR("SECURITY: (core type) Hash Map under attack?"
+                       " (multiple full collisions)");
       }
     }
     pos_key += FIO_MAP_CUCKOO_STEPS;
@@ -6057,9 +6049,8 @@ remap_and_find_pos:
     if (pos)
       goto found_pos;
   }
-  FIO_NAME(FIO_MAP_NAME, __report_attack)
-  ("SECURITY: (core type) Map under attack?"
-   " (non-random keys with full collisions?)\n");
+  FIO_LOG2STDERR("SECURITY: (core type) Map under attack?"
+                 " (non-random keys with high collisions?)");
   m->under_attack = 1;
   pos = FIO_NAME(FIO_MAP_NAME, __find_map_pos)(m, obj, hash);
   if (pos)
@@ -13545,6 +13536,20 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
               },
       },
       {
+          .url = (char *)"schema://user@host:port/path?query#target",
+          .len = 41,
+          .expected =
+              {
+                  .scheme = {.buf = (char *)"schema", .len = 6},
+                  .user = {.buf = (char *)"user", .len = 4},
+                  .host = {.buf = (char *)"host", .len = 4},
+                  .port = {.buf = (char *)"port", .len = 4},
+                  .path = {.buf = (char *)"/path", .len = 5},
+                  .query = {.buf = (char *)"query", .len = 5},
+                  .target = {.buf = (char *)"target", .len = 6},
+              },
+      },
+      {
           .url = (char *)"http://localhost.com:3000/home?is=1",
           .len = 35,
           .expected =
@@ -13632,6 +13637,17 @@ TEST_FUNC void fio___dynamic_types_test___url(void) {
               {
                   .user = {.buf = (char *)"user", .len = 4},
                   .password = {.buf = (char *)"1234", .len = 4},
+                  .host = {.buf = (char *)"example.com", .len = 11},
+                  .port = {.buf = (char *)"8080", .len = 4},
+                  .path = {.buf = (char *)"/index.html", .len = 11},
+              },
+      },
+      {
+          .url = (char *)"user@example.com:8080/index.html",
+          .len = 32,
+          .expected =
+              {
+                  .user = {.buf = (char *)"user", .len = 4},
                   .host = {.buf = (char *)"example.com", .len = 11},
                   .port = {.buf = (char *)"8080", .len = 4},
                   .path = {.buf = (char *)"/index.html", .len = 11},
@@ -13735,8 +13751,8 @@ Linked List - Test
 ***************************************************************************** */
 
 typedef struct {
-  FIO_LIST_NODE node;
   int data;
+  FIO_LIST_NODE node;
 } ls____test_s;
 
 #define FIO_LIST_NAME ls____test
@@ -13757,6 +13773,8 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
   FIO_LIST_EACH(ls____test_s, node, &ls, pos) {
     FIO_T_ASSERT(pos->data == tester++,
                  "Linked list ordering error for push or each");
+    FIO_T_ASSERT(ls____test_root(&pos->node) == pos,
+                 "Linked List root offset error");
   }
   FIO_T_ASSERT(tester == TEST_REPEAT,
                "linked list EACH didn't loop through all the list");
@@ -14351,14 +14369,25 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
                  "key destruction error - was the key freed?");
   }
   {
-    set_____test_s m = FIO_MAP_INIT;
+    set_____test_s s = FIO_MAP_INIT;
+    map_____test_s m = FIO_MAP_INIT;
     fprintf(stderr, "* Testing attack resistance.\n");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
-      set_____test_set(&m, 1, i + 1, NULL);
+      char buf[64];
+      fio_ltoa(buf, i, 16);
+      set_____test_set(&s, 1, i + 1, NULL);
+      map_____test_set(&m, 1, buf, i + 1, NULL);
     }
-    FIO_T_ASSERT(set_____test_count(&m) != TEST_REPEAT,
-                 "full collision protection failed?");
-    set_____test_destroy(&m);
+    FIO_T_ASSERT(set_____test_count(&s) != TEST_REPEAT,
+                 "full collision protection failed (set)?");
+    FIO_T_ASSERT(map_____test_count(&m) != TEST_REPEAT,
+                 "full collision protection failed (map)?");
+    FIO_T_ASSERT(set_____test_count(&s) != 1,
+                 "full collision test failed to push elements (set)?");
+    FIO_T_ASSERT(map_____test_count(&m) != 1,
+                 "full collision test failed to push elements (map)?");
+    set_____test_destroy(&s);
+    map_____test_destroy(&m);
   }
 }
 
@@ -15251,18 +15280,27 @@ TEST_FUNC void fio___dynamic_types_test___sock(void) {
                             server_tests[i].flag | FIO_SOCK_SERVER);
     FIO_T_ASSERT(srv != -1, "server socket failed to open: %s",
                  strerror(errno));
+    flag = (size_t)-1;
+    fio_sock_poll(.before_events = fio___sock_test_before_events,
+                  .on_ready = NULL, .on_data = NULL,
+                  .on_error = fio___sock_test_on_event,
+                  .after_events = fio___sock_test_after_events, .udata = &flag);
+    FIO_T_ASSERT(!flag, "before_events not called for empty list! (%zu)", flag);
+    flag = (size_t)-1;
     fio_sock_poll(.before_events = fio___sock_test_before_events,
                   .on_ready = NULL, .on_data = NULL,
                   .on_error = fio___sock_test_on_event,
                   .after_events = fio___sock_test_after_events, .udata = &flag,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(srv)));
     FIO_T_ASSERT(!flag, "No event should have occured here! (%zu)", flag);
+    flag = (size_t)-1;
     fio_sock_poll(.before_events = fio___sock_test_before_events,
                   .on_ready = NULL, .on_data = fio___sock_test_on_event,
                   .on_error = NULL,
                   .after_events = fio___sock_test_after_events, .udata = &flag,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(srv)));
     FIO_T_ASSERT(!flag, "No event should have occured here! (%zu)", flag);
+    flag = (size_t)-1;
     fio_sock_poll(.before_events = fio___sock_test_before_events,
                   .on_ready = fio___sock_test_on_event, .on_data = NULL,
                   .on_error = NULL,
@@ -15902,6 +15940,8 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___url();
   fprintf(stderr, "===============\n");
+  fio___dynamic_types_test___small_str();
+  fprintf(stderr, "===============\n");
   fio___dynamic_types_test___linked_list_test();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___array_test();
@@ -15911,8 +15951,6 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fio___dynamic_types_test___hmap_test();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___str();
-  fprintf(stderr, "===============\n");
-  fio___dynamic_types_test___small_str();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___queue();
   fprintf(stderr, "===============\n");

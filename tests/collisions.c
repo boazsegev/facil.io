@@ -627,8 +627,14 @@ static void find_bit_collisions(hashing_func_fn fn, size_t collision_count,
           end - start, (size_t)words_count(&c), bit_count, name);
   FIO_ARRAY_EACH(&c, pos) {
     uint64_t tmp = fio_buf2u64(fio_str2ptr(pos));
-    fprintf(stderr, "* %p => %p\n", (void *)tmp,
-            (void *)fn(fio_str2ptr(pos), 8));
+    char ctmp[128];
+    memcpy(ctmp, "* ", 2);
+    size_t wp = fio_ltoa(ctmp + 2, tmp, 16) + 2;
+    memcpy(ctmp + wp, " => ", 4);
+    wp += 4;
+    wp += fio_ltoa(ctmp + wp, fn(fio_str2ptr(pos), 8), 16);
+    memcpy(ctmp + wp, "\n\0", 2);
+    fprintf(stderr, "%s", ctmp);
   }
   words_destroy(&c);
 }
