@@ -15650,6 +15650,9 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
     fprintf(stderr, "* Testing FIOBJ JSON handling.\n");
     char json[] =
         "                    "
+        "\n# comment 1"
+        "\n// comment 2"
+        "\n/* comment 3 */"
         "{\"true\":true,\"false\":false,\"null\":null,\"array\":[1,2,3,4.2,"
         "\"five\"],"
         "\"string\":\"hello\\tjson\\bworld!\\r\\n\",\"hash\":{\"true\":true,"
@@ -15661,12 +15664,12 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
     fprintf(stderr, "JSON: %s\n", FIO_NAME2(fiobj, cstr)(j).buf);
 #endif
     FIO_T_ASSERT(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(j) ==
-                     strlen(json + 20),
+                     strlen(json + 61),
                  "JSON roundtrip failed (length error).");
     FIO_T_ASSERT(
-        !memcmp(json + 20,
+        !memcmp(json + 61,
                 FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING), ptr)(j),
-                strlen(json + 20)),
+                strlen(json + 61)),
         "JSON roundtrip failed (data error).");
     fiobj_free(o);
     fiobj_free(j);
