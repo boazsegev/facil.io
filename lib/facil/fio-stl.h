@@ -9315,7 +9315,7 @@ FIO_IFUNC fio___timer_event_s *fio___timer_pop(fio___timer_event_s **pos,
 FIO_IFUNC fio___timer_event_s *
 fio___timer_event_new(fio_timer_schedule_args_s args) {
   fio___timer_event_s *t = NULL;
-  t = FIO_MEM_CALLOC_(sizeof(*t), 1);
+  t = (fio___timer_event_s *)FIO_MEM_CALLOC_(sizeof(*t), 1);
   if (!t)
     goto init_error;
   *t = (fio___timer_event_s){
@@ -9348,8 +9348,8 @@ FIO_IFUNC void fio___timer_event_free(fio_timer_queue_s *tq,
 }
 
 FIO_SFUNC void fio___timer_perform(void *timer_, void *t_) {
-  fio_timer_queue_s *tq = timer_;
-  fio___timer_event_s *t = t_;
+  fio_timer_queue_s *tq = (fio_timer_queue_s *)timer_;
+  fio___timer_event_s *t = (fio___timer_event_s *)t_;
   if (t->fn(t->udata1, t->udata2))
     tq = NULL;
   fio___timer_event_free(tq, t);
@@ -9378,11 +9378,12 @@ void fio_timer_schedule___(void); /* sublimetext marker */
 /** Adds a time-bound event to the timer queue. */
 FIO_SFUNC void fio_timer_schedule FIO_NOOP(fio_timer_queue_s *timer,
                                            fio_timer_schedule_args_s args) {
+  fio___timer_event_s *t = NULL;
   if (!timer || !args.fn || !args.every)
     goto no_timer_queue;
   if (!args.start_at)
     args.start_at = fio_time_milli();
-  fio___timer_event_s *t = fio___timer_event_new(args);
+  t = fio___timer_event_new(args);
   if (!t)
     return;
   fio_lock(&timer->lock);
