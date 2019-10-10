@@ -377,7 +377,7 @@ Sleep / Thread Scheduling Macros
  */
 #define FIO_THREAD_RESCHEDULE()                                                \
   do {                                                                         \
-    const struct timespec tm = {.tv_nsec = (long)1L};                          \
+    const struct timespec tm = {.tv_sec = 0, .tv_nsec = (long)1L};             \
     nanosleep(&tm, (struct timespec *)NULL);                                   \
   } while (0)
 #endif
@@ -388,8 +388,8 @@ Sleep / Thread Scheduling Macros
  */
 #define FIO_THREAD_WAIT(nano_sec)                                              \
   do {                                                                         \
-    const struct timespec tm = {.tv_sec = ((nano_sec) / 1000000000),           \
-                                .tv_nsec = ((nano_sec) % 1000000000)};         \
+    const struct timespec tm = {.tv_sec = (time_t)((nano_sec) / 1000000000),   \
+                                .tv_nsec = ((long)(nano_sec) % 1000000000)};   \
     nanosleep(&tm, (struct timespec *)NULL);                                   \
   } while (0)
 #endif
