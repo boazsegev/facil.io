@@ -1029,7 +1029,7 @@ void fiobj_io_test FIO_NOOP(void) {
   FIO_ASSERT(fiobj_io_pos(o) == 20,
              "position error (%ld should be zero based).",
              (long)fiobj_io_pos(o));
-  if (0) {
+  if (1) {
     FIOBJ s = fiobj_io_new_slice(o, fiobj_io_len(o), 0);
     FIO_ASSERT(s == FIOBJ_INVALID, "zero length slice should fail");
     s = fiobj_io_new_slice(o, fiobj_io_len(o), 30);
