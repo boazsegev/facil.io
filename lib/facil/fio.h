@@ -1325,12 +1325,13 @@ int fio_defer(void (*task)(void *, void *), void *udata1, void *udata2);
  * The task will repeat `repetitions` times. If `repetitions` is set to 0, task
  * will repeat forever.
  *
- * Returns -1 on error.
+ * If `task` returns a non-zero value, it will stop repeating.
  *
  * The `on_finish` handler is always called (even on error).
  */
-int fio_run_every(size_t milliseconds, size_t repetitions, void (*task)(void *),
-                  void *arg, void (*on_finish)(void *));
+void fio_run_every(size_t milliseconds, size_t repetitions,
+                   int (*task)(void *, void *), void *udata1, void *udata2,
+                   void (*on_finish)(void *, void *));
 
 /**
  * Performs all deferred tasks.

@@ -1029,139 +1029,33 @@ Section Start Marker
 
 ***************************************************************************** */
 
-typedef struct {
-  FIO_LIST_NODE node;
-  struct timespec due;
-  size_t interval; /*in ms */
-  size_t repetitions;
-  void (*task)(void *);
-  void *arg;
-  void (*on_finish)(void *);
-} fio_timer_s;
-
-#define FIO_MALLOC_TMP_USE_SYSTEM 1
-#define FIO_LIST_NAME fio_timer
-#include "fio-stl.h"
-
-static FIO_LIST_HEAD fio_timers = FIO_LIST_INIT(fio_timers);
-static fio_lock_i fio_timer_lock = FIO_LOCK_INIT;
-static inline fio_timer_s *fio_timer_new() {
-  fio_timer_s *t = malloc(sizeof(*t));
-  FIO_ASSERT_ALLOC(t);
-  return t;
-}
-static inline void fio_timer_free(fio_timer_s *t) { free(t); }
+static fio_timer_queue_s facil_io_timer_queue = FIO_TIMER_QUEUE_INIT;
 
 /** Marks the current time as facil.io's cycle time */
 static inline void fio_mark_time(void) {
   clock_gettime(CLOCK_REALTIME, &fio_data->last_cycle);
 }
-
-/** Calculates the due time for a task, given it's interval */
-static struct timespec fio_timer_calc_due(size_t interval) {
-  struct timespec now = fio_last_tick();
-  if (interval >= 1000) {
-    unsigned long long secs = interval / 1000;
-    now.tv_sec += secs;
-    interval -= secs * 1000;
-  }
-  now.tv_nsec += (interval * 1000000UL);
-  if (now.tv_nsec >= 1000000000L) {
-    now.tv_nsec -= 1000000000L;
-    now.tv_sec += 1;
-  }
-  return now;
+/** schedules all timers that are due to be performed. */
+static void fio___timer_schedule(void) {
+  const uint64_t start_at = (fio_data->last_cycle.tv_sec * 1000) +
+                            (fio_data->last_cycle.tv_nsec / 1000000);
+  fio_timer_push2queue(&facil_io_task_queue, &facil_io_timer_queue, start_at);
 }
 
-/** Returns the number of miliseconds until the next event, up to FIO_POLL_TICK
- */
+static void fio___timer_clear_all(void) {
+  fio_timer_clear(&facil_io_timer_queue);
+}
+
+/** Returns the number of miliseconds until the next event, or FIO_POLL_TICK */
 static size_t fio_timer_calc_first_interval(void) {
   if (fio_defer_has_queue())
     return 0;
-  if (fio_timer_is_empty(&fio_timers)) {
+  const uint64_t now = (fio_data->last_cycle.tv_sec * 1000) +
+                       (fio_data->last_cycle.tv_nsec / 1000000);
+  const uint64_t next = fio_timer_next_at(&facil_io_timer_queue);
+  if (next >= now + FIO_POLL_TICK)
     return FIO_POLL_TICK;
-  }
-  struct timespec now = fio_last_tick();
-  struct timespec due = fio_timer_root(fio_timers.next)->due;
-  if (due.tv_sec < now.tv_sec ||
-      (due.tv_sec == now.tv_sec && due.tv_nsec <= now.tv_nsec))
-    return 0;
-  size_t interval = 1000L * (due.tv_sec - now.tv_sec);
-  if (due.tv_nsec >= now.tv_nsec) {
-    interval += (due.tv_nsec - now.tv_nsec) / 1000000L;
-  } else {
-    interval -= (now.tv_nsec - due.tv_nsec) / 1000000L;
-  }
-  if (interval > FIO_POLL_TICK)
-    interval = FIO_POLL_TICK;
-  return interval;
-}
-
-/* simple a<=>b if "a" is bigger a negative result is returned, eq == 0. */
-static int fio_timer_compare(struct timespec a, struct timespec b) {
-  if (a.tv_sec == b.tv_sec) {
-    if (a.tv_nsec < b.tv_nsec)
-      return 1;
-    if (a.tv_nsec > b.tv_nsec)
-      return -1;
-    return 0;
-  }
-  if (a.tv_sec < b.tv_sec)
-    return 1;
-  return -1;
-}
-
-/** Places a timer in an ordered linked list. */
-static void fio_timer_add_order(fio_timer_s *timer) {
-  timer->due = fio_timer_calc_due(timer->interval);
-  fio_lock(&fio_timer_lock);
-  FIO_LIST_EACH(fio_timer_s, node, &fio_timers, node) {
-    if (fio_timer_compare(timer->due, node->due) >= 0) {
-      fio_timer_push(&node->node, timer);
-      goto finish;
-    }
-  }
-  fio_timer_push(&fio_timers, timer);
-finish:
-  fio_unlock(&fio_timer_lock);
-}
-
-/** Performs a timer task and re-adds it to the queue (or cleans it up) */
-static void fio_timer_perform_single(void *timer_, void *ignr) {
-  fio_timer_s *timer = timer_;
-  timer->task(timer->arg);
-  if (!timer->repetitions || fio_atomic_sub(&timer->repetitions, 1))
-    goto reschedule;
-  if (timer->on_finish)
-    timer->on_finish(timer->arg);
-  fio_timer_free(timer);
-  return;
-  (void)ignr;
-reschedule:
-  fio_timer_add_order(timer);
-}
-
-/** schedules all timers that are due to be performed. */
-static void fio_timer_schedule(void) {
-  struct timespec now = fio_last_tick();
-  fio_lock(&fio_timer_lock);
-  while (fio_timer_any(&fio_timers) &&
-         fio_timer_compare(fio_timer_root(fio_timers.next)->due, now) >= 0) {
-    fio_timer_s *tmp = fio_timer_remove(fio_timer_root(fio_timers.next));
-    fio_defer(fio_timer_perform_single, tmp, NULL);
-  }
-  fio_unlock(&fio_timer_lock);
-}
-
-static void fio_timer_clear_all(void) {
-  fio_lock(&fio_timer_lock);
-  while (fio_timer_any(&fio_timers)) {
-    fio_timer_s *timer = fio_timer_pop(&fio_timers);
-    if (timer->on_finish)
-      timer->on_finish(timer->arg);
-    fio_timer_free(timer);
-  }
-  fio_unlock(&fio_timer_lock);
+  return next - now;
 }
 
 /**
@@ -1170,27 +1064,17 @@ static void fio_timer_clear_all(void) {
  * The task will repeat `repetitions` times. If `repetitions` is set to 0, task
  * will repeat forever.
  *
- * Returns -1 on error.
- *
  * The `on_finish` handler is always called (even on error).
  */
-int fio_run_every(size_t milliseconds, size_t repetitions, void (*task)(void *),
-                  void *arg, void (*on_finish)(void *)) {
-  if (!task || (milliseconds == 0 && !repetitions))
-    return -1;
-  fio_timer_s *timer = fio_timer_new();
-  FIO_ASSERT_ALLOC(timer);
-  fio_mark_time();
-  *timer = (fio_timer_s){
-      .due = fio_timer_calc_due(milliseconds),
-      .interval = milliseconds,
-      .repetitions = repetitions,
-      .task = task,
-      .arg = arg,
-      .on_finish = on_finish,
-  };
-  fio_timer_add_order(timer);
-  return 0;
+void fio_run_every(size_t milliseconds, size_t repetitions,
+                   int (*task)(void *, void *), void *udata1, void *udata2,
+                   void (*on_finish)(void *, void *)) {
+  const uint64_t start_at = (fio_data->last_cycle.tv_sec * 1000) +
+                            (fio_data->last_cycle.tv_nsec / 1000000);
+  fio_timer_schedule(&facil_io_timer_queue, .fn = task, .udata1 = udata1,
+                     .udata2 = udata2, .on_finish = on_finish,
+                     .every = milliseconds, .repeat = repetitions,
+                     .start_at = start_at);
 }
 
 /* *****************************************************************************
@@ -3301,8 +3185,8 @@ static void fio_pubsub_on_fork(void);
 
 /* Called within a child process after it starts. */
 static void fio_on_fork(void) {
-  fio_timer_lock = FIO_LOCK_INIT;
-  fio_data->lock = FIO_LOCK_INIT;
+  facil_io_task_queue.lock = FIO_LOCK_INIT;
+  facil_io_timer_queue.lock = FIO_LOCK_INIT;
   fio_defer_on_fork();
   fio_malloc_after_fork();
   fio_poll_init();
@@ -3333,7 +3217,7 @@ static void __attribute__((destructor)) fio_lib_destroy(void) {
   fio_data->active = 0;
   fio_on_fork();
   fio_defer_perform();
-  fio_timer_clear_all();
+  fio___timer_clear_all();
   fio_defer_perform();
   fio_state_callback_force(FIO_CALL_AT_EXIT);
   fio_defer_perform();
@@ -3507,7 +3391,7 @@ static void fio_cycle_schedule_events(void) {
   static int idle = 0;
   static time_t last_to_review = 0;
   fio_mark_time();
-  fio_timer_schedule();
+  fio___timer_schedule();
   fio_max_fd_shrink();
   if (fio_signal_children_flag) {
     /* hot restart support */
@@ -3611,7 +3495,7 @@ static void fio_worker_cleanup(void) {
     }
   }
   fio_defer_perform();
-  fio_timer_clear_all();
+  fio___timer_clear_all();
   fio_defer_perform();
   fio_state_callback_force(FIO_CALL_ON_FINISH);
   fio_defer_perform();
@@ -7421,75 +7305,16 @@ FIO_SFUNC void fio_state_callback_test(void) {
   fprintf(stderr, "* passed.\n");
 }
 #undef FIO_STATE_TEST_COUNT
-/* *****************************************************************************
-Testing fio_timers
-***************************************************************************** */
-
-FIO_SFUNC void fio_timer_test_task(void *arg) { ++(((size_t *)arg)[0]); }
-
-FIO_SFUNC void fio_timer_test(void) {
-  fprintf(stderr, "=== Testing facil.io timer system\n");
-  size_t result = 0;
-  const size_t total = 5;
-  fio_data->active = 1;
-  FIO_ASSERT(fio_timers.next, "Timers not initialized!");
-  FIO_ASSERT(fio_run_every(0, 0, fio_timer_test_task, NULL, NULL) == -1,
-             "Timers without an interval should be an error.");
-  FIO_ASSERT(fio_run_every(1000, 0, NULL, NULL, NULL) == -1,
-             "Timers without a task should be an error.");
-  FIO_ASSERT(fio_run_every(900, total, fio_timer_test_task, &result,
-                           fio_timer_test_task) == 0,
-             "Timer creation failure.");
-  FIO_ASSERT(fio_timer_any(&fio_timers),
-             "Timer scheduling failure - no timer in list.");
-  FIO_ASSERT(fio_timer_calc_first_interval() >= 898 &&
-                 fio_timer_calc_first_interval() <= 902,
-             "next timer calculation error %zu",
-             fio_timer_calc_first_interval());
-
-  fio_timer_s *first = fio_timer_root(fio_timers.next);
-  FIO_ASSERT(fio_run_every(10000, total, fio_timer_test_task, &result,
-                           fio_timer_test_task) == 0,
-             "Timer creation failure (second timer).");
-  FIO_ASSERT(fio_timer_root(fio_timers.next) == first, "Timer Ordering error!");
-
-  FIO_ASSERT(fio_timer_calc_first_interval() >= 898 &&
-                 fio_timer_calc_first_interval() <= 902,
-             "next timer calculation error (after added timer) %zu",
-             fio_timer_calc_first_interval());
-
-  fio_data->last_cycle.tv_nsec += 800;
-  fio_timer_schedule();
-  fio_defer_perform();
-  FIO_ASSERT(result == 0, "Timer filtering error (%zu != 0)\n", result);
-
-  for (size_t i = 0; i < total; ++i) {
-    fio_data->last_cycle.tv_sec += 1;
-    // fio_data->last_cycle.tv_nsec += 1;
-    fio_timer_schedule();
-    fio_defer_perform();
-    FIO_ASSERT(((i != total - 1 && result == i + 1) ||
-                (i == total - 1 && result == total + 1)),
-               "Timer running and rescheduling error (%zu != %zu)\n", result,
-               i + 1);
-    FIO_ASSERT(fio_timer_root(fio_timers.next) == first || i == total - 1,
-               "Timer Ordering error on cycle %zu!", i);
-  }
-
-  fio_data->last_cycle.tv_sec += 10;
-  fio_timer_schedule();
-  fio_defer_perform();
-  FIO_ASSERT(result == total + 2, "Timer # 2 error (%zu != %zu)\n", result,
-             total + 2);
-  fio_data->active = 0;
-  fio_timer_clear_all();
-  fio_defer_clear_tasks();
-  fprintf(stderr, "* passed.\n");
-}
 
 /* *****************************************************************************
 Testing listening socket
 ***************************************************************************** */
+
+FIO_SFUNC int fio_timer_test_task(void *arg1, void *arg2) {
+  ++(((size_t *)arg1)[0]);
+  (void)arg2;
+  return 0;
+}
 
 FIO_SFUNC void fio_socket_test(void) {
   /* initialize unix socket name */
@@ -7532,7 +7357,7 @@ FIO_SFUNC void fio_socket_test(void) {
       FIO_ASSERT(uuid_data(client1).packet, "fio_write error, no packet!")
     }
     /* prevent poll from hanging */
-    fio_run_every(5, 1, fio_timer_test_task, &timer_junk, fio_timer_test_task);
+    fio_run_every(5, 1, fio_timer_test_task, &timer_junk, NULL, NULL);
     errno = EAGAIN;
     for (size_t i = 0; i < 100 && r <= 0 &&
                        (r == 0 || errno == EAGAIN || errno == EWOULDBLOCK);
@@ -7555,7 +7380,7 @@ FIO_SFUNC void fio_socket_test(void) {
     fprintf(stderr, "* Unix socket Read/Write cycle passed: %.*s\n", (int)r,
             tmp_buf);
     fio_data->last_cycle.tv_sec += 10;
-    fio_timer_clear_all();
+    fio___timer_clear_all();
   }
 
   fio_force_close(client1);
@@ -7590,7 +7415,7 @@ FIO_SFUNC void fio_socket_test(void) {
   fio_force_close(client1);
   fio_force_close(client2);
   fio_force_close(uuid);
-  fio_timer_clear_all();
+  fio___timer_clear_all();
   fio_defer_clear_tasks();
   fprintf(stderr, "* passed.\n");
 }
@@ -7599,27 +7424,31 @@ FIO_SFUNC void fio_socket_test(void) {
 Testing listening socket
 ***************************************************************************** */
 
-FIO_SFUNC void fio_cycle_test_task(void *arg) {
+FIO_SFUNC int fio_cycle_test_task(void *arg, void *arg2) {
   fio_stop();
   (void)arg;
+  (void)arg2;
+  return 0;
 }
-FIO_SFUNC void fio_cycle_test_task2(void *arg) {
+FIO_SFUNC int fio_cycle_test_task2(void *arg, void *arg2) {
   fprintf(stderr, "* facil.io cycling test fatal error!\n");
   exit(-1);
   (void)arg;
+  (void)arg2;
+  return 1;
 }
 
 FIO_SFUNC void fio_cycle_test(void) {
   fprintf(stderr,
           "=== Testing facil.io cycling logic (partial - only tests timers)\n");
   fio_mark_time();
-  fio_timer_clear_all();
+  fio___timer_clear_all();
   struct timespec start = fio_last_tick();
-  fio_run_every(1000, 1, fio_cycle_test_task, NULL, NULL);
-  fio_run_every(10000, 1, fio_cycle_test_task2, NULL, NULL);
+  fio_run_every(1000, 1, fio_cycle_test_task, NULL, NULL, NULL);
+  fio_run_every(10000, 1, fio_cycle_test_task2, NULL, NULL, NULL);
   fio_start(.threads = 1, .workers = 1);
   struct timespec end = fio_last_tick();
-  fio_timer_clear_all();
+  fio___timer_clear_all();
   FIO_ASSERT(end.tv_sec == start.tv_sec + 1 || end.tv_sec == start.tv_sec + 2,
              "facil.io cycling error?");
   fprintf(stderr, "* passed.\n");
@@ -8329,7 +8158,6 @@ void fio_test(void) {
   FIO_ASSERT(fio_capa(), "facil.io initialization error!");
   fio_state_callback_test();
   fio_defer_test();
-  fio_timer_test();
   fio_poll_test();
   fio_socket_test();
   fio_uuid_env_test();

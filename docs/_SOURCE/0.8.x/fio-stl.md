@@ -2454,11 +2454,59 @@ Sets a value for the named argument (but **not** it's aliases) **only if** the a
 
 -------------------------------------------------------------------------------
 
+## Time Helpers
+
+By defining `FIO_TIME` or `FIO_QUEUE`, the following time related helpers functions are defined:
+
+#### `fio_time_real`
+
+```c
+struct timespec fio_time_real();
+```
+
+Returns human (watch) time... this value isn't as safe for measurements.
+
+#### `timespec`
+
+```c
+struct timespec fio_time_mono();
+```
+
+Returns monotonic time.
+
+#### `fio_time_nano`
+
+```c
+uint64_t fio_time_nano();
+```
+
+Returns monotonic time in nano-seconds (now in 1 micro of a second).
+
+#### `fio_time_micro`
+
+```c
+uint64_t fio_time_micro();
+```
+
+Returns monotonic time in micro-seconds (now in 1 millionth of a second).
+
+#### `fio_time_milli`
+
+```c
+uint64_t fio_time_milli();
+```
+
+Returns monotonic time in milliseconds.
+
+-------------------------------------------------------------------------------
+
 ## Task Queue
 
 The Simple Template Library includes a simple, thread-safe, task queue based on a linked list of ring buffers.
 
 Since delayed processing is a common task, this queue is provides an easy way to schedule and perform delayed tasks.
+
+In addition, a Timer type allows timed events to be scheduled and moved (according to their "due date") to an existing Task Queue.
 
 ### Queue Related Types
 
@@ -2611,6 +2659,115 @@ size_t fio_queue_count(fio_queue_s *q);
 ```
 
 Returns the number of tasks in the queue.
+
+### Timer Related Types
+
+#### `fio_timer_queue_s`
+
+```c
+typedef struct {
+  fio___timer_event_s *next;
+  fio_lock_i lock;
+} fio_timer_queue_s;
+```
+
+The `fio_timer_queue_s` struct should be considered an opaque data type and accessed only using the functions or the initialization MACRO.
+
+To create a `fio_timer_queue_s` on the stack (or statically):
+
+```c
+fio_timer_queue_s foo_timer = FIO_TIMER_QUEUE_INIT;
+```
+
+A timer could be allocated dynamically:
+
+```c
+fio_timer_queue_s *foo_timer = malloc(sizeof(*foo_timer));
+FIO_ASSERT_ALLOC(foo_timer);
+*foo_timer = (fio_timer_queue_s)FIO_TIMER_QUEUE_INIT;
+```
+
+#### `FIO_TIMER_QUEUE_INIT`
+
+This is a MACRO used to initialize a `fio_timer_queue_s` object.
+
+### Timer API
+
+#### `fio_timer_schedule`
+
+```c
+void fio_timer_schedule(fio_timer_queue_s *timer_queue,
+                        fio_timer_schedule_args_s args);
+```
+
+Adds a time-bound event to the timer queue.
+
+Accepts named arguments using the following argument type and MACRO:
+
+```c
+typedef struct {
+  /** The timer function. If it returns a non-zero value, the timer stops. */
+  int (*fn)(void *, void *);
+  /** Opaque user data. */
+  void *udata1;
+  /** Opaque user data. */
+  void *udata2;
+  /** Called when the timer is done (finished). */
+  void (*on_finish)(void *, void *);
+  /** Timer interval, in milliseconds. */
+  uint32_t every;
+  /** The number of times the timer should repeat itself. 0 == infinity. */
+  int32_t repeat;
+  /** Millisecond at which to start. If missing, filled automatically. */
+  uint64_t start_at;
+} fio_timer_schedule_args_s;
+
+#define fio_timer_schedule(timer_queue, ...)                                   \
+  fio_timer_schedule((timer_queue), (fio_timer_schedule_args_s){__VA_ARGS__})
+```
+
+Note, the event will repeat every `every` milliseconds.
+
+It the scheduler is busy or the event is otherwise delayed, its next scheduling may compensate for the delay by being scheduled sooner.
+
+#### `fio_timer_push2queue` 
+
+```c
+/**  */
+size_t fio_timer_push2queue(fio_queue_s *queue,
+                            fio_timer_queue_s *timer_queue,
+                            uint64_t now_in_milliseconds);
+```
+
+Pushes due events from the timer queue to an event queue.
+
+#### `fio_timer_next_at`
+
+```c
+uint64_t fio_timer_next_at(fio_timer_queue_s *timer_queue);
+```
+
+Returns the millisecond at which the next event should occur.
+
+If no timer is due (list is empty), returns `(uint64_t)-1`.
+
+**Note**: Unless manually specified, millisecond timers are relative to  `fio_time_milli()`.
+
+
+#### `fio_timer_clear`
+
+```c
+void fio_timer_clear(fio_timer_queue_s *timer_queue);
+```
+
+Clears any waiting timer bound tasks.
+
+**Note**:
+
+The timer queue must NEVER be freed when there's a chance that timer tasks are waiting to be performed in a `fio_queue_s`.
+
+This is due to the fact that the tasks may try to reschedule themselves (if they repeat).
+
 
 -------------------------------------------------------------------------------
 

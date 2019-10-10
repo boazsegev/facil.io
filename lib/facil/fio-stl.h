@@ -42,7 +42,9 @@ This file also contains common helper macros / primitives, such as:
 
 * String / Number conversion - defined by `FIO_ATOL`
 
-* Task Queue (Event Loop Engine) - defined by `FIO_QUEUE`
+* Time Helpers - defined by `FIO_TIME`
+
+* Task / Timer Queues (Event Loop Engine) - defined by `FIO_QUEUE`
 
 * Command Line Interface helpers - defined by `FIO_CLI`
 
@@ -50,7 +52,7 @@ This file also contains common helper macros / primitives, such as:
 
 * Custom JSON Parser - defined by `FIO_JSON`
 
-However, this file does very little (if anything) unless specifically requested.
+However, this file does very little unless specifically requested.
 
 To make sure this file defines a specific macro or type, it's macro should be
 set.
@@ -61,6 +63,9 @@ function will test the functionality of this file and, as consequence, will
 define all available macros.
 
 **Notes**:
+
+- To make this file usable for kernel authoring, the `include` statements should
+be reviewed.
 
 - To make these functions safe for kernel authoring, the `FIO_MEM_CALLOC` /
 `FIO_MEM_FREE` / `FIO_MEM_REALLOC` macros should be (re)-defined.
@@ -175,6 +180,7 @@ Basic macros and included files
 #if defined(__unix__) || defined(__linux__) || defined(__APPLE__) ||           \
     defined(__CYGWIN__)
 #define FIO_HAVE_UNIX_TOOLS 1
+#include <sys/param.h>
 #endif
 
 #if FIO_UNALIGNED_ACCESS && (__amd64 || __amd64__ || __x86_64 || __x86_64__)
@@ -8821,7 +8827,94 @@ Small String Cleanup
 
 
 
-                                    Task Queue
+                                  Time Helpers
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if (defined(FIO_QUEUE) || defined(FIO_TIME)) && !defined(H___FIO_TIME___H)
+#define H___FIO_TIME___H
+
+/* *****************************************************************************
+Patch for OSX version < 10.12 from https://stackoverflow.com/a/9781275/4025095
+***************************************************************************** */
+#if defined(__MACH__) && !defined(CLOCK_REALTIME)
+#include <sys/time.h>
+#define CLOCK_REALTIME 0
+#ifndef CLOCK_MONOTONIC
+#define CLOCK_MONOTONIC 0
+#endif
+#define clock_gettime patch_clock_gettime
+// clock_gettime is not implemented on older versions of OS X (< 10.12).
+// If implemented, CLOCK_MONOTONIC will have already been defined.
+FIO_IFUNC int patch_clock_gettime(int clk_id, struct timespec *t) {
+  struct timeval now;
+  int rv = gettimeofday(&now, NULL);
+  if (rv)
+    return rv;
+  t->tv_sec = now.tv_sec;
+  t->tv_nsec = now.tv_usec * 1000;
+  return 0;
+  (void)clk_id;
+}
+#endif
+
+/* *****************************************************************************
+Collecting Monotonic / Real Time
+***************************************************************************** */
+
+/** Returns human (watch) time... this value isn't as safe for measurements. */
+FIO_IFUNC struct timespec fio_time_real() {
+  struct timespec t;
+  clock_gettime(CLOCK_REALTIME, &t);
+  return t;
+}
+
+/** Returns monotonic time. */
+FIO_IFUNC struct timespec fio_time_mono() {
+  struct timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return t;
+}
+
+/** Returns monotonic time in nano-seconds (now in 1 micro of a second). */
+FIO_IFUNC uint64_t fio_time_nano() {
+  struct timespec t = fio_time_mono();
+  return ((uint64_t)t.tv_sec * 1000000000) + (uint64_t)t.tv_nsec;
+}
+
+/** Returns monotonic time in micro-seconds (now in 1 millionth of a second). */
+FIO_IFUNC uint64_t fio_time_micro() {
+  struct timespec t = fio_time_mono();
+  return ((uint64_t)t.tv_sec * 1000000) + (uint64_t)t.tv_nsec / 1000;
+}
+
+/** Returns monotonic time in milliseconds. */
+FIO_IFUNC uint64_t fio_time_milli() {
+  struct timespec t = fio_time_mono();
+  return ((uint64_t)t.tv_sec * 1000) + (uint64_t)t.tv_nsec / 1000000;
+}
+
+#endif /* FIO_TIME */
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+                                Task / Timer Queues
                                 (Event Loop Engine)
 
 
@@ -8930,6 +9023,74 @@ SFUNC void fio_queue_perform_all(fio_queue_s *q);
 HFUNC size_t fio_queue_count(fio_queue_s *q);
 
 /* *****************************************************************************
+Timer Queue Types and API
+***************************************************************************** */
+
+typedef struct fio___timer_event_s fio___timer_event_s;
+
+typedef struct {
+  fio___timer_event_s *next;
+  fio_lock_i lock;
+} fio_timer_queue_s;
+
+#define FIO_TIMER_QUEUE_INIT                                                   \
+  { .lock = FIO_LOCK_INIT }
+
+typedef struct {
+  /** The timer function. If it returns a non-zero value, the timer stops. */
+  int (*fn)(void *, void *);
+  /** Opaque user data. */
+  void *udata1;
+  /** Opaque user data. */
+  void *udata2;
+  /** Called when the timer is done (finished). */
+  void (*on_finish)(void *, void *);
+  /** Timer interval, in milliseconds. */
+  uint32_t every;
+  /** The number of times the timer should repeat itself. 0 == infinity. */
+  int32_t repeat;
+  /** Millisecond at which to start. If missing, filled automatically. */
+  uint64_t start_at;
+} fio_timer_schedule_args_s;
+
+/** Adds a time-bound event to the timer queue. */
+FIO_SFUNC void fio_timer_schedule(fio_timer_queue_s *timer_queue,
+                                  fio_timer_schedule_args_s args);
+
+/** A MACRO allowing named arguments to be used. See fio_timer_schedule_args_s.
+ */
+#define fio_timer_schedule(timer_queue, ...)                                   \
+  fio_timer_schedule((timer_queue), (fio_timer_schedule_args_s){__VA_ARGS__})
+
+/** Pushes due events from the timer queue to an event queue. */
+FIO_SFUNC size_t fio_timer_push2queue(fio_queue_s *queue,
+                                      fio_timer_queue_s *timer_queue,
+                                      uint64_t now_in_milliseconds);
+
+/*
+ * Returns the millisecond at which the next event should occur.
+ *
+ * If no timer is due (list is empty), returns `(uint64_t)-1`.
+ *
+ * NOTE: unless manually specified, millisecond timers are relative to
+ * `fio_time_milli()`.
+ */
+HFUNC uint64_t fio_timer_next_at(fio_timer_queue_s *timer_queue);
+
+/**
+ * Clears any waiting timer bound tasks.
+ *
+ * NOTE:
+ *
+ * The timer queue must NEVER be freed when there's a chance that timer tasks
+ * are waiting to be performed in a `fio_queue_s`.
+ *
+ * This is due to the fact that the tasks may try to reschedule themselves (if
+ * they repeat).
+ */
+FIO_SFUNC void fio_timer_clear(fio_timer_queue_s *timer_queue);
+
+/* *****************************************************************************
 Queue Inline Helpers
 ***************************************************************************** */
 
@@ -8942,6 +9103,40 @@ HFUNC fio_queue_s *fio_queue_new(void) {
 
 /** returns the number of tasks in the queue. */
 HFUNC size_t fio_queue_count(fio_queue_s *q) { return q->count; }
+
+/* *****************************************************************************
+Timer Queue Inline Helpers
+***************************************************************************** */
+
+struct fio___timer_event_s {
+  int (*fn)(void *, void *);
+  void *udata1;
+  void *udata2;
+  void (*on_finish)(void *udata1, void *udata2);
+  uint64_t due;
+  uint32_t every;
+  int32_t repeat;
+  struct fio___timer_event_s *next;
+};
+
+/*
+ * Returns the millisecond at which the next event should occur.
+ *
+ * If no timer is due (list is empty), returns `(uint64_t)-1`.
+ *
+ * NOTE: unless manually specified, millisecond timers are relative to
+ * `fio_time_milli()`.
+ */
+HFUNC uint64_t fio_timer_next_at(fio_timer_queue_s *tq) {
+  if (!tq || !tq->next)
+    return (uint64_t)-1;
+  uint64_t v = (uint64_t)-1;
+  fio_lock(&tq->lock);
+  if (tq->next)
+    v = tq->next->due;
+  fio_unlock(&tq->lock);
+  return v;
+}
 
 /* *****************************************************************************
 Queue Implementation
@@ -9106,7 +9301,134 @@ SFUNC void fio_queue_perform_all(fio_queue_s *q) {
 }
 
 /* *****************************************************************************
-Queue Cleanup
+Timer Queue Implementation
+***************************************************************************** */
+
+FIO_IFUNC void fio___timer_insert(fio___timer_event_s **pos,
+                                  fio___timer_event_s *e) {
+  while (*pos && e->due >= (*pos)->due)
+    pos = &((*pos)->next);
+  e->next = *pos;
+  *pos = e;
+}
+
+FIO_IFUNC fio___timer_event_s *fio___timer_pop(fio___timer_event_s **pos,
+                                               uint64_t due) {
+  if (!*pos || (*pos)->due > due)
+    return NULL;
+  fio___timer_event_s *t = *pos;
+  *pos = t->next;
+  return t;
+}
+
+FIO_IFUNC fio___timer_event_s *
+fio___timer_event_new(fio_timer_schedule_args_s args) {
+  fio___timer_event_s *t = NULL;
+  t = FIO_MEM_CALLOC_(sizeof(*t), 1);
+  if (!t)
+    goto init_error;
+  *t = (fio___timer_event_s){
+      .fn = args.fn,
+      .udata1 = args.udata1,
+      .udata2 = args.udata2,
+      .on_finish = args.on_finish,
+      .due = args.start_at + args.every,
+      .every = args.every,
+      .repeat = args.repeat,
+  };
+  return t;
+init_error:
+  if (args.on_finish)
+    args.on_finish(args.udata1, args.udata2);
+  return NULL;
+}
+
+FIO_IFUNC void fio___timer_event_free(fio_timer_queue_s *tq,
+                                      fio___timer_event_s *t) {
+  if (tq && (t->repeat <= 0 || fio_atomic_sub(&t->repeat, 1))) {
+    fio_lock(&tq->lock);
+    fio___timer_insert(&tq->next, t);
+    fio_unlock(&tq->lock);
+    return;
+  }
+  if (t->on_finish)
+    t->on_finish(t->udata1, t->udata2);
+  FIO_MEM_FREE_(t, sizeof(*t));
+}
+
+FIO_SFUNC void fio___timer_perform(void *timer_, void *t_) {
+  fio_timer_queue_s *tq = timer_;
+  fio___timer_event_s *t = t_;
+  if (t->fn(t->udata1, t->udata2))
+    tq = NULL;
+  fio___timer_event_free(tq, t);
+}
+
+/** Pushes due events from the timer queue to an event queue. */
+FIO_SFUNC size_t fio_timer_push2queue(fio_queue_s *queue,
+                                      fio_timer_queue_s *timer,
+                                      uint64_t start_at) {
+  size_t r = 0;
+  if (!start_at)
+    start_at = fio_time_milli();
+  if (fio_trylock(&timer->lock))
+    return 0;
+  fio___timer_event_s *t;
+  while ((t = fio___timer_pop(&timer->next, start_at))) {
+    fio_queue_push(queue, .fn = fio___timer_perform, .udata1 = timer,
+                   .udata2 = t);
+    ++r;
+  }
+  fio_unlock(&timer->lock);
+  return r;
+}
+
+void fio_timer_schedule___(void); /* sublimetext marker */
+/** Adds a time-bound event to the timer queue. */
+FIO_SFUNC void fio_timer_schedule FIO_NOOP(fio_timer_queue_s *timer,
+                                           fio_timer_schedule_args_s args) {
+  if (!timer || !args.fn || !args.every)
+    goto no_timer_queue;
+  if (!args.start_at)
+    args.start_at = fio_time_milli();
+  fio___timer_event_s *t = fio___timer_event_new(args);
+  if (!t)
+    return;
+  fio_lock(&timer->lock);
+  fio___timer_insert(&timer->next, t);
+  fio_unlock(&timer->lock);
+  return;
+no_timer_queue:
+  if (args.on_finish)
+    args.on_finish(args.udata1, args.udata2);
+  FIO_LOG_ERROR("fio_timer_schedule called with illigal arguments.");
+}
+
+/**
+ * Clears any waiting timer bound tasks.
+ *
+ * NOTE:
+ *
+ * The timer queue must NEVER be freed when there's a chance that timer tasks
+ * are waiting to be performed in a `fio_queue_s`.
+ *
+ * This is due to the fact that the tasks may try to reschedule themselves (if
+ * they repeat).
+ */
+FIO_SFUNC void fio_timer_clear(fio_timer_queue_s *tq) {
+  fio___timer_event_s *next;
+  fio_lock(&tq->lock);
+  next = tq->next;
+  tq->next = NULL;
+  fio_unlock(&tq->lock);
+  while (next) {
+    fio___timer_event_s *tmp = next;
+    next = next->next;
+    fio___timer_event_free(NULL, tmp);
+  }
+}
+/* *****************************************************************************
+Queue/Timer Cleanup
 ***************************************************************************** */
 #endif /* FIO_EXTERN_COMPLETE */
 #undef FIO_QUEUE
@@ -14585,19 +14907,24 @@ typedef struct {
   uintptr_t count;
 } fio___queue_test_s;
 
-FIO_SFUNC void fio___queue_test_sample_task(void *i_count, void *unused2) {
+TEST_FUNC void fio___queue_test_sample_task(void *i_count, void *unused2) {
   (void)(unused2);
   fio_atomic_add((uintptr_t *)i_count, 1);
 }
 
-FIO_SFUNC void fio___queue_test_sched_sample_task(void *t_, void *i_count) {
+TEST_FUNC void fio___queue_test_sched_sample_task(void *t_, void *i_count) {
   fio___queue_test_s *t = (fio___queue_test_s *)t_;
   for (size_t i = 0; i < t->count; i++) {
     fio_queue_push(t->q, .fn = fio___queue_test_sample_task, .udata1 = i_count);
   }
 }
 
-FIO_SFUNC void fio___dynamic_types_test___queue(void) {
+TEST_FUNC int fio___queue_test_timer_task(void *i_count, void *unused2) {
+  fio_atomic_add((uintptr_t *)i_count, 1);
+  return (unused2 ? -1 : 0);
+}
+
+TEST_FUNC void fio___dynamic_types_test___queue(void) {
   fprintf(stderr, "* Testing facil.io task scheduling (fio_queue)\n");
   fio_queue_s *q = fio_queue_new();
 
@@ -14704,6 +15031,86 @@ FIO_SFUNC void fio___dynamic_types_test___queue(void) {
     }
     FIO_T_ASSERT(fio_queue_pop(&q2).fn == NULL,
                  "pop overflow after urgent tasks");
+    fio_queue_destroy(&q2);
+  }
+  {
+    fprintf(stderr,
+            "* Testing facil.io timer scheduling (fio_timer_queue_s)\n");
+    fprintf(stderr, "  Note: Errors SHOULD print out to the log.\n");
+    fio_queue_s q2 = FIO_QUEUE_INIT(q2);
+    uintptr_t tester = 0;
+    fio_timer_queue_s tq = FIO_TIMER_QUEUE_INIT;
+
+    /* test failuers */
+    fio_timer_schedule(&tq, .udata1 = &tester,
+                       .on_finish = fio___queue_test_sample_task, .every = 100);
+    FIO_T_ASSERT(tester == 1,
+                 "fio_timer_schedule should have called `on_finish`");
+    tester = 0;
+    fio_timer_schedule(NULL, .fn = fio___queue_test_timer_task,
+                       .udata1 = &tester,
+                       .on_finish = fio___queue_test_sample_task, .every = 100);
+    FIO_T_ASSERT(tester == 1,
+                 "fio_timer_schedule should have called `on_finish`");
+    tester = 0;
+    fio_timer_schedule(&tq, .fn = fio___queue_test_timer_task,
+                       .udata1 = &tester,
+                       .on_finish = fio___queue_test_sample_task, .every = 0);
+    FIO_T_ASSERT(tester == 1,
+                 "fio_timer_schedule should have called `on_finish`");
+
+    /* test endless task */
+    tester = 0;
+    fio_timer_schedule(&tq, .fn = fio___queue_test_timer_task,
+                       .udata1 = &tester,
+                       .on_finish = fio___queue_test_sample_task, .every = 1,
+                       .start_at = fio_time_milli() - 10);
+    FIO_T_ASSERT(tester == 0,
+                 "fio_timer_schedule should have scheduled the task.");
+    for (size_t i = 0; i < 10; ++i) {
+      fio_timer_push2queue(&q2, &tq, fio_time_milli());
+      FIO_T_ASSERT(fio_queue_count(&q2) == 1,
+                   "task should have been scheduled");
+      fio_queue_perform(&q2);
+      FIO_T_ASSERT(!fio_queue_count(&q2), "queue should be empty");
+      FIO_T_ASSERT(tester == i + 1, "task should have been performed (%zu).",
+                   (size_t)tester);
+    }
+    tester = 0;
+    fio_timer_clear(&tq);
+    FIO_T_ASSERT(tester == 1, "fio_timer_clear should have called `on_finish`");
+
+    /* test single-use task */
+    tester = 0;
+    fio_timer_schedule(&tq, .fn = fio___queue_test_timer_task,
+                       .udata1 = &tester,
+                       .on_finish = fio___queue_test_sample_task, .every = 100,
+                       .repeat = 1, .start_at = fio_time_milli() - 10);
+    FIO_T_ASSERT(tester == 0,
+                 "fio_timer_schedule should have scheduled the task.");
+    fio_timer_schedule(&tq, .fn = fio___queue_test_timer_task,
+                       .udata1 = &tester,
+                       .on_finish = fio___queue_test_sample_task, .every = 1,
+                       .repeat = 1, .start_at = fio_time_milli() - 10);
+    FIO_T_ASSERT(tester == 0,
+                 "fio_timer_schedule should have scheduled the task.");
+    FIO_T_ASSERT(fio_timer_next_at(&tq) == fio_time_milli() - 9,
+                 "fio_timer_next_at value error.");
+    fio_timer_push2queue(&q2, &tq, fio_time_milli());
+    FIO_T_ASSERT(fio_queue_count(&q2) == 1, "task should have been scheduled");
+    FIO_T_ASSERT(fio_timer_next_at(&tq) == fio_time_milli() + 90,
+                 "fio_timer_next_at value error for unscheduled task.");
+    fio_queue_perform(&q2);
+    FIO_T_ASSERT(!fio_queue_count(&q2), "queue should be empty");
+    FIO_T_ASSERT(tester == 2,
+                 "task should have been performed and on_finish called (%zu).",
+                 (size_t)tester);
+    fio_timer_clear(&tq);
+    FIO_T_ASSERT(
+        tester == 3,
+        "fio_timer_clear should have called on_finish of future task (%zu).",
+        (size_t)tester);
+    FIO_T_ASSERT(!tq.next, "timer queue should be empty.");
     fio_queue_destroy(&q2);
   }
   fprintf(stderr, "* passed.\n");
