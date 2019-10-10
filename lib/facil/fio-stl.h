@@ -15268,7 +15268,7 @@ TEST_FUNC void fio___dynamic_types_test___sock(void) {
   } server_tests[] = {
       {"127.0.0.1", "9437", "TCP", FIO_SOCK_TCP},
       {"./tmp_unix_testing_socket_facil_io", NULL, "Unix", FIO_SOCK_UNIX},
-      /* accept doesn't work with UDP, not like this, does it...? */
+      /* accept doesn't work with UDP, not like this... UDP test is seperate */
       // {"127.0.0.1", "9437", "UDP", FIO_SOCK_UDP},
       {.address = NULL},
   };
@@ -15285,6 +15285,14 @@ TEST_FUNC void fio___dynamic_types_test___sock(void) {
                   .on_ready = NULL, .on_data = NULL,
                   .on_error = fio___sock_test_on_event,
                   .after_events = fio___sock_test_after_events, .udata = &flag);
+    FIO_T_ASSERT(!flag, "before_events not called for missing list! (%zu)",
+                 flag);
+    flag = (size_t)-1;
+    fio_sock_poll(.before_events = fio___sock_test_before_events,
+                  .on_ready = NULL, .on_data = NULL,
+                  .on_error = fio___sock_test_on_event,
+                  .after_events = fio___sock_test_after_events, .udata = &flag,
+                  .fds = FIO_SOCK_POLL_LIST({.fd = -1}));
     FIO_T_ASSERT(!flag, "before_events not called for empty list! (%zu)", flag);
     flag = (size_t)-1;
     fio_sock_poll(.before_events = fio___sock_test_before_events,
@@ -15396,6 +15404,39 @@ TEST_FUNC void fio___dynamic_types_test___sock(void) {
                   .after_events = fio___sock_test_after_events, .udata = &flag,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(cl)));
     FIO_T_ASSERT(flag, "Event should have occured here! (%zu)", flag);
+  }
+  {
+    /* UDP semi test */
+    fprintf(stderr, "* Testing UDP socket (abbreviated test)\n");
+    int srv = fio_sock_open(NULL, "9437", FIO_SOCK_UDP | FIO_SOCK_SERVER);
+    int n = 0; /* try for 32Mb */
+    socklen_t sn = sizeof(n);
+    if (-1 != getsockopt(srv, SOL_SOCKET, SO_RCVBUF, &n, &sn) &&
+        sizeof(n) == sn)
+      fprintf(stderr, "\t- UDP default receive buffer is %d bytes\n", n);
+    n = 32 * 1024 * 1024; /* try for 32Mb */
+    sn = sizeof(n);
+    while (n >= (4 * 1024 * 1024) &&
+           setsockopt(srv, SOL_SOCKET, SO_RCVBUF, &n, sn) == -1) {
+      /* failed - repeat attempt at 1Mb interval */
+      n -= 1024 * 1024;
+    }
+    if (-1 != getsockopt(srv, SOL_SOCKET, SO_RCVBUF, &n, &sn) &&
+        sizeof(n) == sn)
+      fprintf(stderr, "\t- UDP receive buffer could be set to %d bytes\n", n);
+    FIO_T_ASSERT(srv != -1, "Couldn't open UDP server socket: %s",
+                 strerror(errno));
+    int cl = fio_sock_open(NULL, "9437", FIO_SOCK_UDP | FIO_SOCK_CLIENT);
+    FIO_T_ASSERT(cl != -1, "Couldn't open UDP client socket: %s",
+                 strerror(errno));
+    FIO_T_ASSERT(send(cl, "hello", 5, 0) != -1,
+                 "couldn't send datagram from client");
+    char buf[64];
+    FIO_T_ASSERT(recvfrom(srv, buf, 64, 0, NULL, NULL) != -1,
+                 "couldn't read datagram");
+    FIO_T_ASSERT(!memcmp(buf, "hello", 5), "transmission error");
+    close(srv);
+    close(cl);
   }
 }
 
