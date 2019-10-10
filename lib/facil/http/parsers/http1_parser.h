@@ -260,7 +260,7 @@ String to Number
 ***************************************************************************** */
 
 /** Converts a String to a number using base 10 */
-long long http1_atol(const uint8_t *buf) {
+static long long http1_atol(const uint8_t *buf) {
   register unsigned long long i = 0;
   uint8_t inv = 0;
   while (*buf == ' ' || *buf == '\t' || *buf == '\f')
@@ -281,7 +281,7 @@ long long http1_atol(const uint8_t *buf) {
 }
 
 /** Converts a String to a number using base 16 */
-long long http_atol16(const uint8_t *buf) {
+static long long http_atol16(const uint8_t *buf) {
   register unsigned long long i = 0;
   uint8_t inv = 0;
   while (*buf == ' ' || *buf == '\t' || *buf == '\f')
