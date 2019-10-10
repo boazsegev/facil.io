@@ -15416,11 +15416,12 @@ TEST_FUNC void fio___dynamic_types_test___sock(void) {
       fprintf(stderr, "\t- UDP default receive buffer is %d bytes\n", n);
     n = 32 * 1024 * 1024; /* try for 32Mb */
     sn = sizeof(n);
-    while (n >= (4 * 1024 * 1024) &&
-           setsockopt(srv, SOL_SOCKET, SO_RCVBUF, &n, sn) == -1) {
-      /* failed - repeat attempt at 1Mb interval */
-      if (n >= (4 * 1024 * 1024))
-        n -= 1024 * 1024;
+    while (setsockopt(srv, SOL_SOCKET, SO_RCVBUF, &n, sn) == -1) {
+      /* failed - repeat attempt at 0.5Mb interval */
+      if (n >= (1024 * 1024)) // OS may have returned max value
+        n -= 512 * 1024;
+      else
+        break;
     }
     if (-1 != getsockopt(srv, SOL_SOCKET, SO_RCVBUF, &n, &sn) &&
         sizeof(n) == sn)
