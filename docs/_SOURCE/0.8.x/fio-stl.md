@@ -2182,7 +2182,9 @@ Consider (from [this SO answer](https://stackoverflow.com/questions/2090850/spec
 int n = 32*1024*1024; /* try for 32Mb */
 while (n >= (4*1024*1024) && setsockopt(socket, SOL_SOCKET, SO_RCVBUF, &n, sizeof(n)) == -1) {
   /* failed - repeat attempt at 1Mb interval */
-  n -= 1024*1024;
+  if (n >= (4 * 1024 * 1024)) // OS may have returned max value
+    n -= 1024 * 1024;
+
 }
 ```
 

@@ -15419,7 +15419,8 @@ TEST_FUNC void fio___dynamic_types_test___sock(void) {
     while (n >= (4 * 1024 * 1024) &&
            setsockopt(srv, SOL_SOCKET, SO_RCVBUF, &n, sn) == -1) {
       /* failed - repeat attempt at 1Mb interval */
-      n -= 1024 * 1024;
+      if (n >= (4 * 1024 * 1024))
+        n -= 1024 * 1024;
     }
     if (-1 != getsockopt(srv, SOL_SOCKET, SO_RCVBUF, &n, &sn) &&
         sizeof(n) == sn)
