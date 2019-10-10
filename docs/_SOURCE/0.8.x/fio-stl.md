@@ -2176,11 +2176,12 @@ If neither `FIO_SOCK_SERVER` nor `FIO_SOCK_CLIENT` are specified, the function w
 
 UDP Server Sockets might need to handle traffic from multiple clients, which could require a significantly larger OS buffer then the default buffer offered.
 
-Consider (from [this SO answer](https://stackoverflow.com/questions/2090850/specifying-udp-receive-buffer-size-at-runtime-in-linux/2090902#2090902), see [this blog post](https://medium.com/@CameronSparr/increase-os-udp-buffers-to-improve-performance-51d167bb1360) and [this article](http://fasterdata.es.net/network-tuning/udp-tuning/)):
+Consider (from [this SO answer](https://stackoverflow.com/questions/2090850/specifying-udp-receive-buffer-size-at-runtime-in-linux/2090902#2090902), see [this blog post](https://medium.com/@CameronSparr/increase-os-udp-buffers-to-improve-performance-51d167bb1360), [this article](http://fasterdata.es.net/network-tuning/udp-tuning/) and [this article](https://access.redhat.com/documentation/en-US/JBoss_Enterprise_Web_Platform/5/html/Administration_And_Configuration_Guide/jgroups-perf-udpbuffer.html)):
 
 ```c
-int n = 32*1024*1024;
+int n = 32*1024*1024; /* try for 32Mb */
 while (n >= (4*1024*1024) && setsockopt(socket, SOL_SOCKET, SO_RCVBUF, &n, sizeof(n)) == -1) {
+  /* failed - repeat attempt at 1Mb interval */
   n -= 1024*1024;
 }
 ```

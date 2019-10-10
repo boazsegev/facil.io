@@ -8152,6 +8152,7 @@ Run all tests
 ***************************************************************************** */
 
 void fio_test(void) {
+  FIO_VERSION_VALIDATE();
   fio_siphash_test();
   fio_sha1_test();
   fio_sha2_test();
