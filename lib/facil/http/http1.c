@@ -197,10 +197,8 @@ struct header_writer_s {
 };
 
 void http1_set_connection_headers(http_internal_s *h) {
-  FIOBJ tmp = FIOBJ_INVALID;
-
   /* manage Keep-Alive / Closure headers and state */
-  tmp = fiobj_hash_get2(h->headers_out, HTTP_HEADER_CONNECTION);
+  FIOBJ tmp = fiobj_hash_get2(h->headers_out, HTTP_HEADER_CONNECTION);
   if (tmp && FIOBJ_TYPE_IS(tmp, FIOBJ_T_STRING)) {
     fio_str_info_s t = fiobj_str2cstr(tmp);
     if (t.buf[0] == 'c' || t.buf[0] == 'C')
@@ -447,20 +445,20 @@ Push
 /** Push for files. */
 static int http1_push_file(http_internal_s *h, FIOBJ filename,
                            FIOBJ mime_type) {
-  return -1;
   (void)h;
   fiobj_free(filename);
   fiobj_free(mime_type);
+  return -1;
 }
 
 /** Push for data. */
 static int http1_push_data(http_internal_s *h, void *data, uintptr_t length,
                            FIOBJ mime_type) {
-  return -1;
   (void)h;
   (void)data;
   (void)length;
   fiobj_free(mime_type);
+  return -1;
 }
 
 /* *****************************************************************************

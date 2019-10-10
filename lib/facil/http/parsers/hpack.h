@@ -709,7 +709,7 @@ void hpack_test(void) {
         fprintf(stderr,
                 "* HPACK HUFFMAN TEST FAILED result error (3).\n*    Got "
                 "(%u): %.*s\n",
-                tmp, (int)tmp, results);
+                tmp, (unsigned int)tmp, results);
         exit(-1);
       }
     }

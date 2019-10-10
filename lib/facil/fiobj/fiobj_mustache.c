@@ -75,8 +75,7 @@ Mustache Callbacks
 static inline FIOBJ fiobj_mustache_find_obj_absolute(FIOBJ parent, FIOBJ key) {
   if (!FIOBJ_TYPE_IS(parent, FIOBJ_T_HASH))
     return FIOBJ_INVALID;
-  FIOBJ o = FIOBJ_INVALID;
-  o = fiobj_hash_get2(parent, key);
+  FIOBJ o = fiobj_hash_get2(parent, key);
   return o;
 }
 

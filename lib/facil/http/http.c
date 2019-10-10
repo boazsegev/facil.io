@@ -41,10 +41,10 @@ static inline void add_content_type(http_internal_s *h) {
 }
 static inline FIOBJ get_date___(void) {
   static FIOBJ_STR_TEMP_VAR(date);
-  static char date_buf[48];
-  static size_t date_len;
   static time_t last_date_added;
   if (fio_last_tick().tv_sec > last_date_added) {
+    static char date_buf[48];
+    static size_t date_len;
     const time_t now = fio_last_tick().tv_sec;
     struct tm tm;
     http_gmtime(now, &tm);
