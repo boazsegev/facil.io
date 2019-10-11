@@ -791,6 +791,10 @@ Some map implementations support a FIFO limited storage, which could be used for
 
 ### Map Performance
 
+Memory overhead (on 64bit machines) is 24 bytes for the map container + 16 bytes of metadata per object container.
+
+For example, assuming a hash map (not a set) with 8 byte keys and 8 byte values, that would add up to 32 bytes per object (`32 * map_capa(map) + 24`).
+
 Seeking time is usually a fast O(1), although partial or full `hash` collisions may increase the cost of the operation.
 
 Adding, editing and removing items is also a very fast O(1), especially if enough memory was previously reserved. However, memory allocation and copying will slow performance, especially when the map need to grow or requires de-fragmentation.
