@@ -134,6 +134,7 @@ typedef struct {
   } while (0)
 #define FIO_MAP_KEY fio_uuid_env_name_s
 #define FIO_MAP_KEY_INVALID (fio_uuid_env_name_s) FIO_SMALL_STR_INIT
+#define FIO_MAP_KEY_INVALID_SIMPLE 1 /* invalid type bytes are all zeros */
 #define FIO_MAP_KEY_DESTROY(k) fio_uuid_env_name_destroy(&k)
 /* destroy discarded keys when overwriting existing data (duplicate keys aren't
  * copied): */

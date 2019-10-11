@@ -1541,19 +1541,22 @@ The type (`FIO_SMALL_STR_NAME_s`) and the functions will be automatically define
 
 ```c
 #define FIO_SMALL_STR_NAME key
-#include "../../facilio/lib/facil/fio-stl.h"
+#define FIO_ATOL
+#include "fio-stl.h"
 
 #define FIO_MAP_NAME map
 #define FIO_MAP_TYPE uintptr_t
 #define FIO_MAP_KEY key_s
 #define FIO_MAP_KEY_INVALID (key_s)FIO_SMALL_STR_INIT
+#define FIO_MAP_KEY_INVALID_SIMPLE 1 /* invalid type bytes are all zeros */
 #define FIO_MAP_KEY_DESTROY(k) key_destroy(&k)
 /* destroy discarded keys when overwriting existing data (duplicate keys aren't copied): */
 #define FIO_MAP_KEY_DISCARD(k) key_destroy(&k)
-#include "../../facilio/lib/facil/fio-stl.h"
+#include "fio-stl.h"
 
 void example(void) {
   map_s m = FIO_MAP_INIT;
+  /* write the long keys twice, to prove they self-destruct in the Hash-Map */
   for (int overwrite = 0; overwrite < 2; ++overwrite) {
     for (int i = 0; i < 10; ++i) {
       char buf[128] = "a long key will require memory allocation: ";
@@ -1563,8 +1566,10 @@ void example(void) {
       map_set(&m, key_hash(&k, (uint64_t)&m), k, (uintptr_t)i, NULL);
     }
   }
+  /* short keys don't allocate external memory (string embedded in the object) */
   for (int i = 0; i < 10; ++i) {
-    char buf[128] = "embed: "; /* short keys fit in pointer + length type */
+    /* short keys fit in pointer + length type... test assumes 64bit addresses */
+    char buf[128] = "embed: ";
     size_t len = fio_ltoa(buf + 7, i, 16) + 7;
     key_s k;
     key_set_copy(&k, buf, len);
@@ -1576,6 +1581,7 @@ void example(void) {
             (key_is_allocated(&pos->obj.key) ? "yes" : "no"));
   }
   map_destroy(&m);
+  /* test for memory leaks using valgrind or similar */
 }
 ```
 
@@ -1600,6 +1606,8 @@ Initializes the container with the provided static / constant string.
 The string will be copied to the container **only** if it will fit in the
 container itself. Otherwise, the supplied pointer will be used as is and it
 should remain valid until the string is destroyed.
+
+The final string can be safely be destroyed (using the `destroy` function).
 
 #### `SMALL_STR_set_copy`
 

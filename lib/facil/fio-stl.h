@@ -788,9 +788,10 @@ HFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_xchange(lock, 0); }
 ***************************************************************************** */
 
 #if (defined(FIO_BITWISE) || defined(FIO_NTOL) || defined(FIO_RAND) ||         \
-     defined(FIO_NTOL) || defined(FIO_RISKY_HASH)) &&                          \
-    !defined(FIO_LROT)
-
+     defined(FIO_NTOL) || defined(FIO_RISKY_HASH) ||                           \
+     defined(FIO_STRING_NAME) || defined(FIO_SMALL_STR_NAME)) &&               \
+    !defined(H___BITWISE___H)
+#define H___BITWISE___H
 /* *****************************************************************************
 Swapping byte's order (`bswap` variations)
 ***************************************************************************** */
@@ -8462,6 +8463,8 @@ typedef struct {
  * The string will be copied to the container **only** if it will fit in the
  * container itself. Otherwise, the supplied pointer will be used as is and it
  * should remain valid until the string is destroyed.
+ *
+ * The final string can be safely be destroyed (using the `destroy` function).
  */
 IFUNC void FIO_NAME(FIO_SMALL_STR_NAME, set_const)(FIO_SMALL_STR_PTR s,
                                                    const char *str, size_t len);
@@ -8469,7 +8472,7 @@ IFUNC void FIO_NAME(FIO_SMALL_STR_NAME, set_const)(FIO_SMALL_STR_PTR s,
 /**
  * Initializes the container with the provided dynamic string.
  *
- * The string is always copied and the final string must be destoryed (using the
+ * The string is always copied and the final string must be destroyed (using the
  * `destroy` function).
  */
 IFUNC void FIO_NAME(FIO_SMALL_STR_NAME, set_copy)(FIO_SMALL_STR_PTR s,
