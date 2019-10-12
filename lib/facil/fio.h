@@ -175,6 +175,7 @@ Import STL
 #define FIO_ATOL
 #define FIO_NTOL
 #define FIO_RAND
+#define FIO_TIME
 #define FIO_URL
 #define FIO_FIOBJ
 #include "fio-stl.h"

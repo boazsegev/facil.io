@@ -940,36 +940,6 @@ FIOBJ http2str(http_s *h);
  * This function is called automatically if the `.log` setting is enabled.
  */
 void http_write_log(http_s *h);
-/* *****************************************************************************
-HTTP Time related helper functions that could be used globally
-***************************************************************************** */
-
-/**
-A faster (yet less localized) alternative to `gmtime_r`.
-
-See the libc `gmtime_r` documentation for details.
-
-Falls back to `gmtime_r` for dates before epoch.
-*/
-struct tm *http_gmtime(time_t timer, struct tm *tmbuf);
-
-/** Writes an RFC 7231 date representation (HTTP date format) to target. */
-size_t http_date2rfc7231(char *target, struct tm *tmbuf);
-/** Writes an RFC 2109 date representation to target. */
-size_t http_date2rfc2109(char *target, struct tm *tmbuf);
-/** Writes an RFC 2822 date representation to target. */
-size_t http_date2rfc2822(char *target, struct tm *tmbuf);
-/**
-Writes an HTTP date string to the `target` buffer.
-
-This requires ~32 bytes of space to be available at the target buffer (unless
-it's a super funky year, 32 bytes is about 3 more than you need).
-
-Returns the number of bytes actually written.
-*/
-static inline size_t http_date2str(char *target, struct tm *tmbuf) {
-  return http_date2rfc7231(target, tmbuf);
-}
 
 /* *****************************************************************************
 HTTP URL decoding helper functions that might be used globally

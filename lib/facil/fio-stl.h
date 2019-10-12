@@ -8887,16 +8887,16 @@ HFUNC uint64_t fio_time_milli();
  *
  * Falls back to `gmtime_r` for dates before epoch.
  */
-FIO_SFUNC struct tm fio_time2gm(time_t time);
+SFUNC struct tm fio_time2gm(time_t time);
 
 /** Writes an RFC 7231 date representation (HTTP date format) to target. */
-FIO_SFUNC size_t fio_time2rfc7231(char *target, time_t time);
+SFUNC size_t fio_time2rfc7231(char *target, time_t time);
 
 /** Writes an RFC 2109 date representation to target. */
-FIO_SFUNC size_t fio_time2rfc2109(char *target, time_t time);
+SFUNC size_t fio_time2rfc2109(char *target, time_t time);
 
 /** Writes an RFC 2822 date representation to target. */
-FIO_SFUNC size_t fio_time2rfc2822(char *target, time_t time);
+SFUNC size_t fio_time2rfc2822(char *target, time_t time);
 
 /* *****************************************************************************
 Time Inline Helpers
@@ -8946,7 +8946,7 @@ Time Implementation
  *
  * Falls back to `gmtime_r` for dates before epoch.
  */
-FIO_SFUNC struct tm fio_time2gm(time_t timer) {
+SFUNC struct tm fio_time2gm(time_t timer) {
   struct tm tm;
   ssize_t a, b;
 #if HAVE_TM_TM_ZONE || defined(BSD)
@@ -9046,7 +9046,7 @@ static const char *FIO___MONTH_NAMES[] = {"Jan ", "Feb ", "Mar ", "Apr ",
 static const char *FIO___GMT_STR = "GMT";
 
 /** Writes an RFC 7231 date representation (HTTP date format) to target. */
-FIO_SFUNC size_t fio_time2rfc7231(char *target, time_t time) {
+SFUNC size_t fio_time2rfc7231(char *target, time_t time) {
   const struct tm tm = fio_time2gm(time);
   /* note: day of month is always 2 digits */
   char *pos = target;
@@ -9091,7 +9091,7 @@ FIO_SFUNC size_t fio_time2rfc7231(char *target, time_t time) {
   return pos - target;
 }
 /** Writes an RFC 2109 date representation to target. */
-FIO_SFUNC size_t fio_time2rfc2109(char *target, time_t time) {
+SFUNC size_t fio_time2rfc2109(char *target, time_t time) {
   const struct tm tm = fio_time2gm(time);
   /* note: day of month is always 2 digits */
   char *pos = target;
@@ -9138,7 +9138,7 @@ FIO_SFUNC size_t fio_time2rfc2109(char *target, time_t time) {
 }
 
 /** Writes an RFC 2822 date representation to target. */
-FIO_SFUNC size_t fio_time2rfc2822(char *target, time_t time) {
+SFUNC size_t fio_time2rfc2822(char *target, time_t time) {
   const struct tm tm = fio_time2gm(time);
   /* note: day of month is either 1 or 2 digits */
   char *pos = target;

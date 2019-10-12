@@ -1404,63 +1404,6 @@ void http_mimetype_clear(void);
 
 Clears the Mime-Type registry (it will be empty after this call). 
 
-### Time / Date Helpers
-
-#### `http_gmtime`
-
-```c
-struct tm *http_gmtime(time_t timer, struct tm *tmbuf);
-```
-
-A faster (yet less localized) alternative to `gmtime_r`.
-
-See the libc `gmtime_r` documentation for details.
-
-Falls back to `gmtime_r` for dates before epoch.
-
-### `http_date2rfc7231`
-
-```c
-size_t http_date2rfc7231(char *target, struct tm *tmbuf);
-```
-
-Writes an RFC 7231 date representation (HTTP date format) to the `target` buffer.
-
-This requires ~32 bytes of space to be available at the target buffer (unless
-it's a super funky year, 32 bytes is about 3 more than you need).
-
-Returns the number of bytes actually written.
-
-#### `http_date2str`
-
-Alias for [`http_date2rfc7231`](#http_date2rfc7231).
-
-#### `http_date2rfc2109`
-
-```c
-size_t http_date2rfc2109(char *target, struct tm *tmbuf);
-```
-
-Writes an RFC 2109 date representation to the `target` buffer. See [`http_date2rfc7231`](#http_date2rfc7231).
-
-#### `http_date2rfc2822`
-
-```c
-size_t http_date2rfc2822(char *target, struct tm *tmbuf);
-```
-
-Writes an RFC 2822 date representation to the `target` buffer. See [`http_date2rfc7231`](#http_date2rfc7231).
-
-#### `http_time2str`
-
-```c
-size_t http_time2str(char *target, const time_t t);
-```
-
-Prints Unix time to a HTTP time formatted string.
-
-This variation implements cached results for faster processing, at the price of a less accurate string.
-
 ### URL String Decoding
 
 #### `http_decode_url_unsafe`
