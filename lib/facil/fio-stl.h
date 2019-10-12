@@ -8889,6 +8889,9 @@ HFUNC uint64_t fio_time_milli();
  */
 SFUNC struct tm fio_time2gm(time_t time);
 
+/** Converts a `struct tm` to time in seconds (assuming UTC). */
+SFUNC time_t fio_gm2time(struct tm tm);
+
 /** Writes an RFC 7231 date representation (HTTP date format) to target. */
 SFUNC size_t fio_time2rfc7231(char *target, time_t time);
 
@@ -9012,7 +9015,7 @@ SFUNC struct tm fio_time2gm(time_t timer) {
   }
 
   // at this point we can apply the algorithm described here:
-  // see http://howardhinnant.github.io/date_algorithms.html#civil_from_days
+  // http://howardhinnant.github.io/date_algorithms.html#civil_from_days
   // Credit to Howard Hinnant.
   {
     b += 719468L; // adjust to March 1st, 2000 (post leap of 400 year era)
@@ -9036,6 +9039,39 @@ SFUNC struct tm fio_time2gm(time_t timer) {
   }
 
   return tm;
+}
+
+/** Converts a `struct tm` to time in seconds (assuming UTC). */
+SFUNC time_t fio_gm2time(struct tm tm) {
+  time_t time = 0;
+  // we start with the algorithm described here:
+  // http://howardhinnant.github.io/date_algorithms.html#days_from_civil
+  // Credit to Howard Hinnant.
+  {
+    const int32_t y = (tm.tm_year + 1900) - (tm.tm_mon < 2);
+    const int32_t era = (y >= 0 ? y : y - 399) / 400;
+    const uint16_t yoe = (y - era * 400L); // 0-399
+    const uint32_t doy =
+        (153L * (tm.tm_mon + (tm.tm_mon > 1 ? -2 : 10)) + 2) / 5 + tm.tm_mday -
+        1;                                                       // 0-365
+    const uint32_t doe = yoe * 365L + yoe / 4 - yoe / 100 + doy; // 0-146096
+    time = era * 146097L + doe - 719468L; // time == days from epoch
+  }
+
+  /* Adjust for hour, minute and second */
+  time = time * 24L + tm.tm_hour;
+  time = time * 60L + tm.tm_min;
+  time = time * 60L + tm.tm_sec;
+
+  if (tm.tm_isdst > 0) {
+    time -= 60 * 60;
+  }
+#if HAVE_TM_TM_ZONE || defined(BSD)
+  if (tm.tm_gmtoff) {
+    time += tm.tm_gmtoff;
+  }
+#endif
+  return time;
 }
 
 static const char *FIO___DAY_NAMES[] = {"Sun", "Mon", "Tue", "Wed",
@@ -15238,6 +15274,9 @@ TEST_FUNC void fio___dynamic_types_test___gmtime(void) {
     time_t tmp = t;
     t += FIO___GMTIME_TEST_INTERVAL;
     tm2 = fio_time2gm(tmp);
+    FIO_T_ASSERT(fio_gm2time(tm2) == tmp,
+                 "fio_gm2time roundtrip error (%ld != %ld)",
+                 (long)fio_gm2time(tm2), (long)tmp);
     gmtime_r(&tmp, &tm1);
     if (tm1.tm_year != tm2.tm_year || tm1.tm_mon != tm2.tm_mon ||
         tm1.tm_mday != tm2.tm_mday || tm1.tm_yday != tm2.tm_yday ||
@@ -15275,17 +15314,18 @@ TEST_FUNC void fio___dynamic_types_test___gmtime(void) {
   }
   {
     uint64_t start, stop;
+#if DEBUG
+    fprintf(stderr, "PERFOMEANCE TESTS IN DEBUG MODE ARE BIASED\n");
+#endif
     start = fio_time_micro();
     for (size_t i = 0; i < (1 << 17); ++i) {
       volatile struct tm tm = fio_time2gm(now);
       __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
       (void)tm;
     }
-#if DEBUG
-    fprintf(stderr, "PERFOMEANCE TESTS IN DEBUG MODE ARE BIASED\n");
-#endif
     stop = fio_time_micro();
-    fprintf(stderr, "\tfio_time2gm took:     %zuus\n", (size_t)(stop - start));
+    fprintf(stderr, "\t- fio_time2gm speed test took:\t%zuus\n",
+            (size_t)(stop - start));
     start = fio_time_micro();
     for (size_t i = 0; i < (1 << 17); ++i) {
       volatile struct tm tm;
@@ -15294,7 +15334,31 @@ TEST_FUNC void fio___dynamic_types_test___gmtime(void) {
       __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
     }
     stop = fio_time_micro();
-    fprintf(stderr, "\tgmtime_r took:       %zuus\n", (size_t)(stop - start));
+    fprintf(stderr, "\t- gmtime_r speed test took:  \t%zuus\n",
+            (size_t)(stop - start));
+    fprintf(stderr, "\n");
+    volatile struct tm tm_now = fio_time2gm(now);
+    start = fio_time_micro();
+    for (size_t i = 0; i < (1 << 17); ++i) {
+      tm_now = fio_time2gm(now + i);
+      volatile time_t t_tmp = fio_gm2time(tm_now);
+      __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
+      (void)t_tmp;
+    }
+    stop = fio_time_micro();
+    fprintf(stderr, "\t- fio_gm2time speed test took:\t%zuus\n",
+            (size_t)(stop - start));
+    start = fio_time_micro();
+    for (size_t i = 0; i < (1 << 17); ++i) {
+      tm_now = fio_time2gm(now + i);
+      volatile time_t t_tmp = mktime((struct tm *)&tm_now);
+      __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
+      (void)t_tmp;
+    }
+    stop = fio_time_micro();
+    fprintf(stderr, "\t- mktime speed test took:    \t%zuus\n",
+            (size_t)(stop - start));
+    fprintf(stderr, "\n");
   }
 }
 
