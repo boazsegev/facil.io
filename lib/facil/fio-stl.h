@@ -15233,18 +15233,16 @@ TEST_FUNC void fio___dynamic_types_test___gmtime(void) {
   const time_t now = fio_time_real().tv_sec;
   const time_t end =
       now + (FIO___GMTIME_TEST_RANGE * FIO___GMTIME_TEST_INTERVAL);
-#if HAVE_TM_TM_ZONE || defined(BSD)
-  const size_t size_of_tm = sizeof(tm1) - 16;
-#else
-  const size_t size_of_tm = sizeof(tm1);
-#endif
   time_t t = now - (FIO___GMTIME_TEST_RANGE * FIO___GMTIME_TEST_INTERVAL);
   while (t < end) {
     time_t tmp = t;
     t += FIO___GMTIME_TEST_INTERVAL;
     tm2 = fio_time2gm(tmp);
     gmtime_r(&tmp, &tm1);
-    if (memcmp(&tm1, &tm2, size_of_tm)) {
+    if (tm1.tm_year != tm2.tm_year || tm1.tm_mon != tm2.tm_mon ||
+        tm1.tm_mday != tm2.tm_mday || tm1.tm_yday != tm2.tm_yday ||
+        tm1.tm_hour != tm2.tm_hour || tm1.tm_min != tm2.tm_min ||
+        tm1.tm_sec != tm2.tm_sec || tm1.tm_wday != tm2.tm_wday) {
       char buf[256];
       fio_time2rfc7231(buf, tmp);
       FIO_T_ASSERT(0,
