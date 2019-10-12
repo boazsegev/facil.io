@@ -2526,6 +2526,44 @@ uint64_t fio_time_milli();
 
 Returns monotonic time in milliseconds.
 
+#### `fio_time2gm`
+
+```c
+struct tm fio_time2gm(time_t timer);
+```
+
+A faster (yet less localized) alternative to `gmtime_r`.
+
+See the libc `gmtime_r` documentation for details.
+
+Returns a `struct tm` object filled with the date information.
+
+This function is used internally for the formatting functions: , `fio_time2rfc7231`, `fio_time2rfc2109`, and `fio_time2rfc2822`.
+
+#### `fio_time2rfc7231`
+
+```c
+size_t fio_time2rfc7231(char *target, time_t time);
+```
+
+Writes an RFC 7231 date representation (HTTP date format) to target.
+
+#### `fio_time2rfc2109`
+
+```c
+size_t fio_time2rfc2109(char *target, time_t time);
+```
+
+Writes an RFC 2109 date representation to target.
+
+#### `fio_time2rfc2822`
+
+```c
+size_t fio_time2rfc2822(char *target, time_t time);
+```
+
+Writes an RFC 2822 date representation to target.
+
 -------------------------------------------------------------------------------
 
 ## Task Queue
