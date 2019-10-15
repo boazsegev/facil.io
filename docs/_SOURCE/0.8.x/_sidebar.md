@@ -20,13 +20,14 @@
 
 ### [Core Library](/0.8.x/fio-stl)
 * [Linked Lists](/0.8.x/fio-stl#linked-lists)
-* [String Helpers](/0.8.x/fio-stl#string-helpers)
+* [Dynamic Strings](/0.8.x/fio-stl#dynamic-strings)
 * [Dynamic Arrays](/0.8.x/fio-stl#dynamic-arrays)
 * [Hash Maps / Sets](/0.8.x/fio-stl#hash-maps-sets)
-* [Memory Allocation](/0.8.x/fio-stl#the-custom-memory-allocator)
+* [Memory Allocation](/0.8.x/fio-stl#memory-allocation)
 * [CLI (command line)](/0.8.x/fio-stl#cli-command-line-interface)
-* [Pointer Tagging](/0.8.x/fio-stl#pointer-tagging)
-* [General Helpers](/0.8.x/fio-stl#general-helpers)
+* [Atomic operations](/0.8.x/fio-stl#atomic-operations)
+* [Pointer Arithmetics](/0.8.x/fio-stl#pointer-arithmetics)
+* [Pointer Tagging](/0.8.x/fio-stl#pointer-tagging-support)
 * [Risk Hash](/0.8.x/riskyhash)
 
 ### [Core IO Library](/0.8.x/fio)

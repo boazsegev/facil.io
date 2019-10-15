@@ -292,7 +292,7 @@ Memory allocation macros
 #endif
 
 #ifndef FIO_MEM_REALLOC
-/** Reallocates memory, copying (at least) `copy_len` if neccessary. */
+/** Reallocates memory, copying (at least) `copy_len` if necessary. */
 #define FIO_MEM_REALLOC(ptr, old_size, new_size, copy_len)                     \
   realloc((ptr), (new_size))
 #endif
@@ -1600,7 +1600,7 @@ Memory Allocation - redefine default allocation macros
 #define FIO_MEM_CALLOC(size, units) fio_calloc((size), (units))
 
 #undef FIO_MEM_REALLOC
-/** Reallocates memory, copying (at least) `copy_len` if neccessary. */
+/** Reallocates memory, copying (at least) `copy_len` if necessary. */
 #define FIO_MEM_REALLOC(ptr, old_size, new_size, copy_len)                     \
   fio_realloc2((ptr), (new_size), (copy_len))
 
@@ -9261,6 +9261,7 @@ Time Cleanup
 Queue Type(s)
 ***************************************************************************** */
 
+/* Note: FIO_QUEUE_TASKS_PER_ALLOC can't be more than 65535 */
 #ifndef FIO_QUEUE_TASKS_PER_ALLOC
 #if UINTPTR_MAX <= 0xFFFFFFFF
 /* fits fio_queue_s in one page on most 32 bit machines */

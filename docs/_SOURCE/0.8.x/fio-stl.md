@@ -6,9 +6,9 @@ sidebar: 0.8.x/_sidebar.md
 
 At the core of the facil.io library is a single header Simple Template Library for C.
 
-The Simple Template Library is a "jack knife" library, that uses MACROS to generate code for different common types, such as Hash Maps, Arrays, Linked Lists, Binary-Safe Strings, etc'.
+The Simple Template Library is a "swiss-army-knife" library, that uses MACROS to generate code for different common types, such as Hash Maps, Arrays, Linked Lists, Binary-Safe Strings, etc'.
 
-The Simple Template Library also offers common functional primitives, such as bit operations, atomic operations, CLI parsing, JSON, and a custom memory allocator.
+The Simple Template Library also offers common functional primitives, such as bit operations, atomic operations, CLI parsing, JSON, task queues, and a custom memory allocator.
 
 In other words, all the common building blocks one could need in a C project are placed in this single header file.
 
@@ -16,15 +16,15 @@ The header could be included multiple times with different results, creating dif
 
 ## A Lower Level API Notice for facil.io Application Developers
 
->> **The core library is probably not the API most facil.io application developers need to focus on**.
+>> **The core library is probably not the API most facil.io web application developers need to focus on**.
 >>
->> This API is used to power the higher level API offered by the facil.io framework. If you're developing a facil.io application, use the higher level API when possible.
+>> This API is used to power the higher level API offered by the facil.io web framework. If you're developing a facil.io web application, use the higher level API when possible.
 
 ## Simple Template Library (STL) Overview
 
-The core library is a single file library (`fio-stl.h`).
+The core Simple Template Library (STL) is a single file header library (`fio-stl.h`).
 
-The core library includes a Simple Template Library for common types, such as:
+The header includes a Simple Template Library for common types, such as:
 
 * [Linked Lists](#linked-lists) - defined by `FIO_LIST_NAME`
 
@@ -40,7 +40,7 @@ The core library includes a Simple Template Library for common types, such as:
 
 * Soft / Dynamic Types (FIOBJ) - defined by `FIO_FIOBJ`
 
-In addition, the core library includes helpers for common tasks, such as:
+In addition, the core Simple Template Library (STL) includes helpers for common tasks, such as:
 
 * [Pointer Tagging](#pointer-tagging-support) - defined by `FIO_PTR_TAG(p)`/`FIO_PTR_UNTAG(p)`
 
@@ -48,7 +48,9 @@ In addition, the core library includes helpers for common tasks, such as:
 
 * [Atomic operations](#atomic-operations) - defined by `FIO_ATOMIC`
 
-* [Bit-Byte Operations](##bit-byte-operations) - defined by `FIO_BITWISE` and `FIO_BITMAP`
+* [Bit-Byte Operations](#bit-byte-operations) - defined by `FIO_BITWISE`
+
+* [Bitmap helpers](#bitmap-helpers) - defined by `FIO_BITMAP`
 
 * [Data Hashing (using Risky Hash)](#risky-hash-data-hashing) - defined by `FIO_RISKY_HASH`
 
@@ -125,7 +127,7 @@ By adding the `FIO_VERSION_GUARD` functions, a version test could be performed d
   ((T_type *)((uintptr_t)(ptr) & (((uintptr_t)1 << (bits)) - 1)))
 ```
 
-Masks a pointer's left-most bits, returning the right bits.
+Masks a pointer's left-most bits, returning the right bits (i.e., `0x000000FF`).
 
 #### `FIO_PTR_MATH_RMASK`
 
@@ -134,7 +136,7 @@ Masks a pointer's left-most bits, returning the right bits.
   ((T_type *)((uintptr_t)(ptr) & ((~(uintptr_t)0) << bits)))
 ```
 
-Masks a pointer's right-most bits, returning the left bits.
+Masks a pointer's right-most bits, returning the left bits (i.e., `0xFFFFFF00`).
 
 #### `FIO_PTR_MATH_ADD`
 
@@ -165,9 +167,9 @@ Find the root object (of a `struct`) from it's field.
 
 ### Default Memory Allocation
 
-By setting these macros, the default (system's) memory allocator could be set.
+By setting these macros, the memory allocator used by facil.io could be changed from the default allocator (either the custom allocator or, if missing, the system's allocator).
 
-When facil.io's memory allocator is defined (using `FIO_MALLOC`), these macros will be automatically overwritten to use the custom memory allocator.
+When facil.io's memory allocator is defined (using `FIO_MALLOC`), these macros will be automatically overwritten to use the custom memory allocator. To use a different allocator, you may redefine the macros.
 
 #### `FIO_MEM_CALLOC`
 
@@ -183,7 +185,7 @@ Allocates size X units of bytes, where all bytes equal zero.
 #define FIO_MEM_REALLOC(ptr, old_size, new_size, copy_len) realloc((ptr), (new_size))
 ```
 
-Reallocates memory, copying (at least) `copy_len` if neccessary.
+Reallocates memory, copying (at least) `copy_len` if necessary.
 
 #### `FIO_MEM_FREE`
 
@@ -223,6 +225,19 @@ Marks a function as `static` and possibly unused.
 
 Used for naming functions and variables resulting in: prefix_postfix
 
+i.e.:
+
+```c
+// typedef struct { long l; } number_s
+typedef struct { long l; } FIO_NAME(number, s)
+
+// number_s number_add(number_s a, number_s b)
+FIO_NAME(number, s) FIO_NAME(number, add)(FIO_NAME(number, s) a, FIO_NAME(number, s) b) {
+  a.l += b.l;
+  return a;
+}
+```
+
 #### `FIO_NAME2`
 
 ```c
@@ -230,6 +245,15 @@ Used for naming functions and variables resulting in: prefix_postfix
 ```
 
 Sets naming convention for conversion functions, i.e.: foo2bar
+
+i.e.:
+
+```c
+// int64_t a2l(const char * buf)
+int64_t FIO_NAME2(a, l)(const char * buf) {
+  return fio_atol(&buf);
+}
+```
 
 #### `FIO_NAME_BL`
 
@@ -239,6 +263,17 @@ Sets naming convention for conversion functions, i.e.: foo2bar
 
 Sets naming convention for boolean testing functions, i.e.: foo_is_true
 
+i.e.:
+
+```c
+// typedef struct { long l; } number_s
+typedef struct { long l; } FIO_NAME(number, s)
+
+// int number_is_zero(number_s n)
+int FIO_NAME2(number, zero)(FIO_NAME(number, s) n) {
+  return (!n.l);
+}
+```
 
 -------------------------------------------------------------------------------
 
@@ -247,6 +282,8 @@ Sets naming convention for boolean testing functions, i.e.: foo_is_true
 Doubly Linked Lists are an incredibly common and useful data structure.
 
 ### Linked Lists Performance
+
+Memory overhead (on 64bit machines) is 16 bytes per node (or 8 bytes on 32 bit machines) for the `next` and `prev` pointers.
 
 Linked Lists use pointers in order to provide fast add/remove operations with O(1) speeds. This O(1) operation ignores the object allocation time and suffers from poor memory locality, but it's still very fast.
 
@@ -276,7 +313,7 @@ typedef struct {
 Next define the `FIO_LIST_NAME` macro. The linked list helpers and types will all be prefixed by this name. i.e.:
 
 ```c
-#define FIO_LIST_NAME my_list /* results in (example): my_list_push(...) */
+#define FIO_LIST_NAME my_list /* defines list functions (example): my_list_push(...) */
 ```
 
 Optionally, define the `FIO_LIST_TYPE` macro to point at the correct linked-list structure type. By default, the type for linked lists will be `<FIO_LIST_NAME>_s`.
