@@ -50,7 +50,7 @@ The [previous version can be accessed here](riskyhash_v1).
 
 Risky Hash is designed for fast Hash Map key calculation for both big and small keys. It attempts to act as a 64 bit keyed PRF.
 
-It's possible to compile facil.io with Risk Hash as the default hashing function (the current default is SipHash1-3) by defining the `FIO_USE_RISKY_HASH` during compilation (`-DFIO_USE_RISKY_HASH`).
+The Risky Hash is designed as a temporary hash (values shouldn't be stored, as the algorithm might be updated without notice) and it is used internally for facil.io's `FIOBJ` Hash Maps.
 
 ## Algorithm
 

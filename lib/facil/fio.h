@@ -1937,15 +1937,6 @@ int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);
 
 ***************************************************************************** */
 
-#if FIO_USE_RISKY_HASH
-#define FIO_HASH_FN(buf, len, key1, key2)                                      \
-  fio_risky_hash((buf), (len),                                                 \
-                 ((uint64_t)(key1) >> 19) | ((uint64_t)(key2) << 27))
-#else
-#define FIO_HASH_FN(buf, len, key1, key2)                                      \
-  fio_siphash13((buf), (len), (uint64_t)(key1), (uint64_t)(key2))
-#endif
-
 /* *****************************************************************************
 SipHash
 ***************************************************************************** */

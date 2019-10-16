@@ -29,6 +29,7 @@
 * [Pointer Arithmetics](/0.8.x/fio-stl#pointer-arithmetics)
 * [Pointer Tagging](/0.8.x/fio-stl#pointer-tagging-support)
 * [Risk Hash](/0.8.x/riskyhash)
+* [`FIOBJ` soft-types](/0.8.x/fio-stl#fiobj-soft-dynamic-types)
 
 ### [Core IO Library](/0.8.x/fio)
 

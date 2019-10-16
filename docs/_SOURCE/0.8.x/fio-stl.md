@@ -38,7 +38,7 @@ The header includes a Simple Template Library for common types, such as:
 
 * [Reference counting / Type wrapper](#reference-counting-type-wrapping) - defined by `FIO_REF_NAME`
 
-* Soft / Dynamic Types (FIOBJ) - defined by `FIO_FIOBJ`
+* [Soft / Dynamic Types (FIOBJ)](#fiobj-soft-dynamic-types) - defined by `FIO_FIOBJ`
 
 In addition, the core Simple Template Library (STL) includes helpers for common tasks, such as:
 
@@ -3005,7 +3005,6 @@ The default number of memory arenas to initialize when CPU core detection fails 
 
 Normally, facil.io tries to initialize as many memory allocation arenas as the number of CPU cores. This value will only be used if core detection isn't available or fails.
 
-
 -------------------------------------------------------------------------------
 
 ## Custom JSON Parser
@@ -3183,4 +3182,399 @@ static void fio_json_on_error(fio_json_parser_s *p);
 ```
 
 The JSON parsing should stop with an error.
+
+-------------------------------------------------------------------------------
+
+## FIOBJ Soft Dynamic Types
+
+The facil.io library includes a dynamic type system that makes it a easy to handle mixed-type tasks, such as JSON object construction.
+
+This dynamic type system is based on the core types and API provided by the core STL library.
+
+The `FIOBJ` type API is divided by it's inner types (tested using `FIOBJ_TYPE(obj)` or `FIOBJ_TYPE_IS(obj, type)`).
+
+In addition, some `FIOBJ` functions can be called for any `FIOBJ` object, regardless of their type.
+
+The documentation regarding the `FIOBJ` soft-type system is divided as follows:  
+
+* [`FIOBJ` Core Type Identification](#fiobj-core-type-identification)
+
+* [`FIOBJ` Core Memory Management](#fiobj-core-memory-management)
+
+* [`FIOBJ` Common Functions](#fiobj-common-functions)
+
+* [Primitive Types](#fiobj-primitive-types)
+
+* [Numbers (Integers)](#fiobj-integers)
+
+* [Floats](#fiobj-floats)
+
+* [Strings](#fiobj-strings)
+
+* [Arrays](#fiobj-arrays)
+
+* [Hash Maps](#fiobj-hash-maps)
+
+* [JSON](#fiobj-json-helpers)
+
+In the facil.io web application framework, there are extensions to the core `FIOBJ` primitives, including:
+
+* [IO storage](fiobj_io)
+
+* [Mustache](fiobj_mustache)
+
+### `FIOBJ` Core Type Identification
+
+`FIOBJ` objects can contain any number of possible types, including user defined types.
+
+These are the built-in types / classes that the Core `FIOBJ` system includes (before any extensions):
+
+* `FIOBJ_T_INVALID`: indicates an **invalid** type class / type (a `FIOBJ_INVALID` value).
+
+* `FIOBJ_T_PRIMITIVE`: indicates a **Primitive** class / type. These include the sub types:
+
+* `FIOBJ_T_NUMBER`: indicates a **Number** class / type.
+
+* `FIOBJ_T_FLOAT`: indicates a **Float** class / type.
+
+* `FIOBJ_T_STRING`: indicates a **String** class / type.
+
+* `FIOBJ_T_ARRAY`: indicates an **Array** class / type.
+
+* `FIOBJ_T_HASH`: indicates a **Hash Map** class / type.
+
+* `FIOBJ_T_OTHER`: (internal) indicates an **Other** class / type. This is designed to indicate an extension / user defined type.
+
+The `FIOBJ_T_PRIMITIVE` class / type resolves to one of the following types:
+
+* `FIOBJ_T_NULL`: indicates a `fiobj_null()` object.
+
+* `FIOBJ_T_TRUE`: indicates a `fiobj_true()` object.
+
+* `FIOBJ_T_FALSE`: indicates a `fiobj_false()` object.
+
+The following functions / MACROs help identify a `FIOBJ` object's underlying type.
+
+#### `FIOBJ_TYPE(o)`
+
+```c
+#define FIOBJ_TYPE(o) fiobj_type(o)
+```
+
+#### `FIOBJ_TYPE_IS(o)`
+
+```c
+#define FIOBJ_TYPE_IS(o, type) (fiobj_type(o) == type)
+```
+
+#### `FIOBJ_TYPE_CLASS(o)`
+
+```c
+#define FIOBJ_TYPE_CLASS(o) ((fiobj_class_en)(((uintptr_t)o) & 7UL))
+```
+
+Returns the object's type class. This is limited to one of the core types. `FIOBJ_T_PRIMITIVE` and `FIOBJ_T_OTHER` may be returned (they aren't expended to their underlying type).
+
+#### `FIOBJ_IS_INVALID(o)`
+
+```c
+#define FIOBJ_IS_INVALID(o) (((uintptr_t)(o)&7UL) == 0)
+```
+
+Tests if the object is (probably) a valid FIOBJ
+
+#### `FIOBJ_IS_INVALID(o)`
+
+```c
+#define FIOBJ_IS_INVALID(o) (((uintptr_t)(o)&7UL) == 0)
+```
+
+#### `FIOBJ_PTR_UNTAG(o)`
+
+```c
+#define FIOBJ_PTR_UNTAG(o) ((uintptr_t)o & (~7ULL))
+```
+
+Removes the `FIOBJ` type tag from a `FIOBJ` objects, allowing access to the underlying pointer and possible type.
+
+This is made available **only** for authoring `FIOBJ` extensions and shouldn't be normally used.
+
+#### `fiobj_type`
+
+```c
+size_t fiobj_type(FIOBJ o);
+```
+
+Returns an objects type. This isn't limited to known types.
+
+Avoid calling this function directly. Use the MACRO instead.
+
+### `FIOBJ` Core Memory Management
+
+`FIOBJ` objects are **copied by reference**. Once their reference count is reduced to zero, their memory is freed.
+
+This is extremely important to note, especially in multi-threaded environments. This implied that: **access to a dynamic `FIOBJ` object is _NOT_ thread-safe** and `FIOBJ` objects that may be written to (such as Arrays, Strings and Hash Maps) should **not** be shared across threads (unless properly protected).
+
+#### `fiobj_dup`
+
+```c
+FIOBJ fiobj_dup(FIOBJ o);
+```
+
+Increases an object's reference count and returns it.
+
+#### `fiobj_free`
+
+```c
+void fiobj_free(FIOBJ o);
+```
+
+Decreases an object's reference count or frees it.
+
+**Note**:
+
+This function is **recursive** and could cause a **stack explosion** error.
+
+In addition, recursive object structures may produce unexpected results (for example, objects are always freed).
+
+The `FIOBJ_MAX_NESTING` nesting limit doesn't apply to `fiobj_free` since implementing the limit will always result in a memory leak.
+
+This places the responsibility on the user / developer, not to exceed the maximum nesting limit (or errors may occur).
+
+### `FIOBJ` Common Functions
+
+#### `fiobj_is_eq`
+
+```c
+unsigned char fiobj_is_eq(FIOBJ a, FIOBJ b);
+```
+
+Compares two objects.
+
+#### `fiobj2cstr`
+
+```c
+fio_str_info_s fiobj2cstr(FIOBJ o);
+```
+
+Returns a temporary String representation for any FIOBJ object.
+
+#### `fiobj2i`
+
+```c
+intptr_t fiobj2i(FIOBJ o);
+```
+
+Returns an integer representation for any FIOBJ object.
+
+#### `fiobj2f`
+
+```c
+double fiobj2f(FIOBJ o);
+```
+
+Returns a float (double) representation for any FIOBJ object.
+
+
+#### `fiobj_each1`
+
+```c
+uint32_t fiobj_each1(FIOBJ o, int32_t start_at,
+                     int (*task)(FIOBJ child, void *arg),
+                     void *arg);
+```
+
+Performs a task for each element held by the FIOBJ object **directly** (but **not** itself).
+
+If `task` returns -1, the `each` loop will break (stop).
+
+Returns the "stop" position - the number of elements processed + `start_at`.
+
+
+#### `fiobj_each2`
+
+```c
+uint32_t fiobj_each2(FIOBJ o,
+                     int (*task)(FIOBJ obj, void *arg),
+                     void *arg);
+```
+
+Performs a task for each element held by the FIOBJ object (directly or indirectly), **including** itself and any nested elements (a deep task).
+
+The order of performance is by order of appearance, as if all nesting levels were flattened.
+
+If `task` returns -1, the `each` loop will break (stop).
+
+Returns the number of elements processed.
+
+**Note**:
+
+This function is **recursive** and could cause a **stack explosion** error.
+
+The facil.io library attempts to protect against this error by limiting recursive access to `FIOBJ_MAX_NESTING`... however, this also assumes that a user / developer doesn't exceed the maximum nesting limit (or errors may occur).
+
+
+### `FIOBJ` Primitive Types
+
+The `true`, `false` and `null` primitive type functions (in addition to the common functions) are only their simple static constructor / accessor functions.
+
+The primitive types are immutable.
+
+#### `fiobj_true`
+
+```c
+FIOBJ fiobj_true(void);
+```
+
+Returns the `true` primitive.
+
+#### `fiobj_false`
+
+```c
+FIOBJ fiobj_false(void);
+```
+
+Returns the `false` primitive.
+
+#### `fiobj_null`
+
+```c
+FIOBJ fiobj_null(void);
+```
+
+Returns the `nil` / `null` primitive.
+
+
+### `FIOBJ` Integers
+
+```c
+FIOBJ fiobj_num_new(intptr_t i);
+```
+
+Creates a new Number object.
+
+```c
+intptr_t fiobj_num2i(FIOBJ i);
+```
+
+Reads the number from a `FIOBJ` Number.
+
+```c
+double fiobj_num2f(FIOBJ i);
+```
+
+Reads the number from a `FIOBJ` Number, fitting it in a double.
+
+```c
+fio_str_info_s fiobj_num2cstr(FIOBJ i);
+```
+
+Returns a String representation of the number (in base 10).
+
+```c
+void fiobj_num_free(FIOBJ i);
+```
+
+Frees a `FIOBJ` number (a type specific `fiobj_free` alternative - use only when the type was validated).
+
+
+### `FIOBJ` Floats
+
+```c
+FIOBJ fiobj_float_new(double i);
+```
+
+Creates a new Float (double) object.
+
+```c
+intptr_t fiobj_float2i(FIOBJ i);
+```
+
+Reads the number from a `FIOBJ` Float rounding it to an integer.
+
+```c
+double fiobj_float2f(FIOBJ i);
+```
+
+Reads the value from a `FIOBJ` Float, as a double.
+
+```c
+fio_str_info_s fiobj_float2cstr(FIOBJ i);
+```
+
+Returns a String representation of the float.
+
+```c
+void fiobj_float_free(FIOBJ i);
+```
+
+Frees a `FIOBJ` Float (a type specific `fiobj_free` alternative - use only when the type was validated).
+
+
+### `FIOBJ` Strings
+
+`FIOBJ` Strings are based on the core `STR_x` functions. This means that all these core type functions are available also for this type, using the `fiobj_str` prefix (i.e., [`STR_new` becomes `fiobj_str_new`](#str_new), [`STR_write` becomes `fiobj_str_write`](#str_write), etc').
+
+In addition, the following `fiobj_str` functions and MACROs are defined:
+
+#### `fiobj_str_new_cstr`
+
+```c
+FIOBJ fiobj_str_new_cstr(const char *ptr, size_t len);
+```
+
+Creates a new `FIOBJ` string object, copying the data to the new string.
+
+
+#### `fiobj_str_new_buf`
+
+```c
+FIOBJ fiobj_str_new_buf(size_t capa);
+```
+
+Creates a new `FIOBJ` string object with (at least) the requested capacity.
+
+
+#### `fiobj_str_new_copy`
+
+```c
+FIOBJ fiobj_str_new_copy(FIOBJ original);
+```
+
+Creates a new `FIOBJ` string object, copying the origin ([`fiobj2cstr`](#fiobj2cstr)).
+
+
+#### `fiobj_str2cstr`
+
+```c
+fio_str_info_s fiobj_str2cstr(FIOBJ s);
+```
+
+Returns information about the string. Same as [`fiobj_str_info()`](#str_info).
+
+#### `FIOBJ_STR_TEMP_VAR(name)`
+
+```c
+#define FIOBJ_STR_TEMP_VAR(str_name)                                           \
+  FIO_NAME(fiobj_str, s)                            \
+  FIO_NAME(str_name, __tmp)[2] = {FIO_STRING_INIT, FIO_STRING_INIT};           \
+  memset(FIO_NAME(str_name, __tmp), 0x7f,                                      \
+         sizeof(FIO_NAME(str_name, __tmp)[0]));                                \
+  FIOBJ str_name = (FIOBJ)(((uintptr_t) & (FIO_NAME(str_name, __tmp)[1])) |    \
+                           FIOBJ_T_STRING);
+```
+
+Creates a temporary `FIOBJ` String object on the stack.
+
+String data might be allocated dynamically, requiring the use of `FIOBJ_STR_TEMP_DESTROY`.
+
+#### `FIOBJ_STR_TEMP_DESTROY(name)`
+
+```c
+#define FIOBJ_STR_TEMP_DESTROY(str_name)                                       \
+  FIO_NAME(fiobj_str, destroy)(str_name);
+
+```
+
+Resets a temporary `FIOBJ` String, freeing and any resources allocated.
 

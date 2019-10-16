@@ -11542,10 +11542,9 @@ The FIOBJ Type
 ***************************************************************************** */
 
 /** Use the FIOBJ type for dynamic types. */
-typedef struct {
-  uintptr_t compiler_validation_type;
+typedef struct FIOBJ {
+  struct FIOBJ *compiler_validation_type;
 } * FIOBJ;
-// typedef uintptr_t FIOBJ;
 
 /** FIOBJ type enum for common / primitive types. */
 typedef enum {
@@ -11734,7 +11733,7 @@ FIOBJ Floats
 /** Creates a new Float (double) object. */
 FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), new)(double i);
 
-/** Reads the number from a FIOBJ Float rounnding it to an interger. */
+/** Reads the number from a FIOBJ Float rounding it to an integer. */
 FIO_IFUNC intptr_t FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), i)(FIOBJ i);
 
 /** Reads the value from a FIOBJ Float, as a double. */

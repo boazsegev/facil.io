@@ -67,11 +67,15 @@ h1, h2, h3, h4, h5, h6
 h1 {text-align: center;}
 h2, h3, h4, h5, h6 {
     text-align: left;
-    margin-top:1.4em;
+    margin-top:1.2em;
+    code {
+        font-size:1.2em;
+        font-weight: 100;
+    }
 }
 
 h2 {
-    margin-top:1.4em;
+    margin-top:1.3em;
 }
 h4 {
     font-size:1.4em;
@@ -221,7 +225,7 @@ h4 {
         box-sizing: border-box;
         a {
             color: inherit;
-            text-decoration: none;            
+            text-decoration: none;
             &:hover {
                 color:000;
                 text-shadow: -3px 3px 2px rgba(150, 150, 150, 0.72);
@@ -569,7 +573,7 @@ body.dark, .dark input
         {
             a {
                 color: inherit;
-                text-decoration: none;            
+                text-decoration: none;
                 &:hover {
                     color:000;
                     text-shadow: -3px 3px 2px rgba(150, 150, 150, 0.72);
@@ -597,7 +601,7 @@ body.light
   @import 'github';
   // #md_container p code,
   pre {
-    background: #f5f5ff;    
+    background: #f5f5ff;
   }
 }
 
@@ -606,7 +610,7 @@ body.dark
   @import 'railscasts';
   // #md_container p code,
   pre {
-    background: #322; 
+    background: #322;
   }
 }
 
