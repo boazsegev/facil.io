@@ -915,23 +915,33 @@ Destroys the map's internal data and re-initializes it.
 
 ### Hash Map - API (hash map only)
 
-#### `MAP_find` (hash map)
+#### `MAP_get` (hash map)
 
 ```c
-FIO_MAP_TYPE MAP_find(FIO_MAP_PTR m,
-                      FIO_MAP_HASH hash,
-                      FIO_MAP_KEY key);
+FIO_MAP_TYPE MAP_get(FIO_MAP_PTR m,
+                     FIO_MAP_HASH hash,
+                     FIO_MAP_KEY key);
 ```
 Returns the object in the hash map (if any) or FIO_MAP_TYPE_INVALID.
 
-#### `MAP_insert` (hash map)
+#### `MAP_get_ptr` (hash map)
 
 ```c
-FIO_MAP_TYPE MAP_insert(FIO_MAP_PTR m,
-               FIO_MAP_HASH hash,
-               FIO_MAP_KEY key,
-               FIO_MAP_TYPE obj,
-               FIO_MAP_TYPE *old);
+FIO_MAP_TYPE *MAP_get_ptr(FIO_MAP_PTR m,
+                          FIO_MAP_HASH hash,
+                          FIO_MAP_KEY key);
+```
+
+Returns a pointer to the object in the hash map (if any) or NULL.
+
+#### `MAP_set` (hash map)
+
+```c
+FIO_MAP_TYPE MAP_set(FIO_MAP_PTR m,
+                     FIO_MAP_HASH hash,
+                     FIO_MAP_KEY key,
+                     FIO_MAP_TYPE obj,
+                     FIO_MAP_TYPE *old);
 ```
 
 
@@ -956,35 +966,45 @@ Returns 0 on success or -1 if the object couldn't be found.
 
 ### Set - API (set only)
 
-#### `MAP_find` (set)
+#### `MAP_get` (set)
 
 ```c
-FIO_MAP_TYPE MAP_find(FIO_MAP_PTR m,
-                       FIO_MAP_HASH hash,
-                       FIO_MAP_TYPE obj);
+FIO_MAP_TYPE MAP_get(FIO_MAP_PTR m,
+                     FIO_MAP_HASH hash,
+                     FIO_MAP_TYPE obj);
 ```
 
 Returns the object in the hash map (if any) or `FIO_MAP_TYPE_INVALID`.
 
-#### `MAP_insert` (set)
+#### `MAP_get_ptr` (set)
 
 ```c
-FIO_MAP_TYPE MAP_insert(FIO_MAP_PTR m,
-                         FIO_MAP_HASH hash,
-                         FIO_MAP_TYPE obj);
+FIO_MAP_TYPE *MAP_get_ptr(FIO_MAP_PTR m,
+                          FIO_MAP_HASH hash,
+                          FIO_MAP_TYPE obj);
+```
+
+Returns a pointer to the object in the hash map (if any) or NULL.
+
+#### `set_if_missing` (set)
+
+```c
+FIO_MAP_TYPE set_if_missing(FIO_MAP_PTR m,
+                            FIO_MAP_HASH hash,
+                            FIO_MAP_TYPE obj);
 ```
 
 Inserts an object to the hash map, returning the existing or new object.
 
 If `old` is given, existing data will be copied to that location.
 
-#### `MAP_overwrite` (set)
+#### `MAP_set` (set)
 
 ```c
-void MAP_overwrite(FIO_MAP_PTR m,
-                    FIO_MAP_HASH hash,
-                    FIO_MAP_TYPE obj,
-                    FIO_MAP_TYPE *old);
+void MAP_set(FIO_MAP_PTR m,
+             FIO_MAP_HASH hash,
+             FIO_MAP_TYPE obj,
+             FIO_MAP_TYPE *old);
 ```
 
 Inserts an object to the hash map, returning the new object.
@@ -1437,6 +1457,16 @@ fio_str_info_s STR_write_i(FIO_STRING_PTR s, int64_t num);
 ```
 
 Writes a number at the end of the String using normal base 10 notation.
+
+#### `STR_write_hex`
+
+```c
+fio_str_info_s STR_write_hex(FIO_STRING_PTR s, int64_t num);
+```
+
+Writes a number at the end of the String using Hex (base 16) notation.
+
+**Note**: the `0x` prefix **is automatically written** before the hex numerals.
 
 #### `STR_concat` / `STR_join`
 
@@ -3175,7 +3205,7 @@ static void fio_json_on_json(fio_json_parser_s *p);
 
 The JSON parsing is complete (JSON data parsed so far contains a valid JSON object).
 
-#### `void`
+#### `fio_json_on_error`
 
 ```c
 static void fio_json_on_error(fio_json_parser_s *p);
@@ -3447,11 +3477,15 @@ Returns the `nil` / `null` primitive.
 
 ### `FIOBJ` Integers
 
+#### `fiobj_num_new`
+
 ```c
 FIOBJ fiobj_num_new(intptr_t i);
 ```
 
 Creates a new Number object.
+
+#### `fiobj_num2i`
 
 ```c
 intptr_t fiobj_num2i(FIOBJ i);
@@ -3459,17 +3493,23 @@ intptr_t fiobj_num2i(FIOBJ i);
 
 Reads the number from a `FIOBJ` Number.
 
+#### `fiobj_num2f`
+
 ```c
 double fiobj_num2f(FIOBJ i);
 ```
 
 Reads the number from a `FIOBJ` Number, fitting it in a double.
 
+#### `fiobj_num2cstr`
+
 ```c
 fio_str_info_s fiobj_num2cstr(FIOBJ i);
 ```
 
 Returns a String representation of the number (in base 10).
+
+#### `fiobj_num_free`
 
 ```c
 void fiobj_num_free(FIOBJ i);
@@ -3480,11 +3520,15 @@ Frees a `FIOBJ` number (a type specific `fiobj_free` alternative - use only when
 
 ### `FIOBJ` Floats
 
+#### `fiobj_float_new`
+
 ```c
 FIOBJ fiobj_float_new(double i);
 ```
 
 Creates a new Float (double) object.
+
+#### `fiobj_float2i`
 
 ```c
 intptr_t fiobj_float2i(FIOBJ i);
@@ -3492,17 +3536,23 @@ intptr_t fiobj_float2i(FIOBJ i);
 
 Reads the number from a `FIOBJ` Float rounding it to an integer.
 
+#### `fiobj_float2f`
+
 ```c
 double fiobj_float2f(FIOBJ i);
 ```
 
 Reads the value from a `FIOBJ` Float, as a double.
 
+#### `fiobj_float2cstr`
+
 ```c
 fio_str_info_s fiobj_float2cstr(FIOBJ i);
 ```
 
 Returns a String representation of the float.
+
+#### `fiobj_float_free`
 
 ```c
 void fiobj_float_free(FIOBJ i);
@@ -3513,7 +3563,7 @@ Frees a `FIOBJ` Float (a type specific `fiobj_free` alternative - use only when 
 
 ### `FIOBJ` Strings
 
-`FIOBJ` Strings are based on the core `STR_x` functions. This means that all these core type functions are available also for this type, using the `fiobj_str` prefix (i.e., [`STR_new` becomes `fiobj_str_new`](#str_new), [`STR_write` becomes `fiobj_str_write`](#str_write), etc').
+`FIOBJ` Strings are based on the core `STR_x` functions. This means that all these core type functions are available also for this type, using the `fiobj_str` prefix (i.e., [`STR_new`](#str_new) becomes [`fiobj_str_new`](#str_new), [`STR_write`](#str_write) becomes [`fiobj_str_write`](#str_write), etc').
 
 In addition, the following `fiobj_str` functions and MACROs are defined:
 
@@ -3578,3 +3628,258 @@ String data might be allocated dynamically, requiring the use of `FIOBJ_STR_TEMP
 
 Resets a temporary `FIOBJ` String, freeing and any resources allocated.
 
+#### `FIOBJ` Strings - Core Type Functions
+
+In addition, all the functions documented above as `STR_x`, are defined as `fiobj_str_x`:
+
+* [`fiobj_str_new`](#str_new) - creates a new empty string.
+
+* [`fiobj_str_free`](#str_free) - frees a FIOBJ known to be a String object.
+
+* [`fiobj_str_destroy`](#str_destroy) - destroys / clears a String, returning it to an empty state. 
+
+* [`fiobj_str_detach`](#str_detach) - destroys / clears a String, returning a `char *` C-String.
+
+* [`fiobj_str_info`](#str_info) - returns information about the string.
+
+* [`fiobj_str_len`](#str_len) - returns the string's length.
+
+* [`fiobj_str2ptr`](#str2ptr) - returns a pointer to the string's buffer.
+
+* [`fiobj_str_capa`](#str_capa) - returns the string's capacity.
+
+* [`fiobj_str_freeze`](#str_freeze) - freezes a string (a soft flag, enforced only by functions).
+
+* [`fiobj_str_is_frozen`](#str_is_frozen) - returns true if the string is frozen.
+
+* [`fiobj_str_is_eq`](#str_is_eq) - returns true if the strings are equal.
+
+* [`fiobj_str_hash`](#str_hash) - returns a string's Risky Hash.
+
+* [`fiobj_str_resize`](#str_resize) - resizes a string (keeping the current buffer).
+
+* [`fiobj_str_compact`](#str_compact) - attempts to minimize memory usage.
+
+* [`fiobj_str_reserve`](#str_reserve) - reserves memory for future `write` operations.
+
+* [`fiobj_str_utf8_valid`](#str_utf8_valid) - tests in a string is UTF8 valid.
+
+* [`fiobj_str_utf8_len`](#str_utf8_len) - returns a string's length in UTF8 characters.
+
+* [`fiobj_str_utf8_select`](#str_utf8_select) - selects a section of the string using UTF8 offsets.
+
+* [`fiobj_str_write`](#str_write) - writes data to the string.
+
+* [`fiobj_str_write_i`](#str_write_i) - writes a base 10 number to the string.
+
+* [`fiobj_str_write_hex`](#str_write_hex) - writes a base 16 (hex) number to the string.
+
+* [`fiobj_str_concat`](#str_concat-str_join) - writes an existing string to the string.
+
+* [`fiobj_str_replace`](#str_replace) - replaces a section of the string.
+
+* [`fiobj_str_vprintf`](#str_vprintf) - writes formatted data to the string.
+
+* [`fiobj_str_printf`](#str_printf) - writes formatted data to the string.
+
+* [`fiobj_str_readfd`](#str_readfd) - writes data from an open file to the string.
+
+* [`fiobj_str_readfile`](#str_readfile) - writes data from an unopened file to the string.
+
+* [`fiobj_str_write_b64enc`](#str_write_b64enc) - encodes and writes data to the string using base 64.
+
+* [`fiobj_str_write_b64dec`](#str_write_b64dec) - decodes and writes data to the string using base 64.
+
+* [`fiobj_str_write_escape`](#str_write_escape) - writes JSON style escaped data to the string.
+
+* [`fiobj_str_write_unescape`](#str_write_unescape) - writes decoded JSON escaped data to the string.
+
+
+### `FIOBJ` Arrays
+
+`FIOBJ` Arrays are based on the core `ARY_x` functions. This means that all these core type functions are available also for this type, using the `fiobj_array` prefix (i.e., [`ARY_new`](#ary_new) becomes [`fiobj_array_new`](#ary_new), [`ARY_push`](#ary_push) becomes [`fiobj_array_push`](#ary_push), etc').
+
+These functions include:
+
+* [`fiobj_array_new`](#ary_new)
+
+* [`fiobj_array_free`](#ary_free)
+
+* [`fiobj_array_destroy`](#ary_destroy)
+
+* [`fiobj_array_count`](#ary_count)
+
+* [`fiobj_array_capa`](#ary_capa)
+
+* [`fiobj_array_reserve`](#ary_reserve)
+
+* [`fiobj_array_concat`](#ary_concat)
+
+* [`fiobj_array_set`](#ary_set)
+
+* [`fiobj_array_get`](#ary_get)
+
+* [`fiobj_array_find`](#ary_find)
+
+* [`fiobj_array_remove`](#ary_remove)
+
+* [`fiobj_array_remove2`](#ary_remove2)
+
+* [`fiobj_array_compact`](#ary_compact)
+
+* [`fiobj_array_to_a`](#ary_to_a)
+
+* [`fiobj_array_push`](#ary_push)
+
+* [`fiobj_array_pop`](#ary_pop)
+
+* [`fiobj_array_unshift`](#ary_unshift)
+
+* [`fiobj_array_shift`](#ary_shift)
+
+* [`fiobj_array_each`](#ary_each)
+
+### `FIOBJ` Hash Maps
+
+`FIOBJ` Hash Maps are based on the core `MAP_x` functions. This means that all these core type functions are available also for this type, using the `fiobj_hash` prefix (i.e., [`MAP_new`](#map_new) becomes [`fiobj_hash_new`](#map_new), [`MAP_set`](#map_set-hash-map) becomes [`fiobj_hash_set`](#map_set-hash-map), etc').
+
+In addition, the following `fiobj_hash` functions and MACROs are defined:
+
+#### `fiobj2hash`
+
+```c
+uint64_t fiobj2hash(FIOBJ target_hash, FIOBJ value);
+```
+
+Calculates an object's hash value for a specific hash map object.
+
+#### `fiobj_hash_set2`
+
+```c
+FIOBJ fiobj_hash_set2(FIOBJ hash, FIOBJ key, FIOBJ value);
+```
+
+Inserts a value to a hash map, with a default hash value calculation.
+
+#### `fiobj_hash_get2`
+
+```c
+FIOBJ fiobj_hash_get2(FIOBJ hash, FIOBJ key);
+```
+
+Finds a value in a hash map, with a default hash value calculation.
+
+#### `fiobj_hash_remove2`
+
+```c
+int fiobj_hash_remove2(FIOBJ hash, FIOBJ key, FIOBJ *old);
+```
+
+Removes a value from a hash map, with a default hash value calculation.
+
+#### `fiobj_hash_set3`
+
+```c
+FIOBJ fiobj_hash_set3(FIOBJ hash, const char *key, size_t len, FIOBJ value);
+```
+
+Sets a value in a hash map, allocating the key String and automatically calculating the hash value.
+
+#### `fiobj_hash_get3`
+
+```c
+FIOBJ fiobj_hash_get3(FIOBJ hash, const char *buf, size_t len);
+```
+
+Finds a String value in a hash map, using a temporary String as the key and automatically calculating the hash value.
+
+#### `fiobj_hash_remove3`
+
+```c
+int fiobj_hash_remove3(FIOBJ hash, const char *buf, size_t len, FIOBJ *old);
+```
+
+Removes a String value in a hash map, using a temporary String as the key and automatically calculating the hash value.
+
+#### `FIOBJ` Hash Map - Core Type Functions
+
+In addition, all the functions documented above as `MAP_x`, are defined as `fiobj_hash_x`:
+
+* [`fiobj_hash_new`](#map_new)
+
+* [`fiobj_hash_free`](#map_free)
+
+* [`fiobj_hash_destroy`](#map_destroy)
+
+* [`fiobj_hash_get`](#map_get-hash-map)
+
+* [`fiobj_hash_get_ptr`](#map_get_ptr-hash-map)
+
+* [`fiobj_hash_set`](#map_set-hash-map)
+
+* [`fiobj_hash_remove`](#map_remove-hash-map)
+
+* [`fiobj_hash_count`](#map_count)
+
+* [`fiobj_hash_capa`](#map_capa)
+
+* [`fiobj_hash_reserve`](#map_reserve)
+
+* [`fiobj_hash_last`](#map_last)
+
+* [`fiobj_hash_pop`](#map_pop)
+
+* [`fiobj_hash_compact`](#map_compact)
+
+* [`fiobj_hash_rehash`](#map_rehash)
+
+* [`fiobj_hash_each`](#map_each)
+
+* [`fiobj_hash_each_get_key`](#map_each_get_key)
+
+### `FIOBJ` JSON Helpers
+
+#### `fiobj2json`
+
+```c
+FIOBJ fiobj2json(FIOBJ dest, FIOBJ o, uint8_t beautify);
+```
+
+Returns a JSON valid FIOBJ String, representing the object.
+
+If `dest` is an existing String, the formatted JSON data will be appended to the existing string.
+
+#### `fiobj_hash_update_json`
+
+```c
+size_t fiobj_hash_update_json(FIOBJ hash, fio_str_info_s str);
+
+size_t fiobj_hash_update_json2(FIOBJ hash, char *ptr, size_t len);
+```
+
+Updates a Hash using JSON data.
+
+Parsing errors and non-dictionary object JSON data are silently ignored, attempting to update the Hash as much as possible before any errors encountered.
+
+Conflicting Hash data is overwritten (preferring the new over the old).
+
+Returns the number of bytes consumed. On Error, 0 is returned and no data is consumed.
+
+The `fiobj_hash_update_json2` function is a helper function, it calls `fiobj_hash_update_json` with the provided string information.
+
+#### `fiobj_json_parse`
+
+```c
+FIOBJ fiobj_json_parse(fio_str_info_s str, size_t *consumed);
+
+#define fiobj_json_parse2(data_, len_, consumed)                               \
+  fiobj_json_parse((fio_str_info_s){.buf = data_, .len = len_}, consumed)
+```
+
+Parses a C string for JSON data. If `consumed` is not NULL, the `size_t` variable will contain the number of bytes consumed before the parser stopped (due to either error or end of a valid JSON data segment).
+
+Returns a FIOBJ object matching the JSON valid C string `str`.
+
+If the parsing failed (no complete valid JSON data) `FIOBJ_INVALID` is returned.
+
+`fiobj_json_parse2` is a helper macro, it calls `fiobj_json_parse` with the provided string information.

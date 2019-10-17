@@ -11923,15 +11923,6 @@ FIO_IFUNC int FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
 FIOBJ JSON support
 ***************************************************************************** */
 
-typedef struct {
-  FIOBJ json;
-  size_t level;
-  uint8_t beautify;
-} fiobj___json_format_internal__s;
-/* internal helper funnction for recursive JSON formatting. */
-FIOBJ_FUNC void
-fiobj___json_format_internal__(fiobj___json_format_internal__s *, FIOBJ);
-
 /**
  * Returns a JSON valid FIOBJ String, representing the object.
  *
@@ -11939,20 +11930,6 @@ fiobj___json_format_internal__(fiobj___json_format_internal__s *, FIOBJ);
  * the existing string.
  */
 FIO_IFUNC FIOBJ FIO_NAME2(fiobj, json)(FIOBJ dest, FIOBJ o, uint8_t beautify);
-/**
- * Returns a JSON valid FIOBJ String, representing the object.
- *
- * If `dest` is an existing String, the formatted JSON data will be appended to
- * the existing string.
- */
-FIO_IFUNC FIOBJ FIO_NAME2(fiobj, json)(FIOBJ dest, FIOBJ o, uint8_t beautify) {
-  fiobj___json_format_internal__s args =
-      (fiobj___json_format_internal__s){.json = dest, .beautify = beautify};
-  if (FIOBJ_TYPE_CLASS(dest) != FIOBJ_T_STRING)
-    args.json = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
-  fiobj___json_format_internal__(&args, o);
-  return args.json;
-}
 
 /**
  * Updates a Hash using JSON data.
@@ -11961,7 +11938,7 @@ FIO_IFUNC FIOBJ FIO_NAME2(fiobj, json)(FIOBJ dest, FIOBJ o, uint8_t beautify) {
  * attempting to update the Hash as much as possible before any errors
  * encountered.
  *
- * Conflicting Hash data is overwritten (prefering the new over the old).
+ * Conflicting Hash data is overwritten (preferring the new over the old).
  *
  * Returns the number of bytes consumed. On Error, 0 is returned and no data is
  * consumed.
@@ -11971,10 +11948,7 @@ FIOBJ_FUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
 
 /** Helper function, calls `fiobj_hash_update_json` with string information */
 FIO_IFUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
-                          update_json2)(FIOBJ hash, char *ptr, size_t len) {
-  return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
-                  update_json)(hash, (fio_str_info_s){.buf = ptr, .len = len});
-}
+                          update_json2)(FIOBJ hash, char *ptr, size_t len);
 
 /**
  * Parses a C string for JSON data. If `consumed` is not NULL, the `size_t`
@@ -12524,6 +12498,42 @@ FIO_IFUNC int FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
 }
 
 /* *****************************************************************************
+FIOBJ JSON support (inline functions)
+***************************************************************************** */
+
+typedef struct {
+  FIOBJ json;
+  size_t level;
+  uint8_t beautify;
+} fiobj___json_format_internal__s;
+
+/* internal helper funnction for recursive JSON formatting. */
+FIOBJ_FUNC void
+fiobj___json_format_internal__(fiobj___json_format_internal__s *, FIOBJ);
+
+/** Helper function, calls `fiobj_hash_update_json` with string information */
+FIO_IFUNC size_t FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                          update_json2)(FIOBJ hash, char *ptr, size_t len) {
+  return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+                  update_json)(hash, (fio_str_info_s){.buf = ptr, .len = len});
+}
+
+/**
+ * Returns a JSON valid FIOBJ String, representing the object.
+ *
+ * If `dest` is an existing String, the formatted JSON data will be appended to
+ * the existing string.
+ */
+FIO_IFUNC FIOBJ FIO_NAME2(fiobj, json)(FIOBJ dest, FIOBJ o, uint8_t beautify) {
+  fiobj___json_format_internal__s args =
+      (fiobj___json_format_internal__s){.json = dest, .beautify = beautify};
+  if (FIOBJ_TYPE_CLASS(dest) != FIOBJ_T_STRING)
+    args.json = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
+  fiobj___json_format_internal__(&args, o);
+  return args.json;
+}
+
+/* *****************************************************************************
 FIOBJ - Implementation
 ***************************************************************************** */
 #ifdef FIOBJ_EXTERN_COMPLETE
@@ -12986,7 +12996,7 @@ static inline void fio_json_on_error(fio_json_parser_s *p) {
  * attempting to update the Hash as much as possible before any errors
  * encountered.
  *
- * Conflicting Hash data is overwritten (prefering the new over the old).
+ * Conflicting Hash data is overwritten (preferring the new over the old).
  *
  * Returns the number of bytes consumed. On Error, 0 is returned and no data is
  * consumed.

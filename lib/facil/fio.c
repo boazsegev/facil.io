@@ -4355,8 +4355,8 @@ static channel_s *fio_channel_dup_lock(fio_str_info_s name) {
       .parent = &fio_postoffice.pubsub,
       .ref = 8, /* avoid freeing stack memory */
   };
-  uint64_t hashed_name = FIO_HASH_FN(name.buf, name.len, &fio_postoffice.pubsub,
-                                     &fio_postoffice.pubsub);
+  uint64_t hashed_name =
+      fio_risky_hash(name.buf, name.len, (uint64_t)&fio_postoffice.pubsub);
   channel_s *ch_p =
       fio_filter_dup_lock_internal(&ch, hashed_name, &fio_postoffice.pubsub);
   if (subscriptions_is_empty(&ch_p->subscriptions)) {
@@ -4375,8 +4375,8 @@ static channel_s *fio_channel_match_dup_lock(fio_str_info_s name,
       .match = match,
       .ref = 8, /* avoid freeing stack memory */
   };
-  uint64_t hashed_name = FIO_HASH_FN(name.buf, name.len, &fio_postoffice.pubsub,
-                                     &fio_postoffice.pubsub);
+  uint64_t hashed_name =
+      fio_risky_hash(name.buf, name.len, (uint64_t)&fio_postoffice.pubsub);
   channel_s *ch_p =
       fio_filter_dup_lock_internal(&ch, hashed_name, &fio_postoffice.patterns);
   if (subscriptions_is_empty(&ch_p->subscriptions)) {
@@ -4464,8 +4464,8 @@ void fio_unsubscribe(subscription_s *s) {
   /* check if channel is done for */
   if (subscriptions_is_empty(&ch->subscriptions)) {
     fio_collection_s *c = ch->parent;
-    uint64_t hashed = FIO_HASH_FN(
-        ch->name, ch->name_len, &fio_postoffice.pubsub, &fio_postoffice.pubsub);
+    uint64_t hashed = fio_risky_hash(ch->name, ch->name_len,
+                                     (uint64_t)&fio_postoffice.pubsub);
     /* lock collection */
     fio_lock(&c->lock);
     /* test again within lock */
@@ -4688,8 +4688,8 @@ static channel_s *fio_filter_find_dup(uint32_t filter) {
 /** Finds a pubsub channel, increasing it's reference count if it exists. */
 static channel_s *fio_channel_find_dup(fio_str_info_s name) {
   channel_s tmp = {.name = name.buf, .name_len = name.len};
-  uint64_t hashed_name = FIO_HASH_FN(name.buf, name.len, &fio_postoffice.pubsub,
-                                     &fio_postoffice.pubsub);
+  uint64_t hashed_name =
+      fio_risky_hash(name.buf, name.len, (uint64_t)&fio_postoffice.pubsub);
   channel_s *ch =
       fio_channel_find_dup_internal(&tmp, hashed_name, &fio_postoffice.pubsub);
   return ch;
@@ -5114,9 +5114,8 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
         pr->msg->channel.buf, pr->msg->channel.len, 0, NULL); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_set(&pr->pubsub,
-                     FIO_HASH_FN(pr->msg->channel.buf, pr->msg->channel.len,
-                                 &fio_postoffice.pubsub,
-                                 &fio_postoffice.pubsub),
+                     fio_risky_hash(pr->msg->channel.buf, pr->msg->channel.len,
+                                    (uint64_t)&fio_postoffice.pubsub),
                      tmp, s, NULL);
     fio_unlock(&pr->lock);
     break;
@@ -5126,9 +5125,9 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
         pr->msg->channel.buf, pr->msg->channel.len, 0, NULL); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_remove(&pr->pubsub,
-                        FIO_HASH_FN(pr->msg->channel.buf, pr->msg->channel.len,
-                                    &fio_postoffice.pubsub,
-                                    &fio_postoffice.pubsub),
+                        fio_risky_hash(pr->msg->channel.buf,
+                                       pr->msg->channel.len,
+                                       (uint64_t)&fio_postoffice.pubsub),
                         tmp, NULL);
     fio_unlock(&pr->lock);
     break;
@@ -5143,9 +5142,8 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
         pr->msg->channel.buf, pr->msg->channel.len, 0, NULL); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_set(&pr->patterns,
-                     FIO_HASH_FN(pr->msg->channel.buf, pr->msg->channel.len,
-                                 &fio_postoffice.pubsub,
-                                 &fio_postoffice.pubsub),
+                     fio_risky_hash(pr->msg->channel.buf, pr->msg->channel.len,
+                                    (uint64_t)&fio_postoffice.pubsub),
                      tmp, s, NULL);
     fio_unlock(&pr->lock);
     break;
@@ -5156,9 +5154,9 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
         pr->msg->channel.buf, pr->msg->channel.len, 0, NULL); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_remove(&pr->patterns,
-                        FIO_HASH_FN(pr->msg->channel.buf, pr->msg->channel.len,
-                                    &fio_postoffice.pubsub,
-                                    &fio_postoffice.pubsub),
+                        fio_risky_hash(pr->msg->channel.buf,
+                                       pr->msg->channel.len,
+                                       (uint64_t)&fio_postoffice.pubsub),
                         tmp, NULL);
     fio_unlock(&pr->lock);
     break;
