@@ -483,6 +483,8 @@ Common macros
 #define IFUNC_
 
 #else /* !FIO_EXTERN */
+#undef SFUNC
+#undef IFUNC
 #define SFUNC_ static __attribute__((unused))
 #define IFUNC_ static inline __attribute__((unused))
 #ifndef FIO_EXTERN_COMPLETE /* force implementation, emitting static data */
@@ -493,6 +495,8 @@ Common macros
 #define HFUNC static inline __attribute__((unused)) /* internal helper */
 #define HSFUNC static __attribute__((unused))       /* internal helper */
 
+#undef SFUNC
+#undef IFUNC
 #define SFUNC SFUNC_
 #define IFUNC IFUNC_
 
@@ -11675,7 +11679,7 @@ typedef struct {
   uint32_t (*each1)(FIOBJ o, int32_t start_at,
                     int (*task)(FIOBJ child, void *arg), void *arg);
   /**
-   * Decreases the referenmce count and/or frees the object, calling `free2` for
+   * Decreases the reference count and/or frees the object, calling `free2` for
    * any nested objects.
    *
    * Returns 0 if the object is still alive or 1 if the object was freed. The
@@ -11684,12 +11688,12 @@ typedef struct {
   int (*free2)(FIOBJ o);
 } FIOBJ_class_vtable_s;
 
-FIOBJ_EXTERN_OBJ FIOBJ_class_vtable_s FIOBJ___OBJECT_CLASS_VTBL;
+FIOBJ_EXTERN_OBJ const FIOBJ_class_vtable_s FIOBJ___OBJECT_CLASS_VTBL;
 
 #define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_NAME fiobj_object
 #define FIO_REF_TYPE void *
-#define FIO_REF_METADATA FIOBJ_class_vtable_s *
+#define FIO_REF_METADATA const FIOBJ_class_vtable_s *
 #define FIO_REF_METADATA_INIT(m)                                               \
   do {                                                                         \
     m = &FIOBJ___OBJECT_CLASS_VTBL;                                            \
@@ -11724,7 +11728,7 @@ FIOBJ_FUNC fio_str_info_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
 /** Frees a FIOBJ number. */
 FIO_IFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), free)(FIOBJ i);
 
-FIOBJ_EXTERN_OBJ FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL;
+FIOBJ_EXTERN_OBJ const FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL;
 
 /* *****************************************************************************
 FIOBJ Floats
@@ -11746,7 +11750,7 @@ FIOBJ_FUNC fio_str_info_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT),
 /** Frees a FIOBJ Float. */
 FIO_IFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), free)(FIOBJ i);
 
-FIOBJ_EXTERN_OBJ FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL;
+FIOBJ_EXTERN_OBJ const FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL;
 
 /* *****************************************************************************
 FIOBJ Strings
@@ -12220,7 +12224,7 @@ FIOBJ Integers
 #define FIO_REF_NAME fiobj___bignum
 #define FIO_REF_TYPE intptr_t
 #define FIO_REF_CONSTRUCTOR_ONLY 1
-#define FIO_REF_METADATA FIOBJ_class_vtable_s *
+#define FIO_REF_METADATA const FIOBJ_class_vtable_s *
 #define FIO_REF_METADATA_INIT(m)                                               \
   do {                                                                         \
     m = &FIOBJ___NUMBER_CLASS_VTBL;                                            \
@@ -12280,7 +12284,7 @@ FIOBJ Floats
 
 #define FIO_REF_NAME fiobj___bigfloat
 #define FIO_REF_TYPE double
-#define FIO_REF_METADATA FIOBJ_class_vtable_s *
+#define FIO_REF_METADATA const FIOBJ_class_vtable_s *
 #define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_METADATA_INIT(m)                                               \
   do {                                                                         \
@@ -12542,7 +12546,7 @@ FIOBJ - Implementation
 FIOBJ Basic Object vtable
 ***************************************************************************** */
 
-FIOBJ_EXTERN_OBJ_IMP FIOBJ_class_vtable_s FIOBJ___OBJECT_CLASS_VTBL = {
+FIOBJ_EXTERN_OBJ_IMP const FIOBJ_class_vtable_s FIOBJ___OBJECT_CLASS_VTBL = {
     .type_id = 99, /* type IDs below 100 are reserved. */
 };
 
@@ -12636,7 +12640,7 @@ FIOBJ_FUNC uint32_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ child, void *arg),
   while (!d.stop && i.obj && i.pos < end) {
     i.pos = fiobj_each1(i.obj, i.pos, fiobj____each2_wrapper_task, &d);
     if (d.next != FIOBJ_INVALID) {
-      if (fiobj____stack_count(&d.stack) + 1 >= FIOBJ_MAX_NESTING) {
+      if (fiobj____stack_count(&d.stack) + 1 > FIOBJ_MAX_NESTING) {
         FIO_LOG_ERROR("FIOBJ nesting level too deep (%u)."
                       "`fiobj_each2` stopping loop early.",
                       (unsigned int)fiobj____stack_count(&d.stack));
@@ -12689,7 +12693,7 @@ FIOBJ_FUNC fio_str_info_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
   return (fio_str_info_s){.buf = fiobj___tmp_buffer, .len = len};
 }
 
-FIOBJ_EXTERN_OBJ_IMP FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL = {
+FIOBJ_EXTERN_OBJ_IMP const FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL = {
     /**
      * MUST return a unique number to identify object type.
      *
@@ -12730,7 +12734,7 @@ FIOBJ_FUNC fio_str_info_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT),
   return (fio_str_info_s){.buf = fiobj___tmp_buffer, .len = len};
 }
 
-FIOBJ_EXTERN_OBJ_IMP FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL = {
+FIOBJ_EXTERN_OBJ_IMP const FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL = {
     /**
      * MUST return a unique number to identify object type.
      *

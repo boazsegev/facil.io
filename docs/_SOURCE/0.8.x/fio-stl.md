@@ -3219,13 +3219,15 @@ The JSON parsing should stop with an error.
 
 The facil.io library includes a dynamic type system that makes it a easy to handle mixed-type tasks, such as JSON object construction.
 
-This dynamic type system is based on the core types and API provided by the core STL library.
+This soft type system included in the facil.io STL is based on the Core types mentioned above and shares their API (Dynamic Strings, Dynamic Arrays, and Hash Maps).
 
 The `FIOBJ` type API is divided by it's inner types (tested using `FIOBJ_TYPE(obj)` or `FIOBJ_TYPE_IS(obj, type)`).
 
 In addition, some `FIOBJ` functions can be called for any `FIOBJ` object, regardless of their type.
 
 The documentation regarding the `FIOBJ` soft-type system is divided as follows:  
+
+* [`FIOBJ` General Considerations](#fiobj-general-considerations)
 
 * [`FIOBJ` Core Type Identification](#fiobj-core-type-identification)
 
@@ -3245,13 +3247,38 @@ The documentation regarding the `FIOBJ` soft-type system is divided as follows:
 
 * [Hash Maps](#fiobj-hash-maps)
 
-* [JSON](#fiobj-json-helpers)
+* [JSON Helpers](#fiobj-json-helpers)
+
+* [How to Extend the `FIOBJ` Type System](#how-to-extend-the-fiobj-type-system)
 
 In the facil.io web application framework, there are extensions to the core `FIOBJ` primitives, including:
 
 * [IO storage](fiobj_io)
 
 * [Mustache](fiobj_mustache)
+
+
+### `FIOBJ` General Considerations
+
+1. To use the `FIOBJ` soft types, define the `FIO_FIOBJ` macro and then include the facil.io STL header.
+
+2. To include declarations as globally available symbols (allowing the functions to be called from multiple C files), define `FIOBJ_EXTERN` _before_ including the STL header.
+
+    This also requires that _only_ a single C file (translation unit) define `FIOBJ_EXTERN_COMPLETE` _before_ including the header with the `FIOBJ_EXTERN` directive.
+
+3. The `FIOBJ` types use pointer tagging and require that the memory allocator provide allocations on 64 bit memory alignment boundaries.
+
+    If the system allocator doesn't provide (at least) 64 bit allocation boundaries, use the facil.io memory allocator provided (`fio_malloc`).
+
+4. The `FIOBJ` soft type system uses an "ownership" memory model.
+
+    This means that Arrays "own" their members and Hash Maps "own" their values (but **not** the keys).
+
+    Freeing an Array will free all the objects within the Array. Freeing a Hash Map will free all the values within the Hash Map (but none of the keys).
+
+    Ownership is only transferred if the object is removed from it's container.
+
+    i.e., `fiobj_array_get` does **not** transfer ownership (it's just a short temporary "loan"). Whereas, `fiobj_array_remove` **does** revoke ownership - either freeing the object or moving the ownership to the pointer provided to hold the `old` value.
 
 ### `FIOBJ` Core Type Identification
 
@@ -3883,3 +3910,295 @@ Returns a FIOBJ object matching the JSON valid C string `str`.
 If the parsing failed (no complete valid JSON data) `FIOBJ_INVALID` is returned.
 
 `fiobj_json_parse2` is a helper macro, it calls `fiobj_json_parse` with the provided string information.
+
+### How to Extend the `FIOBJ` Type System
+
+The `FIOBJ` source code includes two extensions for the `Float` and `Number` types.
+
+In many cases, numbers and floats can be used without memory allocations. However, when memory allocation is required to store the data, the `FIOBJ_T_NUMBER` and `FIOBJ_T_FLOAT` types are extended using the same techniques described here.
+
+#### `FIOBJ` Extension Requirements
+
+To extend the `FIOBJ` soft type system, there are a number of requirements:
+
+1. A **unique** type ID must be computed.
+
+    Type IDs are `size_t` bits in length. Values under 100 are reserved. Values under 40 are illegal (might break implementation).
+
+2. A static virtual function table object (`FIOBJ_class_vtable_s`) must be fully populated (`NULL` values may break cause a segmentation fault).
+
+3. The unique type construct / destructor must be wrapped using the facil.io reference counting wrapper (using `FIO_REF_NAME`).
+
+    The `FIO_REF_METADATA` should be set to a `FIOBJ_class_vtable_s` pointer and initialized for every object.
+
+4. The unique type wrapper must use pointer tagging as described bellow (`FIO_PTR_TAG`).
+
+5. A public API should be presented.
+
+#### `FIOBJ` Pointer Tagging
+
+The `FIOBJ` types is often identified by th a bit "tag" added to the pointer.
+
+The facil.io memory allocator (`fio_malloc`), as well as most system allocators, promise a 64 bit allocation alignment.
+
+The `FIOBJ` types leverage this behavior by utilizing the least significant 3 bits that are always zero.
+
+The following macros should be defined for tagging an extension `FIOBJ` type, allowing the `FIO_REF_NAME` constructor / destructor to manage pointer tagging.
+
+```c
+#define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_OTHER)
+#define FIO_PTR_UNTAG(p) FIOBJ_PTR_UNTAG(p)
+#define FIO_PTR_TAG_TYPE FIOBJ
+```
+
+#### `FIOBJ` Virtual Function Tables
+
+`FIOBJ` extensions use a virtual function table that is shared by all the objects of that type/class.
+
+Basically, the virtual function table is a `struct` with the Type ID and function pointers.
+
+All function pointers must be populated (where `each1` is only called if `count` returns a non-zero value).
+
+This is the structure of the virtual table:
+
+```c
+/** FIOBJ types can be extended using virtual function tables. */
+typedef struct {
+  /** A unique number to identify object type. */
+  size_t type_id;
+  /** Test for equality between two objects with the same `type_id` */
+  unsigned char (*is_eq)(FIOBJ a, FIOBJ b);
+  /** Converts an object to a String */
+  fio_str_info_s (*to_s)(FIOBJ o);
+  /** Converts an object to an integer */
+  intptr_t (*to_i)(FIOBJ o);
+  /** Converts an object to a double */
+  double (*to_f)(FIOBJ o);
+  /** Returns the number of exposed elements held by the object, if any. */
+  uint32_t (*count)(FIOBJ o);
+  /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
+  uint32_t (*each1)(FIOBJ o, int32_t start_at,
+                    int (*task)(FIOBJ child, void *arg), void *arg);
+  /**
+   * Decreases the reference count and/or frees the object, calling `free2` for
+   * any nested objects.
+   *
+   * Returns 0 if the object is still alive or 1 if the object was freed. The
+   * return value is currently ignored, but this might change in the future.
+   */
+  int (*free2)(FIOBJ o);
+} FIOBJ_class_vtable_s;
+```
+
+#### `FIOBJ` Extension Example
+
+For our example, let us implement a static string extension type.
+
+The API for this type and the header might look something like this:
+
+```c
+/* *****************************************************************************
+FIOBJ Static String Extension Header Example
+
+Copyright: Boaz Segev, 2019
+License: ISC / MIT (choose your license)
+
+Feel free to copy, use and enjoy according to the license provided.
+***************************************************************************** */
+#ifndef FIO_STAT_STRING_HEADER_H
+#define FIO_STAT_STRING_HEADER_H
+/* *****************************************************************************
+Perliminaries - include the FIOBJ extension, but not it's implementation
+***************************************************************************** */
+#define FIO_EXTERN 1
+#define FIOBJ_EXTERN 1
+#define FIO_FIOBJ
+#include "fio-stl.h"
+
+/* *****************************************************************************
+Defining the Type ID and the API
+***************************************************************************** */
+
+/** The Static String Type ID */
+#define FIOBJ_T_STATIC_STRING 101UL
+
+/** Returns a new static string object. The string is considered immutable. */
+FIOBJ fiobj_static_new(const char *str, size_t len);
+
+/** Returns a pointer to the static string. */
+const char *fiobj_static2ptr(FIOBJ s);
+
+/** Returns the static strings length. */
+size_t fiobj_static_len(FIOBJ s);
+
+#endif
+```
+
+**Note**: The header assumes that _somewhere_ there's a C implementation file that includes the `FIOBJ` implementation. That C file defines the `FIOBJ_EXTERN_COMPLETE` macro.
+
+The implementation may look like this.
+
+```c
+/* *****************************************************************************
+FIOBJ Static String Extension Implementation Example
+
+Copyright: Boaz Segev, 2019
+License: ISC / MIT (choose your license)
+
+Feel free to copy, use and enjoy according to the license provided.
+***************************************************************************** */
+#include <fiobj_static.h> // include the header file here, whatever it's called
+
+/* *****************************************************************************
+The Virtual Function Table (definitions and table)
+***************************************************************************** */
+
+/** Test for equality between two objects with the same `type_id` */
+static unsigned char static_string_is_eq(FIOBJ a, FIOBJ b);
+/** Converts an object to a String */
+static fio_str_info_s static_string_to_s(FIOBJ o);
+/** Converts an object to an integer */
+static intptr_t static_string_to_i(FIOBJ o);
+/** Converts an object to a double */
+static double static_string_to_f(FIOBJ o);
+/** Returns the number of exposed elements held by the object, if any. */
+static uint32_t static_string_count(FIOBJ o);
+/** Iterates the exposed elements held by the object. See `fiobj_each1`. */
+static uint32_t static_string_each1(FIOBJ o, int32_t start_at,
+                                    int (*task)(FIOBJ, void *), void *arg);
+/**
+ * Decreases the reference count and/or frees the object, calling `free2` for
+ * any nested objects (which we don't have for this type).
+ *
+ * Returns 0 if the object is still alive or 1 if the object was freed. The
+ * return value is currently ignored, but this might change in the future.
+ */
+static int static_string_free2(FIOBJ o);
+/** The virtual function table object. */
+static const FIOBJ_class_vtable_s FIOBJ___STATIC_STRING_VTABLE = {
+    .type_id = FIOBJ_T_STATIC_STRING,
+    .is_eq = static_string_is_eq,
+    .to_s = static_string_to_s,
+    .to_i = static_string_to_i,
+    .to_f = static_string_to_f,
+    .count = static_string_count,
+    .each1 = static_string_each1,
+    .free2 = static_string_free2,
+};
+
+/* *****************************************************************************
+The Static String Type (internal implementation)
+***************************************************************************** */
+
+/* in this example, all functions defined by fio-stl.h will be static (local) */
+#undef FIO_EXTERN
+#undef FIOBJ_EXTERN
+/* leverage the small-string type to hold static string data */
+#define FIO_SMALL_STR_NAME fiobj_static_string
+/* add required pointer tagging */
+#define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_OTHER)
+#define FIO_PTR_UNTAG(p) FIOBJ_PTR_UNTAG(p)
+#define FIO_PTR_TAG_TYPE FIOBJ
+/* add required reference counter / wrapper type */
+#define FIO_REF_CONSTRUCTOR_ONLY 1
+#define FIO_REF_NAME fiobj_static_string
+/* initialization - for demonstration purposes, we don't use it here. */
+#define FIO_REF_INIT(o)                                                        \
+  do {                                                                         \
+    o = (fiobj_static_string_s){.aligned = NULL};                              \
+    FIOBJ_MARK_MEMORY_ALLOC(); /* mark memory allocation for debugging */      \
+  } while (0)
+/* cleanup - destroy the object data when the reference count reaches zero. */
+#define FIO_REF_DESTROY(o)                                                     \
+  do {                                                                         \
+    fiobj_static_string_destroy((FIOBJ)&o);                                    \
+    FIOBJ_MARK_MEMORY_FREE(); /* mark memory deallocation for debugging */     \
+  } while (0)
+/* metadata (vtable) definition and initialization. */
+#define FIO_REF_METADATA const FIOBJ_class_vtable_s *
+/* metadata initialization - required to initialize the vtable. */
+#define FIO_REF_METADATA_INIT(m)                                               \
+  do {                                                                         \
+    m = &FIOBJ___STATIC_STRING_VTABLE;                                         \
+  } while (0)
+#include <fio-stl.h>
+
+/* *****************************************************************************
+The Public API
+***************************************************************************** */
+
+/** Returns a new static string object. The string is considered immutable. */
+FIOBJ fiobj_static_new(const char *str, size_t len) {
+  FIOBJ o = fiobj_static_string_new();
+  FIO_ASSERT_ALLOC(FIOBJ_PTR_UNTAG(o));
+  fiobj_static_string_set_const(o, str, len);
+  return o;
+}
+
+/** Returns a pointer to the static string. */
+const char *fiobj_static2ptr(FIOBJ o) { return fiobj_static_string2ptr(o); }
+
+/** Returns the static strings length. */
+size_t fiobj_static_len(FIOBJ o) { return fiobj_static_string_len(o); }
+
+/* *****************************************************************************
+Virtual Function Table Implementation
+***************************************************************************** */
+
+/** Test for equality between two objects with the same `type_id` */
+static unsigned char static_string_is_eq(FIOBJ a, FIOBJ b) {
+  fio_str_info_s ai, bi;
+  ai = fiobj_static_string_info(a);
+  bi = fiobj_static_string_info(b);
+  return (ai.len == bi.len && !memcmp(ai.buf, bi.buf, ai.len));
+}
+/** Converts an object to a String */
+static fio_str_info_s static_string_to_s(FIOBJ o) {
+  return fiobj_static_string_info(o);
+}
+/** Converts an object to an integer */
+static intptr_t static_string_to_i(FIOBJ o) {
+  fio_str_info_s s = fiobj_static_string_info(o);
+  if (s.len)
+    return fio_atol(&s.buf);
+  return 0;
+}
+/** Converts an object to a double */
+static double static_string_to_f(FIOBJ o) {
+  fio_str_info_s s = fiobj_static_string_info(o);
+  if (s.len)
+    return fio_atof(&s.buf);
+  return 0;
+}
+/** Returns the number of exposed elements held by the object, if any. */
+static uint32_t static_string_count(FIOBJ o) {
+  return 0;
+  (void)o;
+}
+/** Iterates the exposed elements held by the object. See `fiobj_each1`. */
+static uint32_t static_string_each1(FIOBJ o, int32_t start_at,
+                                    int (*task)(FIOBJ, void *), void *arg) {
+  return 0;
+  (void)o; (void)start_at; (void)task; (void)arg;
+}
+/** Decreases the reference count and/or frees the object. */
+static int static_string_free2(FIOBJ o) { return fiobj_static_string_free(o); }
+```
+
+Example usage:
+
+```c
+#include "fiobj_static.h" // include FIOBJ extension type
+int main(void) {
+  FIOBJ o = fiobj_static_new("my static string", 16);
+  /* example test of virtual table redirection */
+  FIO_ASSERT(fiobj2cstr(o).buf == fiobj_static2ptr(o) &&
+                 fiobj2cstr(o).len == fiobj_static_len(o),
+             "vtable redirection error.");
+  fprintf(stderr, "allocated: %s\n", fiobj_static2ptr(o));
+  fprintf(stderr, "it's %zu byte long\n", fiobj_static_len(o));
+  fprintf(stderr, "object type: %zu\n", FIOBJ_TYPE(o));
+  fiobj_free(o);
+  FIOBJ_MARK_MEMORY_PRINT(); /* only in DEBUG mode */
+}
+```
