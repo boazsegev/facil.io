@@ -2485,7 +2485,7 @@ The **macro** shadows the `fio_cli_start` function and defines the CLI interface
 
       int main(int argc, char const *argv[]) {
         fio_cli_start(argc, argv, 0, -1,
-                      "this is a CLI example.",
+                      "this is a CLI example for the NAME application.",
                       FIO_CLI_PRINT_HEADER("CLI type validation"),
                       FIO_CLI_STRING("-str -s any data goes here"),
                       FIO_CLI_INT("-int -i numeral data goes here"),
@@ -2513,7 +2513,19 @@ The **macro** shadows the `fio_cli_start` function and defines the CLI interface
 
 The `fio_cli_start` macro accepts the `argc` and `argv`, as received by the `main` functions, a maximum and minimum number of unspecified CLI arguments (beneath which or after which the parser will fail), an application description string and a variable list of (specified) command line arguments.
 
-Command line arguments can be either String, Integer or Boolean, as indicated by the `FIO_CLI_STRING("-arg [-alias] desc.")`, `FIO_CLI_INT("-arg [-alias] desc.")` and `FIO_CLI_BOOL("-arg [-alias] desc.")` macros. Extra descriptions or text can be added using the `FIO_CLI_PRINT_HEADER(str)` and `FIO_CLI_PRINT(str)` macros.
+If the minimum number of unspecified CLI arguments is `-1`, there will be no maximum limit on the number of unnamed / unrecognized arguments allowed  
+
+The text `NAME` in the description (all capitals) will be replaced with the executable command invoking the application.
+
+Command line arguments can be either String, Integer or Boolean, as indicated by any of the following macros:
+
+* `FIO_CLI_STRING("-arg [-alias] desc.")`
+
+* `FIO_CLI_INT("-arg [-alias] desc.")`
+
+*  `FIO_CLI_BOOL("-arg [-alias] desc.")`
+  
+Extra descriptions or text can be added using the `FIO_CLI_PRINT_HEADER(str)` and `FIO_CLI_PRINT(str)` macros.
 
 #### `fio_cli_end()`
 

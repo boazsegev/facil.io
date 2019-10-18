@@ -758,11 +758,11 @@ HFUNC void fio_lock(fio_lock_i *lock) {
   }
 }
 
-/** Returns 1 if the lock is locked, 0 otherwise. */
-HFUNC uint8_t FIO_NAME_BL(fio, locked)(fio_lock_i *lock) { return *lock; }
-
 /** Unlocks the lock, no matter which thread owns the lock. */
 HFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_xchange(lock, 0); }
+
+/** Returns 1 if the lock is locked, 0 otherwise. */
+HFUNC uint8_t FIO_NAME_BL(fio, locked)(fio_lock_i *lock) { return *lock; }
 
 #endif /* FIO_ATOMIC */
 #undef FIO_ATOMIC
@@ -2750,7 +2750,7 @@ IFUNC void fio_rand_feed2seed(void *buf_, size_t len) {
   uint8_t offset = (fio___rand_counter & 3);
   uint64_t tmp = 0;
   for (size_t i = 0; i < (len >> 3); ++i) {
-    tmp = FIO_NAME2(fio_buf, u64)(buf);
+    tmp = FIO_NAME2(fio_buf, u64_local)(buf);
     fio___rand_buffer[(offset++ & 3)] ^= tmp;
     buf += 8;
   }
@@ -9853,7 +9853,7 @@ CLI API
  *
  * Example use:
  *
- *    fio_cli_start(argc, argv, 0, 0, "this example accepts the following:",
+ *    fio_cli_start(argc, argv, 0, 0, "The NAME example accepts the following:",
  *                  FIO_CLI_PRINT_HREADER("Concurrency:"),
  *                  FIO_CLI_INT("-t -thread number of threads to run."),
  *                  FIO_CLI_INT("-w -workers number of workers to run."),
@@ -10133,7 +10133,33 @@ error: /* handle errors*/
           value ? (value[0] ? value : "(empty)") : "(null)");
 print_help:
   if (parser->description) {
-    fprintf(stderr, "\n%s\n", parser->description);
+    const char *name_tmp = parser->argv[0];
+    const char *desc = parser->description;
+    char buf[1024];
+    size_t pos = 0;
+    while (name_tmp[0] == '.' || name_tmp[0] == '/')
+      ++name_tmp;
+    buf[pos++] = '\n';
+    while (*desc) {
+      if (desc[0] == 'N' && desc[1] == 'A' && desc[2] == 'M' &&
+          desc[3] == 'E') {
+        buf[pos++] = 0;
+        desc += 4;
+        fprintf(stderr, "%s%s", buf, name_tmp);
+        pos = 0;
+      } else {
+        buf[pos++] = *desc;
+        ++desc;
+        if (pos >= 1023) {
+          buf[pos++] = 0;
+          fwrite(buf, pos, sizeof(*buf), stderr);
+          pos = 0;
+        }
+      }
+    }
+    buf[pos++] = '\n';
+    buf[pos++] = 0;
+    fprintf(stderr, "%s", buf);
   } else {
     const char *name_tmp = parser->argv[0];
     while (name_tmp[0] == '.' || name_tmp[0] == '/')
@@ -13726,6 +13752,7 @@ TEST_FUNC void fio___dynamic_types_test___random(void) {
   fio___dynamic_types_test___random_buffer(rs, test_len, "fio_rand_bytes",
                                            end - start);
 
+  fio_rand_feed2seed(rs, sizeof(*rs) * test_len);
   FIO_MEM_FREE(rs, sizeof(*rs) * test_len);
   fprintf(stderr, "\n");
 #if DEBUG
