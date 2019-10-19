@@ -2725,6 +2725,8 @@ SFUNC uint64_t fio_rand64(void);
 /** Writes `len` bytes of psedo-random bits to the target buffer. */
 SFUNC void fio_rand_bytes(void *target, size_t len);
 
+/** Feeds up to 1023 bytes of entropy to the random state. */
+IFUNC void fio_rand_feed2seed(void *buf_, size_t len);
 /* *****************************************************************************
 Random - Implementation
 ***************************************************************************** */
