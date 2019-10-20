@@ -1850,9 +1850,7 @@ If the FIO_PTR_TAG_TYPE is defined, then functions returning a type's pointer wi
 
 ## Logging and Assertions:
 
-If the `FIO_LOG_LENGTH_LIMIT` macro is defined (it's recommended that it be
-greater than 128), than the `FIO_LOG2STDERR` (weak) function and the
-`FIO_LOG2STDERR2` macro will be defined.
+If the `FIO_LOG_LENGTH_LIMIT` macro is defined (it's recommended that it be greater than 128), than the `FIO_LOG2STDERR` (weak) function and the `FIO_LOG2STDERR2` macro will be defined.
 
 #### `FIO_LOG_LEVEL`
 
@@ -1865,23 +1863,17 @@ An application wide integer with a value of either:
 - `FIO_LOG_LEVEL_INFO` (4)
 - `FIO_LOG_LEVEL_DEBUG` (5)
 
-The initial value can be set using the `FIO_LOG_LEVEL_DEFAULT` macro. By
-default, the level is 4 (`FIO_LOG_LEVEL_INFO`) for normal compilation and 5
-(`FIO_LOG_LEVEL_DEBUG`) for DEBUG compilation.
+The initial value can be set using the `FIO_LOG_LEVEL_DEFAULT` macro. By default, the level is 4 (`FIO_LOG_LEVEL_INFO`) for normal compilation and 5 (`FIO_LOG_LEVEL_DEBUG`) for DEBUG compilation.
 
 #### `FIO_LOG2STDERR(msg, ...)`
 
-This `printf` style **function** will log a message to `stderr`, without
-allocating any memory on the heap for the string (`fprintf` might).
+This `printf` style **function** will log a message to `stderr`, without allocating any memory on the heap for the string (`fprintf` might).
 
-The function is defined as `weak`, allowing it to be overridden during the
-linking stage, so logging could be diverted... although, it's recommended to
-divert `stderr` rather then the logging function.
+The function is defined as `weak`, allowing it to be overridden during the linking stage, so logging could be diverted... although, it's recommended to divert `stderr` rather then the logging function.
 
 #### `FIO_LOG2STDERR2(msg, ...)`
 
-This macro routs to the `FIO_LOG2STDERR` function after prefixing the message
-with the file name and line number in which the error occurred.
+This macro routs to the `FIO_LOG2STDERR` function after prefixing the message with the file name and line number in which the error occurred.
 
 #### `FIO_LOG_DEBUG(msg, ...)`
 
@@ -1905,27 +1897,23 @@ Logs `msg` **if** log level is equal or above requested log level.
 
 #### `FIO_ASSERT(cond, msg, ...)`
 
-Reports an error unless condition is met, printing out `msg` using
-`FIO_LOG_FATAL` and exiting (not aborting) the application.
+Reports an error unless condition is met, printing out `msg` using `FIO_LOG_FATAL` and exiting (not aborting) the application.
 
-In addition, a `SIGINT` will be sent to the process and any of it's children
-before exiting the application, supporting debuggers everywhere :-)
+In addition, a `SIGINT` will be sent to the process and any of it's children before exiting the application, supporting debuggers everywhere :-)
 
 #### `FIO_ASSERT_ALLOC(cond, msg, ...)`
 
-Reports an error unless condition is met, printing out `msg` using
-`FIO_LOG_FATAL` and exiting (not aborting) the application.
+Reports an error unless condition is met, printing out `msg` using `FIO_LOG_FATAL` and exiting (not aborting) the application.
 
-In addition, a `SIGINT` will be sent to the process and any of it's children
-before exiting the application, supporting debuggers everywhere :-)
+In addition, a `SIGINT` will be sent to the process and any of it's children before exiting the application, supporting debuggers everywhere :-)
 
 #### `FIO_ASSERT_DEBUG(cond, msg, ...)`
 
-Reports an error unless condition is met, printing out `msg` using
-`FIO_LOG_FATAL` and aborting (not exiting) the application.
+Ignored unless `DEBUG` is defined.
 
-In addition, a `SIGINT` will be sent to the process and any of it's children
-before aborting the application, because consistency is important.
+Reports an error unless condition is met, printing out `msg` using `FIO_LOG_FATAL` and aborting (not exiting) the application.
+
+In addition, a `SIGINT` will be sent to the process and any of it's children before aborting the application, because consistency is important.
 
 **Note**: `msg` MUST be a string literal.
 
@@ -1935,20 +1923,50 @@ before aborting the application, because consistency is important.
 
 If the `FIO_ATOMIC` macro is defined than the following macros will be defined:
 
+#### `fio_atomic_load(p_obj)`
+
+Atomically loads and returns the value stored in the object pointed to by `p_obj`.
+
 #### `fio_atomic_xchange(p_obj, value)`
 
 Atomically sets the object pointer to by `p_obj` to `value`, returning the
 previous value.
 
 #### `fio_atomic_add(p_obj, value)`
+
+A MACRO / function that performs `add` atomically.
+
+Returns the new value.
+
 #### `fio_atomic_sub(p_obj, value)`
+
+A MACRO / function that performs `sub` atomically.
+
+Returns the new value.
+
 #### `fio_atomic_and(p_obj, value)`
+
+A MACRO / function that performs `and` atomically.
+
+Returns the new value.
+
 #### `fio_atomic_xor(p_obj, value)`
+
+A MACRO / function that performs `xor` atomically.
+
+Returns the new value.
+
 #### `fio_atomic_or(p_obj, value)`
+
+A MACRO / function that performs `or` atomically.
+
+Returns the new value.
+
 #### `fio_atomic_nand(p_obj, value)`
 
-Atomically operates on the object pointer to by `p_obj`, returning the new
-value.
+A MACRO / function that performs `nand` atomically.
+
+Returns the new value.
 
 #### `fio_lock_i`
 
@@ -1975,20 +1993,31 @@ defined:
 
 #### Byte Swapping
 
+Returns a number of the indicated type with it's byte representation swapped.
+
 - `fio_bswap16(i)`
 - `fio_bswap32(i)`
 - `fio_bswap64(i)`
 
 #### Bit rotation (left / right)
 
+Returns a number with it's bits left rotated (`lrot`) or right rotated (`rrot`) according to the type width specified (i.e., `fio_rrot64` indicates a **r**ight rotation for `uint64_t`).
+
 - `fio_lrot32(i, bits)`
+
 - `fio_rrot32(i, bits)`
+
 - `fio_lrot64(i, bits)`
+
 - `fio_rrot64(i, bits)`
-- `FIO_LROT(i, bits)`
-- `FIO_RROT(i, bits)`
+
+- `FIO_LROT(i, bits)` (MACRO, can be used with any type size)
+
+- `FIO_RROT(i, bits)` (MACRO, can be used with any type size)
 
 #### Numbers to Numbers (network ordered)
+
+On big-endian systems, these macros a NOOPs, whereas on little-endian systems these macros flip the byte order.
 
 - `fio_lton16(i)`
 - `fio_ntol16(i)`
@@ -1997,30 +2026,29 @@ defined:
 - `fio_lton64(i)`
 - `fio_ntol64(i)`
 
-On big-endian systems, these macros a NOOPs, whereas on little-endian systems
-these macros flip the byte order.
-
 #### Bytes to Numbers (native / reversed / network ordered)
 
-Big Endian (default):
+Reads a number from an unaligned memory buffer. The number or bits read from the buffer is indicated by the name of the function.
+
+**Big Endian (default)**:
 
 - `fio_buf2u16(buffer)`
 - `fio_buf2u32(buffer)`
 - `fio_buf2u64(buffer)`
 
-Little Endian:
+**Little Endian**:
 
 - `fio_buf2u16_little(buffer)`
 - `fio_buf2u32_little(buffer)`
 - `fio_buf2u64_little(buffer)`
 
-Native Byte Order:
+**Native Byte Order**:
 
 - `fio_buf2u16_local(buffer)`
 - `fio_buf2u32_local(buffer)`
 - `fio_buf2u64_local(buffer)`
 
-Reversed Byte Order:
+**Reversed Byte Order**:
 
 - `fio_buf2u16_bswap(buffer)`
 - `fio_buf2u32_bswap(buffer)`
@@ -2028,25 +2056,27 @@ Reversed Byte Order:
 
 #### Numbers to Bytes (native / reversed / network ordered)
 
-Big Endian (default):
+Writes a number to an unaligned memory buffer. The number or bits written to the buffer is indicated by the name of the function.
+
+**Big Endian (default)**:
 
 - `fio_u2buf16(buffer, i)`
 - `fio_u2buf32(buffer, i)`
 - `fio_u2buf64(buffer, i)`
 
-Little Endian:
+**Little Endian**:
 
 - `fio_u2buf16_little(buffer, i)`
 - `fio_u2buf32_little(buffer, i)`
 - `fio_u2buf64_little(buffer, i)`
 
-Native Byte Order:
+**Native Byte Order**:
 
 - `fio_u2buf16_local(buffer, i)`
 - `fio_u2buf32_local(buffer, i)`
 - `fio_u2buf64_local(buffer, i)`
 
-Reversed Byte Order:
+**Reversed Byte Order**:
 
 - `fio_u2buf16_bswap(buffer, i)`
 - `fio_u2buf32_bswap(buffer, i)`
@@ -2054,10 +2084,24 @@ Reversed Byte Order:
 
 #### Constant Time Bit Operations
 
+Performs the operation indicated in constant time.
+
 - `fio_ct_true(condition)`
+
+    Tests if `condition` is non-zero (returns `1` / `0`).
+
 - `fio_ct_false(condition)`
+
+    Tests if `condition` is zero (returns `1` / `0`).
+
 - `fio_ct_if(bool, a_if_true, b_if_false)`
+
+    Tests if `bool == 1` (returns `a` / `b`).
+
 - `fio_ct_if2(condition, a_if_true, b_if_false)`
+
+    Tests if `condition` is non-zero (returns `a` / `b`).
+
 
 -------------------------------------------------------------------------------
 
@@ -2175,7 +2219,11 @@ SHOULD be called after `fork` to prevent the two processes from outputting the s
 
 If the `FIO_ATOL` macro is defined, the following functions will be defined:
 
-#### `SFUNC int64_t fio_atol(char **pstr)`
+#### `fio_atol`
+
+```c
+int64_t fio_atol(char **pstr);
+```
 
 A helper function that converts between String data to a signed int64_t.
 
@@ -2186,11 +2234,19 @@ must come first.
 The most significant difference between this function and `strtol` (aside of API
 design), is the added support for binary representations.
 
-#### `SFUNC double fio_atof(char **pstr)`
+#### `fio_atof`
+
+```c
+double fio_atof(char **pstr);
+```
 
 A helper function that converts between String data to a signed double.
 
-#### `SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base)`
+#### `fio_ltoa`
+
+```c
+size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
+```
 
 A helper function that writes a signed int64_t to a string.
 
@@ -2204,7 +2260,11 @@ automatically added (i.e., "0x" for hex and "0b" for base 2).
 Returns the number of bytes actually written (excluding the NUL terminator).
 
 
-#### `size_t fio_ftoa(char *dest, double num, uint8_t base)`
+#### `fio_ftoa`
+
+```c
+size_t fio_ftoa(char *dest, double num, uint8_t base);
+```
 
 A helper function that converts between a double to a string.
 
@@ -2483,37 +2543,21 @@ By defining `FIO_CLI`, the following functions will be defined.
 
 In addition, `FIO_CLI` automatically includes the `FIO_ATOL` flag, since CLI parsing depends on the `fio_atol` function.
 
-#### `fio_cli_start(argc, argv, unnamed_min, unnamed_max, description, ...)`
+#### `fio_cli_start`
 
-The **macro** shadows the `fio_cli_start` function and defines the CLI interface to be parsed. i.e.,
+```c
+#define fio_cli_start(argc, argv, unnamed_min, unnamed_max, description, ...)  \
+  fio_cli_start((argc), (argv), (unnamed_min), (unnamed_max), (description),   \
+                (char const *[]){__VA_ARGS__, (char const *)NULL})
 
-      int main(int argc, char const *argv[]) {
-        fio_cli_start(argc, argv, 0, -1,
-                      "this is a CLI example for the NAME application.",
-                      FIO_CLI_PRINT_HEADER("CLI type validation"),
-                      FIO_CLI_STRING("-str -s any data goes here"),
-                      FIO_CLI_INT("-int -i numeral data goes here"),
-                      FIO_CLI_BOOL("-bool -b flag (boolean) only - no data"),
-                      FIO_CLI_PRINT("This test allows for unlimited arguments "
-                                    "that will simply pass-through"));
-        if (fio_cli_get("-s"))
-          fprintf(stderr, "String: %s\n", fio_cli_get("-s"));
+/* the shadowed function: */
+void fio_cli_start   (int argc, char const *argv[],
+                      int unnamed_min, int unnamed_max,
+                      char const *description,
+                      char const **names);
+```
 
-        if (fio_cli_get("-i"))
-          fprintf(stderr, "Integer: %d\n", fio_cli_get_i("-i"));
-
-        fprintf(stderr, "Boolean: %d\n", fio_cli_get_i("-b"));
-
-        if (fio_cli_unnamed_count()) {
-          fprintf(stderr, "Printing unlisted / unrecognized arguments:\n");
-          for (size_t i = 0; i < fio_cli_unnamed_count(); ++i) {
-            fprintf(stderr, "%s\n", fio_cli_unnamed(i));
-          }
-        }
-
-        fio_cli_end();
-        return 0;
-      }
+The `fio_cli_start` **macro** shadows the `fio_cli_start` function and defines the CLI interface to be parsed. i.e.,
 
 The `fio_cli_start` macro accepts the `argc` and `argv`, as received by the `main` functions, a maximum and minimum number of unspecified CLI arguments (beneath which or after which the parser will fail), an application description string and a variable list of (specified) command line arguments.
 
@@ -2521,45 +2565,111 @@ If the minimum number of unspecified CLI arguments is `-1`, there will be no max
 
 The text `NAME` in the description (all capitals) will be replaced with the executable command invoking the application.
 
-Command line arguments can be either String, Integer or Boolean, as indicated by any of the following macros:
+Command line arguments can be either String, Integer or Boolean. Optionally, extra data could be added to the CLI help output. CLI arguments and information is added using any of the following macros:
 
 * `FIO_CLI_STRING("-arg [-alias] desc.")`
 
 * `FIO_CLI_INT("-arg [-alias] desc.")`
 
-*  `FIO_CLI_BOOL("-arg [-alias] desc.")`
-  
-Extra descriptions or text can be added using the `FIO_CLI_PRINT_HEADER(str)` and `FIO_CLI_PRINT(str)` macros.
+* `FIO_CLI_BOOL("-arg [-alias] desc.")`
 
-#### `fio_cli_end()`
+* `FIO_CLI_PRINT_HEADER("header text (printed as a header)")`
+
+* `FIO_CLI_PRINT("raw text line (printed as is)")`
+
+```c
+int main(int argc, char const *argv[]) {
+  fio_cli_start(argc, argv, 0, -1,
+                "this is a CLI example for the NAME application.",
+                FIO_CLI_PRINT_HEADER("CLI type validation"),
+                FIO_CLI_STRING("-str -s any data goes here"),
+                FIO_CLI_INT("-int -i numeral data goes here"),
+                FIO_CLI_BOOL("-bool -b flag (boolean) only - no data"),
+                FIO_CLI_PRINT("This test allows for unlimited arguments "
+                              "that will simply pass-through"));
+  if (fio_cli_get("-s"))
+    fprintf(stderr, "String: %s\n", fio_cli_get("-s"));
+
+  if (fio_cli_get("-i"))
+    fprintf(stderr, "Integer: %d\n", fio_cli_get_i("-i"));
+
+  fprintf(stderr, "Boolean: %d\n", fio_cli_get_i("-b"));
+
+  if (fio_cli_unnamed_count()) {
+    fprintf(stderr, "Printing unlisted / unrecognized arguments:\n");
+    for (size_t i = 0; i < fio_cli_unnamed_count(); ++i) {
+      fprintf(stderr, "%s\n", fio_cli_unnamed(i));
+    }
+  }
+
+  fio_cli_end();
+  return 0;
+}
+```
+
+#### `fio_cli_end`
+
+```c
+void fio_cli_end(void);
+```
 
 Clears the CLI data storage.
 
-#### `char const *fio_cli_get(char const *name);`
+#### `fio_cli_get`
+
+```c
+char const *fio_cli_get(char const *name);
+```
 
 Returns the argument's value as a string, or NULL if the argument wasn't provided.
 
-#### `int fio_cli_get_i(char const *name);`
+#### `fio_cli_get_i`
+
+```c
+int fio_cli_get_i(char const *name);
+```
 
 Returns the argument's value as an integer, or 0 if the argument wasn't provided.
 
-#### `fio_cli_get_bool(name)`
+#### `fio_cli_get_bool`
 
-True the argument was boolean and provided.
+```c
+#define fio_cli_get_bool(name) (fio_cli_get((name)) != NULL)
+```
 
-#### `unsigned int fio_cli_unnamed_count(void)`
+Evaluates to true (1) if the argument was boolean and provided. Otherwise evaluated to false (0).
+
+#### `fio_cli_unnamed_count`
+
+```c
+unsigned int fio_cli_unnamed_count(void);
+```
 
 Returns the number of unrecognized arguments (arguments unspecified, in `fio_cli_start`).
 
-#### `char const *fio_cli_unnamed(unsigned int index)`
+#### `fio_cli_unnamed`
+
+```c
+char const *fio_cli_unnamed(unsigned int index);
+```
 
 Returns a String containing the unrecognized argument at the stated `index` (indexes are zero based).
 
-#### `void fio_cli_set(char const *name, char const *value)`
+#### `fio_cli_set`
+
+```c
+void fio_cli_set(char const *name, char const *value);
+```
 
 Sets a value for the named argument (but **not** it's aliases).
 
 #### `fio_cli_set_default(name, value)`
+
+```c
+#define fio_cli_set_default(name, value)                                       \
+  if (!fio_cli_get((name)))                                                    \
+    fio_cli_set(name, value);
+```
 
 Sets a value for the named argument (but **not** it's aliases) **only if** the argument wasn't set by the user.
 
@@ -2982,37 +3092,61 @@ Where some improvement could be made, it was made using an added function name t
 
 By defining `FIO_MALLOC`, the following functions will be defined:
 
-#### `void * fio_malloc(size_t size)`
+#### `fio_malloc`
+
+```c
+void * fio_malloc(size_t size);
+```
 
 Allocates memory using a per-CPU core block memory pool. Memory is zeroed out.
 
 Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
 will be redirected to `mmap`, as if `fio_mmap` was called.
 
-#### `void * fio_calloc(size_t size_per_unit, size_t unit_count)`
+#### `fio_calloc`
+
+```c
+void * fio_calloc(size_t size_per_unit, size_t unit_count);
+```
 
 Same as calling `fio_malloc(size_per_unit * unit_count)`;
 
 Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
 will be redirected to `mmap`, as if `fio_mmap` was called.
 
-#### `void fio_free(void *ptr)`
+#### `fio_free`
+
+```c
+void fio_free(void *ptr);
+```
 
 Frees memory that was allocated using this library.
 
-#### `void * fio_realloc(void *ptr, size_t new_size)`
+#### `fio_realloc`
+
+```c
+void * fio_realloc(void *ptr, size_t new_size);
+```
 
 Re-allocates memory. An attempt to avoid copying the data is made only for big
 memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
 
-#### `void * fio_realloc2(void *ptr, size_t new_size, size_t copy_length)`
+#### `fio_realloc2`
+
+```c
+void * fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
+```
 
 Re-allocates memory. An attempt to avoid copying the data is made only for big
 memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
 
 This variation is slightly faster as it might copy less data.
 
-#### `void * fio_mmap(size_t size)`
+#### `fio_mmap`
+
+```c
+void * fio_mmap(size_t size);
+```
 
 Allocates memory directly using `mmap`, this is preferred for objects that both
 require almost a page of memory (or more) and expect a long lifetime.
@@ -3022,7 +3156,11 @@ inherently slower.
 
 `fio_free` can be used for deallocating the memory.
 
-#### `void fio_malloc_after_fork(void)`
+#### `fio_malloc_after_fork`
+
+```c
+void fio_malloc_after_fork(void);
+```
 
 Never fork a multi-threaded process. Doing so might corrupt the memory
 allocation system. The risk is more relevant for child processes.
