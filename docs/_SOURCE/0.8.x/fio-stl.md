@@ -2114,19 +2114,21 @@ However, this could be used to mitigate memory probing attacks. Secrets stored i
 
 ## Pseudo Random Generation
 
-If the `FIO_RAND` macro is defined, the following, non-cryptographic
-psedo-random generator functions will be defined.
+If the `FIO_RAND` macro is defined, the following, non-cryptographic psedo-random generator functions will be defined.
 
-The random generator functions are automatically re-seeded with either data from
-the system's clock or data from `getrusage` (when available).
+The "random" data is initialized / seeded automatically using a small number of functional cycles that collect data and hash it, hopefully resulting in enough jitter entropy.
 
-The facil.io random generator functions are both faster and more random then the standard `rand` on my computer (you can test it for yours).
+The data is collected using `getrusage` (or the system clock if `getrusage` is unavailable) and hashed using RiskyHash. The data is then combined with the previous state / cycle.
 
-I designed it in the hopes of achieving a cryptographically safe PRNG, but it wasn't cryptographically analyzed and should be considered as a non-cryptographic PRNG.
+The CPU "jitter" within the calculation **should** effect `getrusage` in a way that makes it impossible for an attacker to determine the resulting random state (assuming jitter exists).
 
-**Note**: bitwise operations (`FIO_BITWISE`) and Risky Hash (`FIO_RISKY_HASH`)
-are automatically defined along with `FIO_RAND`, since they are required by the
-algorithm.
+However, this is unlikely to prove cryptographically safe and isn't likely to produce a large number of entropy bits (even though a small number of bits have a large impact on the final state).
+
+The facil.io random generator functions appear both faster and more random then the standard `rand` on my computer (you can test it for yours).
+
+I designed it in the hopes of achieving a cryptographically safe PRNG, but it wasn't cryptographically analyzed, lacks a good source of entropy and should be considered as a non-cryptographic PRNG.
+
+**Note**: bitwise operations (`FIO_BITWISE`) and Risky Hash (`FIO_RISKY_HASH`) are automatically defined along with `FIO_RAND`, since they are required by the algorithm.
 
 #### `fio_rand64`
 
@@ -2163,7 +2165,9 @@ Limited to 1023 bytes of data per function call.
 void fio_rand_reseed(void);
 ```
 
-Forces the random generator state to rotate. SHOULD be called after `fork` to prevent the two processes from outputting the same random numbers (until a reseed is called automatically).
+Forces the random generator state to rotate.
+
+SHOULD be called after `fork` to prevent the two processes from outputting the same random numbers (until a reseed is called automatically).
 
 -------------------------------------------------------------------------------
 

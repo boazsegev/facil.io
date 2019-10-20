@@ -2727,6 +2727,10 @@ SFUNC void fio_rand_bytes(void *target, size_t len);
 
 /** Feeds up to 1023 bytes of entropy to the random state. */
 IFUNC void fio_rand_feed2seed(void *buf_, size_t len);
+
+/** Reseeds the random engin using system state (rusage / jitter). */
+IFUNC void fio_rand_reseed(void);
+
 /* *****************************************************************************
 Random - Implementation
 ***************************************************************************** */
@@ -2789,30 +2793,38 @@ IFUNC void fio_rand_feed2seed(void *buf_, size_t len) {
   }
 }
 
+/* used here, defined later */
+HFUNC uint64_t fio_time_nano();
+
 IFUNC void fio_rand_reseed(void) {
+  const size_t jitter_samples = 16 | (fio___rand_state[0] & 15);
 #if defined(RUSAGE_SELF)
-  struct rusage rusage;
-  getrusage(RUSAGE_SELF, &rusage);
-  fio___rand_state[0] =
-      fio_risky_hash(&rusage, sizeof(rusage), fio___rand_state[0]);
-  fio___rand_state[1] = fio_risky_hash(
-      &rusage, sizeof(rusage), fio___rand_state[1] + fio___rand_counter);
-#else
-  struct timespec clk;
-  clock_gettime(CLOCK_REALTIME, &clk);
-  fio___rand_state[0] = fio_risky_hash(&clk, sizeof(clk), fio___rand_state[0]);
-  fio___rand_state[1] = fio_risky_hash(
-      &clk, sizeof(clk), fio___rand_state[1] + fio___rand_counter);
+  {
+    struct rusage rusage;
+    getrusage(RUSAGE_SELF, &rusage);
+    fio___rand_state[0] =
+        fio_risky_hash(&rusage, sizeof(rusage), fio___rand_state[0]);
+  }
 #endif
+  for (size_t i = 0; i < jitter_samples; ++i) {
+    uint64_t clk = fio_time_nano();
+    fio___rand_state[0] =
+        fio_risky_hash(&clk, sizeof(clk), fio___rand_state[0] + i);
+    clk = fio_time_nano();
+    fio___rand_state[1] = fio_risky_hash(
+        &clk, sizeof(clk), fio___rand_state[1] + fio___rand_counter);
+  }
   fio___rand_state[2] =
       fio_risky_hash(fio___rand_buffer, sizeof(fio___rand_buffer),
                      fio___rand_counter + fio___rand_state[0]);
-  fio___rand_state[3] = fio_risky_hash(
-      fio___rand_state, sizeof(fio___rand_state), fio___rand_state[1]);
+  fio___rand_state[3] =
+      fio_risky_hash(fio___rand_state, sizeof(fio___rand_state),
+                     fio___rand_state[1] + jitter_samples);
   fio___rand_buffer[0] = fio_lrot64(fio___rand_buffer[0], 31);
   fio___rand_buffer[1] = fio_lrot64(fio___rand_buffer[1], 29);
   fio___rand_buffer[2] ^= fio___rand_buffer[0];
   fio___rand_buffer[3] ^= fio___rand_buffer[1];
+  fio___rand_counter += jitter_samples;
 }
 
 /* tested for randomness using code from: http://xoshiro.di.unimi.it/hwd.php */
@@ -8840,7 +8852,8 @@ Small String Cleanup
 
 
 ***************************************************************************** */
-#if (defined(FIO_QUEUE) || defined(FIO_TIME)) && !defined(H___FIO_TIME___H)
+#if (defined(FIO_QUEUE) || defined(FIO_RAND) || defined(FIO_TIME)) &&          \
+    !defined(H___FIO_TIME___H)
 #define H___FIO_TIME___H
 
 /* *****************************************************************************
@@ -8865,6 +8878,7 @@ FIO_IFUNC int patch_clock_gettime(int clk_id, struct timespec *t) {
   return 0;
   (void)clk_id;
 }
+#warning fio_time functions defined using gettimeofday patch.
 #endif
 
 /* *****************************************************************************
@@ -8877,7 +8891,7 @@ HFUNC struct timespec fio_time_real();
 /** Returns monotonic time. */
 HFUNC struct timespec fio_time_mono();
 
-/** Returns monotonic time in nano-seconds (now in 1 micro of a second). */
+/** Returns monotonic time in nano-seconds (now in 1 billionth of a second). */
 HFUNC uint64_t fio_time_nano();
 
 /** Returns monotonic time in micro-seconds (now in 1 millionth of a second). */
@@ -9236,6 +9250,7 @@ Time Cleanup
 #endif /* FIO_EXTERN_COMPLETE */
 #undef FIO_TIME
 #endif /* FIO_TIME */
+
 /* *****************************************************************************
 
 
@@ -10277,7 +10292,7 @@ print_help:
 CLI Initialization
 ***************************************************************************** */
 
-SFUNC void fio_cli_start___(void); /* sublime text marker */
+void fio_cli_start___(void); /* sublime text marker */
 SFUNC void fio_cli_start FIO_NOOP(int argc, char const *argv[], int unnamed_min,
                                   int unnamed_max, char const *description,
                                   char const **names) {
