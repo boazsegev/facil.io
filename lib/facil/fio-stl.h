@@ -2002,17 +2002,18 @@ HSFUNC void __attribute__((constructor)) fio___mem_state_allocate(void) {
       .lock = FIO_LOCK_INIT,
   };
 #if DEBUG && defined(FIO_LOG_INFO)
-  FIO_LOG_INFO("facil.io memory allocation initialized:\n"
-               "\t* %zu concurrent arenas (@%p).\n"
-               "\t* %zu pages required for arenas (~%zu bytes).\n"
-               "\t* system allocation size:                     %zu bytes\n"
-               "\t* memory block size (allocation slice / bin): %zu bytes\n"
-               "\t* memory blocks per system allocation:        %zu blocks\n"
-               "\t* memory block overhead:                      %zu bytes\n",
-               cores, (void *)fio___mem_state, pages, (pages << 12),
-               (FIO_MEMORY_BLOCKS_PER_ALLOCATION * FIO_MEMORY_BLOCK_SIZE),
-               FIO_MEMORY_BLOCK_SIZE, FIO_MEMORY_BLOCKS_PER_ALLOCATION,
-               FIO_MEMORY_BLOCK_HEADER_SIZE);
+  FIO_LOG_INFO(
+      "facil.io memory allocation initialized:\n"
+      "\t* %zu concurrent arenas (@%p).\n"
+      "\t* %zu pages required for arenas (~%zu bytes).\n"
+      "\t* system allocation size:                     %zu bytes\n"
+      "\t* memory block size (allocation slice / bin): %zu bytes\n"
+      "\t* memory blocks per system allocation:        %zu blocks\n"
+      "\t* memory block overhead:                      %zu bytes\n",
+      cores, (void *)fio___mem_state, (size_t)pages, (size_t)(pages << 12),
+      (size_t)(FIO_MEMORY_BLOCKS_PER_ALLOCATION * FIO_MEMORY_BLOCK_SIZE),
+      (size_t)FIO_MEMORY_BLOCK_SIZE, (size_t)FIO_MEMORY_BLOCKS_PER_ALLOCATION,
+      (size_t)FIO_MEMORY_BLOCK_HEADER_SIZE);
 #endif
 }
 
