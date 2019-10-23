@@ -3373,17 +3373,15 @@ The JSON parsing should stop with an error.
 
 The facil.io library includes a dynamic type system that makes it a easy to handle mixed-type tasks, such as JSON object construction.
 
-This soft type system included in the facil.io STL is based on the Core types mentioned above and shares their API (Dynamic Strings, Dynamic Arrays, and Hash Maps).
+This soft type system included in the facil.io STL, it is based on the Core types mentioned above and it shares their API (Dynamic Strings, Dynamic Arrays, and Hash Maps).
 
-The `FIOBJ` type API is divided by it's inner types (tested using `FIOBJ_TYPE(obj)` or `FIOBJ_TYPE_IS(obj, type)`).
-
-In addition, some `FIOBJ` functions can be called for any `FIOBJ` object, regardless of their type.
+The `FIOBJ` API offers type generic functions in addition to the type specific API. An objects underlying type is easily identified using `FIOBJ_TYPE(obj)` or `FIOBJ_TYPE_IS(obj, type)`.
 
 The documentation regarding the `FIOBJ` soft-type system is divided as follows:  
 
 * [`FIOBJ` General Considerations](#fiobj-general-considerations)
 
-* [`FIOBJ` Core Type Identification](#fiobj-core-type-identification)
+* [`FIOBJ` Types and Identification](#fiobj-types-and-identification)
 
 * [`FIOBJ` Core Memory Management](#fiobj-core-memory-management)
 
@@ -3411,30 +3409,29 @@ In the facil.io web application framework, there are extensions to the core `FIO
 
 * [Mustache](fiobj_mustache)
 
-
 ### `FIOBJ` General Considerations
 
 1. To use the `FIOBJ` soft types, define the `FIO_FIOBJ` macro and then include the facil.io STL header.
 
 2. To include declarations as globally available symbols (allowing the functions to be called from multiple C files), define `FIOBJ_EXTERN` _before_ including the STL header.
 
-    This also requires that _only_ a single C file (translation unit) define `FIOBJ_EXTERN_COMPLETE` _before_ including the header with the `FIOBJ_EXTERN` directive.
+    This also requires that a _single_ C file (translation unit) define `FIOBJ_EXTERN_COMPLETE` _before_ including the header with the `FIOBJ_EXTERN` directive.
 
-3. The `FIOBJ` types use pointer tagging and require that the memory allocator provide allocations on 64 bit memory alignment boundaries.
+3. The `FIOBJ` types use pointer tagging and require that the memory allocator provide allocations on 8 byte memory alignment boundaries (they also assume each byte is 8 bits).
 
-    If the system allocator doesn't provide (at least) 64 bit allocation boundaries, use the facil.io memory allocator provided (`fio_malloc`).
+    If the system allocator doesn't provide (at least) 8 byte memory alignment, use the facil.io memory allocator provided (`fio_malloc`).
 
-4. The `FIOBJ` soft type system uses an "ownership" memory model.
+4. The `FIOBJ` soft type system uses an "**ownership**" memory model.
 
-    This means that Arrays "own" their members and Hash Maps "own" their values (but **not** the keys).
+    This means that Arrays "**own**" their **members** and Hash Maps "**own**" their **values** (but **not** the keys).
 
     Freeing an Array will free all the objects within the Array. Freeing a Hash Map will free all the values within the Hash Map (but none of the keys).
 
     Ownership is only transferred if the object is removed from it's container.
 
-    i.e., `fiobj_array_get` does **not** transfer ownership (it's just a short temporary "loan"). Whereas, `fiobj_array_remove` **does** revoke ownership - either freeing the object or moving the ownership to the pointer provided to hold the `old` value.
+    i.e., `fiobj_array_get` does **not** transfer ownership (it just allows temporary "access"). Whereas, `fiobj_array_remove` **does** revoke ownership - either freeing the object or moving the ownership to the pointer provided to hold the `old` value.
 
-### `FIOBJ` Core Type Identification
+### `FIOBJ` Types and Identification
 
 `FIOBJ` objects can contain any number of possible types, including user defined types.
 
@@ -3442,7 +3439,7 @@ These are the built-in types / classes that the Core `FIOBJ` system includes (be
 
 * `FIOBJ_T_INVALID`: indicates an **invalid** type class / type (a `FIOBJ_INVALID` value).
 
-* `FIOBJ_T_PRIMITIVE`: indicates a **Primitive** class / type. These include the sub types:
+* `FIOBJ_T_PRIMITIVE`: indicates a **Primitive** class / type.
 
 * `FIOBJ_T_NUMBER`: indicates a **Number** class / type.
 
@@ -3508,7 +3505,7 @@ Tests if the object is (probably) a valid FIOBJ
 
 Removes the `FIOBJ` type tag from a `FIOBJ` objects, allowing access to the underlying pointer and possible type.
 
-This is made available **only** for authoring `FIOBJ` extensions and shouldn't be normally used.
+This is made available for authoring `FIOBJ` extensions and **shouldn't** be normally used.
 
 #### `fiobj_type`
 
@@ -3522,7 +3519,7 @@ Avoid calling this function directly. Use the MACRO instead.
 
 ### `FIOBJ` Core Memory Management
 
-`FIOBJ` objects are **copied by reference**. Once their reference count is reduced to zero, their memory is freed.
+`FIOBJ` objects are **copied by reference** (not by value). Once their reference count is reduced to zero, their memory is freed.
 
 This is extremely important to note, especially in multi-threaded environments. This implied that: **access to a dynamic `FIOBJ` object is _NOT_ thread-safe** and `FIOBJ` objects that may be written to (such as Arrays, Strings and Hash Maps) should **not** be shared across threads (unless properly protected).
 

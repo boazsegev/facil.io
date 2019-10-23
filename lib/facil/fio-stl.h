@@ -6,7 +6,7 @@ Feel free to copy, use and enjoy according to the license provided.
 ***************************************************************************** */
 
 /* *****************************************************************************
-# facil.io's C STL - Basic Dynamic Types Using Macros for Templates
+# facil.io's C STL - Simple (type) Template Library
 
 
 This file contains macros that create generic / common core types, such as:

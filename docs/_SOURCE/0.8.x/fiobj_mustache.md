@@ -122,7 +122,7 @@ Frees the mustache template pointer immediately (careful when using the template
 #### `fiobj_mustache_build`
 
 ```c
-FIOBJ fiobj_mustache_build(mustache_s *mustache, FIOBJ data);
+FIOBJ fiobj_mustache_build(const mustache_s *mustache, FIOBJ data);
 ```
 
 Creates a FIOBJ String containing the rendered template using the information in the FIOBJ `data` object (which should be a `FIOBJ_T_HASH` or data access might fail).

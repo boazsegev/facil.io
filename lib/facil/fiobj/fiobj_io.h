@@ -22,11 +22,17 @@ IO type definitions and compile-time settings.
 /** The limit after which memory storage is switched to file storage. */
 #define FIOBJ_IO_MAX_MEMORY_STORAGE ((1 << 16) - 16) /* just shy of 64KB */
 
-/** The limit after which memory storage is switched to file storage. */
+/**
+ * The point at which file `write` instructions are looped rather using a single
+ * `write`.
+ *
+ * This is defined since some systems fail when attempting to call `write` with
+ * a large value.
+ */
 #define FIOBJ_IO_MAX_FD_RW (1 << 19) /* about 0.5Mb */
 
 /* *****************************************************************************
-Creating the Data Stream object
+Creating the IO (data) Stream object
 ***************************************************************************** */
 
 /**
@@ -47,13 +53,13 @@ FIOBJ fiobj_io_new2(size_t expected);
 /**
  * Creates a new IO object for the specified `fd`.
  *
- * The `fd`'s "ownership" is transffered to the IO object, so the `fd` shouldn't
+ * The `fd`'s "ownership" is transfered to the IO object, so the `fd` shouldn't
  * be accessed directly (only using the IO object's API).
  *
  * NOTE 1: Not all functionality is supported on all `fd` types. Pipes and
  * sockets don't `seek` and behave differently than regular files.
  *
- * NOTE 2: facil.io conection uuids shouldn't be used with a FIOBJ IO object,
+ * NOTE 2: facil.io connection uuids shouldn't be used with a FIOBJ IO object,
  * since they manage a user land buffer while the FIOBJ IO will directly make
  * system-calls.
  */
@@ -75,7 +81,7 @@ FIOBJ fiobj_io_new_slice(FIOBJ src, size_t start_at, size_t limit);
 int fiobj_io_free(FIOBJ io);
 
 /* *****************************************************************************
-Saving the Data Stream object
+Saving the IO Stream Data to Disk
 ***************************************************************************** */
 
 /**
@@ -152,7 +158,7 @@ intptr_t fiobj_io_pos(FIOBJ io);
 intptr_t fiobj_io_len(FIOBJ io);
 
 /**
- * Dumps the content of the IO object into a string, IGNORINg the
+ * Dumps the content of the IO object into a string, IGNORING the
  * FIOBJ_IO_MAX_MEMORY_STORAGE limitation(!). Attempts to return the reading
  * position to it's original location.
  */
@@ -161,7 +167,7 @@ fio_str_info_s fiobj_io2cstr(FIOBJ io);
 /**
  * Moves the reading position to the requested position.
  *
- * Negative vaulues are computed from the end of the stream, where -1 == EOF.
+ * Negative values are computed from the end of the stream, where -1 == EOF.
  * (-1 == EOF, -2 == EOF -1, ... ).
  */
 void fiobj_io_seek(FIOBJ io, intptr_t pos);

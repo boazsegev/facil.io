@@ -125,7 +125,7 @@ inline MUSTACHE_FUNC void mustache_free(mustache_s *mustache) {
 /** Arguments for the `mustache_build` function. */
 typedef struct {
   /** The parsed template (an instruction collection). */
-  mustache_s *mustache;
+  const mustache_s *mustache;
   /** Opaque user data (recommended for input review) - children will inherit
    * the parent's udata value. Updated values will propegate to child sections
    * but won't effect parent sections.
@@ -358,10 +358,10 @@ typedef struct {
  * avoiding recursion with it's stack overflow risks.
  */
 typedef struct {
-  mustache_s *data; /* the mustache template being built */
-  uint32_t pos;     /* the instruction postision index */
-  uint32_t padding; /* padding instruction position */
-  uint16_t index;   /* the stack postision index */
+  const mustache_s *data; /* the mustache template being built */
+  uint32_t pos;           /* the instruction postision index */
+  uint32_t padding;       /* padding instruction position */
+  uint16_t index;         /* the stack postision index */
   mustache__section_stack_frame_s stack[MUSTACHE_NESTING_LIMIT];
 } mustache__builder_stack_s;
 

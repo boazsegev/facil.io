@@ -50,7 +50,8 @@ void fiobj_mustache_free(mustache_s *mustache) { mustache_free(mustache); }
  *
  * Returns FIOBJ_INVALID if an error occured and a FIOBJ String on success.
  */
-FIOBJ fiobj_mustache_build2(FIOBJ dest, mustache_s *mustache, FIOBJ data) {
+FIOBJ fiobj_mustache_build2(FIOBJ dest, const mustache_s *mustache,
+                            FIOBJ data) {
   mustache_build(mustache, .udata1 = (void *)dest, .udata2 = (void *)data);
   return dest;
 }
@@ -61,7 +62,7 @@ FIOBJ fiobj_mustache_build2(FIOBJ dest, mustache_s *mustache, FIOBJ data) {
  *
  * Returns FIOBJ_INVALID if an error occured and a FIOBJ String on success.
  */
-FIOBJ fiobj_mustache_build(mustache_s *mustache, FIOBJ data) {
+FIOBJ fiobj_mustache_build(const mustache_s *mustache, FIOBJ data) {
   if (!mustache)
     return FIOBJ_INVALID;
   return fiobj_mustache_build2(

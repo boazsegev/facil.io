@@ -50,7 +50,7 @@ void fiobj_mustache_free(mustache_s *mustache);
  *
  * Returns FIOBJ_INVALID if an error occurred and a FIOBJ String on success.
  */
-FIOBJ fiobj_mustache_build(mustache_s *mustache, FIOBJ data);
+FIOBJ fiobj_mustache_build(const mustache_s *mustache, FIOBJ data);
 
 /**
  * Renders a template into an existing FIOBJ String (`dest`'s end), using the
@@ -58,7 +58,7 @@ FIOBJ fiobj_mustache_build(mustache_s *mustache, FIOBJ data);
  *
  * Returns FIOBJ_INVALID if an error occurred and a FIOBJ String on success.
  */
-FIOBJ fiobj_mustache_build2(FIOBJ dest, mustache_s *mustache, FIOBJ data);
+FIOBJ fiobj_mustache_build2(FIOBJ dest, const mustache_s *mustache, FIOBJ data);
 
 #if TEST || DEBUG
 void fiobj_mustache_test(void);
