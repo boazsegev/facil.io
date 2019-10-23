@@ -59,13 +59,15 @@ A few pointers about code styling (pun intended).
 
 * Use `clang-format` with the `LLVM` style. It's not always the best, but it will offer uniformity.
 
+    The only changes to the `LLVM` style are that `AllowAllParametersOfDeclarationOnNextLine`, `BinPackArguments`, and `BinPackParameters` are all set to `false`.
+
 * Initialize all variables during declaration - even if it's redundant.
 
 * Use `goto` to move less-likely code branches to the end of a function's body (i.e., error branches should go to a `goto` label).
 
     It makes the main body of the function more readable (IMHO) and should help with branch prediction (similar to how `unlikely` might help, but using a different approach)
 
-* Use the `fio___` prefix for internal helper functions.
+* Use the `fio___` prefix for internal helper functions (note the 3 underscores).
 
 * Prefer verbose readable code.
 
@@ -91,7 +93,7 @@ A few pointers about code styling (pun intended).
 
     The module in comprised of two files: `fio.h` and `fio.c`.
 
-* FIOBJ:
+* `FIOBJ` Extensions:
 
     This module, in the `fiobj` folder, extends the core FIOBJ type system.
 
