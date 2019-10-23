@@ -733,8 +733,8 @@ typedef enum { /* DON'T CHANGE VALUES - they match fio-stl.h */
  * Note: UDP server sockets can't use `fio_read` or `fio_write` since they are
  * connectionless.
  */
-intptr_t fio_socket(const char *address, const char *port,
-                    fio_socket_flags_e flags);
+intptr_t
+fio_socket(const char *address, const char *port, fio_socket_flags_e flags);
 
 /**
  * `fio_accept` accepts a new socket connection from a server socket - see the
@@ -912,7 +912,8 @@ void FIO_DEALLOC_NOOP(void *arg);
  *
  * Returns the same values as `fio_write2`.
  */
-FIO_IFUNC ssize_t fio_write(const intptr_t uuid, const void *buf,
+FIO_IFUNC ssize_t fio_write(const intptr_t uuid,
+                            const void *buf,
                             const size_t len) {
   if (!len || !buf)
     return 0;
@@ -920,8 +921,8 @@ FIO_IFUNC ssize_t fio_write(const intptr_t uuid, const void *buf,
   if (!cpy)
     return -1;
   memcpy(cpy, buf, len);
-  return fio_write2(uuid, .data = {.buf = cpy}, .after = {.dealloc = fio_free},
-                    .len = len);
+  return fio_write2(
+      uuid, .data = {.buf = cpy}, .after = {.dealloc = fio_free}, .len = len);
 }
 
 /**
@@ -939,10 +940,15 @@ FIO_IFUNC ssize_t fio_write(const intptr_t uuid, const void *buf,
  *
  * Returns -1 and closes the file on error. Returns 0 on success.
  */
-FIO_IFUNC ssize_t fio_sendfile(intptr_t uuid, intptr_t source_fd, off_t offset,
+FIO_IFUNC ssize_t fio_sendfile(intptr_t uuid,
+                               intptr_t source_fd,
+                               off_t offset,
                                size_t len) {
-  return fio_write2(uuid, .data = {.fd = source_fd}, .len = len,
-                    .offset = (uintptr_t)offset, .is_fd = 1);
+  return fio_write2(uuid,
+                    .data = {.fd = source_fd},
+                    .len = len,
+                    .offset = (uintptr_t)offset,
+                    .is_fd = 1);
 }
 
 /* internal helper */
@@ -960,8 +966,10 @@ FIO_IFUNC ssize_t fiobj_send_free(intptr_t uuid, FIOBJ o) {
       return 0;
   }
   fio_str_info_s s = fiobj_str_info(o);
-  return fio_write2(uuid, .data = {.buf = (char *)o},
-                    .after = {.dealloc = fiobj___free_after_send}, .len = s.len,
+  return fio_write2(uuid,
+                    .data = {.buf = (char *)o},
+                    .after = {.dealloc = fiobj___free_after_send},
+                    .len = s.len,
                     .offset = ((uintptr_t)s.buf - (uintptr_t)o));
 }
 /**
@@ -1202,7 +1210,8 @@ int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata);
  *       within an existing read/write hook callback. Otherwise, data corruption
  *       might occur.
  */
-int fio_rw_hook_replace_unsafe(intptr_t uuid, fio_rw_hook_s *rw_hooks,
+int fio_rw_hook_replace_unsafe(intptr_t uuid,
+                               fio_rw_hook_s *rw_hooks,
                                void *udata);
 
 /** The default Read/Write hooks used for system Read/Write (udata == NULL). */
@@ -1330,8 +1339,11 @@ int fio_defer(void (*task)(void *, void *), void *udata1, void *udata2);
  *
  * The `on_finish` handler is always called (even on error).
  */
-void fio_run_every(size_t milliseconds, size_t repetitions,
-                   int (*task)(void *, void *), void *udata1, void *udata2,
+void fio_run_every(size_t milliseconds,
+                   size_t repetitions,
+                   int (*task)(void *, void *),
+                   void *udata1,
+                   void *udata2,
                    void (*on_finish)(void *, void *));
 
 /**
@@ -1412,8 +1424,10 @@ TLS Support (weak functions, to bea overriden by library wrapper)
  *                                    "public_key.pem",
  *                                    "private_key.pem", NULL );
  */
-fio_tls_s *fio_tls_new(const char *server_name, const char *public_cert_file,
-                       const char *private_key_file, const char *pk_password);
+fio_tls_s *fio_tls_new(const char *server_name,
+                       const char *public_cert_file,
+                       const char *private_key_file,
+                       const char *pk_password);
 
 /**
  * Adds a certificate a new SSL/TLS context / settings object (SNI support).
@@ -1422,9 +1436,11 @@ fio_tls_s *fio_tls_new(const char *server_name, const char *public_cert_file,
  *                            "public_key.pem",
  *                            "private_key.pem", NULL );
  */
-void fio_tls_cert_add(fio_tls_s *, const char *server_name,
+void fio_tls_cert_add(fio_tls_s *,
+                      const char *server_name,
                       const char *public_cert_file,
-                      const char *private_key_file, const char *pk_password);
+                      const char *private_key_file,
+                      const char *pk_password);
 
 /**
  * Adds an ALPN protocol callback to the SSL/TLS context.
@@ -1443,10 +1459,13 @@ void fio_tls_cert_add(fio_tls_s *, const char *server_name,
  * Except for the `tls` and `protocol_name` arguments, all arguments can be
  * NULL.
  */
-void fio_tls_alpn_add(fio_tls_s *tls, const char *protocol_name,
-                      void (*on_selected)(intptr_t uuid, void *udata_connection,
+void fio_tls_alpn_add(fio_tls_s *tls,
+                      const char *protocol_name,
+                      void (*on_selected)(intptr_t uuid,
+                                          void *udata_connection,
                                           void *udata_tls),
-                      void *udata_tls, void (*on_cleanup)(void *udata_tls));
+                      void *udata_tls,
+                      void (*on_cleanup)(void *udata_tls));
 
 /**
  * Returns the number of registered ALPN protocol names.
@@ -1872,14 +1891,18 @@ void fio_message_metadata_callback_set(fio_msg_metadata_fn callback,
  */
 struct fio_pubsub_engine_s {
   /** Should subscribe channel. Failures are ignored. */
-  void (*subscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel,
+  void (*subscribe)(const fio_pubsub_engine_s *eng,
+                    fio_str_info_s channel,
                     fio_match_fn match);
   /** Should unsubscribe channel. Failures are ignored. */
-  void (*unsubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel,
+  void (*unsubscribe)(const fio_pubsub_engine_s *eng,
+                      fio_str_info_s channel,
                       fio_match_fn match);
   /** Should publish a message through the engine. Failures are ignored. */
-  void (*publish)(const fio_pubsub_engine_s *eng, fio_str_info_s channel,
-                  fio_str_info_s msg, uint8_t is_json);
+  void (*publish)(const fio_pubsub_engine_s *eng,
+                  fio_str_info_s channel,
+                  fio_str_info_s msg,
+                  uint8_t is_json);
 };
 
 /**
@@ -1944,14 +1967,14 @@ SipHash
 /**
  * A SipHash variation (2-4).
  */
-uint64_t fio_siphash24(const void *buf, size_t len, uint64_t key1,
-                       uint64_t key2);
+uint64_t
+fio_siphash24(const void *buf, size_t len, uint64_t key1, uint64_t key2);
 
 /**
  * A SipHash 1-3 variation.
  */
-uint64_t fio_siphash13(const void *buf, size_t len, uint64_t key1,
-                       uint64_t key2);
+uint64_t
+fio_siphash13(const void *buf, size_t len, uint64_t key1, uint64_t key2);
 
 /**
  * The Hashing function used by dynamic facil.io objects.
@@ -2173,13 +2196,19 @@ FIO_IFUNC void fio_lock_dbg(fio_lock_i *lock, const char *file, int line) {
   while (fio_trylock(lock)) {
     if (lock_cycle_count >= 8 &&
         (lock_cycle_count == 8 || !(lock_cycle_count & 511)))
-      fprintf(stderr, "[DEBUG] fio-spinlock spin %s:%d round %zu\n", file, line,
+      fprintf(stderr,
+              "[DEBUG] fio-spinlock spin %s:%d round %zu\n",
+              file,
+              line,
               lock_cycle_count);
     ++lock_cycle_count;
     FIO_THREAD_RESCHEDULE();
   }
   if (lock_cycle_count >= 8)
-    fprintf(stderr, "[DEBUG] fio-spinlock spin %s:%d total = %zu\n", file, line,
+    fprintf(stderr,
+            "[DEBUG] fio-spinlock spin %s:%d total = %zu\n",
+            file,
+            line,
             lock_cycle_count);
 }
 #define fio_lock(lock) fio_lock_dbg((lock), __FILE__, __LINE__)
@@ -2194,8 +2223,11 @@ FIO_IFUNC int fio_trylock_dbg(fio_lock_i *lock, const char *file, int line) {
   } else if (line == last_line) {
     ++count;
     if (count >= 2)
-      fprintf(stderr, "[DEBUG] trying fio-spinlock %s:%d attempt %zu\n", file,
-              line, count);
+      fprintf(stderr,
+              "[DEBUG] trying fio-spinlock %s:%d attempt %zu\n",
+              file,
+              line,
+              count);
   } else {
     count = 0;
     last_line = line;

@@ -108,14 +108,18 @@ struct http_vtable_s {
   /** Should send existing headers and data */
   int (*const send_body)(http_internal_s *h, void *data, uintptr_t length);
   /** Should send existing headers and file */
-  int (*const sendfile)(http_internal_s *h, int fd, uintptr_t offset,
+  int (*const sendfile)(http_internal_s *h,
+                        int fd,
+                        uintptr_t offset,
                         uintptr_t length);
   /** Should send existing headers and data and prepare for streaming */
   int (*const stream)(http_internal_s *h, void *data, uintptr_t length);
   /** Should send existing headers or complete streaming */
   void (*const finish)(http_internal_s *h);
   /** Push for data. MUST free the FIOBJ argument. */
-  int (*const push_data)(http_internal_s *h, void *data, uintptr_t length,
+  int (*const push_data)(http_internal_s *h,
+                         void *data,
+                         uintptr_t length,
                          FIOBJ mime_type);
   /** Upgrades a connection to Websockets. */
   int (*const http2websocket)(http_internal_s *h, websocket_settings_s *arg);
@@ -161,8 +165,10 @@ typedef struct http_sse_internal_s {
   size_t ref;            /* reference count */
 } http_sse_internal_s;
 
-static inline void http_sse_init(http_sse_internal_s *sse, intptr_t uuid,
-                                 http_vtable_s *vtbl, http_sse_s *args) {
+static inline void http_sse_init(http_sse_internal_s *sse,
+                                 intptr_t uuid,
+                                 http_vtable_s *vtbl,
+                                 http_sse_s *args) {
   *sse = (http_sse_internal_s){
       .sse = *args,
       .uuid = uuid,

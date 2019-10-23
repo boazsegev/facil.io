@@ -37,8 +37,8 @@ typedef struct http1pr_s {
 #define parser2http(x) FIO_PTR_FROM_FIELD(http1pr_s, parser, (x))
 
 /** initializes the protocol object */
-inline static void http1_init_protocol(http1pr_s *, uintptr_t,
-                                       http_settings_s *);
+inline static void
+http1_init_protocol(http1pr_s *, uintptr_t, http_settings_s *);
 inline static void h1_reset(http1pr_s *p) { p->header_size = 0; }
 
 #define http1proto2handle(pr) (((http1pr_s *)(pr))->request)
@@ -137,8 +137,10 @@ void *http1_vtable(void) { return &HTTP1_VTABLE; }
  * Creates an HTTP1 protocol object and handles any unread data in the buffer
  * (if any).
  */
-fio_protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
-                          void *unread_data, size_t unread_length) {
+fio_protocol_s *http1_new(uintptr_t uuid,
+                          http_settings_s *settings,
+                          void *unread_data,
+                          size_t unread_length) {
   if (unread_data && unread_length > HTTP1_READ_BUFFER)
     return NULL;
   http1pr_s *p = fio_malloc(sizeof(*p) + HTTP1_READ_BUFFER);
@@ -216,12 +218,13 @@ void http1_set_connection_headers(http_internal_s *h) {
     if (t.len < 8 || t.buf[7] == '0')
       goto add_close_header;
   }
-  set_header_overwite(h->headers_out, HTTP_HEADER_CONNECTION,
+  set_header_overwite(h->headers_out,
+                      HTTP_HEADER_CONNECTION,
                       fiobj_dup(HTTP_HVALUE_KEEP_ALIVE));
   return;
 add_close_header:
-  set_header_overwite(h->headers_out, HTTP_HEADER_CONNECTION,
-                      fiobj_dup(HTTP_HVALUE_CLOSE));
+  set_header_overwite(
+      h->headers_out, HTTP_HEADER_CONNECTION, fiobj_dup(HTTP_HVALUE_CLOSE));
 mark_to_close:
   internal2http1(h)->close = 1;
 }
@@ -323,8 +326,8 @@ static int http1_send_body(http_internal_s *h, void *data, uintptr_t length) {
   return 0;
 }
 /** Should send existing headers and file */
-static int http1_sendfile(http_internal_s *h, int fd, uintptr_t offset,
-                          uintptr_t length) {
+static int
+http1_sendfile(http_internal_s *h, int fd, uintptr_t offset, uintptr_t length) {
   FIOBJ headers = http1_format_headers(h);
   if (!headers)
     goto headers_error;
@@ -366,7 +369,8 @@ static int http1_stream(http_internal_s *h, void *data, uintptr_t length) {
       FIOBJ tmp =
           fiobj_hash_get2(h->headers_out, HTTP_HEADER_TRANSFER_ENCODING);
       if (!tmp || !fiobj_is_eq(tmp, HTTP_HVALUE_CHUNKED_ENCODING))
-        set_header_add(h->headers_out, HTTP_HEADER_TRANSFER_ENCODING,
+        set_header_add(h->headers_out,
+                       HTTP_HEADER_TRANSFER_ENCODING,
                        fiobj_dup(HTTP_HVALUE_CHUNKED_ENCODING));
     }
   } else if (h->headers_out == fiobj_false()) {
@@ -423,7 +427,9 @@ static void http1_finish(http_internal_s *h) {
   if (headers)
     fiobj_send_free(internal2http1(h)->p.uuid, headers);
   else if (h->headers_out == fiobj_true()) /* finish chuncked data */
-    fio_write2(internal2http1(h)->p.uuid, .data.buf = "0\r\n\r\n", .len = 5,
+    fio_write2(internal2http1(h)->p.uuid,
+               .data.buf = "0\r\n\r\n",
+               .len = 5,
                .after.dealloc = FIO_DEALLOC_NOOP);
   http1_after_finish(h);
 }
@@ -443,8 +449,8 @@ Push
 ***************************************************************************** */
 
 /** Push for files. */
-static int http1_push_file(http_internal_s *h, FIOBJ filename,
-                           FIOBJ mime_type) {
+static int
+http1_push_file(http_internal_s *h, FIOBJ filename, FIOBJ mime_type) {
   (void)h;
   fiobj_free(filename);
   fiobj_free(mime_type);
@@ -452,7 +458,9 @@ static int http1_push_file(http_internal_s *h, FIOBJ filename,
 }
 
 /** Push for data. */
-static int http1_push_data(http_internal_s *h, void *data, uintptr_t length,
+static int http1_push_data(http_internal_s *h,
+                           void *data,
+                           uintptr_t length,
                            FIOBJ mime_type) {
   (void)h;
   (void)data;
@@ -508,7 +516,8 @@ SSE
 static int http1_upgrade2sse(http_internal_s *h, http_sse_s *sse) {
   if (!FIOBJ_TYPE_IS(h->headers_out, FIOBJ_T_HASH))
     return -1;
-  set_header_overwite(h->headers_out, HTTP_HEADER_CONTENT_ENCODING,
+  set_header_overwite(h->headers_out,
+                      HTTP_HEADER_CONTENT_ENCODING,
                       fiobj_dup(HTTP_HVALUE_SSE_MIME));
   if (http1_stream(h, NULL, 0) == -1)
     goto upgrade_failed;
@@ -580,7 +589,8 @@ throttle:
   p->stop |= 4;
   fio_suspend(uuid);
   FIO_LOG_DEBUG("(HTTP/1,1) throttling client at %.*s",
-                (int)fio_peer_addr(uuid).len, fio_peer_addr(uuid).buf);
+                (int)fio_peer_addr(uuid).len,
+                fio_peer_addr(uuid).buf);
 }
 
 /** Called when a data is available, but will not run concurrently */
@@ -640,8 +650,8 @@ static void http1_on_close(intptr_t uuid, fio_protocol_s *protocol) {
 }
 
 /** initializes the protocol object */
-inline static void http1_init_protocol(http1pr_s *pr, uintptr_t uuid,
-                                       http_settings_s *s) {
+inline static void
+http1_init_protocol(http1pr_s *pr, uintptr_t uuid, http_settings_s *s) {
   *pr = (http1pr_s){
       .p =
           {
@@ -698,8 +708,10 @@ static int http1_on_method(http1_parser_s *parser, char *method, size_t len) {
 
 /** called when a response status is parsed. the status_str is the string
  * without the prefixed numerical status indicator.*/
-static int http1_on_status(http1_parser_s *parser, size_t status,
-                           char *status_str, size_t len) {
+static int http1_on_status(http1_parser_s *parser,
+                           size_t status,
+                           char *status_str,
+                           size_t len) {
   http1proto2handle(parser2http(parser)).public.status_str =
       fiobj_str_new_cstr(status_str, len);
   http1proto2handle(parser2http(parser)).public.status = status;
@@ -742,17 +754,21 @@ static int http1_on_version(http1_parser_s *parser, char *version, size_t len) {
 }
 
 /** called when a header is parsed. */
-static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
-                           char *data, size_t data_len) {
+static int http1_on_header(http1_parser_s *parser,
+                           char *name,
+                           size_t name_len,
+                           char *data,
+                           size_t data_len) {
   FIOBJ sym = FIOBJ_INVALID;
   FIOBJ obj = FIOBJ_INVALID;
   if (!FIOBJ_TYPE_IS(http1proto2handle(parser2http(parser)).public.headers,
                      FIOBJ_T_HASH)) {
     FIO_LOG_ERROR("(http1 parse ordering error) missing HashMap for header "
                   "%s: %s",
-                  name, data);
-    http_send_error2(500, parser2http(parser)->p.uuid,
-                     parser2http(parser)->p.settings);
+                  name,
+                  data);
+    http_send_error2(
+        500, parser2http(parser)->p.uuid, parser2http(parser)->p.settings);
     return -1;
   }
   parser2http(parser)->header_size += name_len + data_len;
@@ -768,15 +784,15 @@ static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
   }
   sym = fiobj_str_new_cstr(name, name_len);
   obj = fiobj_str_new_cstr(data, data_len);
-  set_header_add(http1proto2handle(parser2http(parser)).public.headers, sym,
-                 obj);
+  set_header_add(
+      http1proto2handle(parser2http(parser)).public.headers, sym, obj);
   fiobj_free(sym);
   return 0;
 }
 
 /** called when a body chunk is parsed. */
-static int http1_on_body_chunk(http1_parser_s *parser, char *data,
-                               size_t data_len) {
+static int
+http1_on_body_chunk(http1_parser_s *parser, char *data, size_t data_len) {
   if (!parser->state.read) {
     if (parser->state.content_length > 0) {
       if (parser->state.content_length >
@@ -790,8 +806,8 @@ static int http1_on_body_chunk(http1_parser_s *parser, char *data,
   } else if (parser->state.read >
              (ssize_t)parser2http(parser)->p.settings->max_body_size)
     goto too_big; /* tested in case combined chuncked data is too long */
-  fiobj_io_write(http1proto2handle(parser2http(parser)).public.body, data,
-                 data_len);
+  fiobj_io_write(
+      http1proto2handle(parser2http(parser)).public.body, data, data_len);
   return 0;
 
 too_big:

@@ -247,8 +247,11 @@ int http_sendfile(http_s *h, int fd, uintptr_t offset, uintptr_t length);
  *
  * Returns -1 on error (The `http_s` handle should still be used).
  */
-int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
-                   const char *encoded, size_t encoded_len);
+int http_sendfile2(http_s *h,
+                   const char *prefix,
+                   size_t prefix_len,
+                   const char *encoded,
+                   size_t encoded_len);
 
 /**
  * Sends the response headers (if not sent) and streams the data.
@@ -341,7 +344,8 @@ void http_pause(http_s *h, void (*task)(http_pause_handle_s *http));
  *    called and it's data might be deallocated, invalidated or used by a
  *    different thread.
  */
-void http_resume(http_pause_handle_s *http, void (*task)(http_s *h),
+void http_resume(http_pause_handle_s *http,
+                 void (*task)(http_s *h),
                  void (*fallback)(void *udata));
 
 /** Returns the `udata` associated with the paused opaque handle */
@@ -489,8 +493,8 @@ intptr_t http_listen(const char *port, const char *binding, http_settings_s);
  *
  * The `on_finish` callback is always called.
  */
-intptr_t http_connect(const char *url, const char *unix_address,
-                      http_settings_s);
+intptr_t
+http_connect(const char *url, const char *unix_address, http_settings_s);
 #define http_connect(url, unix_address, ...)                                   \
   http_connect((url), (unix_address), (http_settings_s){__VA_ARGS__})
 
@@ -713,8 +717,10 @@ struct http_sse_subscribe_args {
   /** The channel name used for the subscription. */
   fio_str_info_s channel;
   /** The optional on message callback. If missing, Data is directly writen. */
-  void (*on_message)(http_sse_s *sse, fio_str_info_s channel,
-                     fio_str_info_s msg, void *udata);
+  void (*on_message)(http_sse_s *sse,
+                     fio_str_info_s channel,
+                     fio_str_info_s msg,
+                     void *udata);
   /** An optional callback for when a subscription is fully canceled. */
   void (*on_unsubscribe)(void *udata);
   /** Opaque user */
@@ -845,8 +851,12 @@ void http_parse_cookies(http_s *h, uint8_t is_url_encoded);
  * Note: names can't begin with "[" or end with "]" as these are reserved
  *       characters.
  */
-int http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
-                  size_t value_len, uint8_t encoded);
+int http_add2hash(FIOBJ dest,
+                  char *name,
+                  size_t name_len,
+                  char *value,
+                  size_t value_len,
+                  uint8_t encoded);
 
 /**
  * Adds a named parameter to the hash, using an existing object and resolving
@@ -865,7 +875,10 @@ int http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
  * Note: names can't begin with "[" or end with "]" as these are reserved
  *       characters.
  */
-int http_add2hash2(FIOBJ dest, char *name, size_t name_len, FIOBJ value,
+int http_add2hash2(FIOBJ dest,
+                   char *name,
+                   size_t name_len,
+                   FIOBJ value,
                    uint8_t encoded);
 
 /* *****************************************************************************
@@ -876,7 +889,8 @@ HTTP Status Strings and Mime-Type helpers
 fio_str_info_s http_status2str(uintptr_t status);
 
 /** Registers a Mime-Type to be associated with the file extension. */
-void http_mimetype_register(char *file_ext, size_t file_ext_len,
+void http_mimetype_register(char *file_ext,
+                            size_t file_ext_len,
                             FIOBJ mime_type_str);
 
 /**

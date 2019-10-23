@@ -39,8 +39,10 @@ void http_on_request_handler______internal(http_s *h,
     goto eventsource;
   if (settings->public_folder) {
     fio_str_info_s path_str = fiobj2cstr(h->path);
-    if (!http_sendfile2(h, settings->public_folder,
-                        settings->public_folder_length, path_str.buf,
+    if (!http_sendfile2(h,
+                        settings->public_folder,
+                        settings->public_folder_length,
+                        path_str.buf,
                         path_str.len)) {
       return;
     }
@@ -243,7 +245,8 @@ static void http_lib_init(void *ignr_) {
   HTTP_HVALUE_WS_VERSION = fiobj_str_new_cstr("13", 2);
 
 #define REGISTER_MIME(ext, type)                                               \
-  http_mimetype_register((char *)ext, sizeof(ext) - 1,                         \
+  http_mimetype_register((char *)ext,                                          \
+                         sizeof(ext) - 1,                                      \
                          fiobj_str_new_cstr((char *)type, sizeof(type) - 1))
 
 #if HTTP_MIME_REGISTRY_AUTO
@@ -288,9 +291,10 @@ static void http_lib_init(void *ignr_) {
   REGISTER_MIME("apk", "application/vnd.android.package-archive");
   REGISTER_MIME("appcache", "text/cache-manifest");
   REGISTER_MIME("application", "application/x-ms-application");
-  REGISTER_MIME("pptx", "application/"
-                        "vnd.openxmlformats-officedocument.presentationml."
-                        "presentation");
+  REGISTER_MIME("pptx",
+                "application/"
+                "vnd.openxmlformats-officedocument.presentationml."
+                "presentation");
   REGISTER_MIME("apr", "application/vnd.lotus-approach");
   REGISTER_MIME("arc", "application/x-freearc");
   REGISTER_MIME("asc", "application/pgp-signature");
@@ -432,14 +436,16 @@ static void http_lib_init(void *ignr_) {
   REGISTER_MIME("dna", "application/vnd.dna");
   REGISTER_MIME("doc", "application/msword");
   REGISTER_MIME("docm", "application/vnd.ms-word.document.macroenabled.12");
-  REGISTER_MIME("docx", "application/"
-                        "vnd.openxmlformats-officedocument.wordprocessingml."
-                        "document");
+  REGISTER_MIME("docx",
+                "application/"
+                "vnd.openxmlformats-officedocument.wordprocessingml."
+                "document");
   REGISTER_MIME("dot", "application/msword");
   REGISTER_MIME("dotm", "application/vnd.ms-word.template.macroenabled.12");
-  REGISTER_MIME("dotx", "application/"
-                        "vnd.openxmlformats-officedocument.wordprocessingml."
-                        "template");
+  REGISTER_MIME("dotx",
+                "application/"
+                "vnd.openxmlformats-officedocument.wordprocessingml."
+                "template");
   REGISTER_MIME("dp", "application/vnd.osgi.dp");
   REGISTER_MIME("dpg", "application/vnd.dpgraph");
   REGISTER_MIME("dra", "audio/vnd.dra");

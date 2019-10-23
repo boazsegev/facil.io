@@ -15,8 +15,11 @@ extern "C" {
 #endif
 
 /** used internally: attaches the Websocket protocol to the socket. */
-void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
-                      websocket_settings_s *args, void *data, size_t length);
+void websocket_attach(intptr_t uuid,
+                      http_settings_s *http_settings,
+                      websocket_settings_s *args,
+                      void *data,
+                      size_t length);
 
 /* *****************************************************************************
 Websocket information
@@ -83,7 +86,9 @@ struct websocket_subscribe_s {
    *
    * Default: send directly to websocket client.
    */
-  void (*on_message)(ws_s *ws, fio_str_info_s channel, fio_str_info_s msg,
+  void (*on_message)(ws_s *ws,
+                     fio_str_info_s channel,
+                     fio_str_info_s msg,
                      void *udata);
   /**
    * An optional cleanup callback for the `udata`.

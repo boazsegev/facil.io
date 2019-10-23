@@ -212,7 +212,8 @@ FIO_SFUNC void fiobj_io_mem_seek(fiobj_io_s *io, intptr_t pos) {
  * Calls `fiobj_io_seek` and `fiobj_io_mem_read`, attempting to move the
  * reading position to `start_at` before reading any data.
 //  */
-FIO_SFUNC fio_str_info_s fiobj_io_mem_pread(fiobj_io_s *io, intptr_t pos,
+FIO_SFUNC fio_str_info_s fiobj_io_mem_pread(fiobj_io_s *io,
+                                            intptr_t pos,
                                             uintptr_t len) {
 
   if (pos < 0) {
@@ -247,7 +248,8 @@ FIO_SFUNC fio_str_info_s fiobj_io_mem_pre_write(fiobj_io_s *io, uintptr_t len) {
  *
  * Behaves and returns the same value as the system call `write`.
  */
-FIO_IFUNC intptr_t fiobj_io_mem_write(fiobj_io_s *io, const void *buf,
+FIO_IFUNC intptr_t fiobj_io_mem_write(fiobj_io_s *io,
+                                      const void *buf,
                                       uintptr_t len) {
   fio_str_info_s i = fiobj_io_mem_pre_write(io, len);
   memcpy(i.buf, buf, len);
@@ -262,7 +264,8 @@ FIO_IFUNC intptr_t fiobj_io_mem_write(fiobj_io_s *io, const void *buf,
  *
  * Behaves and returns the same value as the system call `write`.
  */
-FIO_IFUNC intptr_t fiobj_io_mem_puts(fiobj_io_s *io, const void *buf,
+FIO_IFUNC intptr_t fiobj_io_mem_puts(fiobj_io_s *io,
+                                     const void *buf,
                                      uintptr_t len) {
   fio_str_info_s i = fiobj_io_mem_pre_write(io, len);
   memcpy(i.buf, buf, len);
@@ -635,7 +638,8 @@ Writing API
  *
  * Behaves and returns the same value as the system call `write`.
  */
-FIO_IFUNC intptr_t fiobj_io_fd_write(fiobj_io_s *io, const void *buf,
+FIO_IFUNC intptr_t fiobj_io_fd_write(fiobj_io_s *io,
+                                     const void *buf,
                                      uintptr_t len) {
   ssize_t total = 0;
   ssize_t tmp = 0;
@@ -665,7 +669,8 @@ failed:
  *
  * Behaves and returns the same value as the system call `write`.
  */
-FIO_IFUNC intptr_t fiobj_io_fd_puts(fiobj_io_s *io, const void *buf,
+FIO_IFUNC intptr_t fiobj_io_fd_puts(fiobj_io_s *io,
+                                    const void *buf,
                                     uintptr_t len) {
   intptr_t r = fiobj_io_fd_write(io, buf, len);
   if (r == (intptr_t)len) {
@@ -1052,10 +1057,12 @@ void fiobj_io_test FIO_NOOP(void) {
   fiobj_io_seek(o, 0);
   fio_str_info_s i = fiobj_io_gets(o);
   FIO_ASSERT(i.len == 7 && !memcmp("Hello\r\n", i.buf, 7),
-             "fiobj_io_gets failed to retrieve first line.\n%s", i.buf);
+             "fiobj_io_gets failed to retrieve first line.\n%s",
+             i.buf);
   i = fiobj_io_gets(o);
   FIO_ASSERT(i.len == 13 && !memcmp("World (Earth)", i.buf, 13),
-             "fiobj_io_gets failed to retrieve second line (%zu).\n%s", i.len,
+             "fiobj_io_gets failed to retrieve second line (%zu).\n%s",
+             i.len,
              i.buf);
   fiobj_free(o);
   fprintf(stderr, "* WARNING: FIOBJ_IO not fully implemented just yet...\n");

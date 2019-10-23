@@ -1,0 +1,11 @@
+---
+Language:        Cpp
+BasedOnStyle:  LLVM
+AllowAllParametersOfDeclarationOnNextLine: false
+BinPackArguments: false
+BinPackParameters: false
+---
+Language:        JavaScript
+BasedOnStyle:  LLVM
+...
+

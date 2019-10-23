@@ -29,14 +29,17 @@ Small Helpers
 ***************************************************************************** */
 
 static inline void add_content_length(http_internal_s *h, uintptr_t length) {
-  set_header_if_missing(h->headers_out, HTTP_HEADER_CONTENT_LENGTH,
-                        fiobj_num_new(length));
+  set_header_if_missing(
+      h->headers_out, HTTP_HEADER_CONTENT_LENGTH, fiobj_num_new(length));
 }
 static inline void add_content_type(http_internal_s *h) {
   uint64_t hash = fiobj2hash(h->headers_out, HTTP_HEADER_CONTENT_TYPE);
   if (!fiobj_hash_get(h->headers_out, hash, HTTP_HEADER_CONTENT_TYPE)) {
-    fiobj_hash_set(h->headers_out, hash, HTTP_HEADER_CONTENT_TYPE,
-                   http_mimetype_find2(h->public.path), NULL);
+    fiobj_hash_set(h->headers_out,
+                   hash,
+                   HTTP_HEADER_CONTENT_TYPE,
+                   http_mimetype_find2(h->public.path),
+                   NULL);
   }
 }
 static inline FIOBJ get_date___(void) {
@@ -169,8 +172,22 @@ int http_set_cookie FIO_NOOP(http_s *h_, http_cookie_args_s cookie) {
       1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
       1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
       1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-  static const char hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
-                                   '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+  static const char hex_chars[] = {'0',
+                                   '1',
+                                   '2',
+                                   '3',
+                                   '4',
+                                   '5',
+                                   '6',
+                                   '7',
+                                   '8',
+                                   '9',
+                                   'A',
+                                   'B',
+                                   'C',
+                                   'D',
+                                   'E',
+                                   'F'};
 
   http_internal_s *h = HTTP2PRIVATE(h_);
 #if DEBUG
@@ -192,7 +209,8 @@ int http_set_cookie FIO_NOOP(http_s *h_, http_cookie_args_s cookie) {
       ++warn_illegal;                                                          \
       FIO_LOG_WARNING("illegal char 0x%.2x in cookie " #ch_var " (in %s)\n"    \
                       "         automatic %% encoding applied",                \
-                      cookie.ch_var[tmp], cookie.ch_var);                      \
+                      cookie.ch_var[tmp],                                      \
+                      cookie.ch_var);                                          \
     }                                                                          \
     t.buf[len++] = '%';                                                        \
     t.buf[len++] = hex_chars[((uint8_t)cookie.ch_var[tmp] >> 4) & 0x0F];       \
@@ -369,12 +387,15 @@ int http_send_error(http_s *h_, size_t error) {
   buffer[pos++] = 'm';
   buffer[pos++] = 'l';
   buffer[pos] = 0;
-  if (http_sendfile2(h_, h->pr->settings->public_folder,
-                     h->pr->settings->public_folder_length, buffer, pos)) {
+  if (http_sendfile2(h_,
+                     h->pr->settings->public_folder,
+                     h->pr->settings->public_folder_length,
+                     buffer,
+                     pos)) {
     FIOBJ mime_type = http_mimetype_find((char *)"html", 3);
     if (mime_type) {
-      http_set_header(h_, HTTP_HEADER_CONTENT_TYPE,
-                      http_mimetype_find((char *)"html", 3));
+      http_set_header(
+          h_, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find((char *)"html", 3));
     }
     fio_str_info_s t = http_status2str(error);
     http_send_body(h_, t.buf, t.len);
@@ -456,7 +477,8 @@ HTTP `sendfile2` - Sending a File by Name
 ***************************************************************************** */
 
 /* internal helper - tests for a file and prepers response */
-static int http_sendfile___test_filename(http_s *h, fio_str_info_s filename,
+static int http_sendfile___test_filename(http_s *h,
+                                         fio_str_info_s filename,
                                          fio_str_info_s enc) {
   // FIO_LOG_DEBUG2("(HTTP) sendfile testing: %s", filename.buf);
   http_internal_s *hpriv = HTTP2PRIVATE(h);
@@ -470,8 +492,8 @@ static int http_sendfile___test_filename(http_s *h, fio_str_info_s filename,
   if (hpriv->pr->settings->static_headers) { /* copy default headers */
     FIOBJ defs = hpriv->pr->settings->static_headers;
     FIO_MAP_EACH(((fiobj_hash_s *)FIOBJ_PTR_UNTAG(defs)), pos) {
-      set_header_if_missing(hpriv->headers_out, pos->obj.key,
-                            fiobj_dup(pos->obj.value));
+      set_header_if_missing(
+          hpriv->headers_out, pos->obj.key, fiobj_dup(pos->obj.value));
     }
   }
   {
@@ -482,7 +504,8 @@ static int http_sendfile___test_filename(http_s *h, fio_str_info_s filename,
     set_header_if_missing(hpriv->headers_out, HTTP_HEADER_LAST_MODIFIED, tmp);
   }
   /* set cache-control */
-  set_header_if_missing(hpriv->headers_out, HTTP_HEADER_CACHE_CONTROL,
+  set_header_if_missing(hpriv->headers_out,
+                        HTTP_HEADER_CACHE_CONTROL,
                         fiobj_dup(HTTP_HVALUE_MAX_AGE));
   FIOBJ etag_str = FIOBJ_INVALID;
   {
@@ -547,14 +570,16 @@ static int http_sendfile___test_filename(http_s *h, fio_str_info_s filename,
 
         {
           FIOBJ cranges = fiobj_str_new();
-          fiobj_str_printf(cranges, "bytes %lu-%lu/%lu",
+          fiobj_str_printf(cranges,
+                           "bytes %lu-%lu/%lu",
                            (unsigned long)start_at,
                            (unsigned long)(start_at + length - 1),
                            (unsigned long)file_data.st_size);
-          set_header_overwite(hpriv->headers_out, HTTP_HEADER_CONTENT_RANGE,
-                              cranges);
+          set_header_overwite(
+              hpriv->headers_out, HTTP_HEADER_CONTENT_RANGE, cranges);
         }
-        set_header_overwite(hpriv->headers_out, HTTP_HEADER_ACCEPT_RANGES,
+        set_header_overwite(hpriv->headers_out,
+                            HTTP_HEADER_ACCEPT_RANGES,
                             fiobj_dup(HTTP_HVALUE_BYTES));
       }
     }
@@ -566,7 +591,8 @@ static int http_sendfile___test_filename(http_s *h, fio_str_info_s filename,
     case 7:
       if (!strncasecmp("options", s.buf, 7)) {
         http_set_header2(
-            h, (fio_str_info_s){.buf = (char *)"allow", .len = 5},
+            h,
+            (fio_str_info_s){.buf = (char *)"allow", .len = 5},
             (fio_str_info_s){.buf = (char *)"GET, HEAD", .len = 9});
         h->status = 200;
         http_finish(h);
@@ -579,7 +605,8 @@ static int http_sendfile___test_filename(http_s *h, fio_str_info_s filename,
       break;
     case 4:
       if (!strncasecmp("head", s.buf, 4)) {
-        set_header_overwite(hpriv->headers_out, HTTP_HEADER_CONTENT_LENGTH,
+        set_header_overwite(hpriv->headers_out,
+                            HTTP_HEADER_CONTENT_LENGTH,
                             fiobj_num_new(length));
         http_finish(h);
         return 0;
@@ -602,7 +629,8 @@ open_file:
   {
     FIOBJ mime = FIOBJ_INVALID;
     if (enc.buf) {
-      set_header_overwite(hpriv->headers_out, HTTP_HEADER_CONTENT_ENCODING,
+      set_header_overwite(hpriv->headers_out,
+                          HTTP_HEADER_CONTENT_ENCODING,
                           fiobj_str_new_cstr(enc.buf, enc.len));
       size_t pos = filename.len - 4;
       while (pos && filename.buf[pos] != '.')
@@ -651,8 +679,11 @@ static inline int http_test_encoded_path(const char *mem, size_t len) {
  *
  * Returns -1 on error (The `http_s` handle should still be used).
  */
-int http_sendfile2(http_s *h_, const char *prefix, size_t prefix_len,
-                   const char *encoded, size_t encoded_len) {
+int http_sendfile2(http_s *h_,
+                   const char *prefix,
+                   size_t prefix_len,
+                   const char *encoded,
+                   size_t encoded_len) {
   if (HTTP_S_INVALID(h_))
     return -1;
   FIOBJ_STR_TEMP_VAR(fn);
@@ -781,8 +812,8 @@ int http_sendfile2(http_s *h_, const char *prefix, size_t prefix_len,
       n = fiobj_str_resize(fn, ext_len);
     }
     /* test filename (without encoding) */
-    if (!http_sendfile___test_filename(h_, fiobj_str2cstr(fn),
-                                       (fio_str_info_s){.buf = NULL}))
+    if (!http_sendfile___test_filename(
+            h_, fiobj_str2cstr(fn), (fio_str_info_s){.buf = NULL}))
       goto found_file;
     /* revert file name to original value */
     fiobj_str_resize(fn, org_len);
@@ -904,13 +935,16 @@ void http_pause(http_s *h_, void (*task)(http_pause_handle_s *http)) {
  *    called and it's data might be deallocated, invalidated or used by a
  *    different thread.
  */
-void http_resume(http_pause_handle_s *http, void (*task)(http_s *h),
+void http_resume(http_pause_handle_s *http,
+                 void (*task)(http_s *h),
                  void (*fallback)(void *udata)) {
   if (!http)
     return;
   http->task = task;
   http->fallback = fallback;
-  fio_defer_io_task(http->uuid, .udata = http, .type = FIO_PR_LOCK_TASK,
+  fio_defer_io_task(http->uuid,
+                    .udata = http,
+                    .type = FIO_PR_LOCK_TASK,
                     .task = http_resume_wrapper,
                     .fallback = http_resume_fallback_wrapper);
 }
@@ -994,7 +1028,8 @@ static http_settings_s *http_settings_new(http_settings_s s) {
       memcpy((char *)cpy->public_folder, home, home_len);
       cpy->public_folder_length += home_len;
     }
-    memcpy((char *)cpy->public_folder + home_len, s.public_folder,
+    memcpy((char *)cpy->public_folder + home_len,
+           s.public_folder,
            s.public_folder_length);
   }
   return cpy;
@@ -1011,8 +1046,8 @@ Listening to HTTP connections
 
 static uint8_t fio_http_at_capa = 0;
 
-static void http_on_server_protocol_http1(intptr_t uuid, void *set,
-                                          void *ignr_) {
+static void
+http_on_server_protocol_http1(intptr_t uuid, void *set, void *ignr_) {
   fio_timeout_set(uuid, ((http_settings_s *)set)->timeout);
   if (fio_uuid2fd(uuid) >= ((http_settings_s *)set)->max_clients) {
     if (!fio_http_at_capa)
@@ -1053,7 +1088,8 @@ static void http_on_finish(intptr_t uuid, void *set) {
  * the `on_finish` callback is always called.
  */
 intptr_t http_listen___(void); /* SublimeText Marker */
-intptr_t http_listen FIO_NOOP(const char *port, const char *binding,
+intptr_t http_listen FIO_NOOP(const char *port,
+                              const char *binding,
                               http_settings_s s) {
   if (s.on_request == NULL) {
     FIO_LOG_FATAL("http_listen requires the .on_request parameter "
@@ -1065,11 +1101,14 @@ intptr_t http_listen FIO_NOOP(const char *port, const char *binding,
   http_settings_s *settings = http_settings_new(s);
   settings->is_client = 0;
   if (settings->tls) {
-    fio_tls_alpn_add(settings->tls, "http/1.1", http_on_server_protocol_http1,
-                     NULL, NULL);
+    fio_tls_alpn_add(
+        settings->tls, "http/1.1", http_on_server_protocol_http1, NULL, NULL);
   }
-  return fio_listen(.port = port, .address = binding, .tls = s.tls,
-                    .on_finish = http_on_finish, .on_open = http_on_open,
+  return fio_listen(.port = port,
+                    .address = binding,
+                    .tls = s.tls,
+                    .on_finish = http_on_finish,
+                    .on_open = http_on_open,
                     .udata = settings);
 }
 
@@ -1093,8 +1132,8 @@ static void http_on_open_client_perform(http_settings_s *set) {
   http_s *h = set->udata;
   set->on_response(h);
 }
-static void http_on_open_client_http1(intptr_t uuid, void *set_,
-                                      void *ignore_) {
+static void
+http_on_open_client_http1(intptr_t uuid, void *set_, void *ignore_) {
   http_settings_s *set = set_;
   http_s *h = set->udata;
   fio_timeout_set(uuid, set->timeout);
@@ -1173,7 +1212,8 @@ static void http_on_client_failed(intptr_t uuid, void *set_) {
  * The `on_finish` callback is always called.
  */
 intptr_t http_connect___(void); /* SublimeText Marker */
-intptr_t http_connect FIO_NOOP(const char *url, const char *unix_address,
+intptr_t http_connect FIO_NOOP(const char *url,
+                               const char *unix_address,
                                http_settings_s arg_settings) {
   if (!arg_settings.on_response && !arg_settings.on_upgrade) {
     FIO_LOG_ERROR("http_connect requires either an on_response "
@@ -1207,7 +1247,8 @@ intptr_t http_connect FIO_NOOP(const char *url, const char *unix_address,
     }
     if (is_secure && !arg_settings.tls) {
       FIO_LOG_ERROR("Secure connections (%.*s) require a TLS object.",
-                    (int)u.scheme.len, u.scheme.buf);
+                    (int)u.scheme.len,
+                    u.scheme.buf);
       errno = EINVAL;
       goto on_error;
     }
@@ -1277,14 +1318,20 @@ intptr_t http_connect FIO_NOOP(const char *url, const char *unix_address,
   intptr_t ret;
   if (is_websocket) {
     /* force HTTP/1.1 */
-    ret = fio_connect(.address = a, .port = p, .on_fail = http_on_client_failed,
-                      .on_connect = http_on_open_client, .udata = settings,
+    ret = fio_connect(.address = a,
+                      .port = p,
+                      .on_fail = http_on_client_failed,
+                      .on_connect = http_on_open_client,
+                      .udata = settings,
                       .tls = arg_settings.tls);
     (void)0;
   } else {
     /* Allow for any HTTP version */
-    ret = fio_connect(.address = a, .port = p, .on_fail = http_on_client_failed,
-                      .on_connect = http_on_open_client, .udata = settings,
+    ret = fio_connect(.address = a,
+                      .port = p,
+                      .on_fail = http_on_client_failed,
+                      .on_connect = http_on_open_client,
+                      .udata = settings,
                       .tls = arg_settings.tls);
     (void)0;
   }
@@ -1516,8 +1563,8 @@ static inline FIOBJ http_str2fiobj(char *s, size_t len, uint8_t encoded) {
   return fiobj_str_new_cstr(s, len);
 }
 
-static inline void http_parse_cookies_cookie_str(FIOBJ dest, FIOBJ str,
-                                                 uint8_t is_url_encoded) {
+static inline void
+http_parse_cookies_cookie_str(FIOBJ dest, FIOBJ str, uint8_t is_url_encoded) {
   if (!FIOBJ_TYPE_IS(str, FIOBJ_T_STRING))
     return;
   fio_str_info_s s = fiobj2cstr(str);
@@ -1533,8 +1580,8 @@ static inline void http_parse_cookies_cookie_str(FIOBJ dest, FIOBJ str,
     char *cut2 = memchr(cut, ';', s.len - (cut - s.buf));
     if (!cut2)
       cut2 = s.buf + s.len;
-    http_add2hash(dest, s.buf, cut - s.buf, cut + 1, (cut2 - (cut + 1)),
-                  is_url_encoded);
+    http_add2hash(
+        dest, s.buf, cut - s.buf, cut + 1, (cut2 - (cut + 1)), is_url_encoded);
     if ((size_t)((cut2 + 1) - s.buf) > s.len)
       s.len = 0;
     else
@@ -1543,7 +1590,8 @@ static inline void http_parse_cookies_cookie_str(FIOBJ dest, FIOBJ str,
   }
 }
 
-static inline void http_parse_cookies_setcookie_str(FIOBJ dest, FIOBJ str,
+static inline void http_parse_cookies_setcookie_str(FIOBJ dest,
+                                                    FIOBJ str,
                                                     uint8_t is_url_encoded) {
   if (!FIOBJ_TYPE_IS(str, FIOBJ_T_STRING))
     return;
@@ -1555,8 +1603,8 @@ static inline void http_parse_cookies_setcookie_str(FIOBJ dest, FIOBJ str,
   if (!cut2)
     cut2 = s.buf + s.len;
   if (cut2 > cut)
-    http_add2hash(dest, s.buf, cut - s.buf, cut + 1, (cut2 - (cut + 1)),
-                  is_url_encoded);
+    http_add2hash(
+        dest, s.buf, cut - s.buf, cut + 1, (cut2 - (cut + 1)), is_url_encoded);
 }
 
 /**
@@ -1578,8 +1626,12 @@ void http_parse_query(http_s *h) {
     char *cut2 = memchr(q.buf, '=', (cut - q.buf));
     if (cut2) {
       /* we only add named elements... */
-      http_add2hash(h->params, q.buf, (size_t)(cut2 - q.buf), (cut2 + 1),
-                    (size_t)(cut - (cut2 + 1)), 1);
+      http_add2hash(h->params,
+                    q.buf,
+                    (size_t)(cut2 - q.buf),
+                    (cut2 + 1),
+                    (size_t)(cut - (cut2 + 1)),
+                    1);
     }
     if (cut[0] == '&') {
       /* protecting against some ...less informed... clients */
@@ -1652,10 +1704,14 @@ void http_parse_cookies(http_s *h, uint8_t is_url_encoded) {
  * Note: names can't begin with "[" or end with "]" as these are reserved
  *       characters.
  */
-int http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
-                  size_t value_len, uint8_t encoded) {
-  return http_add2hash2(dest, name, name_len,
-                        http_str2fiobj(value, value_len, encoded), encoded);
+int http_add2hash(FIOBJ dest,
+                  char *name,
+                  size_t name_len,
+                  char *value,
+                  size_t value_len,
+                  uint8_t encoded) {
+  return http_add2hash2(
+      dest, name, name_len, http_str2fiobj(value, value_len, encoded), encoded);
 }
 
 /**
@@ -1675,7 +1731,10 @@ int http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
  * Note: names can't begin with "[" or end with "]" as these are reserved
  *       characters.
  */
-int http_add2hash2(FIOBJ dest, char *name, size_t name_len, FIOBJ val,
+int http_add2hash2(FIOBJ dest,
+                   char *name,
+                   size_t name_len,
+                   FIOBJ val,
                    uint8_t encoded) {
   if (!name)
     goto error;
@@ -1863,40 +1922,64 @@ typedef struct {
 #define http_mime_parser2fio(parser) ((http_fio_mime_s *)(parser))
 
 /** Called when all the data is available at once. */
-static void http_mime_parser_on_data(http_mime_parser_s *parser, void *name,
-                                     size_t name_len, void *filename,
-                                     size_t filename_len, void *mimetype,
-                                     size_t mimetype_len, void *value,
+static void http_mime_parser_on_data(http_mime_parser_s *parser,
+                                     void *name,
+                                     size_t name_len,
+                                     void *filename,
+                                     size_t filename_len,
+                                     void *mimetype,
+                                     size_t mimetype_len,
+                                     void *value,
                                      size_t value_len) {
   if (!filename_len) {
-    http_add2hash(http_mime_parser2fio(parser)->h->params, name, name_len,
-                  value, value_len, 0);
+    http_add2hash(http_mime_parser2fio(parser)->h->params,
+                  name,
+                  name_len,
+                  value,
+                  value_len,
+                  0);
     return;
   }
   FIOBJ n = fiobj_str_new_cstr(name, name_len);
   fiobj_str_write(n, "[data]", 6);
   fio_str_info_s tmp = fiobj2cstr(n);
-  http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.buf, tmp.len,
-                value, value_len, 0);
+  http_add2hash(http_mime_parser2fio(parser)->h->params,
+                tmp.buf,
+                tmp.len,
+                value,
+                value_len,
+                0);
   fiobj_str_resize(n, name_len);
   fiobj_str_write(n, "[name]", 6);
   tmp = fiobj2cstr(n);
-  http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.buf, tmp.len,
-                filename, filename_len, 0);
+  http_add2hash(http_mime_parser2fio(parser)->h->params,
+                tmp.buf,
+                tmp.len,
+                filename,
+                filename_len,
+                0);
   if (mimetype_len) {
     fiobj_str_resize(n, name_len);
     fiobj_str_write(n, "[type]", 6);
     tmp = fiobj2cstr(n);
-    http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.buf, tmp.len,
-                  mimetype, mimetype_len, 0);
+    http_add2hash(http_mime_parser2fio(parser)->h->params,
+                  tmp.buf,
+                  tmp.len,
+                  mimetype,
+                  mimetype_len,
+                  0);
   }
   fiobj_free(n);
 }
 
 /** Called when the data didn't fit in the buffer. Data will be streamed. */
-static void http_mime_parser_on_partial_start(
-    http_mime_parser_s *parser, void *name, size_t name_len, void *filename,
-    size_t filename_len, void *mimetype, size_t mimetype_len) {
+static void http_mime_parser_on_partial_start(http_mime_parser_s *parser,
+                                              void *name,
+                                              size_t name_len,
+                                              void *filename,
+                                              size_t filename_len,
+                                              void *mimetype,
+                                              size_t mimetype_len) {
   http_mime_parser2fio(parser)->partial_length = 0;
   http_mime_parser2fio(parser)->partial_offset = 0;
   http_mime_parser2fio(parser)->partial_name =
@@ -1907,14 +1990,22 @@ static void http_mime_parser_on_partial_start(
 
   fiobj_str_write(http_mime_parser2fio(parser)->partial_name, "[type]", 6);
   fio_str_info_s tmp = fiobj2cstr(http_mime_parser2fio(parser)->partial_name);
-  http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.buf, tmp.len,
-                mimetype, mimetype_len, 0);
+  http_add2hash(http_mime_parser2fio(parser)->h->params,
+                tmp.buf,
+                tmp.len,
+                mimetype,
+                mimetype_len,
+                0);
 
   fiobj_str_resize(http_mime_parser2fio(parser)->partial_name, name_len);
   fiobj_str_write(http_mime_parser2fio(parser)->partial_name, "[name]", 6);
   tmp = fiobj2cstr(http_mime_parser2fio(parser)->partial_name);
-  http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.buf, tmp.len,
-                filename, filename_len, 0);
+  http_add2hash(http_mime_parser2fio(parser)->h->params,
+                tmp.buf,
+                tmp.len,
+                filename,
+                filename_len,
+                0);
 
   fiobj_str_resize(http_mime_parser2fio(parser)->partial_name, name_len);
   fiobj_str_write(http_mime_parser2fio(parser)->partial_name, "[data]", 6);
@@ -1922,7 +2013,8 @@ static void http_mime_parser_on_partial_start(
 
 /** Called when partial data is available. */
 static void http_mime_parser_on_partial_data(http_mime_parser_s *parser,
-                                             void *value, size_t value_len) {
+                                             void *value,
+                                             size_t value_len) {
   if (!http_mime_parser2fio(parser)->partial_offset)
     http_mime_parser2fio(parser)->partial_offset =
         http_mime_parser2fio(parser)->pos +
@@ -1950,8 +2042,8 @@ static void http_mime_parser_on_partial_end(http_mime_parser_s *parser) {
                            http_mime_parser2fio(parser)->partial_offset,
                            http_mime_parser2fio(parser)->partial_length);
   }
-  http_add2hash2(http_mime_parser2fio(parser)->h->params, tmp.buf, tmp.len, o,
-                 0);
+  http_add2hash2(
+      http_mime_parser2fio(parser)->h->params, tmp.buf, tmp.len, o, 0);
   fiobj_free(http_mime_parser2fio(parser)->partial_name);
   http_mime_parser2fio(parser)->partial_name = FIOBJ_INVALID;
   http_mime_parser2fio(parser)->partial_offset = 0;
@@ -1964,8 +2056,8 @@ static void http_mime_parser_on_partial_end(http_mime_parser_s *parser) {
  *
  * Should return the length of the decoded string.
  */
-static inline size_t http_mime_decode_url(char *dest, const char *encoded,
-                                          size_t length) {
+static inline size_t
+http_mime_decode_url(char *dest, const char *encoded, size_t length) {
   return http_decode_url(dest, encoded, length);
 }
 /**
@@ -2136,7 +2228,8 @@ fio_str_info_s http_status2str(uintptr_t status) {
 }
 
 /** Registers a Mime-Type to be associated with the file extension. */
-void http_mimetype_register(char *file_ext, size_t file_ext_len,
+void http_mimetype_register(char *file_ext,
+                            size_t file_ext_len,
                             FIOBJ mime_type_str) {
   uint64_t hash =
       fio_risky_hash(file_ext, file_ext_len, (uint64_t)&fio_http_mime_types);
@@ -2144,7 +2237,9 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
   fio_mime_set_set(&fio_http_mime_types, hash, mime_type_str, &old);
   if (old != FIOBJ_INVALID) {
     FIO_LOG_WARNING("mime-type collision: %.*s was %s, now %s",
-                    (int)file_ext_len, file_ext, fiobj2cstr(old).buf,
+                    (int)file_ext_len,
+                    file_ext,
+                    fiobj2cstr(old).buf,
                     fiobj2cstr(mime_type_str).buf);
     fiobj_free(old);
   }

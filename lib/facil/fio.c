@@ -515,8 +515,11 @@ void fio_uuid_env_set FIO_NOOP(intptr_t uuid, fio_uuid_env_args_s args) {
   if (!uuid_is_valid(uuid))
     goto locked_invalid;
   fio___uuid_env_set(
-      &uuid_data(uuid).env, fio_uuid_env_name_hash(&n, args.type), n,
-      (fio_uuid_env_obj_s){.on_close = args.on_close, .data = args.data}, &i);
+      &uuid_data(uuid).env,
+      fio_uuid_env_name_hash(&n, args.type),
+      n,
+      (fio_uuid_env_obj_s){.on_close = args.on_close, .data = args.data},
+      &i);
   fio_unlock(&uuid_data(uuid).sock_lock);
   if (i.on_close)
     i.on_close(i.data);
@@ -541,8 +544,8 @@ void fio_uuid_env_remove FIO_NOOP(intptr_t uuid,
   fio_lock(&uuid_data(uuid).sock_lock);
   if (!uuid_is_valid(uuid))
     goto locked_invalid;
-  fio___uuid_env_remove(&uuid_data(uuid).env,
-                        fio_uuid_env_name_hash(&n, args.type), n, &i);
+  fio___uuid_env_remove(
+      &uuid_data(uuid).env, fio_uuid_env_name_hash(&n, args.type), n, &i);
   fio_unlock(&uuid_data(uuid).sock_lock);
   if (i.on_close)
     i.on_close(i.data);
@@ -909,15 +912,15 @@ Internal Task API
 
 #define fio_defer_push_task(func_, arg1_, arg2_)                               \
   do {                                                                         \
-    fio_queue_push(&facil_io_task_queue, .fn = func_, .udata1 = arg1_,         \
-                   .udata2 = arg2_);                                           \
+    fio_queue_push(                                                            \
+        &facil_io_task_queue, .fn = func_, .udata1 = arg1_, .udata2 = arg2_);  \
     fio_defer_thread_signal();                                                 \
   } while (0)
 
 #define fio_defer_push_urgent(func_, arg1_, arg2_)                             \
   do {                                                                         \
-    fio_queue_push_urgent(&facil_io_task_queue, .fn = func_, .udata1 = arg1_,  \
-                          .udata2 = arg2_);                                    \
+    fio_queue_push_urgent(                                                     \
+        &facil_io_task_queue, .fn = func_, .udata1 = arg1_, .udata2 = arg2_);  \
     fio_defer_thread_signal();                                                 \
   } while (0)
 
@@ -1067,14 +1070,21 @@ static size_t fio_timer_calc_first_interval(void) {
  *
  * The `on_finish` handler is always called (even on error).
  */
-void fio_run_every(size_t milliseconds, size_t repetitions,
-                   int (*task)(void *, void *), void *udata1, void *udata2,
+void fio_run_every(size_t milliseconds,
+                   size_t repetitions,
+                   int (*task)(void *, void *),
+                   void *udata1,
+                   void *udata2,
                    void (*on_finish)(void *, void *)) {
   const uint64_t start_at = (fio_data->last_cycle.tv_sec * 1000) +
                             (fio_data->last_cycle.tv_nsec / 1000000);
-  fio_timer_schedule(&facil_io_timer_queue, .fn = task, .udata1 = udata1,
-                     .udata2 = udata2, .on_finish = on_finish,
-                     .every = milliseconds, .repeat = repetitions,
+  fio_timer_schedule(&facil_io_timer_queue,
+                     .fn = task,
+                     .udata1 = udata1,
+                     .udata2 = udata2,
+                     .on_finish = on_finish,
+                     .every = milliseconds,
+                     .repeat = repetitions,
                      .start_at = start_at);
 }
 
@@ -1297,7 +1307,9 @@ void fio_expected_concurrency(int16_t *threads, int16_t *processes) {
             "      Avoid this message by setting threads / workers manually.\n"
             "      To increase auto-detection limit, recompile with:\n"
             "             -DFIO_CPU_CORES_LIMIT=%zu",
-            (size_t)cpu_count, (size_t)FIO_CPU_CORES_LIMIT, (size_t)cpu_count);
+            (size_t)cpu_count,
+            (size_t)FIO_CPU_CORES_LIMIT,
+            (size_t)cpu_count);
         print_cores_warning = 0;
       }
       cpu_count = FIO_CPU_CORES_LIMIT;
@@ -1453,23 +1465,24 @@ static inline int fio_poll_add2(int fd, uint32_t events, int ep_fd) {
 }
 
 static inline void fio_poll_add_read(intptr_t fd) {
-  fio_poll_add2(fd, (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
-                evio_fd[1]);
+  fio_poll_add2(
+      fd, (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT), evio_fd[1]);
   return;
 }
 
 static inline void fio_poll_add_write(intptr_t fd) {
-  fio_poll_add2(fd, (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
-                evio_fd[2]);
+  fio_poll_add2(
+      fd, (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT), evio_fd[2]);
   return;
 }
 
 static inline void fio_poll_add(intptr_t fd) {
-  if (fio_poll_add2(fd, (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+  if (fio_poll_add2(fd,
+                    (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
                     evio_fd[1]) == -1)
     return;
-  fio_poll_add2(fd, (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
-                evio_fd[2]);
+  fio_poll_add2(
+      fd, (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT), evio_fd[2]);
   return;
 }
 
@@ -1499,12 +1512,12 @@ static size_t fio_poll(void) {
         } else {
           // no error, then it's an active event(s)
           if (events[i].events & EPOLLOUT) {
-            fio_defer_push_urgent(deferred_on_ready,
-                                  (void *)fd2uuid(events[i].data.fd), NULL);
+            fio_defer_push_urgent(
+                deferred_on_ready, (void *)fd2uuid(events[i].data.fd), NULL);
           }
           if (events[i].events & EPOLLIN)
-            fio_defer_push_task(deferred_on_data,
-                                (void *)fd2uuid(events[i].data.fd), NULL);
+            fio_defer_push_task(
+                deferred_on_data, (void *)fd2uuid(events[i].data.fd), NULL);
         }
       } // end for loop
       total += active_count;
@@ -1570,8 +1583,13 @@ static void fio_poll_init(void) {
 
 static inline void fio_poll_add_read(intptr_t fd) {
   struct kevent chevent[1];
-  EV_SET(chevent, fd, EVFILT_READ, EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
-         0, 0, ((void *)fd));
+  EV_SET(chevent,
+         fd,
+         EVFILT_READ,
+         EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
+         0,
+         0,
+         ((void *)fd));
   do {
     errno = 0;
     kevent(evio_fd, chevent, 1, NULL, 0, NULL);
@@ -1581,8 +1599,13 @@ static inline void fio_poll_add_read(intptr_t fd) {
 
 static inline void fio_poll_add_write(intptr_t fd) {
   struct kevent chevent[1];
-  EV_SET(chevent, fd, EVFILT_WRITE, EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
-         0, 0, ((void *)fd));
+  EV_SET(chevent,
+         fd,
+         EVFILT_WRITE,
+         EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
+         0,
+         0,
+         ((void *)fd));
   do {
     errno = 0;
     kevent(evio_fd, chevent, 1, NULL, 0, NULL);
@@ -1592,10 +1615,20 @@ static inline void fio_poll_add_write(intptr_t fd) {
 
 static inline void fio_poll_add(intptr_t fd) {
   struct kevent chevent[2];
-  EV_SET(chevent, fd, EVFILT_READ, EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
-         0, 0, ((void *)fd));
-  EV_SET(chevent + 1, fd, EVFILT_WRITE,
-         EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT, 0, 0, ((void *)fd));
+  EV_SET(chevent,
+         fd,
+         EVFILT_READ,
+         EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
+         0,
+         0,
+         ((void *)fd));
+  EV_SET(chevent + 1,
+         fd,
+         EVFILT_WRITE,
+         EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
+         0,
+         0,
+         ((void *)fd));
   do {
     errno = 0;
     kevent(evio_fd, chevent, 2, NULL, 0, NULL);
@@ -1632,11 +1665,11 @@ static size_t fio_poll(void) {
     for (int i = 0; i < active_count; i++) {
       // test for event(s) type
       if (events[i].filter == EVFILT_WRITE) {
-        fio_defer_push_urgent(deferred_on_ready,
-                              ((void *)fd2uuid(events[i].udata)), NULL);
+        fio_defer_push_urgent(
+            deferred_on_ready, ((void *)fd2uuid(events[i].udata)), NULL);
       } else if (events[i].filter == EVFILT_READ) {
-        fio_defer_push_task(deferred_on_data, (void *)fd2uuid(events[i].udata),
-                            NULL);
+        fio_defer_push_task(
+            deferred_on_data, (void *)fd2uuid(events[i].udata), NULL);
       }
       if (events[i].flags & (EV_EOF | EV_ERROR)) {
         fio_force_close_in_poll(fd2uuid(events[i].udata));
@@ -1753,7 +1786,8 @@ static size_t fio_poll(void) {
   if (start != end) {
     /* copy poll list for multi-threaded poll */
     list = fio_malloc(sizeof(struct pollfd) * end);
-    memcpy(list + start, fio_data->poll + start,
+    memcpy(list + start,
+           fio_data->poll + start,
            (sizeof(struct pollfd)) * (end - start));
   }
   fio_unlock(&fio_data->lock);
@@ -2088,7 +2122,8 @@ static void fio_tcp_addr_cpy(int fd, int family, struct sockaddr *addrinfo) {
                 family == AF_INET
                     ? (void *)&(((struct sockaddr_in *)addrinfo)->sin_addr)
                     : (void *)&(((struct sockaddr_in6 *)addrinfo)->sin6_addr),
-                (char *)fd_data(fd).addr, sizeof(fd_data(fd).addr));
+                (char *)fd_data(fd).addr,
+                sizeof(fd_data(fd).addr));
   if (result) {
     fd_data(fd).addr_len = strlen((char *)fd_data(fd).addr);
   } else {
@@ -2109,7 +2144,9 @@ intptr_t fio_accept(intptr_t srv_uuid) {
   socklen_t addrlen = sizeof(addrinfo);
   int client;
 #ifdef SOCK_NONBLOCK
-  client = accept4(fio_uuid2fd(srv_uuid), (struct sockaddr *)addrinfo, &addrlen,
+  client = accept4(fio_uuid2fd(srv_uuid),
+                   (struct sockaddr *)addrinfo,
+                   &addrlen,
                    SOCK_NONBLOCK | SOCK_CLOEXEC);
   if (client <= 0)
     return -1;
@@ -2153,11 +2190,13 @@ intptr_t fio_accept(intptr_t srv_uuid) {
   if (((struct sockaddr *)addrinfo)->sa_family == AF_UNIX) {
     fd_data(client).addr_len = uuid_data(srv_uuid).addr_len;
     if (uuid_data(srv_uuid).addr_len) {
-      memcpy(fd_data(client).addr, uuid_data(srv_uuid).addr,
+      memcpy(fd_data(client).addr,
+             uuid_data(srv_uuid).addr,
              uuid_data(srv_uuid).addr_len + 1);
     }
   } else {
-    fio_tcp_addr_cpy(client, ((struct sockaddr *)addrinfo)->sa_family,
+    fio_tcp_addr_cpy(client,
+                     ((struct sockaddr *)addrinfo)->sa_family,
                      (struct sockaddr *)addrinfo);
   }
 
@@ -2200,8 +2239,8 @@ intptr_t fio_accept(intptr_t srv_uuid) {
  * Note: UDP server sockets can't use `fio_read` or `fio_write` since they are
  * connectionless.
  */
-intptr_t fio_socket(const char *address, const char *port,
-                    fio_socket_flags_e flags) {
+intptr_t
+fio_socket(const char *address, const char *port, fio_socket_flags_e flags) {
   /* TCP/IP is the  default socket mode */
   if (!(flags & ((uint16_t)FIO_SOCKET_TCP | (uint16_t)FIO_SOCKET_UDP |
                  (uint16_t)FIO_SOCKET_UNIX)))
@@ -2249,13 +2288,16 @@ intptr_t fio_socket(const char *address, const char *port,
 too_big:
   close(fd);
   FIO_LOG_DEBUG2(
-      "Couldn't open a new socket - reactor capacity reached %d >= %zu", fd,
+      "Couldn't open a new socket - reactor capacity reached %d >= %zu",
+      fd,
       (size_t)fio_data->capa);
   return -1;
 failed_to_open:
   FIO_LOG_DEBUG2("Couldn't open a socket for %s : %s (flags: %u)\r\n\t",
-                 (address ? address : "---"), (port ? port : "0"),
-                 (unsigned int)flags, strerror(errno));
+                 (address ? address : "---"),
+                 (port ? port : "0"),
+                 (unsigned int)flags,
+                 strerror(errno));
   return -1;
 }
 
@@ -2298,8 +2340,10 @@ static inline void fio_sock_packet_rotate_unsafe(uintptr_t fd) {
 
 static int fio_sock_write_buf(int fd, fio_packet_s *packet) {
   int written = fd_data(fd).rw_hooks->write(
-      fd2uuid(fd), fd_data(fd).rw_udata,
-      ((uint8_t *)packet->data.buf + packet->offset), packet->len);
+      fd2uuid(fd),
+      fd_data(fd).rw_udata,
+      ((uint8_t *)packet->data.buf + packet->offset),
+      packet->len);
   if (written > 0) {
     packet->len -= written;
     packet->offset += written;
@@ -2320,14 +2364,15 @@ static int fio_sock_write_from_fd(int fd, fio_packet_s *packet) {
     packet->len -= sent;
   retry:
     asked =
-        pread(packet->data.fd, buff,
+        pread(packet->data.fd,
+              buff,
               ((packet->len < BUFFER_FILE_READ_SIZE) ? packet->len
                                                      : BUFFER_FILE_READ_SIZE),
               packet->offset);
     if (asked <= 0)
       goto read_error;
-    sent = fd_data(fd).rw_hooks->write(fd2uuid(fd), fd_data(fd).rw_udata, buff,
-                                       asked);
+    sent = fd_data(fd).rw_hooks->write(
+        fd2uuid(fd), fd_data(fd).rw_udata, buff, asked);
   } while (sent == asked && packet->len);
   if (sent >= 0) {
     packet->offset += sent;
@@ -2375,8 +2420,13 @@ static int fio_sock_sendfile_from_fd(int fd, fio_packet_s *packet) {
 #if USE_SENDFILE_APPLE
     ret = sendfile(packet->data.fd, fd, packet->offset, &act_sent, NULL, 0);
 #else
-    ret = sendfile(packet->data.fd, fd, packet->offset, (size_t)act_sent, NULL,
-                   &act_sent, 0);
+    ret = sendfile(packet->data.fd,
+                   fd,
+                   packet->offset,
+                   (size_t)act_sent,
+                   NULL,
+                   &act_sent,
+                   0);
 #endif
     if (ret < 0)
       goto error;
@@ -2723,7 +2773,8 @@ invalid:
 attacked:
   /* don't close, just detach from facil.io and mark uuid as invalid */
   FIO_LOG_WARNING("(facil.io) possible Slowloris attack from %.*s",
-                  (int)fio_peer_addr(uuid).len, fio_peer_addr(uuid).buf);
+                  (int)fio_peer_addr(uuid).len,
+                  fio_peer_addr(uuid).buf);
   fio_unlock(&uuid_data(uuid).sock_lock);
   fio_clear_fd(fio_uuid2fd(uuid), 0);
   return -1;
@@ -2745,13 +2796,15 @@ size_t fio_flush_all(void) {
 Connection Read / Write Hooks, for overriding the system calls
 ***************************************************************************** */
 
-static ssize_t fio_hooks_default_read(intptr_t uuid, void *udata, void *buf,
-                                      size_t count) {
+static ssize_t
+fio_hooks_default_read(intptr_t uuid, void *udata, void *buf, size_t count) {
   return read(fio_uuid2fd(uuid), buf, count);
   (void)(udata);
 }
-static ssize_t fio_hooks_default_write(intptr_t uuid, void *udata,
-                                       const void *buf, size_t count) {
+static ssize_t fio_hooks_default_write(intptr_t uuid,
+                                       void *udata,
+                                       const void *buf,
+                                       size_t count) {
   return write(fio_uuid2fd(uuid), buf, count);
   (void)(udata);
 }
@@ -2786,7 +2839,8 @@ const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS = {
  *
  * Returns -1 on error, 0 on success.
  */
-int fio_rw_hook_replace_unsafe(intptr_t uuid, fio_rw_hook_s *rw_hooks,
+int fio_rw_hook_replace_unsafe(intptr_t uuid,
+                               fio_rw_hook_s *rw_hooks,
                                void *udata) {
   int replaced = -1;
   uint8_t was_locked;
@@ -3003,7 +3057,8 @@ static inline void fio_state_callback_ensure(callback_collection_s *c) {
 }
 
 /** Adds a callback to the list of callbacks to be called for the event. */
-void fio_state_callback_add(callback_type_e c_type, void (*func)(void *),
+void fio_state_callback_add(callback_type_e c_type,
+                            void (*func)(void *),
                             void *arg) {
   if (c_type == FIO_CALL_ON_INITIALIZE && fio_data) {
     func(arg);
@@ -3021,13 +3076,14 @@ void fio_state_callback_add(callback_type_e c_type, void (*func)(void *),
 }
 
 /** Removes a callback from the list of callbacks to be called for the event. */
-int fio_state_callback_remove(callback_type_e c_type, void (*func)(void *),
+int fio_state_callback_remove(callback_type_e c_type,
+                              void (*func)(void *),
                               void *arg) {
   if ((int)c_type < 0 || c_type > FIO_CALL_NEVER)
     return -1;
   fio_lock(&callback_collection[c_type].lock);
-  FIO_LIST_EACH(callback_data_s, node, &callback_collection[c_type].callbacks,
-                pos) {
+  FIO_LIST_EACH(
+      callback_data_s, node, &callback_collection[c_type].callbacks, pos) {
     callback_data_s *tmp = pos;
     if (tmp->func == func && tmp->arg == arg) {
       callback_collection_remove(tmp);
@@ -3058,8 +3114,8 @@ void fio_state_callback_force(callback_type_e c_type) {
   case FIO_CALL_IN_CHILD:      /* fallthrough */
   case FIO_CALL_IN_MASTER:     /* fallthrough */
   case FIO_CALL_ON_START:      /* fallthrough */
-    FIO_LIST_EACH(callback_data_s, node, &callback_collection[c_type].callbacks,
-                  pos) {
+    FIO_LIST_EACH(
+        callback_data_s, node, &callback_collection[c_type].callbacks, pos) {
       callback_data_s *tmp = fio_malloc(sizeof(*tmp));
       FIO_ASSERT_ALLOC(tmp);
       *tmp = *pos;
@@ -3068,10 +3124,10 @@ void fio_state_callback_force(callback_type_e c_type) {
     break;
 
   case FIO_CALL_ON_IDLE: /* idle callbacks are orderless and evented */
-    FIO_LIST_EACH(callback_data_s, node, &callback_collection[c_type].callbacks,
-                  pos) {
-      fio_defer_push_task(fio_state_on_idle_perform,
-                          (void *)(uintptr_t)pos->func, pos->arg);
+    FIO_LIST_EACH(
+        callback_data_s, node, &callback_collection[c_type].callbacks, pos) {
+      fio_defer_push_task(
+          fio_state_on_idle_perform, (void *)(uintptr_t)pos->func, pos->arg);
     }
     break;
 
@@ -3082,8 +3138,8 @@ void fio_state_callback_force(callback_type_e c_type) {
   case FIO_CALL_AT_EXIT:         /* fallthrough */
   case FIO_CALL_NEVER:           /* fallthrough */
   default:
-    FIO_LIST_EACH(callback_data_s, node, &callback_collection[c_type].callbacks,
-                  pos) {
+    FIO_LIST_EACH(
+        callback_data_s, node, &callback_collection[c_type].callbacks, pos) {
       callback_data_s *tmp = fio_malloc(sizeof(*tmp));
       FIO_ASSERT_ALLOC(tmp);
       *tmp = *pos;
@@ -3168,8 +3224,8 @@ postpone:
 void fio_defer_io_task FIO_NOOP(intptr_t uuid, fio_defer_iotask_args_s args) {
   if (!args.task) {
     if (args.fallback)
-      fio_defer_push_task((void (*)(void *, void *))args.fallback, (void *)uuid,
-                          args.udata);
+      fio_defer_push_task(
+          (void (*)(void *, void *))args.fallback, (void *)uuid, args.udata);
     return;
   }
   fio_defer_iotask_args_s *cpy = fio_malloc(sizeof(*cpy));
@@ -3271,7 +3327,8 @@ static void __attribute__((constructor)) fio_lib_init(void) {
                  "*    Meximum open files %zu out of %zu\n"
                  "*    Allocating %zu bytes for state handling.\n"
                  "*    %zu bytes per connection + %zu for state handling.",
-                 capa, (size_t)rlim.rlim_max,
+                 capa,
+                 (size_t)rlim.rlim_max,
                  (sizeof(*fio_data) + (capa * (sizeof(*fio_data->poll))) +
                   (capa * (sizeof(*fio_data->info)))),
                  (sizeof(*fio_data->poll) + sizeof(*fio_data->info)),
@@ -3281,9 +3338,11 @@ static void __attribute__((constructor)) fio_lib_init(void) {
                  "*    Meximum open files %zu out of %zu\n"
                  "*    Allocating %zu bytes for state handling.\n"
                  "*    %zu bytes per connection + %zu for state handling.",
-                 capa, (size_t)rlim.rlim_max,
+                 capa,
+                 (size_t)rlim.rlim_max,
                  (sizeof(*fio_data) + (capa * (sizeof(*fio_data->info)))),
-                 (sizeof(*fio_data->info)), sizeof(*fio_data));
+                 (sizeof(*fio_data->info)),
+                 sizeof(*fio_data));
 #endif
 #endif
   }
@@ -3611,9 +3670,13 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
       "* Detected capacity: %d open file limit\n"
       "* Root pid: %d\n"
       "* Press ^C to stop\n",
-      fio_data->workers, fio_data->workers > 1 ? "workers" : "worker",
-      fio_data->threads, fio_data->threads > 1 ? "threads" : "thread",
-      fio_engine(), fio_data->capa, (int)fio_data->parent);
+      fio_data->workers,
+      fio_data->workers > 1 ? "workers" : "worker",
+      fio_data->threads,
+      fio_data->threads > 1 ? "threads" : "thread",
+      fio_engine(),
+      fio_data->capa,
+      (int)fio_data->parent);
 
   if (args.workers > 1) {
     for (int i = 0; i < args.workers && fio_data->active; ++i) {
@@ -3703,8 +3766,8 @@ static void fio_listen_on_startup(void *pr_) {
   if (pr->port_len)
     FIO_LOG_DEBUG("(%d) started listening on port %s", (int)getpid(), pr->port);
   else
-    FIO_LOG_DEBUG("(%d) started listening on Unix Socket at %s", (int)getpid(),
-                  pr->addr);
+    FIO_LOG_DEBUG(
+        "(%d) started listening on Unix Socket at %s", (int)getpid(), pr->addr);
 }
 
 static void fio_listen_on_close(intptr_t uuid, fio_protocol_s *pr_) {
@@ -3776,7 +3839,8 @@ intptr_t fio_listen FIO_NOOP(struct fio_listen_args args) {
     }
   }
   const intptr_t uuid =
-      fio_socket(args.address, args.port,
+      fio_socket(args.address,
+                 args.port,
                  FIO_SOCKET_TCP | FIO_SOCKET_SERVER | FIO_SOCKET_NONBLOCK);
   if (uuid == -1)
     goto error;
@@ -3937,7 +4001,8 @@ intptr_t fio_connect FIO_NOOP(struct fio_connect_args args) {
     goto error;
   }
   const intptr_t uuid =
-      fio_socket(args.address, args.port,
+      fio_socket(args.address,
+                 args.port,
                  (args.port ? FIO_SOCKET_TCP : FIO_SOCKET_UNIX) |
                      FIO_SOCKET_CLIENT | FIO_SOCKET_NONBLOCK);
   if (uuid == -1)
@@ -4230,9 +4295,12 @@ static void fio_postoffice_meta_update(fio_msg_internal_s *m) {
   fio_postoffice_meta_copy_free(&t);
 }
 
-static fio_msg_internal_s *
-fio_msg_internal_create(int32_t filter, uint32_t type, fio_str_info_s ch,
-                        fio_str_info_s data, int8_t is_json, int8_t cpy) {
+static fio_msg_internal_s *fio_msg_internal_create(int32_t filter,
+                                                   uint32_t type,
+                                                   fio_str_info_s ch,
+                                                   fio_str_info_s data,
+                                                   int8_t is_json,
+                                                   int8_t cpy) {
   fio_meta_ary_s t = FIO_ARRAY_INIT;
   if (!filter)
     t = fio_postoffice_meta_copy_new();
@@ -4306,7 +4374,8 @@ static inline fio_msg_internal_s *fio_msg_internal_dup(fio_msg_internal_s *m) {
 
 static inline ssize_t fio_msg_internal_send_dup(intptr_t uuid,
                                                 fio_msg_internal_s *m) {
-  return fio_write2(uuid, .data.buf = fio_msg_internal_dup(m),
+  return fio_write2(uuid,
+                    .data.buf = fio_msg_internal_dup(m),
                     .offset = (sizeof(*m) + (m->meta_len * sizeof(*m->meta))),
                     .len = 16 + m->data.len + m->channel.len + 2,
                     .after.dealloc = fio_msg_internal_free2);
@@ -4432,11 +4501,13 @@ subscription_s *fio_subscribe FIO_NOOP(subscribe_args_s args) {
   fio_unlock((&ch->lock));
   if (!args.uuid)
     return s;
-  fio_uuid_env_set(
-      args.uuid, .data = s, .on_close = (void (*)(void *))fio_unsubscribe,
-      .name = {.buf = ch->name, .len = ch->name_len}, .const_name = 1,
-      .type = (-1 - ((uintptr_t)args.match >> 8) -
-               ((uintptr_t)((uint32_t)args.filter) << 1)));
+  fio_uuid_env_set(args.uuid,
+                   .data = s,
+                   .on_close = (void (*)(void *))fio_unsubscribe,
+                   .name = {.buf = ch->name, .len = ch->name_len},
+                   .const_name = 1,
+                   .type = (-1 - ((uintptr_t)args.match >> 8) -
+                            ((uintptr_t)((uint32_t)args.filter) << 1)));
   errno = 0;
   return NULL;
 error:
@@ -4464,8 +4535,8 @@ void fio_unsubscribe(subscription_s *s) {
   /* check if channel is done for */
   if (subscriptions_is_empty(&ch->subscriptions)) {
     fio_collection_s *c = ch->parent;
-    uint64_t hashed = fio_risky_hash(ch->name, ch->name_len,
-                                     (uint64_t)&fio_postoffice.pubsub);
+    uint64_t hashed = fio_risky_hash(
+        ch->name, ch->name_len, (uint64_t)&fio_postoffice.pubsub);
     /* lock collection */
     fio_lock(&c->lock);
     /* test again within lock */
@@ -4507,7 +4578,8 @@ void fio_unsubscribe_uuid FIO_NOOP(subscribe_args_s args) {
         .len = sizeof(args.filter),
     };
   }
-  fio_uuid_env_remove(args.uuid, .name = args.channel,
+  fio_uuid_env_remove(args.uuid,
+                      .name = args.channel,
                       .type = (-1 - ((uintptr_t)args.match >> 8) -
                                ((uintptr_t)((uint32_t)args.filter) << 1)));
 }
@@ -4552,7 +4624,8 @@ static void fio_pubsub_on_channel_destroy(channel_s *ch) {
     if (!pos->hash)
       continue;
     pos->obj->unsubscribe(
-        pos->obj, (fio_str_info_s){.buf = ch->name, .len = ch->name_len},
+        pos->obj,
+        (fio_str_info_s){.buf = ch->name, .len = ch->name_len},
         ch->match);
   }
   fio_unlock(&fio_postoffice.engines.lock);
@@ -4571,8 +4644,8 @@ static void fio_pubsub_on_channel_destroy(channel_s *ch) {
  */
 void fio_pubsub_attach(fio_pubsub_engine_s *engine) {
   fio_lock(&fio_postoffice.engines.lock);
-  fio_engine_set_set_if_missing(&fio_postoffice.engines.set, (uintptr_t)engine,
-                                engine);
+  fio_engine_set_set_if_missing(
+      &fio_postoffice.engines.set, (uintptr_t)engine, engine);
   fio_unlock(&fio_postoffice.engines.lock);
   fio_pubsub_reattach(engine);
 }
@@ -4580,8 +4653,8 @@ void fio_pubsub_attach(fio_pubsub_engine_s *engine) {
 /** Detaches an engine, so it could be safely destroyed. */
 void fio_pubsub_detach(fio_pubsub_engine_s *engine) {
   fio_lock(&fio_postoffice.engines.lock);
-  fio_engine_set_remove(&fio_postoffice.engines.set, (uintptr_t)engine, engine,
-                        NULL);
+  fio_engine_set_remove(
+      &fio_postoffice.engines.set, (uintptr_t)engine, engine, NULL);
   fio_unlock(&fio_postoffice.engines.lock);
 }
 
@@ -4589,8 +4662,8 @@ void fio_pubsub_detach(fio_pubsub_engine_s *engine) {
 int fio_pubsub_is_attached(fio_pubsub_engine_s *engine) {
   fio_pubsub_engine_s *addr;
   fio_lock(&fio_postoffice.engines.lock);
-  addr = fio_engine_set_get(&fio_postoffice.engines.set, (uintptr_t)engine,
-                            engine);
+  addr = fio_engine_set_get(
+      &fio_postoffice.engines.set, (uintptr_t)engine, engine);
   fio_unlock(&fio_postoffice.engines.lock);
   return addr != NULL;
 }
@@ -4616,7 +4689,8 @@ void fio_pubsub_reattach(fio_pubsub_engine_s *eng) {
     if (!pos->hash)
       continue;
     eng->subscribe(
-        eng, (fio_str_info_s){.buf = pos->obj->name, .len = pos->obj->name_len},
+        eng,
+        (fio_str_info_s){.buf = pos->obj->name, .len = pos->obj->name_len},
         NULL);
   }
   fio_unlock(&fio_postoffice.pubsub.lock);
@@ -4625,7 +4699,8 @@ void fio_pubsub_reattach(fio_pubsub_engine_s *eng) {
     if (!pos->hash)
       continue;
     eng->subscribe(
-        eng, (fio_str_info_s){.buf = pos->obj->name, .len = pos->obj->name_len},
+        eng,
+        (fio_str_info_s){.buf = pos->obj->name, .len = pos->obj->name_len},
         pos->obj->match);
   }
   fio_unlock(&fio_postoffice.patterns.lock);
@@ -4789,8 +4864,8 @@ static void fio_publish2process(fio_msg_internal_s *m) {
   }
   /* exact match */
   if (ch) {
-    fio_defer_push_urgent(fio_publish2channel_task, ch,
-                          fio_msg_internal_dup(m));
+    fio_defer_push_urgent(
+        fio_publish2channel_task, ch, fio_msg_internal_dup(m));
   }
   if (m->filter == 0) {
     /* pattern matching match */
@@ -4804,8 +4879,8 @@ static void fio_publish2process(fio_msg_internal_s *m) {
               (fio_str_info_s){.buf = p->obj->name, .len = p->obj->name_len},
               m->channel)) {
         fio_channel_dup(p->obj);
-        fio_defer_push_urgent(fio_publish2channel_task, p->obj,
-                              fio_msg_internal_dup(m));
+        fio_defer_push_urgent(
+            fio_publish2channel_task, p->obj, fio_msg_internal_dup(m));
       }
     }
     fio_unlock(&fio_postoffice.patterns.lock);
@@ -4906,9 +4981,10 @@ static void fio_cluster_init(void) {
   }
   memcpy(cluster_data.name + tmp_folder_len, "facil-io-sock-", 14);
   tmp_folder_len += 14;
-  tmp_folder_len +=
-      snprintf(cluster_data.name + tmp_folder_len,
-               FIO_CLUSTER_NAME_LIMIT - tmp_folder_len, "%d", (int)getpid());
+  tmp_folder_len += snprintf(cluster_data.name + tmp_folder_len,
+                             FIO_CLUSTER_NAME_LIMIT - tmp_folder_len,
+                             "%d",
+                             (int)getpid());
   cluster_data.name[tmp_folder_len] = 0;
 
   /* remove if existing */
@@ -4925,9 +5001,12 @@ static inline void fio_cluster_protocol_free(void *pr) { fio_free(pr); }
 
 static uint8_t fio_cluster_on_shutdown(intptr_t uuid, fio_protocol_s *pr_) {
   cluster_pr_s *p = (cluster_pr_s *)pr_;
-  p->sender(fio_msg_internal_create(0, FIO_CLUSTER_MSG_SHUTDOWN,
+  p->sender(fio_msg_internal_create(0,
+                                    FIO_CLUSTER_MSG_SHUTDOWN,
                                     (fio_str_info_s){.len = 0},
-                                    (fio_str_info_s){.len = 0}, 0, 1),
+                                    (fio_str_info_s){.len = 0},
+                                    0,
+                                    1),
             -1);
   return 255;
   (void)pr_;
@@ -4952,7 +5031,8 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
       if (c->exp_channel) {
         if (c->exp_channel >= (1024 * 1024 * 16) + 1) {
           FIO_LOG_FATAL("(%d) cluster message name too long (16Mb limit): %u\n",
-                        (int)getpid(), (unsigned int)c->exp_channel);
+                        (int)getpid(),
+                        (unsigned int)c->exp_channel);
           exit(1);
           return;
         }
@@ -4960,13 +5040,15 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
       if (c->exp_msg) {
         if (c->exp_msg >= (1024 * 1024 * 64) + 1) {
           FIO_LOG_FATAL("(%d) cluster message data too long (64Mb limit): %u\n",
-                        (int)getpid(), (unsigned int)c->exp_msg);
+                        (int)getpid(),
+                        (unsigned int)c->exp_msg);
           exit(1);
           return;
         }
       }
       c->msg = fio_msg_internal_create(
-          c->filter, c->type,
+          c->filter,
+          c->type,
           (fio_str_info_s){.buf = (char *)(c->msg + 1),
                            .len = c->exp_channel - 1},
           (fio_str_info_s){.buf = ((char *)(c->msg + 1) + c->exp_channel + 1),
@@ -4980,14 +5062,16 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
       if (c->exp_channel + i > c->len) {
         memcpy(c->msg->channel.buf +
                    ((c->msg->channel.len + 1) - c->exp_channel),
-               (char *)c->buf + i, (size_t)(c->len - i));
+               (char *)c->buf + i,
+               (size_t)(c->len - i));
         c->exp_channel -= (c->len - i);
         i = c->len;
         break;
       } else {
         memcpy(c->msg->channel.buf +
                    ((c->msg->channel.len + 1) - c->exp_channel),
-               (char *)c->buf + i, (size_t)(c->exp_channel));
+               (char *)c->buf + i,
+               (size_t)(c->exp_channel));
         i += c->exp_channel;
         c->exp_channel = 0;
       }
@@ -4995,13 +5079,15 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
     if (c->exp_msg) {
       if (c->exp_msg + i > c->len) {
         memcpy(c->msg->data.buf + ((c->msg->data.len + 1) - c->exp_msg),
-               (char *)c->buf + i, (size_t)(c->len - i));
+               (char *)c->buf + i,
+               (size_t)(c->len - i));
         c->exp_msg -= (c->len - i);
         i = c->len;
         break;
       } else {
         memcpy(c->msg->data.buf + ((c->msg->data.len + 1) - c->exp_msg),
-               (char *)c->buf + i, (size_t)(c->exp_msg));
+               (char *)c->buf + i,
+               (size_t)(c->exp_msg));
         i += c->exp_msg;
         c->exp_msg = 0;
       }
@@ -5019,9 +5105,12 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
 }
 
 static void fio_cluster_ping(intptr_t uuid, fio_protocol_s *pr_) {
-  fio_msg_internal_s *m = fio_msg_internal_create(
-      0, FIO_CLUSTER_MSG_PING, (fio_str_info_s){.len = 0},
-      (fio_str_info_s){.len = 0}, 0, 1);
+  fio_msg_internal_s *m = fio_msg_internal_create(0,
+                                                  FIO_CLUSTER_MSG_PING,
+                                                  (fio_str_info_s){.len = 0},
+                                                  (fio_str_info_s){.len = 0},
+                                                  0,
+                                                  1);
   fio_msg_internal_send_dup(uuid, m);
   fio_msg_internal_free(m);
   (void)pr_;
@@ -5107,16 +5196,19 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
   }
 
   case FIO_CLUSTER_MSG_PUBSUB_SUB: {
-    subscription_s *s =
-        fio_subscribe(.on_message = fio_mock_on_message, .match = NULL,
-                      .channel = pr->msg->channel);
+    subscription_s *s = fio_subscribe(.on_message = fio_mock_on_message,
+                                      .match = NULL,
+                                      .channel = pr->msg->channel);
     fio_str_s tmp = (fio_str_s)FIO_STRING_INIT_EXISTING(
         pr->msg->channel.buf, pr->msg->channel.len, 0, NULL); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_set(&pr->pubsub,
-                     fio_risky_hash(pr->msg->channel.buf, pr->msg->channel.len,
+                     fio_risky_hash(pr->msg->channel.buf,
+                                    pr->msg->channel.len,
                                     (uint64_t)&fio_postoffice.pubsub),
-                     tmp, s, NULL);
+                     tmp,
+                     s,
+                     NULL);
     fio_unlock(&pr->lock);
     break;
   }
@@ -5128,7 +5220,8 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
                         fio_risky_hash(pr->msg->channel.buf,
                                        pr->msg->channel.len,
                                        (uint64_t)&fio_postoffice.pubsub),
-                        tmp, NULL);
+                        tmp,
+                        NULL);
     fio_unlock(&pr->lock);
     break;
   }
@@ -5142,9 +5235,12 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
         pr->msg->channel.buf, pr->msg->channel.len, 0, NULL); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_set(&pr->patterns,
-                     fio_risky_hash(pr->msg->channel.buf, pr->msg->channel.len,
+                     fio_risky_hash(pr->msg->channel.buf,
+                                    pr->msg->channel.len,
                                     (uint64_t)&fio_postoffice.pubsub),
-                     tmp, s, NULL);
+                     tmp,
+                     s,
+                     NULL);
     fio_unlock(&pr->lock);
     break;
   }
@@ -5157,7 +5253,8 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
                         fio_risky_hash(pr->msg->channel.buf,
                                        pr->msg->channel.len,
                                        (uint64_t)&fio_postoffice.pubsub),
-                        tmp, NULL);
+                        tmp,
+                        NULL);
     fio_unlock(&pr->lock);
     break;
   }
@@ -5183,7 +5280,8 @@ static void fio_cluster_listen_accept(intptr_t uuid, fio_protocol_s *protocol) {
   intptr_t client;
   while ((client = fio_accept(uuid)) != -1) {
     fio_attach(client,
-               fio_cluster_protocol_alloc(client, fio_cluster_server_handler,
+               fio_cluster_protocol_alloc(client,
+                                          fio_cluster_server_handler,
                                           fio_cluster_server_sender));
     fio_lock(&cluster_data.lock);
     cluster_clients_push(&cluster_data.clients, client);
@@ -5212,7 +5310,8 @@ static void fio_listen2cluster(void *ignore) {
   fio_lock(&fio_fork_lock); /* prevent forking. */
   fio_lock(&cluster_data.lock);
   cluster_data.uuid =
-      fio_socket(cluster_data.name, NULL,
+      fio_socket(cluster_data.name,
+                 NULL,
                  FIO_SOCKET_UNIX | FIO_SOCKET_SERVER | FIO_SOCKET_NONBLOCK);
   fio_unlock(&cluster_data.lock);
   if (cluster_data.uuid < 0) {
@@ -5228,8 +5327,8 @@ static void fio_listen2cluster(void *ignore) {
       .ping = FIO_PING_ETERNAL,
       .on_close = fio_cluster_listen_on_close,
   };
-  FIO_LOG_DEBUG("(%d) Listening to cluster: %s", (int)getpid(),
-                cluster_data.name);
+  FIO_LOG_DEBUG(
+      "(%d) Listening to cluster: %s", (int)getpid(), cluster_data.name);
   fio_attach(cluster_data.uuid, p);
   fio_unlock(&fio_fork_lock); /* allow forking. */
   (void)ignore;
@@ -5265,8 +5364,8 @@ static void fio_cluster_client_sender(void *m_, intptr_t ignr_) {
   fio_msg_internal_s *m = m_;
   if (!uuid_is_valid(cluster_data.uuid) && fio_data->active) {
     /* delay message delivery until we have a vaild uuid */
-    fio_defer_push_task((void (*)(void *, void *))fio_cluster_client_sender, m_,
-                        (void *)ignr_);
+    fio_defer_push_task(
+        (void (*)(void *, void *))fio_cluster_client_sender, m_, (void *)ignr_);
     return;
   }
   fio_msg_internal_send_dup(cluster_data.uuid, m);
@@ -5304,8 +5403,9 @@ static void fio_cluster_on_connect(intptr_t uuid, void *udata) {
   }
   fio_unlock(&fio_postoffice.patterns.lock);
 
-  fio_attach(uuid, fio_cluster_protocol_alloc(uuid, fio_cluster_client_handler,
-                                              fio_cluster_client_sender));
+  fio_attach(uuid,
+             fio_cluster_protocol_alloc(
+                 uuid, fio_cluster_client_handler, fio_cluster_client_sender));
   (void)udata;
 }
 /**
@@ -5327,7 +5427,8 @@ static void fio_connect2cluster(void *ignore) {
     fio_force_close(cluster_data.uuid);
   cluster_data.uuid = 0;
   /* this is called for each child, but not for single a process worker. */
-  fio_connect(.address = cluster_data.name, .port = NULL,
+  fio_connect(.address = cluster_data.name,
+              .port = NULL,
               .on_connect = fio_cluster_on_connect,
               .on_fail = fio_cluster_on_fail);
   (void)ignore;
@@ -5362,7 +5463,9 @@ static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
   fio_str_info_s msg = {.buf = NULL, .len = 0};
 #if DEBUG
   FIO_LOG_DEBUG("(%d) informing root about: %s (%zu) msg type %d",
-                (int)getpid(), ch_name.buf, ch_name.len,
+                (int)getpid(),
+                ch_name.buf,
+                ch_name.len,
                 (ch->match ? (add ? FIO_CLUSTER_MSG_PATTERN_SUB
                                   : FIO_CLUSTER_MSG_PATTERN_UNSUB)
                            : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
@@ -5382,7 +5485,10 @@ static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
                                           : FIO_CLUSTER_MSG_PATTERN_UNSUB)
                                    : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
                                           : FIO_CLUSTER_MSG_PUBSUB_UNSUB)),
-                              ch_name, msg, 0, 1),
+                              ch_name,
+                              msg,
+                              0,
+                              1),
       -1);
 }
 
@@ -5499,10 +5605,12 @@ static void fio_cluster_signal_children(void) {
     fio_stop();
     return;
   }
-  fio_cluster_server_sender(fio_msg_internal_create(0, FIO_CLUSTER_MSG_SHUTDOWN,
+  fio_cluster_server_sender(fio_msg_internal_create(0,
+                                                    FIO_CLUSTER_MSG_SHUTDOWN,
                                                     (fio_str_info_s){.len = 0},
                                                     (fio_str_info_s){.len = 0},
-                                                    0, 1),
+                                                    0,
+                                                    1),
                             -1);
 }
 
@@ -5538,20 +5646,26 @@ void fio_publish FIO_NOOP(fio_publish_args_s args) {
     m = fio_msg_internal_create(
         args.filter,
         (args.is_json ? FIO_CLUSTER_MSG_JSON : FIO_CLUSTER_MSG_FORWARD),
-        args.channel, args.message, args.is_json, 1);
+        args.channel,
+        args.message,
+        args.is_json,
+        1);
     fio_send2cluster(m);
     fio_publish2process(m);
     break;
   case 2UL: // ((uintptr_t)FIO_PUBSUB_PROCESS):
-    m = fio_msg_internal_create(args.filter, 0, args.channel, args.message,
-                                args.is_json, 1);
+    m = fio_msg_internal_create(
+        args.filter, 0, args.channel, args.message, args.is_json, 1);
     fio_publish2process(m);
     break;
   case 3UL: // ((uintptr_t)FIO_PUBSUB_SIBLINGS):
     m = fio_msg_internal_create(
         args.filter,
         (args.is_json ? FIO_CLUSTER_MSG_JSON : FIO_CLUSTER_MSG_FORWARD),
-        args.channel, args.message, args.is_json, 1);
+        args.channel,
+        args.message,
+        args.is_json,
+        1);
     fio_send2cluster(m);
     fio_msg_internal_free(m);
     m = NULL;
@@ -5560,7 +5674,10 @@ void fio_publish FIO_NOOP(fio_publish_args_s args) {
     m = fio_msg_internal_create(
         args.filter,
         (args.is_json ? FIO_CLUSTER_MSG_ROOT_JSON : FIO_CLUSTER_MSG_ROOT),
-        args.channel, args.message, args.is_json, 1);
+        args.channel,
+        args.message,
+        args.is_json,
+        1);
     if (fio_data->is_worker == 0 || fio_data->workers == 1) {
       fio_publish2process(m);
     } else {
@@ -5855,10 +5972,13 @@ FIO_IFUNC alpn_s *fio___tls_alpn_find(fio_tls_s *tls, char *name, size_t len) {
 }
 
 /** Adds an ALPN data object to the ALPN "list" (set) */
-FIO_IFUNC void fio___tls_alpn_add(
-    fio_tls_s *tls, const char *protocol_name,
-    void (*on_selected)(intptr_t uuid, void *udata_connection, void *udata_tls),
-    void *udata_tls, void (*on_cleanup)(void *udata_tls)) {
+FIO_IFUNC void fio___tls_alpn_add(fio_tls_s *tls,
+                                  const char *protocol_name,
+                                  void (*on_selected)(intptr_t uuid,
+                                                      void *udata_connection,
+                                                      void *udata_tls),
+                                  void *udata_tls,
+                                  void (*on_cleanup)(void *udata_tls)) {
   alpn_s tmp = {
       .name = FIO_STRING_INIT_STATIC(protocol_name),
       .on_selected = on_selected,
@@ -5897,8 +6017,8 @@ FIO_IFUNC void fio___tls_alpn_select___task(void *t_, void *ignr_) {
 }
 
 /** Schedules the ALPN protocol callback. */
-FIO_IFUNC void fio___tls_alpn_select(alpn_s *alpn, intptr_t uuid,
-                                     void *udata_connection) {
+FIO_IFUNC void
+fio___tls_alpn_select(alpn_s *alpn, intptr_t uuid, void *udata_connection) {
   if (!alpn || !alpn->on_selected)
     return;
   alpn_task_s *t = fio_malloc(sizeof(*t));
@@ -5981,8 +6101,8 @@ typedef struct {
  * Note: facil.io library functions MUST NEVER be called by any r/w hook, or a
  * deadlock might occur.
  */
-static ssize_t fio_tls_read(intptr_t uuid, void *udata, void *buf,
-                            size_t count) {
+static ssize_t
+fio_tls_read(intptr_t uuid, void *udata, void *buf, size_t count) {
   ssize_t ret = read(fio_uuid2fd(uuid), buf, count);
   if (ret > 0) {
     FIO_LOG_DEBUG("Read %zd bytes from %p", ret, (void *)uuid);
@@ -6032,8 +6152,8 @@ static ssize_t fio_tls_flush(intptr_t uuid, void *udata) {
  * Note: facil.io library functions MUST NEVER be called by any r/w hook, or a
  * deadlock might occur.
  */
-static ssize_t fio_tls_write(intptr_t uuid, void *udata, const void *buf,
-                             size_t count) {
+static ssize_t
+fio_tls_write(intptr_t uuid, void *udata, const void *buf, size_t count) {
   tls_buffer_s *tlsbuf = udata;
   size_t can_copy = TLS_BUFFER_LENGTH - tlsbuf->len;
   if (can_copy > count)
@@ -6071,8 +6191,8 @@ static void fio_tls_cleanup(void *udata) {
   tls_buffer_s *tlsbuf = udata;
   /* make sure the ALPN callback was called, just in case cleanup is required */
   if (!tlsbuf->alpn_ok) {
-    fio___tls_alpn_select(fio___tls_alpn_default(tlsbuf->tls), -1,
-                          NULL /* ALPN udata */);
+    fio___tls_alpn_select(
+        fio___tls_alpn_default(tlsbuf->tls), -1, NULL /* ALPN udata */);
   }
   fio_tls_destroy(tlsbuf->tls); /* manage reference count */
   fio_free(udata);
@@ -6104,8 +6224,8 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata) {
   return 1;
 }
 
-static ssize_t fio_tls_read4handshake(intptr_t uuid, void *udata, void *buf,
-                                      size_t count) {
+static ssize_t
+fio_tls_read4handshake(intptr_t uuid, void *udata, void *buf, size_t count) {
   FIO_LOG_DEBUG("TLS handshake from read %p", (void *)uuid);
   if (fio_tls_handshake(uuid, udata))
     return fio_tls_read(uuid, udata, buf, count);
@@ -6113,8 +6233,10 @@ static ssize_t fio_tls_read4handshake(intptr_t uuid, void *udata, void *buf,
   return -1;
 }
 
-static ssize_t fio_tls_write4handshake(intptr_t uuid, void *udata,
-                                       const void *buf, size_t count) {
+static ssize_t fio_tls_write4handshake(intptr_t uuid,
+                                       void *udata,
+                                       const void *buf,
+                                       size_t count) {
   FIO_LOG_DEBUG("TLS handshake from write %p", (void *)uuid);
   if (fio_tls_handshake(uuid, udata))
     return fio_tls_write(uuid, udata, buf, count);
@@ -6137,8 +6259,10 @@ static fio_rw_hook_s FIO_TLS_HANDSHAKE_HOOKS = {
     .cleanup = fio_tls_cleanup,
 };
 
-static inline void fio_tls_attach2uuid(intptr_t uuid, fio_tls_s *tls,
-                                       void *udata, uint8_t is_server) {
+static inline void fio_tls_attach2uuid(intptr_t uuid,
+                                       fio_tls_s *tls,
+                                       void *udata,
+                                       uint8_t is_server) {
   fio_atomic_add(&tls->ref, 1); /* manage reference count */
   /* TODO: this is only an example implementation - fix for specific library */
   if (is_server) {
@@ -6153,8 +6277,8 @@ static inline void fio_tls_attach2uuid(intptr_t uuid, fio_tls_s *tls,
   /* common implementation (TODO) */
   tls_buffer_s *connection_data = fio_malloc(sizeof(*connection_data));
   FIO_ASSERT_ALLOC(connection_data);
-  fio_rw_hook_set(uuid, &FIO_TLS_HANDSHAKE_HOOKS,
-                  connection_data); /* 32Kb buffer */
+  fio_rw_hook_set(
+      uuid, &FIO_TLS_HANDSHAKE_HOOKS, connection_data); /* 32Kb buffer */
   fio___tls_alpn_select(fio___tls_alpn_default(tls), uuid, udata);
   connection_data->alpn_ok = 1;
 }
@@ -6167,8 +6291,10 @@ SSL/TLS API implementation - this can be pretty much used as is...
  * Creates a new SSL/TLS context / settings object with a default certificate
  * (if any).
  */
-fio_tls_s *FIO_TLS_WEAK fio_tls_new(const char *server_name, const char *cert,
-                                    const char *key, const char *pk_password) {
+fio_tls_s *FIO_TLS_WEAK fio_tls_new(const char *server_name,
+                                    const char *cert,
+                                    const char *key,
+                                    const char *pk_password) {
   REQUIRE_TLS_LIBRARY();
   fio_tls_s *tls = calloc(sizeof(*tls), 1);
   tls->ref = 1;
@@ -6179,8 +6305,10 @@ fio_tls_s *FIO_TLS_WEAK fio_tls_new(const char *server_name, const char *cert,
 /**
  * Adds a certificate  a new SSL/TLS context / settings object.
  */
-void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls, const char *server_name,
-                                   const char *cert, const char *key,
+void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls,
+                                   const char *server_name,
+                                   const char *cert,
+                                   const char *key,
                                    const char *pk_password) {
   REQUIRE_TLS_LIBRARY();
   cert_s c = {
@@ -6204,8 +6332,8 @@ void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls, const char *server_name,
   fio___tls_build_context(tls);
   return;
 file_missing:
-  FIO_LOG_FATAL("TLS certificate file missing for either %s or %s or both.",
-                key, cert);
+  FIO_LOG_FATAL(
+      "TLS certificate file missing for either %s or %s or both.", key, cert);
   exit(-1);
 }
 
@@ -6225,10 +6353,13 @@ file_missing:
  * Except for the `tls` and `protocol_name` arguments, all arguments can be
  * NULL.
  */
-void FIO_TLS_WEAK fio_tls_alpn_add(
-    fio_tls_s *tls, const char *protocol_name,
-    void (*on_selected)(intptr_t uuid, void *udata_connection, void *udata_tls),
-    void *udata_tls, void (*on_cleanup)(void *udata_tls)) {
+void FIO_TLS_WEAK fio_tls_alpn_add(fio_tls_s *tls,
+                                   const char *protocol_name,
+                                   void (*on_selected)(intptr_t uuid,
+                                                       void *udata_connection,
+                                                       void *udata_tls),
+                                   void *udata_tls,
+                                   void (*on_cleanup)(void *udata_tls)) {
   REQUIRE_TLS_LIBRARY();
   fio___tls_alpn_add(tls, protocol_name, on_selected, udata_tls, on_cleanup);
   fio___tls_build_context(tls);
@@ -6368,8 +6499,12 @@ SipHash
 #define sip_local64(i) (i)
 #endif
 
-static inline uint64_t fio_siphash_xy(const void *data, size_t len, size_t x,
-                                      size_t y, uint64_t key1, uint64_t key2) {
+static inline uint64_t fio_siphash_xy(const void *data,
+                                      size_t len,
+                                      size_t x,
+                                      size_t y,
+                                      uint64_t key1,
+                                      uint64_t key2) {
   /* initialize the 4 words */
   uint64_t v0 = (0x0706050403020100ULL ^ 0x736f6d6570736575ULL) ^ key1;
   uint64_t v1 = (0x0f0e0d0c0b0a0908ULL ^ 0x646f72616e646f6dULL) ^ key2;
@@ -6454,13 +6589,13 @@ static inline uint64_t fio_siphash_xy(const void *data, size_t len, size_t x,
   return v0;
 }
 
-uint64_t fio_siphash24(const void *data, size_t len, uint64_t key1,
-                       uint64_t key2) {
+uint64_t
+fio_siphash24(const void *data, size_t len, uint64_t key1, uint64_t key2) {
   return fio_siphash_xy(data, len, 2, 4, key1, key2);
 }
 
-uint64_t fio_siphash13(const void *data, size_t len, uint64_t key1,
-                       uint64_t key2) {
+uint64_t
+fio_siphash13(const void *data, size_t len, uint64_t key1, uint64_t key2) {
   return fio_siphash_xy(data, len, 1, 3, key1, key2);
 }
 
@@ -7271,7 +7406,8 @@ FIO_SFUNC void fio_state_callback_order_test_task(void *pi) {
   static uintptr_t start = FIO_STATE_TEST_COUNT;
   --start;
   FIO_ASSERT((uintptr_t)pi == start,
-             "Callback order error, expecting %zu, got %zu", (size_t)start,
+             "Callback order error, expecting %zu, got %zu",
+             (size_t)start,
              (size_t)pi);
 }
 
@@ -7286,8 +7422,8 @@ FIO_SFUNC void fio_state_callback_test(void) {
   FIO_ASSERT(result == 1, "Callback wasn't called!");
   fio_state_callback_force(FIO_CALL_NEVER);
   FIO_ASSERT(result == 2, "Callback wasn't called (second time)!");
-  fio_state_callback_remove(FIO_CALL_NEVER, fio_state_callback_test_task,
-                            &result);
+  fio_state_callback_remove(
+      FIO_CALL_NEVER, fio_state_callback_test_task, &result);
   fio_state_callback_force(FIO_CALL_NEVER);
   FIO_ASSERT(result == 2, "Callback wasn't removed!");
   fio_state_callback_add(FIO_CALL_NEVER, fio_state_callback_test_task, &result);
@@ -7296,8 +7432,8 @@ FIO_SFUNC void fio_state_callback_test(void) {
   fio_state_callback_force(FIO_CALL_NEVER);
   FIO_ASSERT(result == 2 && other == 0, "Callbacks werent cleared!");
   for (uintptr_t i = 0; i < FIO_STATE_TEST_COUNT; ++i) {
-    fio_state_callback_add(FIO_CALL_NEVER, fio_state_callback_order_test_task,
-                           (void *)i);
+    fio_state_callback_add(
+        FIO_CALL_NEVER, fio_state_callback_order_test_task, (void *)i);
   }
   fio_state_callback_force(FIO_CALL_NEVER);
   fio_state_callback_clear(FIO_CALL_NEVER);
@@ -7328,16 +7464,18 @@ FIO_SFUNC void fio_socket_test(void) {
 #endif
   fio_str_printf(&sock_name, "/fio_test_sock-%d.sock", (int)getpid());
 
-  fprintf(stderr, "=== Testing facil.io listening socket creation (partial "
-                  "testing only).\n");
-  fprintf(stderr, "* testing on TCP/IP port 8765 and Unix socket: %s\n",
+  fprintf(stderr,
+          "=== Testing facil.io listening socket creation (partial "
+          "testing only).\n");
+  fprintf(stderr,
+          "* testing on TCP/IP port 8765 and Unix socket: %s\n",
           fio_str2ptr(&sock_name));
-  intptr_t uuid = fio_socket(fio_str2ptr(&sock_name), NULL,
-                             FIO_SOCKET_UNIX | FIO_SOCKET_SERVER);
+  intptr_t uuid = fio_socket(
+      fio_str2ptr(&sock_name), NULL, FIO_SOCKET_UNIX | FIO_SOCKET_SERVER);
   FIO_ASSERT(uuid != -1, "Failed to open unix socket\n");
   FIO_ASSERT(uuid_data(uuid).open, "Unix socket not initialized");
-  intptr_t client1 = fio_socket(fio_str2ptr(&sock_name), NULL,
-                                FIO_SOCKET_UNIX | FIO_SOCKET_CLIENT);
+  intptr_t client1 = fio_socket(
+      fio_str2ptr(&sock_name), NULL, FIO_SOCKET_UNIX | FIO_SOCKET_CLIENT);
   FIO_ASSERT(client1 != -1, "Failed to connect to unix socket.");
   intptr_t client2 = fio_accept(uuid);
   FIO_ASSERT(client2 != -1, "Failed to accept unix socket connection.");
@@ -7372,11 +7510,16 @@ FIO_SFUNC void fio_socket_test(void) {
       unlink(__FILE__ ".sock");
     }
     FIO_ASSERT(r > 0 && r <= 28,
-               "Failed to read from unix socket " __FILE__ ".sock %zd", r);
+               "Failed to read from unix socket " __FILE__ ".sock %zd",
+               r);
     FIO_ASSERT(!memcmp("Hello World", tmp_buf, r),
-               "Unix socket Read/Write cycle error (%zd: %.*s)", r, (int)r,
+               "Unix socket Read/Write cycle error (%zd: %.*s)",
+               r,
+               (int)r,
                tmp_buf);
-    fprintf(stderr, "* Unix socket Read/Write cycle passed: %.*s\n", (int)r,
+    fprintf(stderr,
+            "* Unix socket Read/Write cycle passed: %.*s\n",
+            (int)r,
             tmp_buf);
     fio_data->last_cycle.tv_sec += 10;
     fio___timer_clear_all();
@@ -7389,13 +7532,14 @@ FIO_SFUNC void fio_socket_test(void) {
   /* free unix socket name */
   fio_str_destroy(&sock_name);
 
-  uuid = fio_socket(NULL, "8765",
-                    FIO_SOCKET_TCP | FIO_SOCKET_SERVER | FIO_SOCKET_NONBLOCK);
+  uuid = fio_socket(
+      NULL, "8765", FIO_SOCKET_TCP | FIO_SOCKET_SERVER | FIO_SOCKET_NONBLOCK);
   FIO_ASSERT(uuid != -1, "Failed to open TCP/IP socket on port 8765");
   FIO_ASSERT(uuid_data(uuid).open, "TCP/IP socket not initialized");
   fprintf(stderr, "* TCP/IP server addr %s\n", fio_peer_addr(uuid).buf);
   client1 =
-      fio_socket("localhost", "8765",
+      fio_socket("localhost",
+                 "8765",
                  FIO_SOCKET_TCP | FIO_SOCKET_CLIENT | FIO_SOCKET_NONBLOCK);
   FIO_ASSERT(client1 != -1, "Failed to connect to TCP/IP socket on port 8765");
   fprintf(stderr, "* TCP/IP client1 addr %s\n", fio_peer_addr(client1).buf);
@@ -7491,7 +7635,8 @@ FIO_SFUNC void fio_defer_test(void) {
   if (FIO_DEFER_TEST_PRINT) {
     fprintf(stderr,
             "Deferless (direct call) counter: %lu cycles with i_count = %lu\n",
-            (unsigned long)(end - start), (unsigned long)i_count);
+            (unsigned long)(end - start),
+            (unsigned long)i_count);
   }
   size_t i_count_should_be = i_count;
   i_count = 0;
@@ -7502,8 +7647,10 @@ FIO_SFUNC void fio_defer_test(void) {
   }
   end = clock();
   if (FIO_DEFER_TEST_PRINT) {
-    fprintf(stderr, "\t- single task counter: %lu cycles with i_count = %lu\n",
-            (unsigned long)(end - start), (unsigned long)i_count);
+    fprintf(stderr,
+            "\t- single task counter: %lu cycles with i_count = %lu\n",
+            (unsigned long)(end - start),
+            (unsigned long)i_count);
   }
   FIO_ASSERT(i_count == i_count_should_be, "ERROR: queue count invalid\n");
 
@@ -7526,8 +7673,11 @@ FIO_SFUNC void fio_defer_test(void) {
       fprintf(stderr,
               "- Defer %zu threads, %zu scheduling loops (%zu each):\n"
               "    %lu cycles with i_count = %lu\n",
-              ((i % cpu_cores) + 1), tasks, per_task,
-              (unsigned long)(end - start), (unsigned long)i_count);
+              ((i % cpu_cores) + 1),
+              tasks,
+              per_task,
+              (unsigned long)(end - start),
+              (unsigned long)i_count);
     } else {
       fprintf(stderr, ".");
     }
@@ -7562,7 +7712,9 @@ FIO_SFUNC void fio_siphash_speed_test(void) {
     memcpy(buf, &hash, sizeof(hash));
     if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
         cycles >= ((uint64_t)1 << 62)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio SipHash24",
+      fprintf(stderr,
+              "%-20s %8.2f MB/s\n",
+              "fio SipHash24",
               (double)(sizeof(buf) * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
@@ -7581,7 +7733,9 @@ FIO_SFUNC void fio_siphash_speed_test(void) {
     memcpy(buf, &hash, sizeof(hash));
     if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
         cycles >= ((uint64_t)1 << 62)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio SipHash13",
+      fprintf(stderr,
+              "%-20s %8.2f MB/s\n",
+              "fio SipHash13",
               (double)(sizeof(buf) * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
@@ -7627,7 +7781,9 @@ FIO_SFUNC void fio_sha1_speed_test(void) {
     end = clock();
     fio_sha1_result(&sha1);
     if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio SHA-1",
+      fprintf(stderr,
+              "%-20s %8.2f MB/s\n",
+              "fio SHA-1",
               (double)(sizeof(buf) * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
@@ -7661,7 +7817,9 @@ FIO_SFUNC void fio_sha1_open_ssl_speed_test(void) {
     end = clock();
     SHA1_Final(result, &o_sh1);
     if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", "OpenSSL SHA-1",
+      fprintf(stderr,
+              "%-20s %8.2f MB/s\n",
+              "OpenSSL SHA-1",
               (double)(sizeof(buf) * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
@@ -7698,7 +7856,8 @@ FIO_SFUNC void fio_sha1_test(void) {
     sha1 = fio_sha1_init();
     fio_sha1_write(&sha1, sets[i].str, strlen(sets[i].str));
     if (strcmp(fio_sha1_result(&sha1), (char *)sets[i].hash)) {
-      fprintf(stderr, ":\n--- fio SHA-1 Test FAILED!\nstring: %s\nexpected: ",
+      fprintf(stderr,
+              ":\n--- fio SHA-1 Test FAILED!\nstring: %s\nexpected: ",
               sets[i].str);
       char *p = (char *)sets[i].hash;
       while (*p)
@@ -7730,9 +7889,11 @@ FIO_SFUNC void fio_sha1_test(void) {
   (void)fio_sha1_open_ssl_speed_test;
 #endif
   fprintf(stderr, "===================================\n");
-  fprintf(stderr, "fio SHA-1 struct size: %lu\n",
+  fprintf(stderr,
+          "fio SHA-1 struct size: %lu\n",
           (unsigned long)sizeof(fio_sha1_s));
-  fprintf(stderr, "OpenSSL SHA-1 struct size: %lu\n",
+  fprintf(stderr,
+          "OpenSSL SHA-1 struct size: %lu\n",
           (unsigned long)sizeof(SHA_CTX));
   fprintf(stderr, "===================================\n");
 #endif /* HAVE_OPENSSL */
@@ -7743,8 +7904,14 @@ SHA-2 tests
 ***************************************************************************** */
 
 FIO_SFUNC char *sha2_variant_names[] = {
-    "unknown", "SHA_512",     "SHA_256", "SHA_512_256",
-    "SHA_224", "SHA_512_224", "none",    "SHA_384",
+    "unknown",
+    "SHA_512",
+    "SHA_256",
+    "SHA_512_256",
+    "SHA_224",
+    "SHA_512_224",
+    "none",
+    "SHA_384",
 };
 
 FIO_SFUNC void fio_sha2_speed_test(fio_sha2_variant_e var,
@@ -7772,7 +7939,9 @@ FIO_SFUNC void fio_sha2_speed_test(fio_sha2_variant_e var,
     end = clock();
     fio_sha2_result(&sha2);
     if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", var_name,
+      fprintf(stderr,
+              "%-20s %8.2f MB/s\n",
+              var_name,
               (double)(sizeof(buf) * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
@@ -7781,8 +7950,10 @@ FIO_SFUNC void fio_sha2_speed_test(fio_sha2_variant_e var,
   }
 }
 
-FIO_SFUNC void fio_sha2_openssl_speed_test(const char *var_name, int (*init)(),
-                                           int (*update)(), int (*final)(),
+FIO_SFUNC void fio_sha2_openssl_speed_test(const char *var_name,
+                                           int (*init)(),
+                                           int (*update)(),
+                                           int (*final)(),
                                            void *sha) {
   /* test adapted from BearSSL code with credit to Thomas Pornin */
   uint8_t buf[8192];
@@ -7806,7 +7977,9 @@ FIO_SFUNC void fio_sha2_openssl_speed_test(const char *var_name, int (*init)(),
     end = clock();
     final(result, sha);
     if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", var_name,
+      fprintf(stderr,
+              "%-20s %8.2f MB/s\n",
+              var_name,
               (double)(sizeof(buf) * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
@@ -7923,10 +8096,10 @@ FIO_SFUNC void fio_sha2_test(void) {
   {
     SHA512_CTX s2;
     SHA256_CTX s3;
-    fio_sha2_openssl_speed_test("OpenSSL SHA512", SHA512_Init, SHA512_Update,
-                                SHA512_Final, &s2);
-    fio_sha2_openssl_speed_test("OpenSSL SHA256", SHA256_Init, SHA256_Update,
-                                SHA256_Final, &s3);
+    fio_sha2_openssl_speed_test(
+        "OpenSSL SHA512", SHA512_Init, SHA512_Update, SHA512_Final, &s2);
+    fio_sha2_openssl_speed_test(
+        "OpenSSL SHA256", SHA256_Init, SHA256_Update, SHA256_Final, &s3);
   }
 #endif
   fprintf(stderr, "===================================\n");
@@ -7942,7 +8115,9 @@ error:
   fprintf(stderr,
           ":\n--- fio SHA-2 Test FAILED!\ntype: "
           "%s (%d)\nstring %s\nexpected:\n",
-          sha2_variant_names[s.type], s.type, str);
+          sha2_variant_names[s.type],
+          s.type,
+          str);
   while (*expect)
     fprintf(stderr, "%02x", *(expect++) & 0xFF);
   fprintf(stderr, "\ngot:\n");
@@ -8014,18 +8189,26 @@ FIO_SFUNC void fio_uuid_env_test(void) {
   intptr_t uuid = fio_socket(
       NULL, "8765", FIO_SOCKET_TCP | FIO_SOCKET_SERVER | FIO_SOCKET_NONBLOCK);
   FIO_ASSERT(uuid != -1, "fio_uuid_env_test failed to create a socket!");
-  fio_uuid_env_set(uuid, .data = &called,
-                   .on_close = fio_uuid_env_test_on_close, .type = 1);
+  fio_uuid_env_set(
+      uuid, .data = &called, .on_close = fio_uuid_env_test_on_close, .type = 1);
   FIO_ASSERT(called == 0,
              "fio_uuid_env_set failed - on_close callback called too soon!");
-  fio_uuid_env_set(uuid, .data = &removed,
-                   .on_close = fio_uuid_env_test_on_close, .type = 0);
-  fio_uuid_env_set(uuid, .data = &overwritten,
-                   .on_close = fio_uuid_env_test_on_close, .type = 0,
-                   .name.buf = "a", .name.len = 1);
-  fio_uuid_env_set(uuid, .data = &overwritten,
-                   .on_close = fio_uuid_env_test_on_close, .type = 0,
-                   .name.buf = "a", .name.len = 1);
+  fio_uuid_env_set(uuid,
+                   .data = &removed,
+                   .on_close = fio_uuid_env_test_on_close,
+                   .type = 0);
+  fio_uuid_env_set(uuid,
+                   .data = &overwritten,
+                   .on_close = fio_uuid_env_test_on_close,
+                   .type = 0,
+                   .name.buf = "a",
+                   .name.len = 1);
+  fio_uuid_env_set(uuid,
+                   .data = &overwritten,
+                   .on_close = fio_uuid_env_test_on_close,
+                   .type = 0,
+                   .name.buf = "a",
+                   .name.len = 1);
   fio_uuid_env_unset(uuid, .type = 0);
   fio_close(uuid);
   fio_defer_perform();
@@ -8052,21 +8235,24 @@ FIO_SFUNC void fio_buf2u_test(void) {
     __asm__ volatile("" ::: "memory");
     FIO_ASSERT((int64_t)fio_buf2u64(buf) == i,
                "fio_u2buf64 / fio_buf2u64  mismatch %zd != %zd",
-               (ssize_t)fio_buf2u64(buf), (ssize_t)i);
+               (ssize_t)fio_buf2u64(buf),
+               (ssize_t)i);
   }
   for (int32_t i = -1024; i < 1024; ++i) {
     fio_u2buf32(buf, i);
     __asm__ volatile("" ::: "memory");
     FIO_ASSERT((int32_t)fio_buf2u32(buf) == i,
                "fio_u2buf32 / fio_buf2u32  mismatch %zd != %zd",
-               (ssize_t)(fio_buf2u32(buf)), (ssize_t)i);
+               (ssize_t)(fio_buf2u32(buf)),
+               (ssize_t)i);
   }
   for (int16_t i = -1024; i < 1024; ++i) {
     fio_u2buf16(buf, i);
     __asm__ volatile("" ::: "memory");
     FIO_ASSERT((int16_t)fio_buf2u16(buf) == i,
                "fio_u2buf16 / fio_buf2u16  mismatch %zd != %zd",
-               (ssize_t)(fio_buf2u16(buf)), (ssize_t)i);
+               (ssize_t)(fio_buf2u16(buf)),
+               (ssize_t)i);
   }
   fprintf(stderr, "* passed.\n");
 }
@@ -8102,7 +8288,8 @@ FIO_SFUNC void fio_pubsub_test(void) {
   FIO_ASSERT(fio_buf2u32((uint8_t *)buf) == 4,
              "fio_u2buf32 / fio_buf2u32 not reversible (4)!");
   subscription_s *s2 =
-      fio_subscribe(.filter = 1, .udata1 = &counter,
+      fio_subscribe(.filter = 1,
+                    .udata1 = &counter,
                     .on_message = fio_pubsub_test_on_message,
                     .on_unsubscribe = fio_pubsub_test_on_unsubscribe);
   FIO_ASSERT(s2, "fio_subscribe FAILED on filtered subscription.");
@@ -8118,7 +8305,8 @@ FIO_SFUNC void fio_pubsub_test(void) {
   ++expect;
   fio_defer_perform();
   FIO_ASSERT(counter == expect, "unsubscribe wasn't called for filter 1!");
-  s = fio_subscribe(.channel = {"name", 4, 0}, .udata1 = &counter,
+  s = fio_subscribe(.channel = {"name", 4, 0},
+                    .udata1 = &counter,
                     .on_message = fio_pubsub_test_on_message,
                     .on_unsubscribe = fio_pubsub_test_on_unsubscribe);
   FIO_ASSERT(s, "fio_subscribe FAILED on named subscription.");
