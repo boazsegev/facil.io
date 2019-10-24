@@ -10282,7 +10282,6 @@ finish:
   return;
 
 error: /* handle errors*/
-  /* TODO! */
   fprintf(stderr,
           "\n\r\x1B[31mError:\x1B[0m invalid argument %.*s %s %s\n\n",
           (int)arg.len,
@@ -11900,7 +11899,7 @@ typedef struct {
    */
   size_t type_id;
   /** Test for equality between two objects with the same `type_id` */
-  unsigned char (*is_eq)(FIOBJ a, FIOBJ b);
+  unsigned char (*is_eq)(FIOBJ restrict a, FIOBJ restrict b);
   /** Converts an object to a String */
   fio_str_info_s (*to_s)(FIOBJ o);
   /** Converts an object to an integer */
@@ -12141,8 +12140,8 @@ FIO_IFUNC int FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
  * calculating the hash value.
  */
 FIO_IFUNC
-    FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
-                   set3)(FIOBJ hash, const char *key, size_t len, FIOBJ value);
+FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
+               set3)(FIOBJ hash, const char *key, size_t len, FIOBJ value);
 
 /**
  * Finds a String value in a hash map, using a temporary String and
@@ -12311,6 +12310,10 @@ FIO_IFUNC void fiobj_free(FIOBJ o) {
 FIOBJ Data / Info
 ***************************************************************************** */
 
+/** Internal: compares two nestable objects. */
+FIOBJ_FUNC unsigned char fiobj___test_eq_nested(FIOBJ restrict a,
+                                                FIOBJ restrict b);
+
 /** Compares two objects. */
 FIO_IFUNC unsigned char FIO_NAME_BL(fiobj, eq)(FIOBJ a, FIOBJ b) {
   if (a == b)
@@ -12325,10 +12328,17 @@ FIO_IFUNC unsigned char FIO_NAME_BL(fiobj, eq)(FIOBJ a, FIOBJ b) {
   case FIOBJ_T_STRING:
     return FIO_NAME_BL(FIO_NAME(fiobj, FIOBJ___NAME_STRING), eq)(a, b);
   case FIOBJ_T_ARRAY:
-    return 0;
+    return fiobj___test_eq_nested(a, b);
   case FIOBJ_T_HASH:
-    return 0;
+    return fiobj___test_eq_nested(a, b);
   case FIOBJ_T_OTHER:
+    if ((*fiobj_object_metadata(a))->count(a) ||
+        (*fiobj_object_metadata(b))->count(b)) {
+      if ((*fiobj_object_metadata(a))->count(a) !=
+          (*fiobj_object_metadata(b))->count(b))
+        return 0;
+      return fiobj___test_eq_nested(a, b);
+    }
     return (*fiobj_object_metadata(a))->type_id ==
                (*fiobj_object_metadata(b))->type_id &&
            (*fiobj_object_metadata(a))->is_eq(a, b);
@@ -12907,6 +12917,60 @@ FIOBJ_FUNC uint32_t fiobj_each2(FIOBJ o,
 }
 
 /* *****************************************************************************
+FIOBJ Hash / Array / Other (enumerable) Equality test.
+***************************************************************************** */
+
+FIO_SFUNC __thread size_t fiobj___test_eq_nested_level = 0;
+/** Internal: compares two nestable objects. */
+FIOBJ_FUNC unsigned char fiobj___test_eq_nested(FIOBJ restrict a,
+                                                FIOBJ restrict b) {
+  if (a == b)
+    return 1;
+  if (FIOBJ_TYPE_CLASS(a) != FIOBJ_TYPE_CLASS(b))
+    return 0;
+  if (fiobj____each2_element_count(a) != fiobj____each2_element_count(b))
+    return 0;
+  if (!fiobj____each2_element_count(a))
+    return 1;
+  if (fiobj___test_eq_nested_level >= FIOBJ_MAX_NESTING)
+    return 0;
+  ++fiobj___test_eq_nested_level;
+
+  switch (FIOBJ_TYPE_CLASS(a)) {
+  case FIOBJ_T_PRIMITIVE:
+  case FIOBJ_T_NUMBER: /* fallthrough */
+  case FIOBJ_T_FLOAT:  /* fallthrough */
+  case FIOBJ_T_STRING: /* fallthrough */
+    /* should never happen... this function is for enumerable objects */
+    return 0;
+  case FIOBJ_T_ARRAY:
+    /* test each array member with matching index */
+    {
+      const size_t count = fiobj____each2_element_count(a);
+      for (size_t i = 0; i < count; ++i) {
+        if (!FIO_NAME_BL(fiobj, eq)(
+                FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), get)(a, i),
+                FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), get)(b, i)))
+          goto unequal;
+      }
+    }
+    goto equal;
+  case FIOBJ_T_HASH:
+    /* TODO */
+    goto unequal;
+  case FIOBJ_T_OTHER:
+    /* TODO */
+    goto unequal;
+  }
+equal:
+  --fiobj___test_eq_nested_level;
+  return 1;
+unequal:
+  --fiobj___test_eq_nested_level;
+  return 0;
+}
+
+/* *****************************************************************************
 FIOBJ general helpers
 ***************************************************************************** */
 FIO_SFUNC __thread char fiobj___tmp_buffer[256];
@@ -12920,7 +12984,8 @@ FIO_SFUNC uint32_t fiobj___count_noop(FIOBJ o) {
 FIOBJ Integers (bigger numbers)
 ***************************************************************************** */
 
-FIOBJ_FUNC unsigned char FIO_NAME_BL(fiobj___num, eq)(FIOBJ a, FIOBJ b) {
+FIOBJ_FUNC unsigned char FIO_NAME_BL(fiobj___num, eq)(FIOBJ restrict a,
+                                                      FIOBJ restrict b) {
   return FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), i)(a) ==
          FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), i)(b);
 }
@@ -12961,7 +13026,8 @@ FIOBJ_EXTERN_OBJ_IMP const FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL = {
 FIOBJ Floats (bigger / smaller doubles)
 ***************************************************************************** */
 
-FIOBJ_FUNC unsigned char FIO_NAME_BL(fiobj___float, eq)(FIOBJ a, FIOBJ b) {
+FIOBJ_FUNC unsigned char FIO_NAME_BL(fiobj___float, eq)(FIOBJ restrict a,
+                                                        FIOBJ restrict b) {
   return FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), i)(a) ==
          FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), i)(b);
 }
@@ -16637,6 +16703,34 @@ TEST_FUNC void fio___dynamic_types_test___fiobj(void) {
     fiobj_free(o);
     fiobj_free(j);
     o = FIOBJ_INVALID;
+  }
+  {
+    fprintf(stderr, "* Testing FIOBJ array equality test (fiobj_is_eq).\n");
+    FIOBJ a1 = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
+    FIOBJ a2 = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
+    FIOBJ n1 = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
+    FIOBJ n2 = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(a1, fiobj_null());
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(a2, fiobj_null());
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(n1, fiobj_true());
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(n2, fiobj_true());
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(a1, n1);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(a2, n2);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)
+    (a1, FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new_cstr)("test", 4));
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)
+    (a2, FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new_cstr)("test", 4));
+    FIO_T_ASSERT(FIO_NAME_BL(fiobj, eq)(a1, a2), "equal arrays aren't equal?");
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(n1, fiobj_null());
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), push)(n2, fiobj_false());
+    FIO_T_ASSERT(!FIO_NAME_BL(fiobj, eq)(a1, a2), "unequal arrays are equal?");
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), remove)(n1, -1, NULL);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), remove)(n2, -1, NULL);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), remove)(a1, 0, NULL);
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), remove)(a2, -1, NULL);
+    FIO_T_ASSERT(!FIO_NAME_BL(fiobj, eq)(a1, a2), "unequal arrays are equal?");
+    fiobj_free(a1);
+    fiobj_free(a2);
   }
   {
     fprintf(stderr, "* Testing FIOBJ array ownership.\n");

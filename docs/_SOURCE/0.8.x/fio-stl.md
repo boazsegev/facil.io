@@ -3559,6 +3559,8 @@ unsigned char fiobj_is_eq(FIOBJ a, FIOBJ b);
 
 Compares two objects.
 
+Note: objects that contain other objects (i.e., Hash Maps) don't support this equality check just yet (feel free to contribute a PR for this).
+
 #### `fiobj2cstr`
 
 ```c

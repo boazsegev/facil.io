@@ -718,7 +718,7 @@ FIOBJ Type (VTable)
 
 ***************************************************************************** */
 
-static unsigned char fiobj_io_is_eq(FIOBJ a, FIOBJ b) {
+static unsigned char fiobj_io_is_eq(FIOBJ restrict a, FIOBJ restrict b) {
   if (FIOBJ2IO(a)->fd != -1 || FIOBJ2IO(b)->fd)
     return 0; /* can't compare files without deeply effecting the object */
   if (FIOBJ2IO(a)->len == FIOBJ2IO(b)->len &&
