@@ -83,25 +83,30 @@ static int http1_on_request(http1_parser_s *parser);
 /** called when a response was received. */
 static int http1_on_response(http1_parser_s *parser);
 /** called when a request method is parsed. */
-static int http1_on_method(http1_parser_s *parser, char *method,
-                           size_t method_len);
+static int
+http1_on_method(http1_parser_s *parser, char *method, size_t method_len);
 /** called when a response status is parsed. the status_str is the string
  * without the prefixed numerical status indicator.*/
-static int http1_on_status(http1_parser_s *parser, size_t status,
-                           char *status_str, size_t len);
+static int http1_on_status(http1_parser_s *parser,
+                           size_t status,
+                           char *status_str,
+                           size_t len);
 /** called when a request path (excluding query) is parsed. */
 static int http1_on_path(http1_parser_s *parser, char *path, size_t path_len);
 /** called when a request path (excluding query) is parsed. */
-static int http1_on_query(http1_parser_s *parser, char *query,
-                          size_t query_len);
+static int
+http1_on_query(http1_parser_s *parser, char *query, size_t query_len);
 /** called when a the HTTP/1.x version is parsed. */
 static int http1_on_version(http1_parser_s *parser, char *version, size_t len);
 /** called when a header is parsed. */
-static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
-                           char *data, size_t data_len);
+static int http1_on_header(http1_parser_s *parser,
+                           char *name,
+                           size_t name_len,
+                           char *data,
+                           size_t data_len);
 /** called when a body chunk is parsed. */
-static int http1_on_body_chunk(http1_parser_s *parser, char *data,
-                               size_t data_len);
+static int
+http1_on_body_chunk(http1_parser_s *parser, char *data, size_t data_len);
 /** called when a protocol error occurred. */
 static int http1_on_error(http1_parser_s *parser);
 
@@ -166,8 +171,8 @@ Seeking for characters in a string
  *
  * On newer systems, `memchr` should be faster.
  */
-static int seek2ch(uint8_t **buffer, register uint8_t *const limit,
-                   const uint8_t c) {
+static int
+seek2ch(uint8_t **buffer, register uint8_t *const limit, const uint8_t c) {
   if (**buffer == c) {
     return 1;
   }
@@ -315,7 +320,8 @@ HTTP/1.1 parsre stages
 ***************************************************************************** */
 
 inline static int http1_consume_response_line(http1_parser_s *parser,
-                                              uint8_t *start, uint8_t *end) {
+                                              uint8_t *start,
+                                              uint8_t *end) {
   parser->state.reserved |= 128;
   uint8_t *tmp = start;
   if (!seek2ch(&tmp, end, ' '))
@@ -331,7 +337,8 @@ inline static int http1_consume_response_line(http1_parser_s *parser,
 }
 
 inline static int http1_consume_request_line(http1_parser_s *parser,
-                                             uint8_t *start, uint8_t *end) {
+                                             uint8_t *start,
+                                             uint8_t *end) {
   uint8_t *tmp = start;
   uint8_t *host_start = NULL;
   uint8_t *host_end = NULL;
@@ -386,14 +393,15 @@ start_version:
   if (http1_on_version(parser, (char *)start, end - start))
     return -1;
   /* */
-  if (host_start && http1_on_header(parser, (char *)"host", 4,
-                                    (char *)host_start, host_end - host_start))
+  if (host_start &&
+      http1_on_header(
+          parser, (char *)"host", 4, (char *)host_start, host_end - host_start))
     return -1;
   return 0;
 }
 
-inline static int http1_consume_header(http1_parser_s *parser, uint8_t *start,
-                                       uint8_t *end) {
+inline static int
+http1_consume_header(http1_parser_s *parser, uint8_t *start, uint8_t *end) {
   uint8_t *end_name = start;
   /* divide header name from data */
   if (!seek2ch(&end_name, end, ':'))
@@ -445,8 +453,11 @@ inline static int http1_consume_header(http1_parser_s *parser, uint8_t *start,
   }
 #endif
   /* perform callback */
-  if (http1_on_header(parser, (char *)start, (end_name - start),
-                      (char *)start_value, end - start_value))
+  if (http1_on_header(parser,
+                      (char *)start,
+                      (end_name - start),
+                      (char *)start_value,
+                      end - start_value))
     return -1;
   return 0;
 }
@@ -456,7 +467,8 @@ HTTP/1.1 Body handling
 ***************************************************************************** */
 
 inline static int http1_consume_body_streamed(http1_parser_s *parser,
-                                              void *buffer, size_t length,
+                                              void *buffer,
+                                              size_t length,
                                               uint8_t **start) {
   uint8_t *end = *start + parser->state.content_length - parser->state.read;
   uint8_t *const stop = ((uint8_t *)buffer) + length;
@@ -473,7 +485,8 @@ inline static int http1_consume_body_streamed(http1_parser_s *parser,
 }
 
 inline static int http1_consume_body_chunked(http1_parser_s *parser,
-                                             void *buffer, size_t length,
+                                             void *buffer,
+                                             size_t length,
                                              uint8_t **start) {
   uint8_t *const stop = ((uint8_t *)buffer) + length;
   uint8_t *end = *start;
@@ -524,8 +537,10 @@ inline static int http1_consume_body_chunked(http1_parser_s *parser,
   return 0;
 }
 
-inline static int http1_consume_body(http1_parser_s *parser, void *buffer,
-                                     size_t length, uint8_t **start) {
+inline static int http1_consume_body(http1_parser_s *parser,
+                                     void *buffer,
+                                     size_t length,
+                                     uint8_t **start) {
   if (parser->state.content_length > 0 &&
       parser->state.content_length > parser->state.read) {
     /* normal, streamed data */

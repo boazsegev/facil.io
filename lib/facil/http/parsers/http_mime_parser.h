@@ -37,20 +37,29 @@ Callbacks to be implemented.
 ***************************************************************************** */
 
 /** Called when all the data is available at once. */
-static void http_mime_parser_on_data(http_mime_parser_s *parser, void *name,
-                                     size_t name_len, void *filename,
-                                     size_t filename_len, void *mimetype,
-                                     size_t mimetype_len, void *value,
+static void http_mime_parser_on_data(http_mime_parser_s *parser,
+                                     void *name,
+                                     size_t name_len,
+                                     void *filename,
+                                     size_t filename_len,
+                                     void *mimetype,
+                                     size_t mimetype_len,
+                                     void *value,
                                      size_t value_len);
 
 /** Called when the data didn't fit in the buffer. Data will be streamed. */
-static void http_mime_parser_on_partial_start(
-    http_mime_parser_s *parser, void *name, size_t name_len, void *filename,
-    size_t filename_len, void *mimetype, size_t mimetype_len);
+static void http_mime_parser_on_partial_start(http_mime_parser_s *parser,
+                                              void *name,
+                                              size_t name_len,
+                                              void *filename,
+                                              size_t filename_len,
+                                              void *mimetype,
+                                              size_t mimetype_len);
 
 /** Called when partial data is available. */
 static void http_mime_parser_on_partial_data(http_mime_parser_s *parser,
-                                             void *value, size_t value_len);
+                                             void *value,
+                                             size_t value_len);
 
 /** Called when the partial data is complete. */
 static void http_mime_parser_on_partial_end(http_mime_parser_s *parser);
@@ -62,8 +71,8 @@ static void http_mime_parser_on_partial_end(http_mime_parser_s *parser);
  *
  * Should return the length of the decoded string.
  */
-static size_t http_mime_decode_url(char *dest, const char *encoded,
-                                   size_t length);
+static size_t
+http_mime_decode_url(char *dest, const char *encoded, size_t length);
 
 /* *****************************************************************************
 API
@@ -75,7 +84,8 @@ API
  * Note: the Content-Type header should persist in memory while the parser is in
  * use.
  */
-static int http_mime_parser_init(http_mime_parser_s *parser, char *content_type,
+static int http_mime_parser_init(http_mime_parser_s *parser,
+                                 char *content_type,
                                  size_t len);
 
 /**
@@ -86,15 +96,16 @@ static int http_mime_parser_init(http_mime_parser_s *parser, char *content_type,
  *
  * Note: test the `parser->done` and `parser->error` flags between iterations.
  */
-static size_t http_mime_parse(http_mime_parser_s *parser, void *buffer,
-                              size_t length);
+static size_t
+http_mime_parse(http_mime_parser_s *parser, void *buffer, size_t length);
 
 /* *****************************************************************************
 Implementations
 ***************************************************************************** */
 
 /** takes the HTTP Content-Type header and initializes the parser data. */
-static int http_mime_parser_init(http_mime_parser_s *parser, char *content_type,
+static int http_mime_parser_init(http_mime_parser_s *parser,
+                                 char *content_type,
                                  size_t len) {
   *parser = (http_mime_parser_s){.done = 0};
   if (len < 14 || strncasecmp("multipart/form", content_type, 14))
@@ -135,8 +146,8 @@ static int http_mime_parser_init(http_mime_parser_s *parser, char *content_type,
  *
  * Note: test the `parser->done` and `parser->error` flags between iterations.
  */
-static size_t http_mime_parse(http_mime_parser_s *parser, void *buffer,
-                              size_t length) {
+static size_t
+http_mime_parse(http_mime_parser_s *parser, void *buffer, size_t length) {
   int first_run = 1;
   char *pos = buffer;
   const char *stop = pos + length;
@@ -320,8 +331,8 @@ consume_partial:
               memcmp(end + 2, parser->boundary, parser->boundary_len)));
     if (!end || end + 4 + parser->boundary_len >= stop) {
       if (first_run) {
-        http_mime_parser_on_partial_start(parser, name, name_len, filename,
-                                          filename_len, mime, mime_len);
+        http_mime_parser_on_partial_start(
+            parser, name, name_len, filename, filename_len, mime, mime_len);
         parser->in_obj = 1;
         pos = value;
         goto consume_partial;
@@ -332,8 +343,15 @@ consume_partial:
     if (value[value_len - 1] == '\r')
       --value_len;
     pos = end;
-    http_mime_parser_on_data(parser, name, name_len, filename, filename_len,
-                             mime, mime_len, value, value_len);
+    http_mime_parser_on_data(parser,
+                             name,
+                             name_len,
+                             filename,
+                             filename_len,
+                             mime,
+                             mime_len,
+                             value,
+                             value_len);
     first_run = 0;
   }
 end_of_data:

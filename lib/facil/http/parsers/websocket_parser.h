@@ -55,9 +55,13 @@ websocket_wrapped_len(uint64_t len);
  * Returns the number of bytes written. Always `websocket_wrapped_len(len)`
  */
 inline static uint64_t __attribute__((unused))
-websocket_server_wrap(void *target, void *msg, uint64_t len,
-                      unsigned char opcode, unsigned char first,
-                      unsigned char last, unsigned char rsv);
+websocket_server_wrap(void *target,
+                      void *msg,
+                      uint64_t len,
+                      unsigned char opcode,
+                      unsigned char first,
+                      unsigned char last,
+                      unsigned char rsv);
 
 /**
  * Wraps a WebSocket client message and writes it to the target buffer.
@@ -75,16 +79,24 @@ websocket_server_wrap(void *target, void *msg, uint64_t len,
  * Returns the number of bytes written. Always `websocket_wrapped_len(len) + 4`
  */
 inline static __attribute__((unused)) uint64_t
-websocket_client_wrap(void *target, void *msg, uint64_t len,
-                      unsigned char opcode, unsigned char first,
-                      unsigned char last, unsigned char rsv);
+websocket_client_wrap(void *target,
+                      void *msg,
+                      uint64_t len,
+                      unsigned char opcode,
+                      unsigned char first,
+                      unsigned char last,
+                      unsigned char rsv);
 
 /* *****************************************************************************
 Callbacks - Required functions that must be inplemented to use this header
 ***************************************************************************** */
 
-static void websocket_on_unwrapped(void *udata, void *msg, uint64_t len,
-                                   char first, char last, char text,
+static void websocket_on_unwrapped(void *udata,
+                                   void *msg,
+                                   uint64_t len,
+                                   char first,
+                                   char last,
+                                   char text,
                                    unsigned char rsv);
 static void websocket_on_protocol_ping(void *udata, void *msg, uint64_t len);
 static void websocket_on_protocol_pong(void *udata, void *msg, uint64_t len);
@@ -124,7 +136,9 @@ websocket_buffer_peek(void *buffer, uint64_t len);
  * just yet, `memmove` is used to place the data at the beginning of the buffer.
  */
 inline static __attribute__((unused)) uint64_t
-websocket_consume(void *buffer, uint64_t len, void *udata,
+websocket_consume(void *buffer,
+                  uint64_t len,
+                  void *udata,
                   uint8_t require_masking);
 
 /* *****************************************************************************
@@ -290,9 +304,13 @@ static inline uint64_t websocket_wrapped_len(uint64_t len) {
  *
  * Returns the number of bytes written. Always `websocket_wrapped_len(len)`
  */
-static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
-                                      unsigned char opcode, unsigned char first,
-                                      unsigned char last, unsigned char rsv) {
+static uint64_t websocket_server_wrap(void *target,
+                                      void *msg,
+                                      uint64_t len,
+                                      unsigned char opcode,
+                                      unsigned char first,
+                                      unsigned char last,
+                                      unsigned char rsv) {
   ((uint8_t *)target)[0] = 0 |
                            /* opcode */ (((first ? opcode : 0) & 15)) |
                            /* rsv */ ((rsv & 7) << 4) |
@@ -330,9 +348,13 @@ static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
  * Returns the number of bytes written. Always `websocket_wrapped_len(len) +
  * 4`
  */
-static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
-                                      unsigned char opcode, unsigned char first,
-                                      unsigned char last, unsigned char rsv) {
+static uint64_t websocket_client_wrap(void *target,
+                                      void *msg,
+                                      uint64_t len,
+                                      unsigned char opcode,
+                                      unsigned char first,
+                                      unsigned char last,
+                                      unsigned char rsv) {
   uint32_t mask = rand() | 0x01020408;
   ((uint8_t *)target)[0] = 0 |
                            /* opcode */ (((first ? opcode : 0) & 15)) |
@@ -385,8 +407,8 @@ Message unwrapping
 inline static struct websocket_packet_info_s
 websocket_buffer_peek(void *buffer, uint64_t len) {
   if (len < 2) {
-    const struct websocket_packet_info_s info = {0 /* packet */, 2 /* head */,
-                                                 0 /* masked? */};
+    const struct websocket_packet_info_s info = {
+        0 /* packet */, 2 /* head */, 0 /* masked? */};
     return info;
   }
   const uint8_t mask_f = (((uint8_t *)buffer)[1] >> 7) & 1;
@@ -398,21 +420,22 @@ websocket_buffer_peek(void *buffer, uint64_t len) {
       return (struct websocket_packet_info_s){0, (uint8_t)(4 + mask_l), mask_f};
     return (struct websocket_packet_info_s){
         (uint64_t)websocket_str2u16(((uint8_t *)buffer + 2)),
-        (uint8_t)(4 + mask_l), mask_f};
+        (uint8_t)(4 + mask_l),
+        mask_f};
   case 127:
     if (len < 10)
-      return (struct websocket_packet_info_s){0, (uint8_t)(10 + mask_l),
-                                              mask_f};
+      return (struct websocket_packet_info_s){
+          0, (uint8_t)(10 + mask_l), mask_f};
     {
       uint64_t msg_len = websocket_str2u64(((uint8_t *)buffer + 2));
       if (msg_len >> 62)
         return (struct websocket_packet_info_s){0, 0, 0};
-      return (struct websocket_packet_info_s){msg_len, (uint8_t)(10 + mask_l),
-                                              mask_f};
+      return (struct websocket_packet_info_s){
+          msg_len, (uint8_t)(10 + mask_l), mask_f};
     }
   default:
-    return (struct websocket_packet_info_s){len_indicator,
-                                            (uint8_t)(2 + mask_l), mask_f};
+    return (struct websocket_packet_info_s){
+        len_indicator, (uint8_t)(2 + mask_l), mask_f};
   }
 }
 
@@ -421,7 +444,9 @@ websocket_buffer_peek(void *buffer, uint64_t len) {
  *
  * Returns the remaining data in the existing buffer (can be 0).
  */
-static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
+static uint64_t websocket_consume(void *buffer,
+                                  uint64_t len,
+                                  void *udata,
                                   uint8_t require_masking) {
   volatile struct websocket_packet_info_s info =
       websocket_buffer_peek(buffer, len);
@@ -458,18 +483,33 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
     switch (pos[0] & 15) {
     case 0:
       /* continuation frame */
-      websocket_on_unwrapped(udata, payload, info.packet_length, 0,
-                             ((pos[0] >> 7) & 1), 0, ((pos[0] >> 4) & 7));
+      websocket_on_unwrapped(udata,
+                             payload,
+                             info.packet_length,
+                             0,
+                             ((pos[0] >> 7) & 1),
+                             0,
+                             ((pos[0] >> 4) & 7));
       break;
     case 1:
       /* text frame */
-      websocket_on_unwrapped(udata, payload, info.packet_length, 1,
-                             ((pos[0] >> 7) & 1), 1, ((pos[0] >> 4) & 7));
+      websocket_on_unwrapped(udata,
+                             payload,
+                             info.packet_length,
+                             1,
+                             ((pos[0] >> 7) & 1),
+                             1,
+                             ((pos[0] >> 4) & 7));
       break;
     case 2:
       /* data frame */
-      websocket_on_unwrapped(udata, payload, info.packet_length, 1,
-                             ((pos[0] >> 7) & 1), 0, ((pos[0] >> 4) & 7));
+      websocket_on_unwrapped(udata,
+                             payload,
+                             info.packet_length,
+                             1,
+                             ((pos[0] >> 7) & 1),
+                             0,
+                             ((pos[0] >> 4) & 7));
       break;
     case 8:
       /* close frame */
@@ -485,7 +525,8 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
       break;
     default:
 #if DEBUG
-      fprintf(stderr, "ERROR: WebSocket protocol error - unknown opcode %u\n",
+      fprintf(stderr,
+              "ERROR: WebSocket protocol error - unknown opcode %u\n",
               (unsigned int)(pos[0] & 15));
 #endif
       websocket_on_protocol_error(udata);

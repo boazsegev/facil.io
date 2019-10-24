@@ -3218,23 +3218,10 @@ Numbers to Strings - Implementation
 ***************************************************************************** */
 
 SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
-  const char notation[] = {'0',
-                           '1',
-                           '2',
-                           '3',
-                           '4',
-                           '5',
-                           '6',
-                           '7',
-                           '8',
-                           '9',
-                           'A',
-                           'B',
-                           'C',
-                           'D',
-                           'E',
-                           'F'};
-
+  // clang-format off
+  const char notation[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                           '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+  // clang-format on
   size_t len = 0;
   char buf[48]; /* we only need up to 20 for base 10, but base 3 needs 41... */
 
@@ -7844,22 +7831,10 @@ String API - C / JSON escaping
 IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, write_escape)(FIO_STRING_PTR s,
                                                              const void *src_,
                                                              size_t len) {
-  const char escape_hex_chars[] = {'0',
-                                   '1',
-                                   '2',
-                                   '3',
-                                   '4',
-                                   '5',
-                                   '6',
-                                   '7',
-                                   '8',
-                                   '9',
-                                   'A',
-                                   'B',
-                                   'C',
-                                   'D',
-                                   'E',
-                                   'F'};
+  // clang-format off
+  const char escape_hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                                   '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+  // clang-format on
   const uint8_t *src = (const uint8_t *)src_;
   size_t extra_len = 0;
   size_t at = 0;
@@ -9215,18 +9190,11 @@ SFUNC time_t fio_gm2time(struct tm tm) {
 
 static const char *FIO___DAY_NAMES[] =
     {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-static const char *FIO___MONTH_NAMES[] = {"Jan ",
-                                          "Feb ",
-                                          "Mar ",
-                                          "Apr ",
-                                          "May ",
-                                          "Jun ",
-                                          "Jul ",
-                                          "Aug ",
-                                          "Sep ",
-                                          "Oct ",
-                                          "Nov ",
-                                          "Dec "};
+// clang-format off
+static const char *FIO___MONTH_NAMES[] =
+    {"Jan ", "Feb ", "Mar ", "Apr ", "May ", "Jun ",
+     "Jul ", "Aug ", "Sep ", "Oct ", "Nov ", "Dec "};
+// clang-format on
 static const char *FIO___GMT_STR = "GMT";
 
 /** Writes an RFC 7231 date representation (HTTP date format) to target. */
