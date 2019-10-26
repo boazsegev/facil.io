@@ -4861,7 +4861,6 @@ Dynamic Arrays - implementation
 IFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, new)(void) {
   FIO_NAME(FIO_ARRAY_NAME, s) *a =
       (FIO_NAME(FIO_ARRAY_NAME, s) *)FIO_MEM_CALLOC_(sizeof(*a), 1);
-  *a = (FIO_NAME(FIO_ARRAY_NAME, s))FIO_ARRAY_INIT;
   return (FIO_ARRAY_PTR)FIO_PTR_TAG(a);
 }
 
@@ -7073,7 +7072,6 @@ String Implementation - initialization
 IFUNC FIO_STRING_PTR FIO_NAME(FIO_STRING_NAME, new)(void) {
   FIO_NAME(FIO_STRING_NAME, s) *s =
       (FIO_NAME(FIO_STRING_NAME, s) *)FIO_MEM_CALLOC_(sizeof(*s), 1);
-  *s = (FIO_NAME(FIO_STRING_NAME, s))FIO_STRING_INIT;
   return (FIO_STRING_PTR)FIO_PTR_TAG(s);
 }
 
@@ -8748,6 +8746,10 @@ IFUNC void FIO_NAME(FIO_SMALL_STR_NAME, set_copy)(FIO_SMALL_STR_PTR s_,
       return; /* too big */
     }
     char *buf = (char *)FIO_MEM_CALLOC_(1, len + 1);
+    if (!buf) {
+      FIO_LOG_ERROR("facil.io small string allocation failed");
+      return;
+    }
     memcpy(buf, str, len);
     buf[len] = 0;
     FIO_SMALL_STR_SET_DYNAMIC(s);
@@ -8761,6 +8763,10 @@ IFUNC void FIO_NAME(FIO_SMALL_STR_NAME, set_copy)(FIO_SMALL_STR_PTR s_,
       return; /* too big */
     }
     char *buf = (char *)FIO_MEM_CALLOC_(1, len + 1);
+    if (!buf) {
+      FIO_LOG_ERROR("facil.io small string allocation failed");
+      return;
+    }
     memcpy(buf, str, len);
     buf[len] = 0;
     FIO_SMALL_STR_SET_DYNAMIC(s);
@@ -9542,6 +9548,8 @@ Queue Inline Helpers
 /** Creates a new queue object (allocated on the heap). */
 HFUNC fio_queue_s *fio_queue_new(void) {
   fio_queue_s *q = (fio_queue_s *)FIO_MEM_CALLOC_(sizeof(*q), 1);
+  if (!q)
+    return NULL;
   *q = (fio_queue_s)FIO_QUEUE_INIT(*q);
   return q;
 }
@@ -10997,6 +11005,8 @@ Reference Counter (Wrapper) Implementation
 IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME, FIO_REF_CONSTRUCTOR)(void) {
   FIO_NAME(FIO_REF_NAME, _wrapper_s) *o =
       (FIO_NAME(FIO_REF_NAME, _wrapper_s) *)FIO_MEM_CALLOC_(sizeof(*o), 1);
+  if (!o)
+    return (FIO_REF_TYPE_PTR)(FIO_PTR_TAG((FIO_REF_TYPE *)o));
   o->ref = 1;
   FIO_REF_METADATA_INIT((o->metadata));
   FIO_REF_INIT(o->wrapped);
@@ -11982,7 +11992,7 @@ FIOBJ Strings
 FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
                          new_cstr)(const char *ptr, size_t len) {
   FIOBJ s = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
-  FIO_ASSERT_ALLOC(s);
+  FIO_ASSERT_ALLOC(FIOBJ_PTR_UNTAG(s));
   FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(s, ptr, len);
   return s;
 }
@@ -11991,7 +12001,7 @@ FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
 FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
                          new_buf)(size_t capa) {
   FIOBJ s = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
-  FIO_ASSERT_ALLOC(s);
+  FIO_ASSERT_ALLOC(FIOBJ_PTR_UNTAG(s));
   FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), reserve)(s, capa);
   return s;
 }
@@ -12000,7 +12010,7 @@ FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
 FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
                          new_copy)(FIOBJ original) {
   FIOBJ s = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), new)();
-  FIO_ASSERT_ALLOC(s);
+  FIO_ASSERT_ALLOC(FIOBJ_PTR_UNTAG(s));
   fio_str_info_s i = FIO_NAME2(fiobj, cstr)(original);
   FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(s, i.buf, i.len);
   return s;
@@ -13402,11 +13412,9 @@ FIO_SFUNC void fio_test_dynamic_types(void);
 #define FIO_RISKY_HASH 1
 #include __FILE__
 
-TEST_FUNC uintptr_t fio___dynamic_types_test_tag(uintptr_t *pp) {
-  return *pp | 1;
-}
-TEST_FUNC uintptr_t fio___dynamic_types_test_untag(uintptr_t *pp) {
-  return *pp & (~((uintptr_t)1UL));
+TEST_FUNC uintptr_t fio___dynamic_types_test_tag(uintptr_t i) { return i | 1; }
+TEST_FUNC uintptr_t fio___dynamic_types_test_untag(uintptr_t i) {
+  return i & (~((uintptr_t)1UL));
 }
 
 /* *****************************************************************************
@@ -14470,8 +14478,8 @@ typedef struct {
 } ls____test_s;
 
 #define FIO_LIST_NAME ls____test
-#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag((uintptr_t *)&(p))
-#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag((uintptr_t *)&(p))
+#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag(((uintptr_t)p))
+#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag(((uintptr_t)p))
 
 #include __FILE__
 
@@ -14494,7 +14502,7 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
                "linked list EACH didn't loop through all the list");
   while (ls____test_any(&ls)) {
     ls____test_s *node = ls____test_pop(&ls);
-    fio___dynamic_types_test_untag((uintptr_t *)&(node));
+    node = (ls____test_s *)fio___dynamic_types_test_untag((uintptr_t)(node));
     FIO_T_ASSERT(node, "Linked list pop or any failed");
     FIO_T_ASSERT(node->data == --tester, "Linked list ordering error for pop");
     FIO_MEM_FREE(node, sizeof(*node));
@@ -14515,7 +14523,7 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
   tester = TEST_REPEAT;
   while (ls____test_any(&ls)) {
     ls____test_s *node = ls____test_shift(&ls);
-    fio___dynamic_types_test_untag((uintptr_t *)&(node));
+    node = (ls____test_s *)fio___dynamic_types_test_untag((uintptr_t)(node));
     FIO_T_ASSERT(node, "Linked list pop or any failed");
     FIO_T_ASSERT(node->data == --tester,
                  "Linked list ordering error for shift");
@@ -14530,7 +14538,7 @@ TEST_FUNC void fio___dynamic_types_test___linked_list_test(void) {
   }
   FIO_LIST_EACH(ls____test_s, node, &ls, pos) {
     ls____test_remove(pos);
-    fio___dynamic_types_test_untag((uintptr_t *)&(pos));
+    pos = (ls____test_s *)fio___dynamic_types_test_untag((uintptr_t)(pos));
     FIO_MEM_FREE(pos, sizeof(*pos));
   }
   FIO_T_ASSERT(FIO_NAME_BL(ls____test, empty)(&ls),
@@ -14552,8 +14560,8 @@ static int ary____test_was_destroyed = 0;
     ary____test_was_destroyed = 1;                                             \
   } while (0)
 #define FIO_ATOMIC
-#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag((uintptr_t *)&(p))
-#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag((uintptr_t *)&(p))
+#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag(((uintptr_t)p))
+#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag(((uintptr_t)p))
 #include __FILE__
 
 #define FIO_ARRAY_NAME ary2____test
@@ -14562,8 +14570,8 @@ static int ary____test_was_destroyed = 0;
 #define FIO_ARRAY_TYPE_COPY(dest, src) (dest) = (src)
 #define FIO_ARRAY_TYPE_DESTROY(obj) (obj = FIO_ARRAY_TYPE_INVALID)
 #define FIO_ARRAY_TYPE_CMP(a, b) (a) == (b)
-#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag((uintptr_t *)&(p))
-#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag((uintptr_t *)&(p))
+#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag(((uintptr_t)p))
+#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag(((uintptr_t)p))
 #include __FILE__
 
 static int fio_____dynamic_test_array_task(int o, void *c_) {
@@ -14825,16 +14833,16 @@ Hash Map / Set - test
 #define FIO_MAP_NAME set_____test
 #define FIO_MAP_TYPE size_t
 #define FIO_MAP_TYPE_CMP(a, b) ((a) == (b))
-#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag((uintptr_t *)&(p))
-#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag((uintptr_t *)&(p))
+#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag(((uintptr_t)p))
+#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag(((uintptr_t)p))
 #include __FILE__
 
 /* a simple set of numbers */
 #define FIO_MAP_NAME set2_____test
 #define FIO_MAP_TYPE size_t
 #define FIO_MAP_TYPE_CMP(a, b) 1
-#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag((uintptr_t *)&(p))
-#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag((uintptr_t *)&(p))
+#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag(((uintptr_t)p))
+#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag(((uintptr_t)p))
 #include __FILE__
 
 TEST_FUNC size_t map_____test_key_copy_counter = 0;
@@ -15122,8 +15130,8 @@ Hash Map 2 type test
 #define FIO_HMAP_KEY size_t
 #define FIO_HMAP_TYPE size_t
 #define FIO_HMAP_KEY_CMP(a, b) ((a) == (b))
-#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag((uintptr_t *)&(p))
-#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag((uintptr_t *)&(p))
+#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag(((uintptr_t)p))
+#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag(((uintptr_t)p))
 #include __FILE__
 
 #define HASHOFi(i) i /* fio_risky_hash(&(i), sizeof((i)), 0) */
@@ -15171,8 +15179,8 @@ Dynamic Strings - test
 
 #define FIO_STRING_NO_ALIGN 0
 #define FIO_STRING_NAME fio__str_____test
-#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag((uintptr_t *)&(p))
-#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag((uintptr_t *)&(p))
+#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag(((uintptr_t)p))
+#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag(((uintptr_t)p))
 #define FIO_REF_NAME fio__str_____test
 #include __FILE__
 #define FIO__STR_SMALL_CAPA (sizeof(fio__str_____test_s) - 2)
