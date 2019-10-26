@@ -35,9 +35,9 @@ void initialize_cli(int argc, char const *argv[]);
 /* *****************************************************************************
 HTTP request / response handling
 ***************************************************************************** */
-
 static void on_http_request(http_s *h) {
   /* set a response and send it (finnish vs. destroy). */
+  http_set_header(h, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("txt", 4));
   http_send_body(h, "Hello World!", 12);
 }
 
@@ -48,7 +48,8 @@ The main function
 int main(int argc, char const *argv[]) {
   initialize_cli(argc, argv);
   /* listen for inncoming connections */
-  if (http_listen(fio_cli_get("-p"), fio_cli_get("-b"),
+  if (http_listen(fio_cli_get("-p"),
+                  fio_cli_get("-b"),
                   .on_request = on_http_request,
                   .max_body_size = fio_cli_get_i("-maxbd"),
                   .public_folder = fio_cli_get("-public"),
@@ -69,7 +70,11 @@ CLI helpers
 void initialize_cli(int argc, char const *argv[]) {
   /*     ****  Command line arguments ****     */
   fio_cli_start(
-      argc, argv, 0, 0, NULL,
+      argc,
+      argv,
+      0,
+      0,
+      NULL,
       // Address Binding arguments
       FIO_CLI_PRINT_HEADER("Address Binding:"),
       FIO_CLI_INT("-port -p port number to listen to. defaults port 3000"),
