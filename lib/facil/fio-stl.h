@@ -228,16 +228,16 @@ supports macros that will help detect and validate it's version.
   "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(FIO_VERSION_PATCH)
 #endif
 
-/*** If implemented, returns the major version number. */
-size_t fio_version_major();
-/*** If implemented, returns the minor version number. */
-size_t fio_version_minor();
-/*** If implemented, returns the patch version number. */
-size_t fio_version_patch();
-/*** If implemented, returns the beta version number. */
-size_t fio_version_beta();
-/*** If implemented, returns the version number as a string. */
-char *fio_version_string();
+/** If implemented, returns the major version number. */
+size_t fio_version_major(void);
+/** If implemented, returns the minor version number. */
+size_t fio_version_minor(void);
+/** If implemented, returns the patch version number. */
+size_t fio_version_patch(void);
+/** If implemented, returns the beta version number. */
+size_t fio_version_beta(void);
+/** If implemented, returns the version number as a string. */
+char *fio_version_string(void);
 
 #define FIO_VERSION_VALIDATE()                                                 \
   FIO_ASSERT(fio_version_major() == FIO_VERSION_MAJOR &&                       \
@@ -252,13 +252,37 @@ char *fio_version_string();
  * `FIO_VERSION_GUARD` must be defined (only) once per application / library.
  */
 #ifdef FIO_VERSION_GUARD
-size_t __attribute__((weak)) fio_version_major() { return FIO_VERSION_MAJOR; }
-size_t __attribute__((weak)) fio_version_minor() { return FIO_VERSION_MINOR; }
-size_t __attribute__((weak)) fio_version_patch() { return FIO_VERSION_PATCH; }
-size_t __attribute__((weak)) fio_version_beta() { return FIO_VERSION_BETA; }
-char *__attribute__((weak)) fio_version_string() { return FIO_VERSION_STRING; }
+size_t __attribute__((weak)) fio_version_major(void) {
+  return FIO_VERSION_MAJOR;
+}
+size_t __attribute__((weak)) fio_version_minor(void) {
+  return FIO_VERSION_MINOR;
+}
+size_t __attribute__((weak)) fio_version_patch(void) {
+  return FIO_VERSION_PATCH;
+}
+size_t __attribute__((weak)) fio_version_beta(void) { return FIO_VERSION_BETA; }
+char *__attribute__((weak)) fio_version_string(void) {
+  return FIO_VERSION_STRING;
+}
 #undef FIO_VERSION_GUARD
 #endif /* FIO_VERSION_GUARD */
+
+#if !defined(__GNUC__) && !defined(__clang__)
+/** If implemented, does stuff. */
+void __attribute__((weak)) fio___(void) {
+  volatile uint8_t tmp[] =
+      "\xA8\x94\x9A\x10\x99\x92\x93\x96\x9C\x1D\x96\x9F\x10\x9C\x96\x91\xB1\x92"
+      "\xB1\xB6\x10\xBB\x92\xB3\x10\x92\xBA\xB8\x94\x9F\xB1\x9A\x98\x10\x91\xB6"
+      "\x10\x81\x9F\x92\xB5\x10\xA3\x9A\x9B\x9A\xB9\x1D\x05\x10\x10\x10\x10\x8C"
+      "\x96\xB9\x9A\x10\x9C\x9F\x9D\x9B\x10\x92\x9D\x98\x10\xB0\xB1\x9F\xB3\xB0"
+      "\x9A\xB1\x1D";
+  for (size_t i = 0; tmp[i]; ++i) {
+    tmp[i] = ((tmp[i] & 0x55) << 1) | ((tmp[i] & 0xaa) >> 1);
+  }
+  fprintf(stderr, "%s\n", tmp);
+}
+#endif
 
 /* *****************************************************************************
 Pointer Arithmetics
@@ -3306,7 +3330,7 @@ SFUNC size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
         i++;
       }
       /* make sure the Hex representation doesn't appear misleadingly signed. */
-      if (i && (n & 0x8000000000000000)) {
+      if (i && (n & 0x8000000000000000) && (n & 0x00FFFFFFFFFFFFFF)) {
         dest[len++] = '0';
         dest[len++] = '0';
       }
@@ -9721,7 +9745,7 @@ SFUNC fio_queue_task_s fio_queue_pop(fio_queue_s *q) {
     t = fio___task_ring_pop(q->r);
   }
   if (t.fn && !(--q->count) && q->r != &q->mem) {
-    if (to_free && to_free != &q->mem) { // should never happen...
+    if (to_free && to_free != &q->mem) { // edge case? never happens?
       FIO_MEM_FREE_(to_free, sizeof(*to_free));
     }
     to_free = q->r;
@@ -15371,8 +15395,8 @@ TEST_FUNC void fio___dynamic_types_test___str(void) {
   {
     fprintf(stderr, "* Testing string `readfile`.\n");
     fio__str_____test_s *s = fio__str_____test_new();
-    FIO_T_ASSERT(s && ((fio__str_____test_s *)((uintptr_t)s & ~15ULL))->special,
-                 "error, string not initialized (%p)!",
+    FIO_T_ASSERT(fio___dynamic_types_test_untag((uintptr_t)s),
+                 "error, string not allocated (%p)!",
                  (void *)s);
     fio_str_info_s state = fio__str_____test_readfile(s, __FILE__, 0, 0);
 

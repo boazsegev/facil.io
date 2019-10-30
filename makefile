@@ -47,7 +47,7 @@ MAIN_SUBFOLDERS=
 LIB_ROOT=lib
 
 # publicly used subfolders in the lib root
-LIB_PUBLIC_SUBFOLDERS=facil facil/tls facil/fiobj facil/cli facil/http facil/http/parsers facil/redis
+LIB_PUBLIC_SUBFOLDERS=facil facil/tls facil/fiobj facil/http facil/http/parsers facil/redis
 
 # privately used subfolders in the lib root (this distinction is only relevant for CMake)
 LIB_PRIVATE_SUBFOLDERS=
