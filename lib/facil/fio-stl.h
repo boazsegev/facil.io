@@ -568,6 +568,138 @@ Common macros
 
 
 
+                          Internal Dependencies
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/* FIO_MALLOC dependencies */
+#ifdef FIO_MALLOC
+#ifndef FIO_LOG
+#define FIO_LOG
+#endif
+#ifndef FIO_ATOMIC
+#define FIO_ATOMIC
+#endif
+#endif /* FIO_MALLOC */
+
+/* FIO_BITMAP dependencies */
+#ifdef FIO_BITMAP
+#ifndef FIO_ATOMIC
+#define FIO_ATOMIC
+#endif
+#endif /* FIO_BITMAP */
+
+/* FIO_REF_NAME dependencies */
+#ifdef FIO_REF_NAME
+#ifndef FIO_ATOMIC
+#define FIO_ATOMIC
+#endif
+#endif /* FIO_REF_NAME */
+
+/* FIO_NTOL dependencies */
+#ifdef FIO_NTOL
+#ifndef FIO_BITWISE
+#define FIO_BITWISE
+#endif
+#endif /* FIO_NTOL */
+
+/* FIO_RAND dependencies */
+#ifdef FIO_RAND
+#ifndef FIO_BITWISE
+#define FIO_BITWISE
+#endif
+#ifndef FIO_RISKY_HASH
+#define FIO_RISKY_HASH
+#endif
+#ifndef FIO_TIME
+#define FIO_TIME
+#endif
+#endif /* FIO_RAND */
+
+/* FIO_RISKY_HASH dependencies */
+#ifdef FIO_RISKY_HASH
+#ifndef FIO_BITWISE
+#define FIO_BITWISE
+#endif
+#endif /* FIO_RISKY_HASH */
+
+/* FIO_STRING_NAME dependencies */
+#ifdef FIO_STRING_NAME
+#ifndef FIO_BITWISE
+#define FIO_BITWISE
+#endif
+#ifndef FIO_RISKY_HASH
+#define FIO_RISKY_HASH
+#endif
+#endif /* FIO_STRING_NAME */
+
+/* FIO_SMALL_STR_NAME dependencies */
+#ifdef FIO_SMALL_STR_NAME
+#ifndef FIO_BITWISE
+#define FIO_BITWISE
+#endif
+#ifndef FIO_RISKY_HASH
+#define FIO_RISKY_HASH
+#endif
+#endif /* FIO_SMALL_STR_NAME */
+
+/* FIO_QUEUE dependencies */
+#ifdef FIO_QUEUE
+#ifndef FIO_TIME
+#define FIO_TIME
+#endif
+#ifndef FIO_ATOL
+#define FIO_ATOL
+#endif
+#endif /* FIO_QUEUE */
+
+/* FIO_TIME dependencies */
+#ifdef FIO_TIME
+#ifndef FIO_ATOL
+#define FIO_ATOL
+#endif
+#endif /* FIO_TIME */
+
+/* FIO_CLI dependencies */
+#ifdef FIO_CLI
+#ifndef FIO_ATOL
+#define FIO_ATOL
+#endif
+#endif /* FIO_CLI */
+
+/* FIO_JSON dependencies */
+#ifdef FIO_JSON
+#ifndef FIO_ATOL
+#define FIO_ATOL
+#endif
+#ifndef FIO_BITMAP
+#define FIO_BITMAP
+#endif
+#ifndef FIO_ATOMIC
+#define FIO_ATOMIC
+#endif
+#endif /* FIO_JSON */
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
                                   Logging
 
 
@@ -589,7 +721,7 @@ FIO_LOG_WARNING("number invalid: %d", i); // => WARNING: number invalid: 3
 /**
  * Enables logging macros that avoid heap memory allocations
  */
-#if !defined(FIO_LOG_PRINT__) && (defined(FIO_LOG) || defined(FIO_MALLOC))
+#if !defined(FIO_LOG_PRINT__) && defined(FIO_LOG)
 
 #ifndef FIO_LOG_LENGTH_LIMIT
 #define FIO_LOG_LENGTH_LIMIT 1024
@@ -707,9 +839,7 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 
 ***************************************************************************** */
 
-#if (defined(FIO_ATOMIC) || defined(FIO_BITMAP) || defined(FIO_REF_NAME) ||    \
-     defined(FIO_MALLOC)) &&                                                   \
-    !defined(fio_atomic_xchange)
+#if defined(FIO_ATOMIC) && !defined(fio_atomic_xchange)
 
 /* C11 Atomics are defined? */
 #if defined(__ATOMIC_RELAXED)
@@ -817,10 +947,7 @@ HFUNC uint8_t FIO_NAME_BL(fio, locked)(fio_lock_i *lock) { return *lock; }
 
 ***************************************************************************** */
 
-#if (defined(FIO_BITWISE) || defined(FIO_NTOL) || defined(FIO_RAND) ||         \
-     defined(FIO_NTOL) || defined(FIO_RISKY_HASH) ||                           \
-     defined(FIO_STRING_NAME) || defined(FIO_SMALL_STR_NAME)) &&               \
-    !defined(H___BITWISE___H)
+#if defined(FIO_BITWISE) && !defined(H___BITWISE___H)
 #define H___BITWISE___H
 /* *****************************************************************************
 Swapping byte's order (`bswap` variations)
@@ -1452,7 +1579,7 @@ Bitewise helpers cleanup
 
 
 ***************************************************************************** */
-#if (defined(FIO_BITMAP) || defined(FIO_JSON)) && !defined(H___FIO_BITMAP_H)
+#if defined(FIO_BITMAP) && !defined(H___FIO_BITMAP_H)
 #define H___FIO_BITMAP_H
 /* *****************************************************************************
 Bitmap access / manipulation
@@ -2559,9 +2686,7 @@ Memory management macros
 
 ***************************************************************************** */
 
-#if (defined(FIO_RISKY_HASH) || defined(FIO_STRING_NAME) ||                    \
-     defined(FIO_SMALL_STR_NAME) || defined(FIO_RAND)) &&                      \
-    !defined(H___FIO_RISKY_HASH_H)
+#if defined(FIO_RISKY_HASH) && !defined(H___FIO_RISKY_HASH_H)
 #define H___FIO_RISKY_HASH_H
 
 /* *****************************************************************************
@@ -2996,9 +3121,7 @@ small_random:
 
 
 ***************************************************************************** */
-#if (defined(FIO_ATOL) || defined(FIO_TIME) || defined(FIO_QUEUE) ||           \
-     defined(FIO_CLI) || defined(FIO_JSON)) &&                                 \
-    !defined(H___FIO_ATOL_H)
+#if defined(FIO_ATOL) && !defined(H___FIO_ATOL_H)
 #define H___FIO_ATOL_H
 #include <math.h>
 /* *****************************************************************************
@@ -5507,26 +5630,26 @@ Hash Map / Set - type and hash macros
 #endif
 
 #ifndef FIO_MAP_TYPE_COPY
-/** Handles a copy operation for an element. */
+/** Handles a copy operation for an value. */
 #define FIO_MAP_TYPE_COPY(dest, src) (dest) = (src)
 /* internal flag - don not set */
 #define FIO_MAP_TYPE_COPY_SIMPLE 1
 #endif
 
 #ifndef FIO_MAP_TYPE_DESTROY
-/** Handles a destroy / free operation for a map's element. */
+/** Handles a destroy / free operation for a map's value. */
 #define FIO_MAP_TYPE_DESTROY(obj)
 /* internal flag - don not set */
 #define FIO_MAP_TYPE_DESTROY_SIMPLE 1
 #endif
 
 #ifndef FIO_MAP_TYPE_DISCARD
-/** Handles discarded element data (i.e., insert without overwrite). */
+/** Handles discarded value data (i.e., insert without overwrite). */
 #define FIO_MAP_TYPE_DISCARD(obj)
 #endif
 
 #ifndef FIO_MAP_TYPE_CMP
-/** Handles a comparison operation for a map's element. */
+/** Handles a comparison operation for a map's value. */
 #define FIO_MAP_TYPE_CMP(a, b) 1
 /* internal flag - don not set */
 #define FIO_MAP_TYPE_CMP_SIMPLE 1
@@ -5550,35 +5673,30 @@ Hash Map / Set - type and hash macros
 #ifndef FIO_MAP_HASH
 /** The type for map hash value (usually an X bit integer) */
 #define FIO_MAP_HASH uintptr_t
-/** An invalid value for that type (if any). */
-#define FIO_MAP_HASH_INVALID 0
+/** An invalid hash value (all bits are zero). */
+#define FIO_MAP_HASH_INVALID 0ULL
 #else
 #undef FIO_MAP_HASH_INVALID
-/** An invalid value for that type (if any). */
+/** An invalid hash value (all bits are zero). */
 #define FIO_MAP_HASH_INVALID ((FIO_MAP_HASH){0})
 #endif
 
 #ifndef FIO_MAP_HASH_OFFSET
-/** Handles a copy operation for an array's element. */
-// #define FIO_MAP_HASH_OFFSET(hash, offset)
-//   ((((hash) << ((offset) & ((sizeof((hash)) << 3) - 1))) |
-//     ((hash) >> ((-(offset)) & ((sizeof((hash)) << 3) - 1)))) ^
-//    (hash))
-
+/** Calculates the hash value given a bit offset (offset may be ignored). */
 #define FIO_MAP_HASH_OFFSET(hash, offset)                                      \
-  (((hash) ^ (((hash) >> ((offset) & ((sizeof((hash)) << 3) - 1))))) *         \
-   0x038720DDEB5A8415)
+  FIO_NAME(FIO_MAP_NAME, __bit_avalanch)((uintptr_t)hash)
+#define FIO_MAP_HASH_OFFSET___INTERNAL
 #endif
 
 #ifndef FIO_MAP_HASH_COPY
-/** Handles a copy operation for an array's element. */
+/** Handles a copy operation for the hash value. */
 #define FIO_MAP_HASH_COPY(dest, src) ((dest) = (src))
 /* internal flag - don not set */
 #define FIO_MAP_HASH_COPY_SIMPLE 1
 #endif
 
 #ifndef FIO_MAP_HASH_CMP
-/** Handles a comparison operation for an array's element. */
+/** Handles a comparison operation for the hash value. */
 #define FIO_MAP_HASH_CMP(a, b) ((a) == (b))
 /* internal flag - don not set */
 #define FIO_MAP_HASH_CMP_SIMPLE 1
@@ -5588,21 +5706,21 @@ Hash Map / Set - type and hash macros
 #ifdef FIO_MAP_KEY
 
 #ifndef FIO_MAP_KEY_INVALID
-/** An invalid value for that type (if any). */
+/** An invalid value for the hash map key type (if any). */
 #define FIO_MAP_KEY_INVALID ((FIO_MAP_KEY){0})
-/* internal flag - don not set */
+/* internal flag - don not set unless invalid keys are just zeros bytes */
 #define FIO_MAP_KEY_INVALID_SIMPLE 1
 #endif
 
 #ifndef FIO_MAP_KEY_COPY
-/** Handles a copy operation for an array's element. */
+/** Handles a copy operation for a hash maps key. */
 #define FIO_MAP_KEY_COPY(dest, src) (dest) = (src)
 /* internal flag - don not set */
 #define FIO_MAP_TYPE_COPY_SIMPLE 1
 #endif
 
 #ifndef FIO_MAP_KEY_DESTROY
-/** Handles a destroy / free operation for an array's element. */
+/** Handles a destroy / free operation for a hash maps key. */
 #define FIO_MAP_KEY_DESTROY(obj)
 /* internal flag - don not set */
 #define FIO_MAP_KEY_DESTROY_SIMPLE 1
@@ -5614,7 +5732,7 @@ Hash Map / Set - type and hash macros
 #endif
 
 #ifndef FIO_MAP_KEY_CMP
-/** Handles a comparison operation for an array's element. */
+/** Handles a comparison operation for a hash maps key. */
 #define FIO_MAP_KEY_CMP(a, b) 1
 /* internal flag - don not set */
 #define FIO_MAP_KEY_CMP_SIMPLE 1
@@ -5946,6 +6064,16 @@ SFUNC FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
 Hash Map / Set - helpers
 ***************************************************************************** */
 #ifdef FIO_EXTERN_COMPLETE
+
+#ifdef FIO_MAP_HASH_OFFSET___INTERNAL
+/** Internal handler for the hash offset calculation. */
+HFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, __bit_avalanch)(uintptr_t hash) {
+  hash *= 0x038720DDEB5A8415ULL;
+  hash ^= hash >> (sizeof(hash) << 2); /* XOR fold */
+  hash += hash >> (sizeof(hash) * 6);  /* add last quarter (2 bytes on x64)*/
+  return hash;
+}
+#endif
 
 SFUNC int FIO_NAME(FIO_MAP_NAME, __remap2bits)(FIO_NAME(FIO_MAP_NAME, s) * m,
                                                const uint8_t bits);
@@ -6615,6 +6743,7 @@ Hash Map / Set - cleanup
 #undef FIO_MAP_HASH
 #undef FIO_MAP_HASH_INVALID
 #undef FIO_MAP_HASH_OFFSET
+#undef FIO_MAP_HASH_OFFSET___INTERNAL
 #undef FIO_MAP_HASH_COPY
 #undef FIO_MAP_HASH_COPY_SIMPLE
 #undef FIO_MAP_HASH_DESTROY
@@ -8976,8 +9105,7 @@ Small String Cleanup
 
 
 ***************************************************************************** */
-#if (defined(FIO_QUEUE) || defined(FIO_RAND) || defined(FIO_TIME)) &&          \
-    !defined(H___FIO_TIME___H)
+#if defined(FIO_TIME) && !defined(H___FIO_TIME___H)
 #define H___FIO_TIME___H
 
 /* *****************************************************************************
@@ -13429,11 +13557,11 @@ FIO_SFUNC void fio_test_dynamic_types(void);
 
 /* Add non-type options to minimize `#include` instructions */
 #define FIO_ATOL
-#define FIO_BITWISE 1
-#define FIO_BITMAP 1
+#define FIO_BITWISE
+#define FIO_BITMAP
 #define FIO_RAND
-#define FIO_ATOMIC 1
-#define FIO_RISKY_HASH 1
+#define FIO_ATOMIC
+#define FIO_RISKY_HASH
 #include __FILE__
 
 TEST_FUNC uintptr_t fio___dynamic_types_test_tag(uintptr_t i) { return i | 1; }
