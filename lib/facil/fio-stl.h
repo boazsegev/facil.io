@@ -6068,9 +6068,9 @@ Hash Map / Set - helpers
 #ifdef FIO_MAP_HASH_OFFSET___INTERNAL
 /** Internal handler for the hash offset calculation. */
 HFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, __bit_avalanch)(uintptr_t hash) {
-  hash *= 0x038720DDEB5A8415ULL;
-  hash ^= hash >> (sizeof(hash) << 2); /* XOR fold */
-  hash += hash >> (sizeof(hash) * 6);  /* add last quarter (2 bytes on x64)*/
+  hash ^= (hash >> (sizeof(hash) << 2)) | (hash << (sizeof(hash) << 2));
+  hash *= 1515868577ULL;
+  hash += (hash >> (sizeof(hash) << 2)) | (hash << (sizeof(hash) << 2));
   return hash;
 }
 #endif
