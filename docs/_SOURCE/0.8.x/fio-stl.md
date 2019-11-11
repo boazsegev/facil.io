@@ -868,7 +868,7 @@ Other helpful macros to define might include:
 - `FIO_MAP_MAX_ELEMENTS` - The maximum number of elements allowed before removing old data (FIFO).
 - `FIO_MAP_MAX_SEEK` -  The maximum number of bins to rotate when (partial/full) collisions occur. Limited to a maximum of 255.
 
-To limit the number of elements in a map (FIFO), allowing it to behave similarly to a caching primitive, define: `FIO_MAP_MAX_ELEMENTS`.
+To limit the number of elements in a map (FIFO, ignoring last access time), allowing it to behave similarly to a simple caching primitive, define: `FIO_MAP_MAX_ELEMENTS`.
 
 if `FIO_MAP_MAX_ELEMENTS` is `0`, then the theoretical maximum number of elements should be: `(1 << 32) - 1`. In practice, the safe limit should be calculated as `1 << 31`.
 
@@ -2131,7 +2131,7 @@ be defined:
 uint64_t fio_risky_hash(const void *data, size_t len, uint64_t seed)
 ```
 
-This is a non-streaming implementation of the RiskyHash algorithm.
+This is a non-streaming implementation of the RiskyHash v.3 algorithm.
 
 This function will produce a 64 bit hash for X bytes of data.
 
