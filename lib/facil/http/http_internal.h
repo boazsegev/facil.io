@@ -134,7 +134,7 @@ struct http_vtable_s {
   intptr_t (*hijack)(http_internal_s *h, fio_str_info_s *leftover);
 
   /** Upgrades an HTTP connection to an EventSource (SSE) connection. */
-  int (*const upgrade2sse)(http_internal_s *h, http_sse_s *sse);
+  int (*const upgrade2sse)(http_internal_s *h, http_sse_settings_s *sse);
   /** Writes data to an EventSource (SSE) connection. MUST free the FIOBJ. */
   int (*const sse_write)(http_sse_s *sse, FIOBJ str);
   /** Closes an EventSource (SSE) connection. */
@@ -152,43 +152,6 @@ void http_on_request_handler______internal(http_s *h,
 void http_on_response_handler______internal(http_s *h,
                                             http_settings_s *settings);
 int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings);
-
-/* *****************************************************************************
-EventSource Support (SSE)
-***************************************************************************** */
-
-typedef struct http_sse_internal_s {
-  http_sse_s sse;        /* the user SSE settings */
-  intptr_t uuid;         /* the socket's uuid */
-  http_vtable_s *vtable; /* the protocol's vtable */
-  uintptr_t id;          /* the SSE identifier */
-  size_t ref;            /* reference count */
-} http_sse_internal_s;
-
-static inline void http_sse_init(http_sse_internal_s *sse,
-                                 intptr_t uuid,
-                                 http_vtable_s *vtbl,
-                                 http_sse_s *args) {
-  *sse = (http_sse_internal_s){
-      .sse = *args,
-      .uuid = uuid,
-      .vtable = vtbl,
-      .ref = 1,
-  };
-}
-
-static inline void http_sse_try_free(http_sse_internal_s *sse) {
-  if (fio_atomic_sub(&sse->ref, 1))
-    return;
-  fio_free(sse);
-}
-
-static inline void http_sse_destroy(http_sse_internal_s *sse) {
-  if (sse->sse.on_close)
-    sse->sse.on_close(&sse->sse);
-  sse->uuid = -1;
-  http_sse_try_free(sse);
-}
 
 /* *****************************************************************************
 Helpers

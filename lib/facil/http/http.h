@@ -637,6 +637,7 @@ int websocket_connect(const char *url, websocket_settings_s settings);
 #define websocket_connect(url, ...)                                            \
   websocket_connect((url), (websocket_settings_s){__VA_ARGS__})
 
+/** The WebSocket API is detailed in websockets.h */
 #include <websockets.h>
 
 /* *****************************************************************************
@@ -653,7 +654,7 @@ typedef struct http_sse_s http_sse_s;
  * This struct is used for the named arguments in the `http_upgrade2sse`
  * function and macro.
  */
-struct http_sse_s {
+typedef struct {
   /**
    * The (optional) on_open callback will be called once the EventSource
    * connection is established.
@@ -681,7 +682,7 @@ struct http_sse_s {
   void (*on_close)(http_sse_s *sse);
   /** Opaque user data. */
   void *udata;
-};
+} http_sse_settings_s;
 
 /**
  * Upgrades an HTTP connection to an EventSource (SSE) connection.

@@ -89,7 +89,7 @@ static void http1_on_resume(http_internal_s *, http_fio_protocol_s *);
 static intptr_t http1_hijack(http_internal_s *h, fio_str_info_s *leftover);
 
 /** Upgrades an HTTP connection to an EventSource (SSE) connection. */
-static int http1_upgrade2sse(http_internal_s *h, http_sse_s *sse);
+static int http1_upgrade2sse(http_internal_s *h, http_sse_settings_s *sse);
 /** Writes data to an EventSource (SSE) connection. MUST free the FIOBJ. */
 static int http1_sse_write(http_sse_s *sse, FIOBJ str);
 /** Closes an EventSource (SSE) connection. */
@@ -513,7 +513,7 @@ SSE
 ***************************************************************************** */
 
 /** Upgrades an HTTP connection to an EventSource (SSE) connection. */
-static int http1_upgrade2sse(http_internal_s *h, http_sse_s *sse) {
+static int http1_upgrade2sse(http_internal_s *h, http_sse_settings_s *sse) {
   if (!FIOBJ_TYPE_IS(h->headers_out, FIOBJ_T_HASH))
     return -1;
   set_header_overwite(h->headers_out,

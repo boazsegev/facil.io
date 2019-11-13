@@ -56,6 +56,7 @@ Websocket Connection Management (write / close)
 
 /** Writes data to the websocket. Returns -1 on failure (0 on success). */
 int websocket_write(ws_s *ws, fio_str_info_s msg, uint8_t is_text);
+
 /** Closes a websocket connection. */
 void websocket_close(ws_s *ws);
 
