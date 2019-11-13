@@ -294,7 +294,7 @@ Pointer Arithmetics
 
 /** Masks a pointer's right-most bits, returning the left bits. */
 #define FIO_PTR_MATH_RMASK(T_type, ptr, bits)                                  \
-  ((T_type *)((uintptr_t)(ptr) & ((~(uintptr_t)0) << bits)))
+  ((T_type *)((uintptr_t)(ptr) & ((~(uintptr_t)0) << (bits))))
 
 /** Add offset bytes to pointer, updating the pointer's type. */
 #define FIO_PTR_MATH_ADD(T_type, ptr, offset)                                  \
@@ -5757,24 +5757,29 @@ Hash Map / Set - type and hash macros
 #define FIO_MAP_MAX_ELEMENTS 0
 #endif
 
-/* The maximum number of bins to rotate when (partial/full) collisions occure */
+/* The maximum number of attempts when (partial/full) collisions occure */
 #ifndef FIO_MAP_MAX_SEEK /* LIMITED to 255 */
 #define FIO_MAP_MAX_SEEK (96U)
 #endif
 
 /* The maximum number of full hash collisions that can be consumed */
-#ifndef FIO_MAP_MAX_FULL_COLLISIONS /* LIMITED to 255 */
-#define FIO_MAP_MAX_FULL_COLLISIONS (96U)
+#ifndef FIO_MAP_MAX_FULL_COLLISIONS /* MUST <= 255 && <= FIO_MAP_MAX_SEEK */
+#define FIO_MAP_MAX_FULL_COLLISIONS FIO_MAP_MAX_SEEK
 #endif
 
 /* Prime numbers are better */
 #ifndef FIO_MAP_CUCKOO_STEPS
-#define FIO_MAP_CUCKOO_STEPS (0x43F82D0B) /* should be a high prime */
+#define FIO_MAP_CUCKOO_STEPS (0x43F82D0B) /* a prime above FIO_MAP_MAX_SEEK */
 #endif
 
 /* Hash to Array optimization limit */
 #ifndef FIO_MAP_SEEK_AS_ARRAY_LIMIT
-#define FIO_MAP_SEEK_AS_ARRAY_LIMIT 32UL
+#define FIO_MAP_SEEK_AS_ARRAY_LIMIT 16UL
+#endif
+
+#if FIO_MAP_MAX_SEEK < FIO_MAP_MAX_FULL_COLLISIONS
+#undef FIO_MAP_MAX_SEEK
+#define FIO_MAP_MAX_SEEK FIO_MAP_MAX_FULL_COLLISIONS
 #endif
 
 /* *****************************************************************************
@@ -5788,14 +5793,14 @@ typedef struct {
   FIO_MAP_TYPE value;
 } FIO_NAME(FIO_MAP_NAME, couplet_s);
 
-IFUNC void FIO_NAME(FIO_MAP_NAME,
+HFUNC void FIO_NAME(FIO_MAP_NAME,
                     _couplet_copy)(FIO_NAME(FIO_MAP_NAME, couplet_s) * dest,
                                    FIO_NAME(FIO_MAP_NAME, couplet_s) * src) {
   FIO_MAP_KEY_COPY((dest->key), (src->key));
   FIO_MAP_TYPE_COPY((dest->value), (src->value));
 }
 
-IFUNC void FIO_NAME(FIO_MAP_NAME,
+HFUNC void FIO_NAME(FIO_MAP_NAME,
                     _couplet_destroy)(FIO_NAME(FIO_MAP_NAME, couplet_s) * c) {
   FIO_MAP_KEY_DESTROY(c->key);
   FIO_MAP_TYPE_DESTROY(c->value);
@@ -5855,7 +5860,7 @@ typedef struct {
 
 typedef struct {
   FIO_NAME(FIO_MAP_NAME, __data_s) * data;
-  uintptr_t *map;
+  uint32_t *map;
   uint32_t count;
   uint32_t w; /* writing position */
 #if FIO_MAP_MAX_ELEMENTS
@@ -5887,19 +5892,19 @@ Hash Map / Set - API (initialization)
 /**
  * Allocates a new map on the heap.
  */
-IFUNC FIO_MAP_PTR FIO_NAME(FIO_MAP_NAME, new)(void);
+HFUNC FIO_MAP_PTR FIO_NAME(FIO_MAP_NAME, new)(void);
 
 /**
  * Frees a map that was allocated on the heap.
  */
-IFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m);
+HFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m);
 
 #endif /* FIO_REF_CONSTRUCTOR_ONLY */
 
 /**
  * Destroys the map's internal data and re-initializes it.
  */
-IFUNC void FIO_NAME(FIO_MAP_NAME, destroy)(FIO_MAP_PTR m);
+HFUNC void FIO_NAME(FIO_MAP_NAME, destroy)(FIO_MAP_PTR m);
 
 /* *****************************************************************************
 Hash Map / Set - API (hash map only)
@@ -5912,7 +5917,7 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
                                                FIO_MAP_KEY key);
 
 /** Returns a pointer to the object in the hash map (if any) or NULL. */
-IFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m,
+HFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m,
                                                     FIO_MAP_HASH hash,
                                                     FIO_MAP_KEY key);
 /**
@@ -5920,7 +5925,7 @@ IFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m,
  *
  * If `old` is given, existing data will be copied to that location.
  */
-IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
+HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
                                                FIO_MAP_HASH hash,
                                                FIO_MAP_KEY key,
                                                FIO_MAP_TYPE obj,
@@ -5933,7 +5938,7 @@ IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
  *
  * Returns 0 on success or -1 if the object couldn't be found.
  */
-IFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
+HFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
                                          FIO_MAP_HASH hash,
                                          FIO_MAP_KEY key,
                                          FIO_MAP_TYPE *old);
@@ -5944,12 +5949,12 @@ Hash Map / Set - API (set only)
 #else /* !FIO_MAP_KEY */
 
 /** Returns the object in the hash map (if any) or FIO_MAP_TYPE_INVALID. */
-IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
+HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
                                                FIO_MAP_HASH hash,
                                                FIO_MAP_TYPE obj);
 
 /** Returns a pointer to the object in the hash map (if any) or NULL. */
-IFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m,
+HFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m,
                                                     FIO_MAP_HASH hash,
                                                     FIO_MAP_TYPE obj);
 /**
@@ -5957,7 +5962,7 @@ IFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m,
  *
  * If `old` is given, existing data will be copied to that location.
  */
-IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME,
+HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME,
                             set_if_missing)(FIO_MAP_PTR m,
                                             FIO_MAP_HASH hash,
                                             FIO_MAP_TYPE existing);
@@ -5967,7 +5972,7 @@ IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME,
  *
  * If `old` is given, existing data will be copied to that location.
  */
-IFUNC void FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
+HFUNC void FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
                                        FIO_MAP_HASH hash,
                                        FIO_MAP_TYPE obj,
                                        FIO_MAP_TYPE *old);
@@ -5979,7 +5984,7 @@ IFUNC void FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
  *
  * Returns 0 on success or -1 if the object couldn't be found.
  */
-IFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
+HFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
                                          FIO_MAP_HASH hash,
                                          FIO_MAP_TYPE obj,
                                          FIO_MAP_TYPE *old);
@@ -5990,13 +5995,13 @@ Hash Map / Set - API (common)
 ***************************************************************************** */
 
 /** Returns the number of objects in the map. */
-IFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, count)(FIO_MAP_PTR m);
+HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, count)(FIO_MAP_PTR m);
 
 /** Returns the current map's theoretical capacity. */
-IFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, capa)(FIO_MAP_PTR m);
+HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, capa)(FIO_MAP_PTR m);
 
 /** Reserves a minimal capacity for the hash map. */
-IFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, reserve)(FIO_MAP_PTR m, uint32_t capa);
+HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, reserve)(FIO_MAP_PTR m, uint32_t capa);
 
 /**
  * Allows a peak at the Set's last element.
@@ -6004,13 +6009,13 @@ IFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, reserve)(FIO_MAP_PTR m, uint32_t capa);
  * Remember that objects might be destroyed if the Set is altered
  * (`FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
  */
-IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, last)(FIO_MAP_PTR m);
+HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, last)(FIO_MAP_PTR m);
 
 /**
  * Allows the Hash to be momentarily used as a stack, destroying the last
  * object added (`FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
  */
-IFUNC int FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m, FIO_MAP_TYPE *old);
+HFUNC int FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m, FIO_MAP_TYPE *old);
 
 /** Rehashes the Hash Map / Set. Usually this is performed automatically. */
 SFUNC int FIO_NAME(FIO_MAP_NAME, rehash)(FIO_MAP_PTR m);
@@ -6029,7 +6034,7 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, compact)(FIO_MAP_PTR m);
  * Returns the relative "stop" position, i.e., the number of items processed +
  * the starting point.
  */
-IFUNC uint32_t FIO_NAME(FIO_MAP_NAME,
+SFUNC uint32_t FIO_NAME(FIO_MAP_NAME,
                         each)(FIO_MAP_PTR m,
                               int32_t start_at,
                               int (*task)(FIO_MAP_TYPE obj, void *arg),
@@ -6103,22 +6108,22 @@ typedef struct {
 } FIO_NAME(FIO_MAP_NAME, __pos_info_s);
 
 /** Internal: used for managing the Maps data structure. */
-FIO_SFUNC FIO_NAME(FIO_MAP_NAME, __pos_info_s)
+SFUNC FIO_NAME(FIO_MAP_NAME, __pos_info_s)
     FIO_NAME(FIO_MAP_NAME,
              __pos_info)(FIO_MAP_PTR m_, FIO_MAP_HASH hash, FIO_MAP_OBJ o);
 
 /** Internal: used for managing the Maps data structure. */
-FIO_SFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, __set)(FIO_MAP_PTR m,
-                                                      FIO_MAP_HASH hash,
-                                                      FIO_MAP_OBJ o,
-                                                      FIO_MAP_TYPE *old,
-                                                      uint8_t overwrite);
+SFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, __set)(FIO_MAP_PTR m,
+                                                  FIO_MAP_HASH hash,
+                                                  FIO_MAP_OBJ o,
+                                                  FIO_MAP_TYPE *old,
+                                                  uint8_t overwrite);
 
 /** Internal: used for managing the Maps data structure. */
-FIO_SFUNC int FIO_NAME(FIO_MAP_NAME, __remove)(FIO_MAP_PTR m,
-                                               FIO_MAP_HASH hash,
-                                               FIO_MAP_OBJ o,
-                                               FIO_MAP_TYPE *old);
+SFUNC int FIO_NAME(FIO_MAP_NAME, __remove)(FIO_MAP_PTR m,
+                                           FIO_MAP_HASH hash,
+                                           FIO_MAP_OBJ o,
+                                           FIO_MAP_TYPE *old);
 
 /* *****************************************************************************
 Hash Map / Set - API (initialization)
@@ -6128,7 +6133,7 @@ Hash Map / Set - API (initialization)
 /**
  * Allocates a new map on the heap.
  */
-FIO_IFUNC FIO_MAP_PTR FIO_NAME(FIO_MAP_NAME, new)(void) {
+HFUNC FIO_MAP_PTR FIO_NAME(FIO_MAP_NAME, new)(void) {
   FIO_MAP_PTR r;
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_MEM_CALLOC_(sizeof(*m), 1);
@@ -6140,7 +6145,7 @@ FIO_IFUNC FIO_MAP_PTR FIO_NAME(FIO_MAP_NAME, new)(void) {
 /**
  * Frees a map that was allocated on the heap.
  */
-FIO_IFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m_) {
+HFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m_) {
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
   if (!m)
@@ -6154,7 +6159,7 @@ FIO_IFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m_) {
 /**
  * Destroys the map's internal data and re-initializes it.
  */
-FIO_IFUNC void FIO_NAME(FIO_MAP_NAME, destroy)(FIO_MAP_PTR m_) {
+HFUNC void FIO_NAME(FIO_MAP_NAME, destroy)(FIO_MAP_PTR m_) {
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
   if (!m)
@@ -6180,7 +6185,7 @@ Hash Map / Set - API (hash map only)
 #ifdef FIO_MAP_KEY
 
 /** Returns the object in the hash map (if any) or FIO_MAP_TYPE_INVALID. */
-IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
+HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
                                                FIO_MAP_HASH hash,
                                                FIO_MAP_KEY key) {
   FIO_MAP_TYPE *p = FIO_NAME(FIO_MAP_NAME, get_ptr)(m, hash, key);
@@ -6190,7 +6195,7 @@ IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
 }
 
 /** Returns a pointer to the object in the hash map (if any) or NULL. */
-IFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m_,
+HFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m_,
                                                     FIO_MAP_HASH hash,
                                                     FIO_MAP_KEY key) {
   FIO_NAME(FIO_MAP_NAME, couplet_s) const c = {.key = key};
@@ -6207,7 +6212,7 @@ IFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m_,
  *
  * If `old` is given, existing data will be copied to that location.
  */
-IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
+HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
                                                FIO_MAP_HASH hash,
                                                FIO_MAP_KEY key,
                                                FIO_MAP_TYPE obj,
@@ -6227,7 +6232,7 @@ IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
  *
  * Returns 0 on success or -1 if the object couldn't be found.
  */
-IFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
+HFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
                                          FIO_MAP_HASH hash,
                                          FIO_MAP_KEY key,
                                          FIO_MAP_TYPE *old) {
@@ -6241,7 +6246,7 @@ Hash Map / Set - API (set only)
 #else /* !FIO_MAP_KEY */
 
 /** Returns the object in the hash map (if any) or FIO_MAP_TYPE_INVALID. */
-IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
+HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
                                                FIO_MAP_HASH hash,
                                                FIO_MAP_TYPE obj) {
   FIO_MAP_TYPE *p = FIO_NAME(FIO_MAP_NAME, get_ptr)(m, hash, obj);
@@ -6251,7 +6256,7 @@ IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
 }
 
 /** Returns a pointer to the object in the hash map (if any) or NULL. */
-IFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m_,
+HFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m_,
                                                     FIO_MAP_HASH hash,
                                                     FIO_MAP_TYPE obj) {
   FIO_NAME(FIO_MAP_NAME, __pos_info_s)
@@ -6267,7 +6272,7 @@ IFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m_,
  *
  * If `old` is given, existing data will be copied to that location.
  */
-IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set_if_missing)(FIO_MAP_PTR m,
+HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set_if_missing)(FIO_MAP_PTR m,
                                                           FIO_MAP_HASH hash,
                                                           FIO_MAP_TYPE obj) {
   FIO_MAP_TYPE *p;
@@ -6282,7 +6287,7 @@ IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set_if_missing)(FIO_MAP_PTR m,
  *
  * If `old` is given, existing data will be copied to that location.
  */
-IFUNC void FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
+HFUNC void FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
                                        FIO_MAP_HASH hash,
                                        FIO_MAP_TYPE obj,
                                        FIO_MAP_TYPE *old) {
@@ -6296,7 +6301,7 @@ IFUNC void FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
  *
  * Returns 0 on success or -1 if the object couldn't be found.
  */
-IFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
+HFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
                                          FIO_MAP_HASH hash,
                                          FIO_MAP_TYPE obj,
                                          FIO_MAP_TYPE *old) {
@@ -6309,7 +6314,7 @@ Hash Map / Set - API (common)
 ***************************************************************************** */
 
 /** Returns the number of objects in the map. */
-IFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, count)(FIO_MAP_PTR m_) {
+HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, count)(FIO_MAP_PTR m_) {
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
   if (!m)
@@ -6318,16 +6323,16 @@ IFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, count)(FIO_MAP_PTR m_) {
 }
 
 /** Returns the current map's theoretical capacity. */
-IFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, capa)(FIO_MAP_PTR m_) {
+HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, capa)(FIO_MAP_PTR m_) {
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
   if (!m || !m->data || !m->used_bits)
     return 0;
-  return (((uintptr_t)1 << m->used_bits) - 2);
+  return (((uint32_t)1 << m->used_bits) - 2);
 }
 
 /** Reserves a minimal capacity for the hash map. */
-IFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, reserve)(FIO_MAP_PTR m_, uint32_t capa) {
+HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, reserve)(FIO_MAP_PTR m_, uint32_t capa) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   if (!m)
@@ -6359,7 +6364,7 @@ IFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, reserve)(FIO_MAP_PTR m_, uint32_t capa) {
  * Remember that objects might be destroyed if the Set is altered
  * (`FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
  */
-IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, last)(FIO_MAP_PTR m_) {
+HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, last)(FIO_MAP_PTR m_) {
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
   if (!m || !m->data || !m->w)
@@ -6378,7 +6383,7 @@ IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, last)(FIO_MAP_PTR m_) {
  * Allows the Hash to be momentarily used as a stack, destroying the last
  * object added (`FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
  */
-IFUNC int FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m_, FIO_MAP_TYPE *old) {
+HFUNC int FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m_, FIO_MAP_TYPE *old) {
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
   if (!m || !m->data || !m->w)
@@ -6405,7 +6410,7 @@ Hash Map / Set - helpers
 
 #ifdef FIO_MAP_HASH_OFFSET___INTERNAL
 /** Internal handler for the hash offset calculation. */
-FIO_IFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, __bit_avalanch)(uintptr_t hash) {
+HFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, __bit_avalanch)(uintptr_t hash) {
   hash += (hash >> (sizeof(hash) << 2)) | (hash << (sizeof(hash) << 2));
   hash *= 1515868577ULL;
   hash += (hash >> (sizeof(hash) << 2)) | (hash << (sizeof(hash) << 2));
@@ -6443,7 +6448,7 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, __compress_array)(FIO_MAP_PTR m_) {
   return 0;
 }
 
-FIO_SFUNC FIO_NAME(FIO_MAP_NAME, __pos_info_s)
+SFUNC FIO_NAME(FIO_MAP_NAME, __pos_info_s)
     FIO_NAME(FIO_MAP_NAME,
              __pos_info)(FIO_MAP_PTR m_, FIO_MAP_HASH hash, FIO_MAP_OBJ o) {
   (void)o; // in case it's ignored during compare operation.
@@ -6451,7 +6456,7 @@ FIO_SFUNC FIO_NAME(FIO_MAP_NAME, __pos_info_s)
   r = {.map_pos = (uint32_t)-1, .index = (uint32_t)-1};
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
-  if (!m->data)
+  if (!m || !m->data)
     return r;
   if (FIO_MAP_HASH_CMP(hash, FIO_MAP_HASH_INVALID)) {
     FIO_MAP_HASH_COPY(hash, (FIO_MAP_HASH){~0ULL});
@@ -6465,42 +6470,41 @@ FIO_SFUNC FIO_NAME(FIO_MAP_NAME, __pos_info_s)
   if (m->map && m->w > FIO_MAP_SEEK_AS_ARRAY_LIMIT) {
     /* seek in map using Hash value as key (map semantics) */
     const uintptr_t mask = ((uintptr_t)1 << m->used_bits) - 1;
-    const uintptr_t index = FIO_MAP_HASH_OFFSET(hash, m->used_bits);
-    const uintptr_t key = index & (~mask);
-    uintptr_t i = index & mask;
+    uintptr_t i = FIO_MAP_HASH_OFFSET(hash, m->used_bits);
+    const uint32_t key = i & (~mask);
     uint8_t full_attack_counter = 0;
-    uint8_t max_seek = (mask > FIO_MAP_MAX_SEEK) ? FIO_MAP_MAX_SEEK : mask; // ?
+    uint8_t max_seek = (mask > FIO_MAP_MAX_SEEK) ? FIO_MAP_MAX_SEEK : mask;
 
     do {
-      /* index == mask in the data / map arrays is reserved! */
-      if (i != mask) {
-        uintptr_t *const pos = m->map + i;
-        r.map_pos = i;
-        r.index = ((*pos) & mask) - 1;
-        const uintptr_t key_cmp = (*pos) & (~mask);
-        if (!(*pos)) {
-          /* empty slot */
-          return r;
-        }
-        if (key_cmp == key && r.index != (uint32_t)-1 &&
-            /* this FIO_MAP_HASH_CMP test for a "hole" */
-            FIO_MAP_HASH_CMP(m->data[r.index].hash, hash)) {
-          /* full hash match (collision / item?) */
-          if (m->under_attack || FIO_MAP_OBJ_CMP(m->data[r.index].obj, o)) {
-            /* object match / hole */
-            return r;
-          }
-          /* full collision */
-          m->has_collisions |= 1;
-          if (++full_attack_counter >= FIO_MAP_MAX_FULL_COLLISIONS) {
-            m->under_attack = 1;
-            FIO_LOG2STDERR("SECURITY: (core type) Hash Map under attack?"
-                           " (multiple full collisions)");
-          }
-        }
-      }
       i += FIO_MAP_CUCKOO_STEPS;
       i &= mask;
+      /* index == mask in the data / map arrays is reserved! */
+      if (i == mask)
+        continue;
+      uint32_t *const pos = m->map + i;
+      r.map_pos = i;
+      r.index = ((*pos) & mask) - 1;
+      if (!(*pos)) {
+        /* empty slot */
+        return r;
+      }
+      const uint32_t key_cmp = (*pos) & (~mask);
+      if ((r.index != (uint32_t)-1 && key_cmp == key) &&
+          /* this FIO_MAP_HASH_CMP tests for a "hole" */
+          (FIO_MAP_HASH_CMP(m->data[r.index].hash, hash))) {
+        /* full hash match (collision / item?) */
+        if (m->under_attack || FIO_MAP_OBJ_CMP(m->data[r.index].obj, o)) {
+          /* object match / hole */
+          return r;
+        }
+        /* full collision */
+        m->has_collisions |= 1;
+        if (++full_attack_counter >= FIO_MAP_MAX_FULL_COLLISIONS) {
+          m->under_attack = 1;
+          FIO_LOG2STDERR("SECURITY: (core type) Hash Map under attack?"
+                         " (multiple full collisions)");
+        }
+      }
     } while (--max_seek);
     r.map_pos = (uint32_t)-1;
     r.index = (uint32_t)-1;
@@ -6520,17 +6524,19 @@ FIO_SFUNC FIO_NAME(FIO_MAP_NAME, __pos_info_s)
   return r;
 }
 
-FIO_SFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, __set)(FIO_MAP_PTR m_,
-                                                      FIO_MAP_HASH hash,
-                                                      FIO_MAP_OBJ o,
-                                                      FIO_MAP_TYPE *old,
-                                                      uint8_t overwrite) {
+SFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, __set)(FIO_MAP_PTR m_,
+                                                  FIO_MAP_HASH hash,
+                                                  FIO_MAP_OBJ o,
+                                                  FIO_MAP_TYPE *old,
+                                                  uint8_t overwrite) {
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
-  uintptr_t mask = ((uintptr_t)1 << m->used_bits) - 1;
+  uint32_t mask = ((uint32_t)1 << m->used_bits) - 1;
   if (FIO_MAP_HASH_CMP(hash, FIO_MAP_HASH_INVALID)) {
     FIO_MAP_HASH_COPY(hash, (FIO_MAP_HASH){~0ULL});
   }
+  if (!m)
+    return NULL;
 
   FIO_NAME(FIO_MAP_NAME, __pos_info_s)
   i = FIO_NAME(FIO_MAP_NAME, __pos_info)(m_, hash, o);
@@ -6538,17 +6544,13 @@ FIO_SFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, __set)(FIO_MAP_PTR m_,
   if (i.index != (uint32_t)-1)
     goto object_exists;
 
-  /* Could we avoid increasing memory usage? */
-  if (m->w == mask && m->count < m->w) {
-    FIO_NAME(FIO_MAP_NAME, rehash)(m_);
-    i = FIO_NAME(FIO_MAP_NAME, __pos_info)(m_, hash, o);
-  }
-
 #if FIO_MAP_MAX_ELEMENTS
   /* are we using more elements then we should?*/
   if (m->count >= FIO_MAP_MAX_ELEMENTS) {
     /* limits the number of elements to m->count, with 1 dangling element  */
-    if (m->o == m->w)
+    if (FIO_NAME(FIO_MAP_NAME, __compress_array)(m_))
+      FIO_NAME(FIO_MAP_NAME, rehash)(m_);
+    if (m->o >= m->w)
       m->o = 0;
     /* Test Me */
     if (!FIO_MAP_HASH_CMP(m->data[m->o].hash, FIO_MAP_HASH_INVALID)) {
@@ -6564,9 +6566,9 @@ FIO_SFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, __set)(FIO_MAP_PTR m_,
   /* no available slots? or are we overflowing memory? */
   /* (last slot doesn't exist / reserved) */
   /* try to compress the array to before using more memory */
-  if (((i.map_pos == (uint32_t)-1 && m->map) || m->w == mask) &&
+  if ((((i.map_pos == (uint32_t)-1) && m->map) || m->w == mask) &&
       FIO_NAME(FIO_MAP_NAME, __compress_array)(m_)) {
-    if (m->used_bits == 31)
+    if (m->used_bits == 32)
       goto failed_to_insert;
     const uint32_t __attribute__((unused)) old_mask = mask;
     if (m->map) {
@@ -6602,7 +6604,7 @@ update_map:
 #endif
   if (m->map) {
     /* since m->w > 0 && m->w <= mask, we can use it as a 1 based index */
-    const uintptr_t mval =
+    const uint32_t mval =
         (m->w) | ((~mask) & (FIO_MAP_HASH_OFFSET(hash, m->used_bits)));
     m->map[i.map_pos] = mval;
   } else {
@@ -6646,10 +6648,10 @@ failed_to_insert:
   return NULL;
 }
 
-FIO_SFUNC int FIO_NAME(FIO_MAP_NAME, __remove)(FIO_MAP_PTR m_,
-                                               FIO_MAP_HASH hash,
-                                               FIO_MAP_OBJ o,
-                                               FIO_MAP_TYPE *old) {
+SFUNC int FIO_NAME(FIO_MAP_NAME, __remove)(FIO_MAP_PTR m_,
+                                           FIO_MAP_HASH hash,
+                                           FIO_MAP_OBJ o,
+                                           FIO_MAP_TYPE *old) {
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
   if (FIO_MAP_HASH_CMP(hash, FIO_MAP_HASH_INVALID)) {
@@ -6673,7 +6675,8 @@ FIO_SFUNC int FIO_NAME(FIO_MAP_NAME, __remove)(FIO_MAP_PTR m_,
   m->has_collisions |= m->has_collisions << 1;
   if (i.index + 1 == m->w) {
     --m->w;
-    m->map[i.map_pos] = 0;
+    if (i.map_pos != (uint32_t)-1 && m->map)
+      m->map[i.map_pos] = 0;
   }
   return 0;
 not_found:
@@ -6706,10 +6709,10 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, rehash)(FIO_MAP_PTR m_) {
 
   for (size_t rehashing_attempts = 0; rehashing_attempts < 4;
        ++rehashing_attempts) {
-    const uintptr_t imask = ~(((uintptr_t)1 << m->used_bits) - 1);
+    const uint32_t imask = ~(((uint32_t)1 << m->used_bits) - 1);
     uint32_t i = 0;
-    m->map = (uintptr_t *)FIO_MEM_CALLOC_((((uint32_t)1 << m->used_bits) - 1),
-                                          sizeof(*m->map));
+    m->map = (uint32_t *)FIO_MEM_CALLOC_((((uint32_t)1 << m->used_bits) - 1),
+                                         sizeof(*m->map));
     if (!m->map) {
       /* failed to allocate memory! */
       goto error;
@@ -6722,7 +6725,7 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, rehash)(FIO_MAP_PTR m_) {
       if (info.map_pos == (uint32_t)-1)
         goto retry_loop;
 
-      const uintptr_t mval =
+      const uint32_t mval =
           (i + 1) |
           (imask & (FIO_MAP_HASH_OFFSET(m->data[i].hash, m->used_bits)));
       m->map[info.map_pos] = mval;
@@ -6734,7 +6737,7 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, rehash)(FIO_MAP_PTR m_) {
     FIO_MEM_FREE_(m->map,
                   (((uint32_t)1 << m->used_bits) - 1) * sizeof(*m->map));
     m->map = NULL;
-    if (m->used_bits == 30)
+    if (m->used_bits == 32)
       goto error;
     { /* match data array to map array */
       FIO_NAME(FIO_MAP_NAME, __data_s) *tmp =
@@ -6824,7 +6827,7 @@ HSFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
  * Returns the relative "stop" position, i.e., the number of items processed +
  * the starting point.
  */
-IFUNC uint32_t FIO_NAME(FIO_MAP_NAME,
+SFUNC uint32_t FIO_NAME(FIO_MAP_NAME,
                         each)(FIO_MAP_PTR m_,
                               int32_t start_at,
                               int (*task)(FIO_MAP_TYPE obj, void *arg),
