@@ -1,5 +1,9 @@
 # Change Log
 
+### v. 0.7.4
+
+**Fix**: requests will fail when the path contains a dangling `?` (empty query). Credit to @adam12 for exposing this and opening issue boazsegev/iodine#86.
+
 ### v. 0.7.3
 
 **Fix**: (`http`) fixes a security issue in the static file name resolution logic, where a maliciously encoded request could invoke an arbitrary response.
