@@ -1921,25 +1921,25 @@ Big memory allocation macros and helpers (page allocation / mmap)
 /*
  * allocates memory using `mmap`, but enforces alignment.
  */
-HSFUNC void *FIO_MEM_PAGE_ALLOC_def_func(size_t len, uint8_t alignment_log) {
+HSFUNC void *FIO_MEM_PAGE_ALLOC_def_func(size_t pages, uint8_t alignment_log) {
   void *result;
   static void *next_alloc = (void *)0x01;
   const size_t alignment_mask = (1ULL << alignment_log) - 1;
   const size_t alignment_size = (1ULL << alignment_log);
-  len <<= FIO_MEM_PAGE_SIZE_LOG;
+  pages <<= FIO_MEM_PAGE_SIZE_LOG;
   next_alloc =
       (void *)(((uintptr_t)next_alloc + alignment_mask) & alignment_mask);
 /* hope for the best? */
 #ifdef MAP_ALIGNED
   result = mmap(next_alloc,
-                len,
+                pages,
                 PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS | MAP_ALIGNED(alignment_log),
                 -1,
                 0);
 #else
   result = mmap(next_alloc,
-                len,
+                pages,
                 PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS,
                 -1,
@@ -1948,9 +1948,9 @@ HSFUNC void *FIO_MEM_PAGE_ALLOC_def_func(size_t len, uint8_t alignment_log) {
   if (result == MAP_FAILED)
     return (void *)NULL;
   if (((uintptr_t)result & alignment_mask)) {
-    munmap(result, len);
+    munmap(result, pages);
     result = mmap(NULL,
-                  len + alignment_size,
+                  pages + alignment_size,
                   PROT_READ | PROT_WRITE,
                   MAP_PRIVATE | MAP_ANONYMOUS,
                   -1,
@@ -1964,9 +1964,9 @@ HSFUNC void *FIO_MEM_PAGE_ALLOC_def_func(size_t len, uint8_t alignment_log) {
       munmap(result, offset);
       result = (void *)((uintptr_t)result + offset);
     }
-    munmap((void *)((uintptr_t)result + len), alignment_size - offset);
+    munmap((void *)((uintptr_t)result + pages), alignment_size - offset);
   }
-  next_alloc = (void *)((uintptr_t)result + (len << 2));
+  next_alloc = (void *)((uintptr_t)result + (pages << 2));
   return result;
 }
 
@@ -1977,8 +1977,8 @@ HSFUNC void *FIO_MEM_PAGE_REALLOC_def_func(void *mem,
                                            size_t prev_pages,
                                            size_t new_pages,
                                            uint8_t alignment_log) {
-  const size_t prev_len = prev_pages << 12;
-  const size_t new_len = new_pages << 12;
+  const size_t prev_len = prev_pages << FIO_MEM_PAGE_SIZE_LOG;
+  const size_t new_len = new_pages << FIO_MEM_PAGE_SIZE_LOG;
   if (new_len > prev_len) {
     void *result;
 #if defined(__linux__)
@@ -1998,7 +1998,7 @@ HSFUNC void *FIO_MEM_PAGE_REALLOC_def_func(void *mem,
       /* copy and free */
       munmap(result, new_len - prev_len); /* free the failed attempt */
       result = FIO_MEM_PAGE_ALLOC_def_func(
-          new_len, alignment_log); /* allocate new memory */
+          new_pages, alignment_log); /* allocate new memory */
       if (!result) {
         return (void *)NULL;
       }
@@ -2015,7 +2015,7 @@ HSFUNC void *FIO_MEM_PAGE_REALLOC_def_func(void *mem,
 
 /* frees memory using `munmap`. */
 HFUNC void FIO_MEM_PAGE_FREE_def_func(void *mem, size_t pages) {
-  munmap(mem, (pages << 12));
+  munmap(mem, (pages << FIO_MEM_PAGE_SIZE_LOG));
 }
 
 #else
