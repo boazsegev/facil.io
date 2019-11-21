@@ -40,7 +40,7 @@ CMAKE_LIBFILE_NAME=CMakeLists.txt
 # The development, non-library .c file(s) (i.e., the one with `int main(void)`).
 MAIN_ROOT=src
 # Development subfolders under the main development root
-MAIN_SUBFOLDERS=
+MAIN_SUBFOLDERS=db
 
 #############################################################################
 # Library Folder Settings
@@ -60,7 +60,7 @@ LIB_PRIVATE_SUBFOLDERS=
 #############################################################################
 
 # any libraries required (only names, ommit the "-l" at the begining)
-LINKER_LIBS=pthread m
+LINKER_LIBS=pthread m mysqlclient
 # optimization level.
 OPTIMIZATION=-O2 -march=native
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
