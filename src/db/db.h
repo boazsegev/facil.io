@@ -1,7 +1,6 @@
 #ifndef RMFIO_DB_H_
 #define RMFIO_DB_H_
-#include "fio.h"
-#include "fiobj.h"
+#include "rmfio.h"
 
 extern void db_init(
 	const char* db_host,

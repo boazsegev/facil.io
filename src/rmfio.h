@@ -2,6 +2,9 @@
 #define RMFIO_H_
 #include <stdint.h>
 #include <inttypes.h>
+#include "fio.h"
+#include "fiobj.h"
+
 
 typedef uint8_t u8;
 typedef uint16_t u16;
