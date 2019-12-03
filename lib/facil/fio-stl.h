@@ -21,20 +21,34 @@ This file contains macros that create generic / common core types, such as:
 
 * Reference counting / Type wrapper - defined by `FIO_REF_NAME` (adds atomic)
 
+* Pointer Tagging for Types - defined by `FIO_PTR_TAG(p)`/`FIO_PTR_UNTAG(p)`
+
 * Soft / Dynamic Types (FIOBJ) - defined by `FIO_FIOBJ`
 
 
 This file also contains common helper macros / primitives, such as:
 
-* Pointer Tagging - defined by `FIO_PTR_TAG(p)`/`FIO_PTR_UNTAG(p)`
+* Macro Stringifier - `FIO_MACRO2STR(macro)`
+
+* Version Macros - i.e., `FIO_VERSION_MAJOR` / `FIO_VERSION_STRING`
+
+* Pointer Math - i.e., `FIO_PTR_MATH_ADD` / `FIO_PTR_FROM_FIELD`
+
+* Memory Allocation Macros - i.e., `FIO_MEM_CALLOC`
+
+* Security Related macros - i.e., `FIO_MEM_STACK_WIPE`
+
+* String Information Helper Type - `fio_str_info_s` / `FIO_STR_INFO_IS_EQ`
+
+* Naming Macros - i.e., `FIO_NAME` / `FIO_NAME2` / `FIO_NAME_BL`
+
+* Sleep / Thread Scheduling Macros - i.e., `FIO_THREAD_RESCHEDULE`
 
 * Logging and Assertion (no heap allocation) - defined by `FIO_LOG`
 
 * Atomic add/subtract/replace - defined by `FIO_ATOMIC`
 
 * Bit-Byte Operations - defined by `FIO_BITWISE` and `FIO_BITMAP` (adds atomic)
-
-* Network byte ordering macros - defined by `FIO_NTOL` (adds `FIO_BITWISE`)
 
 * Data Hashing (using Risky Hash) - defined by `FIO_RISKY_HASH`
 
@@ -48,7 +62,7 @@ This file also contains common helper macros / primitives, such as:
 
 * Command Line Interface helpers - defined by `FIO_CLI`
 
-* Custom Memory Allocation - defined by `FIO_MALLOC`
+* Custom Memory Allocation - defined by `FIO_MALLOC`, updates `FIO_MEM_CALLOC`
 
 * Custom JSON Parser - defined by `FIO_JSON`
 
@@ -285,7 +299,7 @@ void __attribute__((weak)) fio___(void) {
 #endif
 
 /* *****************************************************************************
-Pointer Arithmetics
+Pointer Math
 ***************************************************************************** */
 
 /** Masks a pointer's left-most bits, returning the right bits. */
@@ -375,7 +389,7 @@ typedef struct fio___list_node_s {
   { .next = &(obj), .prev = &(obj) }
 
 /* *****************************************************************************
-Naming macros
+Naming Macros
 ***************************************************************************** */
 
 /* Used for naming functions and types */
@@ -517,9 +531,6 @@ Common macros
 #endif /* FIO_EXTERN_COMPLETE */
 #endif /* FIO_EXTERN */
 
-#define HFUNC static inline __attribute__((unused)) /* internal helper */
-#define HSFUNC static __attribute__((unused))       /* internal helper */
-
 #undef SFUNC
 #undef IFUNC
 #define SFUNC SFUNC_
@@ -553,8 +564,8 @@ Common macros
 #else /* SFUNC_ - internal helper types are `static` */
 #undef SFUNC
 #undef IFUNC
-#define SFUNC HSFUNC
-#define IFUNC HFUNC
+#define SFUNC FIO_SFUNC
+#define IFUNC FIO_IFUNC
 #endif /* SFUNC_ vs FIO_STL_KEEP__*/
 
 /* *****************************************************************************
@@ -604,13 +615,6 @@ Common macros
 #define FIO_ATOMIC
 #endif
 #endif /* FIO_REF_NAME */
-
-/* FIO_NTOL dependencies */
-#ifdef FIO_NTOL
-#ifndef FIO_BITWISE
-#define FIO_BITWISE
-#endif
-#endif /* FIO_NTOL */
 
 /* FIO_RAND dependencies */
 #ifdef FIO_RAND
@@ -902,23 +906,23 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 typedef volatile unsigned char fio_lock_i;
 
 /** Returns 0 on success and 1 on failure. */
-HFUNC uint8_t fio_trylock(fio_lock_i *lock) {
+FIO_IFUNC uint8_t fio_trylock(fio_lock_i *lock) {
   __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
   return fio_atomic_xchange(lock, 1);
 }
 
 /** Busy waits for a lock to become available - not recommended. */
-HFUNC void fio_lock(fio_lock_i *lock) {
+FIO_IFUNC void fio_lock(fio_lock_i *lock) {
   while (fio_trylock(lock)) {
     FIO_THREAD_RESCHEDULE();
   }
 }
 
 /** Unlocks the lock, no matter which thread owns the lock. */
-HFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_xchange(lock, 0); }
+FIO_IFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_xchange(lock, 0); }
 
 /** Returns 1 if the lock is locked, 0 otherwise. */
-HFUNC uint8_t FIO_NAME_BL(fio, locked)(fio_lock_i *lock) { return *lock; }
+FIO_IFUNC uint8_t FIO_NAME_BL(fio, locked)(fio_lock_i *lock) { return *lock; }
 
 #endif /* FIO_ATOMIC */
 #undef FIO_ATOMIC
@@ -957,7 +961,7 @@ Swapping byte's order (`bswap` variations)
 #if __has_builtin(__builtin_bswap16)
 #define fio_bswap16(i) __builtin_bswap16((uint16_t)(i))
 #else
-HFUNC uint16_t fio_bswap16(uint16_t i) {
+FIO_IFUNC uint16_t fio_bswap16(uint16_t i) {
   return ((((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8));
 }
 #endif
@@ -966,7 +970,7 @@ HFUNC uint16_t fio_bswap16(uint16_t i) {
 #if __has_builtin(__builtin_bswap32)
 #define fio_bswap32(i) __builtin_bswap32((uint32_t)(i))
 #else
-HFUNC uint32_t fio_bswap32(uint32_t i) {
+FIO_IFUNC uint32_t fio_bswap32(uint32_t i) {
   return ((((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) |
           (((i)&0xFF0000UL) >> 8) | (((i)&0xFF000000UL) >> 24));
 }
@@ -976,7 +980,7 @@ HFUNC uint32_t fio_bswap32(uint32_t i) {
 #if __has_builtin(__builtin_bswap64)
 #define fio_bswap64(i) __builtin_bswap64((uint64_t)(i))
 #else
-HFUNC uint64_t fio_bswap64(uint64_t i) {
+FIO_IFUNC uint64_t fio_bswap64(uint64_t i) {
   return ((((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |
           (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |
           (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |
@@ -1064,7 +1068,7 @@ Bit rotation
 #define fio_lrot8(i, bits) __builtin_rotateleft8(i, bits)
 #else
 /** 8Bit left rotation, inlined. */
-HFUNC uint8_t fio_lrot8(uint8_t i, uint8_t bits) {
+FIO_IFUNC uint8_t fio_lrot8(uint8_t i, uint8_t bits) {
   return ((i << (bits & 7UL)) | (i >> ((-(bits)) & 7UL)));
 }
 #endif
@@ -1074,7 +1078,7 @@ HFUNC uint8_t fio_lrot8(uint8_t i, uint8_t bits) {
 #define fio_lrot16(i, bits) __builtin_rotateleft16(i, bits)
 #else
 /** 16Bit left rotation, inlined. */
-HFUNC uint16_t fio_lrot16(uint16_t i, uint8_t bits) {
+FIO_IFUNC uint16_t fio_lrot16(uint16_t i, uint8_t bits) {
   return ((i << (bits & 15UL)) | (i >> ((-(bits)) & 15UL)));
 }
 #endif
@@ -1084,7 +1088,7 @@ HFUNC uint16_t fio_lrot16(uint16_t i, uint8_t bits) {
 #define fio_lrot32(i, bits) __builtin_rotateleft32(i, bits)
 #else
 /** 32Bit left rotation, inlined. */
-HFUNC uint32_t fio_lrot32(uint32_t i, uint8_t bits) {
+FIO_IFUNC uint32_t fio_lrot32(uint32_t i, uint8_t bits) {
   return ((i << (bits & 31UL)) | (i >> ((-(bits)) & 31UL)));
 }
 #endif
@@ -1094,7 +1098,7 @@ HFUNC uint32_t fio_lrot32(uint32_t i, uint8_t bits) {
 #define fio_lrot64(i, bits) __builtin_rotateleft64(i, bits)
 #else
 /** 64Bit left rotation, inlined. */
-HFUNC uint64_t fio_lrot64(uint64_t i, uint8_t bits) {
+FIO_IFUNC uint64_t fio_lrot64(uint64_t i, uint8_t bits) {
   return ((i << ((bits)&63UL)) | (i >> ((-(bits)) & 63UL)));
 }
 #endif
@@ -1104,7 +1108,7 @@ HFUNC uint64_t fio_lrot64(uint64_t i, uint8_t bits) {
 #define fio_rrot8(i, bits) __builtin_rotateright8(i, bits)
 #else
 /** 8Bit left rotation, inlined. */
-HFUNC uint8_t fio_rrot8(uint8_t i, uint8_t bits) {
+FIO_IFUNC uint8_t fio_rrot8(uint8_t i, uint8_t bits) {
   return ((i >> (bits & 7UL)) | (i << ((-(bits)) & 7UL)));
 }
 #endif
@@ -1114,7 +1118,7 @@ HFUNC uint8_t fio_rrot8(uint8_t i, uint8_t bits) {
 #define fio_rrot16(i, bits) __builtin_rotateright16(i, bits)
 #else
 /** 16Bit left rotation, inlined. */
-HFUNC uint16_t fio_rrot16(uint16_t i, uint8_t bits) {
+FIO_IFUNC uint16_t fio_rrot16(uint16_t i, uint8_t bits) {
   return ((i >> (bits & 15UL)) | (i << ((-(bits)) & 15UL)));
 }
 #endif
@@ -1124,7 +1128,7 @@ HFUNC uint16_t fio_rrot16(uint16_t i, uint8_t bits) {
 #define fio_rrot32(i, bits) __builtin_rotateright32(i, bits)
 #else
 /** 32Bit left rotation, inlined. */
-HFUNC uint32_t fio_rrot32(uint32_t i, uint8_t bits) {
+FIO_IFUNC uint32_t fio_rrot32(uint32_t i, uint8_t bits) {
   return ((i >> (bits & 31UL)) | (i << ((-(bits)) & 31UL)));
 }
 #endif
@@ -1134,7 +1138,7 @@ HFUNC uint32_t fio_rrot32(uint32_t i, uint8_t bits) {
 #define fio_rrot64(i, bits) __builtin_rotateright64(i, bits)
 #else
 /** 64Bit left rotation, inlined. */
-HFUNC uint64_t fio_rrot64(uint64_t i, uint8_t bits) {
+FIO_IFUNC uint64_t fio_rrot64(uint64_t i, uint8_t bits) {
   return ((i >> ((bits)&63UL)) | (i << ((-(bits)) & 63UL)));
 }
 #endif
@@ -1145,265 +1149,258 @@ Unaligned memory read / write operations
 
 #if __has_builtin(__builtin_memcpy)
 /** Converts an unaligned byte stream to a 16 bit number (local byte order). */
-HFUNC uint16_t FIO_NAME2(fio_buf, u16_local)(const void *c) { /* fio_buf2u16 */
-  uint16_t tmp;
+FIO_IFUNC uint16_t FIO_NAME2(fio_buf, u16_local)(const void *c) {
+  uint16_t tmp; /* fio_buf2u16 */
   __builtin_memcpy(&tmp, c, sizeof(tmp));
   return tmp;
 }
 /** Converts an unaligned byte stream to a 32 bit number (local byte order). */
-HFUNC uint32_t FIO_NAME2(fio_buf, u32_local)(const void *c) { /* fio_buf2u32 */
-  uint32_t tmp;
+FIO_IFUNC uint32_t FIO_NAME2(fio_buf, u32_local)(const void *c) {
+  uint32_t tmp; /* fio_buf2u32 */
   __builtin_memcpy(&tmp, c, sizeof(tmp));
   return tmp;
 }
 /** Converts an unaligned byte stream to a 64 bit number (local byte order). */
-HFUNC uint64_t FIO_NAME2(fio_buf, u64_local)(const void *c) { /* fio_buf2u64 */
-
+FIO_IFUNC uint64_t FIO_NAME2(fio_buf, u64_local)(const void *c) {
+  /* fio_buf2u64 */
   uint64_t tmp;
   __builtin_memcpy(&tmp, c, sizeof(tmp));
   return tmp;
 }
 
 /** Writes a local 16 bit number to an unaligned buffer. */
-HFUNC void FIO_NAME2(fio_u, buf16_local)(void *buf,
-                                         uint16_t i) { /* fio_u2buf16 */
+FIO_IFUNC void FIO_NAME2(fio_u, buf16_local)(void *buf,
+                                             uint16_t i) { /* fio_u2buf16 */
   __builtin_memcpy(buf, &i, sizeof(i));
 }
 /** Writes a local 32 bit number to an unaligned buffer. */
-HFUNC void FIO_NAME2(fio_u, buf32_local)(void *buf,
-                                         uint32_t i) { /* fio_u2buf32 */
+FIO_IFUNC void FIO_NAME2(fio_u, buf32_local)(void *buf,
+                                             uint32_t i) { /* fio_u2buf32 */
   __builtin_memcpy(buf, &i, sizeof(i));
 }
 /** Writes a local 64 bit number to an unaligned buffer. */
-HFUNC void FIO_NAME2(fio_u, buf64_local)(void *buf,
-                                         uint64_t i) { /* fio_u2buf64 */
+FIO_IFUNC void FIO_NAME2(fio_u, buf64_local)(void *buf,
+                                             uint64_t i) { /* fio_u2buf64 */
   __builtin_memcpy(buf, &i, sizeof(i));
 }
 
 #elif FIO_UNALIGNED_MEMORY_ACCESS_OK
 /** Converts an unaligned byte stream to a 16 bit number (local byte order). */
-HFUNC uint16_t FIO_NAME2(fio_buf, u16_local)(const void *c) { /* fio_buf2u16 */
-  const uint16_t *tmp = (const uint16_t *)c;
+FIO_IFUNC uint16_t FIO_NAME2(fio_buf, u16_local)(const void *c) {
+  const uint16_t *tmp = (const uint16_t *)c; /* fio_buf2u16 */
   return *tmp;
 }
 /** Converts an unaligned byte stream to a 32 bit number (local byte order). */
-HFUNC uint32_t FIO_NAME2(fio_buf, u32_local)(const void *c) { /* fio_buf2u32 */
-  const uint32_t *tmp = (const uint32_t *)c;
+FIO_IFUNC uint32_t FIO_NAME2(fio_buf, u32_local)(const void *c) {
+  const uint32_t *tmp = (const uint32_t *)c; /* fio_buf2u32 */
   return *tmp;
 }
 /** Converts an unaligned byte stream to a 64 bit number (local byte order). */
-HFUNC uint64_t FIO_NAME2(fio_buf, u64_local)(const void *c) { /* fio_buf2u64 */
-
-  const uint64_t *tmp = (const uint64_t *)c;
+FIO_IFUNC uint64_t FIO_NAME2(fio_buf, u64_local)(const void *c) {
+  const uint64_t *tmp = (const uint64_t *)c; /* fio_buf2u64 */
   return *tmp;
 }
 
 /** Writes a local 16 bit number to an unaligned buffer. */
-HFUNC void FIO_NAME2(fio_u, buf16_local)(void *buf,
-                                         uint16_t i) { /* fio_u2buf16 */
-  *((uint16_t *)buf) = i;
+FIO_IFUNC void FIO_NAME2(fio_u, buf16_local)(void *buf, uint16_t i) {
+  *((uint16_t *)buf) = i; /* fio_u2buf16 */
 }
 /** Writes a local 32 bit number to an unaligned buffer. */
-HFUNC void FIO_NAME2(fio_u, buf32_local)(void *buf,
-                                         uint32_t i) { /* fio_u2buf32 */
-  *((uint32_t *)buf) = i;
+FIO_IFUNC void FIO_NAME2(fio_u, buf32_local)(void *buf, uint32_t i) {
+  *((uint32_t *)buf) = i; /* fio_u2buf32 */
 }
 /** Writes a local 64 bit number to an unaligned buffer. */
-HFUNC void FIO_NAME2(fio_u, buf64_local)(void *buf,
-                                         uint64_t i) { /* fio_u2buf64 */
-  *((uint64_t *)buf) = i;
+FIO_IFUNC void FIO_NAME2(fio_u, buf64_local)(void *buf, uint64_t i) {
+  *((uint64_t *)buf) = i; /* fio_u2buf64 */
 }
 
 #else  /* no unaligned access, no builtin memcpy, use hope.. */
 /** Converts an unaligned byte stream to a 16 bit number (local byte order). */
-HFUNC uint16_t FIO_NAME2(fio_buf, u16_local)(const void *c) { /* fio_buf2u16 */
-  uint16_t tmp;
+FIO_IFUNC uint16_t FIO_NAME2(fio_buf, u16_local)(const void *c) {
+  uint16_t tmp; /* fio_buf2u16 */
   memcpy(&tmp, c, sizeof(tmp));
   return tmp;
 }
 /** Converts an unaligned byte stream to a 32 bit number (local byte order). */
-HFUNC uint32_t FIO_NAME2(fio_buf, u32_local)(const void *c) { /* fio_buf2u32 */
-  uint32_t tmp;
+FIO_IFUNC uint32_t FIO_NAME2(fio_buf, u32_local)(const void *c) {
+  uint32_t tmp; /* fio_buf2u32 */
   memcpy(&tmp, c, sizeof(tmp));
   return tmp;
 }
 /** Converts an unaligned byte stream to a 64 bit number (local byte order). */
-HFUNC uint64_t FIO_NAME2(fio_buf, u64_local)(const void *c) { /* fio_buf2u64 */
-  uint64_t tmp;
+FIO_IFUNC uint64_t FIO_NAME2(fio_buf, u64_local)(const void *c) {
+  uint64_t tmp; /* fio_buf2u64 */
   memcpy(&tmp, c, sizeof(tmp));
   return tmp;
 }
 
 /** Writes a local 16 bit number to an unaligned buffer. */
-HFUNC void FIO_NAME2(fio_u, buf16_local)(void *buf,
-                                         uint16_t i) { /* fio_u2buf16 */
-  memcpy(buf, &i, sizeof(i));
+FIO_IFUNC void FIO_NAME2(fio_u, buf16_local)(void *buf, uint16_t i) {
+  memcpy(buf, &i, sizeof(i)); /* fio_u2buf16 */
 }
 /** Writes a local 32 bit number to an unaligned buffer. */
-HFUNC void FIO_NAME2(fio_u, buf32_local)(void *buf,
-                                         uint32_t i) { /* fio_u2buf32 */
-  memcpy(buf, &i, sizeof(i));
+FIO_IFUNC void FIO_NAME2(fio_u, buf32_local)(void *buf, uint32_t i) {
+  memcpy(buf, &i, sizeof(i)); /* fio_u2buf32 */
 }
 /** Writes a local 64 bit number to an unaligned buffer. */
-HFUNC void FIO_NAME2(fio_u, buf64_local)(void *buf,
-                                         uint64_t i) { /* fio_u2buf64 */
-  memcpy(buf, &i, sizeof(i));
+FIO_IFUNC void FIO_NAME2(fio_u, buf64_local)(void *buf, uint64_t i) {
+  memcpy(buf, &i, sizeof(i)); /* fio_u2buf64 */
 }
 #endif /* __has_builtin(__builtin_memcpy) / FIO_UNALIGNED_MEMORY_ACCESS_OK */
 
 /** Converts an unaligned byte stream to a 16 bit number (reversed order). */
-HFUNC uint16_t FIO_NAME2(fio_buf, u16_bswap)(const void *c) { /* fio_buf2u16 */
-  return fio_bswap16(FIO_NAME2(fio_buf, u16_local)(c));
+FIO_IFUNC uint16_t FIO_NAME2(fio_buf, u16_bswap)(const void *c) {
+  return fio_bswap16(FIO_NAME2(fio_buf, u16_local)(c)); /* fio_buf2u16 */
 }
 /** Converts an unaligned byte stream to a 32 bit number (reversed order). */
-HFUNC uint32_t FIO_NAME2(fio_buf, u32_bswap)(const void *c) { /* fio_buf2u32 */
-  return fio_bswap32(FIO_NAME2(fio_buf, u32_local)(c));
+FIO_IFUNC uint32_t FIO_NAME2(fio_buf, u32_bswap)(const void *c) {
+  return fio_bswap32(FIO_NAME2(fio_buf, u32_local)(c)); /* fio_buf2u32 */
 }
 /** Converts an unaligned byte stream to a 64 bit number (reversed order). */
-HFUNC uint64_t FIO_NAME2(fio_buf, u64_bswap)(const void *c) { /* fio_buf2u64 */
-  return fio_bswap64(FIO_NAME2(fio_buf, u64_local)(c));
+FIO_IFUNC uint64_t FIO_NAME2(fio_buf, u64_bswap)(const void *c) {
+  return fio_bswap64(FIO_NAME2(fio_buf, u64_local)(c)); /* fio_buf2u64 */
 }
 
 /** Writes a local 16 bit number to an unaligned buffer in reversed order. */
-HFUNC void FIO_NAME2(fio_u, buf16_bswap)(void *buf, uint16_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf16_bswap)(void *buf, uint16_t i) {
   FIO_NAME2(fio_u, buf16_local)(buf, fio_bswap16(i));
 }
 /** Writes a local 32 bit number to an unaligned buffer in reversed order. */
-HFUNC void FIO_NAME2(fio_u, buf32_bswap)(void *buf, uint32_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf32_bswap)(void *buf, uint32_t i) {
   FIO_NAME2(fio_u, buf32_local)(buf, fio_bswap32(i));
 }
 /** Writes a local 64 bit number to an unaligned buffer in reversed order. */
-HFUNC void FIO_NAME2(fio_u, buf64_bswap)(void *buf, uint64_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf64_bswap)(void *buf, uint64_t i) {
   FIO_NAME2(fio_u, buf64_local)(buf, fio_bswap64(i));
 }
 
 #if __LITTLE_ENDIAN__
 /** Converts an unaligned byte stream to a 16 bit number (Big Endian). */
-HFUNC uint16_t FIO_NAME2(fio_buf, u16)(const void *c) { /* fio_buf2u16 */
+FIO_IFUNC uint16_t FIO_NAME2(fio_buf, u16)(const void *c) { /* fio_buf2u16 */
   return FIO_NAME2(fio_buf, u16_bswap)(c);
 }
 /** Converts an unaligned byte stream to a 32 bit number (Big Endian). */
-HFUNC uint32_t FIO_NAME2(fio_buf, u32)(const void *c) { /* fio_buf2u32 */
+FIO_IFUNC uint32_t FIO_NAME2(fio_buf, u32)(const void *c) { /* fio_buf2u32 */
   return FIO_NAME2(fio_buf, u32_bswap)(c);
 }
 /** Converts an unaligned byte stream to a 64 bit number (Big Endian). */
-HFUNC uint64_t FIO_NAME2(fio_buf, u64)(const void *c) { /* fio_buf2u64 */
+FIO_IFUNC uint64_t FIO_NAME2(fio_buf, u64)(const void *c) { /* fio_buf2u64 */
   return FIO_NAME2(fio_buf, u64_bswap)(c);
 }
 /** Converts an unaligned byte stream to a 16 bit number (Little Endian). */
-HFUNC uint16_t FIO_NAME2(fio_buf, u16_little)(const void *c) { /* fio_buf2u16 */
-  return FIO_NAME2(fio_buf, u16_local)(c);
+FIO_IFUNC uint16_t FIO_NAME2(fio_buf, u16_little)(const void *c) {
+  return FIO_NAME2(fio_buf, u16_local)(c); /* fio_buf2u16 */
 }
 /** Converts an unaligned byte stream to a 32 bit number (Little Endian). */
-HFUNC uint32_t FIO_NAME2(fio_buf, u32_little)(const void *c) { /* fio_buf2u32 */
-  return FIO_NAME2(fio_buf, u32_local)(c);
+FIO_IFUNC uint32_t FIO_NAME2(fio_buf, u32_little)(const void *c) {
+  return FIO_NAME2(fio_buf, u32_local)(c); /* fio_buf2u32 */
 }
 /** Converts an unaligned byte stream to a 64 bit number (Little Endian). */
-HFUNC uint64_t FIO_NAME2(fio_buf, u64_little)(const void *c) { /* fio_buf2u64 */
-  return FIO_NAME2(fio_buf, u64_local)(c);
+FIO_IFUNC uint64_t FIO_NAME2(fio_buf, u64_little)(const void *c) {
+  return FIO_NAME2(fio_buf, u64_local)(c); /* fio_buf2u64 */
 }
 
 /** Writes a local 16 bit number to an unaligned buffer in Big Endian. */
-HFUNC void FIO_NAME2(fio_u, buf16)(void *buf, uint16_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf16)(void *buf, uint16_t i) {
   FIO_NAME2(fio_u, buf16_bswap)(buf, i);
 }
 /** Writes a local 32 bit number to an unaligned buffer in Big Endian. */
-HFUNC void FIO_NAME2(fio_u, buf32)(void *buf, uint32_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf32)(void *buf, uint32_t i) {
   FIO_NAME2(fio_u, buf32_bswap)(buf, i);
 }
 /** Writes a local 64 bit number to an unaligned buffer in Big Endian. */
-HFUNC void FIO_NAME2(fio_u, buf64)(void *buf, uint64_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf64)(void *buf, uint64_t i) {
   FIO_NAME2(fio_u, buf64_bswap)(buf, i);
 }
 /** Writes a local 16 bit number to an unaligned buffer in Little Endian. */
-HFUNC void FIO_NAME2(fio_u, buf16_little)(void *buf, uint16_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf16_little)(void *buf, uint16_t i) {
   FIO_NAME2(fio_u, buf16_local)(buf, i);
 }
 /** Writes a local 32 bit number to an unaligned buffer in Little Endian. */
-HFUNC void FIO_NAME2(fio_u, buf32_little)(void *buf, uint32_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf32_little)(void *buf, uint32_t i) {
   FIO_NAME2(fio_u, buf32_local)(buf, i);
 }
 /** Writes a local 64 bit number to an unaligned buffer in Little Endian. */
-HFUNC void FIO_NAME2(fio_u, buf64_little)(void *buf, uint64_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf64_little)(void *buf, uint64_t i) {
   FIO_NAME2(fio_u, buf64_local)(buf, i);
 }
 #else
 /** Converts an unaligned byte stream to a 16 bit number (Big Endian). */
-HFUNC uint16_t FIO_NAME2(fio_buf, u16)(const void *c) { /* fio_buf2u16 */
+FIO_IFUNC uint16_t FIO_NAME2(fio_buf, u16)(const void *c) { /* fio_buf2u16 */
   return FIO_NAME2(fio_buf, u16_local)(c);
 }
 /** Converts an unaligned byte stream to a 32 bit number (Big Endian). */
-HFUNC uint32_t FIO_NAME2(fio_buf, u32)(const void *c) { /* fio_buf2u32 */
+FIO_IFUNC uint32_t FIO_NAME2(fio_buf, u32)(const void *c) { /* fio_buf2u32 */
   return FIO_NAME2(fio_buf, u32_local)(c);
 }
 /** Converts an unaligned byte stream to a 64 bit number (Big Endian). */
-HFUNC uint64_t FIO_NAME2(fio_buf, u64)(const void *c) { /* fio_buf2u64 */
+FIO_IFUNC uint64_t FIO_NAME2(fio_buf, u64)(const void *c) { /* fio_buf2u64 */
   return FIO_NAME2(fio_buf, u64_local)(c);
 }
 /** Converts an unaligned byte stream to a 16 bit number (Little Endian). */
-HFUNC uint16_t FIO_NAME2(fio_buf, u16_little)(const void *c) { /* fio_buf2u16 */
-  return FIO_NAME2(fio_buf, u16_bswap)(c);
+FIO_IFUNC uint16_t FIO_NAME2(fio_buf, u16_little)(const void *c) {
+  return FIO_NAME2(fio_buf, u16_bswap)(c); /* fio_buf2u16 */
 }
 /** Converts an unaligned byte stream to a 32 bit number (Little Endian). */
-HFUNC uint32_t FIO_NAME2(fio_buf, u32_little)(const void *c) { /* fio_buf2u32 */
-  return FIO_NAME2(fio_buf, u32_bswap)(c);
+FIO_IFUNC uint32_t FIO_NAME2(fio_buf, u32_little)(const void *c) {
+  return FIO_NAME2(fio_buf, u32_bswap)(c); /* fio_buf2u32 */
 }
 /** Converts an unaligned byte stream to a 64 bit number (Little Endian). */
-HFUNC uint64_t FIO_NAME2(fio_buf, u64_little)(const void *c) { /* fio_buf2u64 */
-  return FIO_NAME2(fio_buf, u64_bswap)(c);
+FIO_IFUNC uint64_t FIO_NAME2(fio_buf, u64_little)(const void *c) {
+  return FIO_NAME2(fio_buf, u64_bswap)(c); /* fio_buf2u64 */
 }
 
 /** Writes a local 16 bit number to an unaligned buffer in Big Endian. */
-HFUNC void FIO_NAME2(fio_u, buf16)(void *buf, uint16_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf16)(void *buf, uint16_t i) {
   FIO_NAME2(fio_u, buf16_local)(buf, i);
 }
 /** Writes a local 32 bit number to an unaligned buffer in Big Endian. */
-HFUNC void FIO_NAME2(fio_u, buf32)(void *buf, uint32_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf32)(void *buf, uint32_t i) {
   FIO_NAME2(fio_u, buf32_local)(buf, i);
 }
 /** Writes a local 64 bit number to an unaligned buffer in Big Endian. */
-HFUNC void FIO_NAME2(fio_u, buf64)(void *buf, uint64_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf64)(void *buf, uint64_t i) {
   FIO_NAME2(fio_u, buf64_local)(buf, i);
 }
 /** Writes a local 16 bit number to an unaligned buffer in Little Endian. */
-HFUNC void FIO_NAME2(fio_u, buf16_little)(void *buf, uint16_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf16_little)(void *buf, uint16_t i) {
   FIO_NAME2(fio_u, buf16_bswap)(buf, i);
 }
 /** Writes a local 32 bit number to an unaligned buffer in Little Endian. */
-HFUNC void FIO_NAME2(fio_u, buf32_little)(void *buf, uint32_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf32_little)(void *buf, uint32_t i) {
   FIO_NAME2(fio_u, buf32_bswap)(buf, i);
 }
 /** Writes a local 64 bit number to an unaligned buffer in Little Endian. */
-HFUNC void FIO_NAME2(fio_u, buf64_little)(void *buf, uint64_t i) {
+FIO_IFUNC void FIO_NAME2(fio_u, buf64_little)(void *buf, uint64_t i) {
   FIO_NAME2(fio_u, buf64_bswap)(buf, i);
 }
 
 #endif
 
 /* *****************************************************************************
-Constant-time selectors
+Constant-Time Selectors
 ***************************************************************************** */
 
 /** Returns 1 if the expression is true (input isn't zero). */
-HFUNC uintptr_t fio_ct_true(uintptr_t cond) {
+FIO_IFUNC uintptr_t fio_ct_true(uintptr_t cond) {
   // promise that the highest bit is set if any bits are set, than shift.
   return ((cond | (0 - cond)) >> ((sizeof(cond) << 3) - 1));
 }
 
 /** Returns 1 if the expression is false (input is zero). */
-HFUNC uintptr_t fio_ct_false(uintptr_t cond) {
+FIO_IFUNC uintptr_t fio_ct_false(uintptr_t cond) {
   // fio_ct_true returns only one bit, XOR will inverse that bit.
   return fio_ct_true(cond) ^ 1;
 }
 
 /** Returns `a` if `cond` is boolean and true, returns b otherwise. */
-HFUNC uintptr_t fio_ct_if(uint8_t cond, uintptr_t a, uintptr_t b) {
+FIO_IFUNC uintptr_t fio_ct_if(uint8_t cond, uintptr_t a, uintptr_t b) {
   // b^(a^b) cancels b out. 0-1 => sets all bits.
   return (b ^ ((0 - (cond & 1)) & (a ^ b)));
 }
 
 /** Returns `a` if `cond` isn't zero (uses fio_ct_true), returns b otherwise. */
-HFUNC uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
+FIO_IFUNC uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
   // b^(a^b) cancels b out. 0-1 => sets all bits.
   return fio_ct_if(fio_ct_true(cond), a, b);
 }
@@ -1418,10 +1415,10 @@ Byte masking (XOR)
  *
  * Returns the end state of the mask.
  */
-HFUNC uint64_t fio___xmask_aligned64(uint64_t buf[],
-                                     size_t byte_len,
-                                     uint64_t mask,
-                                     uint64_t nonce) {
+FIO_IFUNC uint64_t fio___xmask_aligned64(uint64_t buf[],
+                                         size_t byte_len,
+                                         uint64_t mask,
+                                         uint64_t nonce) {
 
   register uint64_t m = mask;
   for (size_t i = byte_len >> 3; i; --i) {
@@ -1470,10 +1467,10 @@ HFUNC uint64_t fio___xmask_aligned64(uint64_t buf[],
  *
  * Returns the end state of the mask.
  */
-HFUNC uint64_t fio___xmask_unaligned_words(void *buf_,
-                                           size_t len,
-                                           uint64_t mask,
-                                           const uint64_t nonce) {
+FIO_IFUNC uint64_t fio___xmask_unaligned_words(void *buf_,
+                                               size_t len,
+                                               uint64_t mask,
+                                               const uint64_t nonce) {
   register uint8_t *buf = (uint8_t *)buf_;
   register uint64_t m = mask;
   for (size_t i = len >> 3; i; --i) {
@@ -1519,7 +1516,10 @@ HFUNC uint64_t fio___xmask_unaligned_words(void *buf_,
  *
  * Returns the end state of the mask.
  */
-HFUNC uint64_t fio_xmask(char *buf, size_t len, uint64_t mask, uint64_t nonce) {
+FIO_IFUNC uint64_t fio_xmask(char *buf,
+                             size_t len,
+                             uint64_t mask,
+                             uint64_t nonce) {
   if (!((uintptr_t)buf & 7)) {
     union {
       char *p8;
@@ -1538,7 +1538,7 @@ Hemming Distance and bit counting
 #if __has_builtin(__builtin_popcountll)
 #define fio_popcount(n) __builtin_popcountll(n)
 #else
-HFUNC int fio_popcount(uint64_t n) {
+FIO_IFUNC int fio_popcount(uint64_t n) {
   int c = 0;
   while (n) {
     ++c;
@@ -1586,23 +1586,23 @@ Bitmap access / manipulation
 ***************************************************************************** */
 
 /** Gets the state of a bit in a bitmap. */
-HFUNC uint8_t fio_bitmap_get(void *map, size_t bit) {
+FIO_IFUNC uint8_t fio_bitmap_get(void *map, size_t bit) {
   return ((((uint8_t *)(map))[(bit) >> 3] >> ((bit)&7)) & 1);
 }
 
 /** Sets the a bit in a bitmap (sets to 1). */
-HFUNC void fio_bitmap_set(void *map, size_t bit) {
+FIO_IFUNC void fio_bitmap_set(void *map, size_t bit) {
   fio_atomic_or((uint8_t *)(map) + ((bit) >> 3), (1UL << ((bit)&7)));
 }
 
 /** Unsets the a bit in a bitmap (sets to 0). */
-HFUNC void fio_bitmap_unset(void *map, size_t bit) {
+FIO_IFUNC void fio_bitmap_unset(void *map, size_t bit) {
   fio_atomic_and((uint8_t *)(map) + ((bit) >> 3),
                  (uint8_t)(~(1UL << ((bit)&7))));
 }
 
 /** Flips the a bit in a bitmap (sets to 0 if 1, sets to 1 if 0). */
-HFUNC void fio_bitmap_flip(void *map, size_t bit) {
+FIO_IFUNC void fio_bitmap_flip(void *map, size_t bit) {
   fio_atomic_xor((uint8_t *)(map) + ((bit) >> 3), (1UL << ((bit)&7)));
 }
 
@@ -1823,8 +1823,8 @@ Memory Allocation - forced bypass
 /* *****************************************************************************
 Aligned memory copying
 ***************************************************************************** */
-#define FIO_MEMCOPY_HFUNC_ALIGNED(type, size)                                  \
-  HFUNC void fio___memcpy_##size##b(                                           \
+#define FIO_MEMCOPY_FIO_IFUNC_ALIGNED(type, size)                              \
+  FIO_IFUNC void fio___memcpy_##size##b(                                       \
       void *restrict dest_, const void *restrict src_, size_t units) {         \
     type *dest = (type *)dest_;                                                \
     type *src = (type *)src_;                                                  \
@@ -1882,12 +1882,13 @@ Aligned memory copying
       *(dest++) = *(src++);                                                    \
     }                                                                          \
   }
-FIO_MEMCOPY_HFUNC_ALIGNED(uint16_t, 2)
-FIO_MEMCOPY_HFUNC_ALIGNED(uint32_t, 4)
-FIO_MEMCOPY_HFUNC_ALIGNED(uint64_t, 8)
+FIO_MEMCOPY_FIO_IFUNC_ALIGNED(uint16_t, 2)
+FIO_MEMCOPY_FIO_IFUNC_ALIGNED(uint32_t, 4)
+FIO_MEMCOPY_FIO_IFUNC_ALIGNED(uint64_t, 8)
 
 /** Copies 16 byte `units` of size_t aligned memory blocks */
-HFUNC void fio___memcpy_16byte(void *dest_, const void *src_, size_t units) {
+FIO_IFUNC void
+fio___memcpy_16byte(void *dest_, const void *src_, size_t units) {
 #if SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
   fio___memcpy_8b(dest_, src_, units << 1);
 #elif SIZE_MAX == 0xFFFFFFFF       /* 32 bit size_t */
@@ -1921,7 +1922,8 @@ Big memory allocation macros and helpers (page allocation / mmap)
 /*
  * allocates memory using `mmap`, but enforces alignment.
  */
-HSFUNC void *FIO_MEM_PAGE_ALLOC_def_func(size_t pages, uint8_t alignment_log) {
+FIO_SFUNC void *FIO_MEM_PAGE_ALLOC_def_func(size_t pages,
+                                            uint8_t alignment_log) {
   void *result;
   static void *next_alloc = (void *)0x01;
   const size_t alignment_mask = (1ULL << alignment_log) - 1;
@@ -1973,10 +1975,10 @@ HSFUNC void *FIO_MEM_PAGE_ALLOC_def_func(size_t pages, uint8_t alignment_log) {
 /*
  * Re-allocates memory using `mmap`, enforcing alignment.
  */
-HSFUNC void *FIO_MEM_PAGE_REALLOC_def_func(void *mem,
-                                           size_t prev_pages,
-                                           size_t new_pages,
-                                           uint8_t alignment_log) {
+FIO_SFUNC void *FIO_MEM_PAGE_REALLOC_def_func(void *mem,
+                                              size_t prev_pages,
+                                              size_t new_pages,
+                                              uint8_t alignment_log) {
   const size_t prev_len = prev_pages << FIO_MEM_PAGE_SIZE_LOG;
   const size_t new_len = new_pages << FIO_MEM_PAGE_SIZE_LOG;
   if (new_len > prev_len) {
@@ -2014,29 +2016,30 @@ HSFUNC void *FIO_MEM_PAGE_REALLOC_def_func(void *mem,
 }
 
 /* frees memory using `munmap`. */
-HFUNC void FIO_MEM_PAGE_FREE_def_func(void *mem, size_t pages) {
+FIO_IFUNC void FIO_MEM_PAGE_FREE_def_func(void *mem, size_t pages) {
   munmap(mem, (pages << FIO_MEM_PAGE_SIZE_LOG));
 }
 
 #else
 
-HFUNC void *FIO_MEM_PAGE_ALLOC_def_func(size_t pages, uint8_t alignment_log) {
+FIO_IFUNC void *FIO_MEM_PAGE_ALLOC_def_func(size_t pages,
+                                            uint8_t alignment_log) {
   // return aligned_alloc((pages << 12), (1UL << alignment_log));
   exit(-1);
   (void)pages;
   (void)alignment_log;
 }
 
-HFUNC void *FIO_MEM_PAGE_REALLOC_def_func(void *mem,
-                                          size_t prev_pages,
-                                          size_t new_pages,
-                                          uint8_t alignment_log) {
+FIO_IFUNC void *FIO_MEM_PAGE_REALLOC_def_func(void *mem,
+                                              size_t prev_pages,
+                                              size_t new_pages,
+                                              uint8_t alignment_log) {
   (void)prev_pages;
   (void)alignment_log;
   return realloc(mem, (new_pages << 12));
 }
 
-HFUNC void FIO_MEM_PAGE_FREE_def_func(void *mem, size_t pages) {
+FIO_IFUNC void FIO_MEM_PAGE_FREE_def_func(void *mem, size_t pages) {
   free(mem);
   (void)pages;
 }
@@ -2137,7 +2140,7 @@ struct fio___mem_block_node_s {
 static long double fio___mem_on_malloc_zero;
 
 /* retrieve root block */
-HSFUNC fio___mem_block_s *fio___mem_block_root(fio___mem_block_s *b) {
+FIO_SFUNC fio___mem_block_s *fio___mem_block_root(fio___mem_block_s *b) {
   return FIO_PTR_MATH_SUB(
       fio___mem_block_s, b, b->root * FIO_MEMORY_BLOCK_SIZE);
 }
@@ -2147,7 +2150,7 @@ Arena allocation / deallocation
 ***************************************************************************** */
 
 /* see destructor at: fio___mem_destroy */
-HSFUNC void __attribute__((constructor)) fio___mem_state_allocate(void) {
+FIO_SFUNC void __attribute__((constructor)) fio___mem_state_allocate(void) {
   if (fio___mem_state)
     return;
 #ifdef _SC_NPROCESSORS_ONLN
@@ -2195,7 +2198,7 @@ HSFUNC void __attribute__((constructor)) fio___mem_state_allocate(void) {
 #endif
 }
 
-HSFUNC void fio___mem_state_deallocate(void) {
+FIO_SFUNC void fio___mem_state_deallocate(void) {
   if (!fio___mem_state)
     return;
   const size_t pages =
@@ -2213,7 +2216,7 @@ Memory arena management and selection
 static __thread volatile fio___mem_arena_s *fio___mem_arena =
     (fio___mem_arena_s *)NULL;
 
-HSFUNC void fio___mem_arena_aquire(void) {
+FIO_SFUNC void fio___mem_arena_aquire(void) {
   if (!fio___mem_state) {
     fio___mem_state_allocate();
   }
@@ -2232,7 +2235,7 @@ HSFUNC void fio___mem_arena_aquire(void) {
   }
 }
 
-HFUNC void fio___mem_arena_release() { fio_unlock(&fio___mem_arena->lock); }
+FIO_IFUNC void fio___mem_arena_release() { fio_unlock(&fio___mem_arena->lock); }
 
 /* *****************************************************************************
 Allocator debugging helpers
@@ -2305,7 +2308,7 @@ static size_t fio___mem_block_count;
 Block allocation and rotation
 ***************************************************************************** */
 
-HSFUNC fio___mem_block_s *fio___mem_block_alloc(void) {
+FIO_SFUNC fio___mem_block_s *fio___mem_block_alloc(void) {
   fio___mem_block_s *b = (fio___mem_block_s *)FIO_MEM_PAGE_ALLOC(
       FIO_MEM_BYTES2PAGES(FIO_MEMORY_BLOCKS_PER_ALLOCATION *
                           FIO_MEMORY_BLOCK_SIZE),
@@ -2336,7 +2339,7 @@ HSFUNC fio___mem_block_s *fio___mem_block_alloc(void) {
   return b;
 }
 
-HSFUNC void fio___mem_block_free(fio___mem_block_s *b) {
+FIO_SFUNC void fio___mem_block_free(fio___mem_block_s *b) {
   b = FIO_PTR_MATH_RMASK(fio___mem_block_s, b, FIO_MEMORY_BLOCK_SIZE_LOG);
   if (!b || fio_atomic_sub(&b->ref, 1)) {
     /* block slice still in use */
@@ -2371,7 +2374,7 @@ HSFUNC void fio___mem_block_free(fio___mem_block_s *b) {
 }
 
 /* rotates block in arena */
-HSFUNC void fio___mem_block_rotate(void) {
+FIO_SFUNC void fio___mem_block_rotate(void) {
   fio___mem_block_s *to_free = fio___mem_arena->block; /* keep memory pool */
   fio___mem_arena->block = (fio___mem_block_s *)NULL;
   fio_lock(&fio___mem_state->lock);
@@ -2395,7 +2398,7 @@ HSFUNC void fio___mem_block_rotate(void) {
   fio___mem_block_free(to_free);
 }
 
-HSFUNC void *fio___mem_block_slice(size_t bytes) {
+FIO_SFUNC void *fio___mem_block_slice(size_t bytes) {
   const uint16_t max =
       ((FIO_MEMORY_BLOCK_SIZE - FIO_MEMORY_BLOCK_HEADER_SIZE) >> 4);
   void *r = NULL;
@@ -2421,7 +2424,7 @@ finish:
 Allocator Destruction
 ***************************************************************************** */
 
-HSFUNC void __attribute__((destructor)) fio___mem_destroy(void) {
+FIO_SFUNC void __attribute__((destructor)) fio___mem_destroy(void) {
   if (!fio___mem_state)
     return;
   FIO_MEMORY_PRINT_BLOCK_STAT();
@@ -2984,7 +2987,7 @@ IFUNC void fio_rand_feed2seed(void *buf_, size_t len) {
 }
 
 /* used here, defined later */
-HFUNC uint64_t fio_time_nano();
+FIO_IFUNC uint64_t fio_time_nano();
 
 IFUNC void fio_rand_reseed(void) {
   const size_t jitter_samples = 16 | (fio___rand_state[0] & 15);
@@ -3192,7 +3195,7 @@ typedef struct {
 } fio___number_s;
 
 /** Reads number information in base 2. Returned expo in base 2. */
-HFUNC fio___number_s fio___aton_read_b2_b2(char **pstr) {
+FIO_IFUNC fio___number_s fio___aton_read_b2_b2(char **pstr) {
   fio___number_s r = (fio___number_s){0};
   const uint64_t mask = ((1ULL) << ((sizeof(mask) << 3) - 1));
   while (**pstr >= '0' && **pstr <= '1' && !(r.val & mask)) {
@@ -3207,7 +3210,7 @@ HFUNC fio___number_s fio___aton_read_b2_b2(char **pstr) {
 }
 
 /** Reads number information, up to base 10 numbers. Returned expo in `base`. */
-HFUNC fio___number_s fio___aton_read_b2_b10(char **pstr, uint8_t base) {
+FIO_IFUNC fio___number_s fio___aton_read_b2_b10(char **pstr, uint8_t base) {
   fio___number_s r = (fio___number_s){0};
   const uint64_t limit = ((~0ULL) / base) - (base - 1);
   while (**pstr >= '0' && **pstr < ('0' + base) && r.val <= (limit)) {
@@ -3222,7 +3225,7 @@ HFUNC fio___number_s fio___aton_read_b2_b10(char **pstr, uint8_t base) {
 }
 
 /** Reads number information for base 16 (hex). Returned expo in base 4. */
-HFUNC fio___number_s fio___aton_read_b2_b16(char **pstr) {
+FIO_IFUNC fio___number_s fio___aton_read_b2_b16(char **pstr) {
   fio___number_s r = (fio___number_s){0};
   const uint64_t mask = (~0ULL) << ((sizeof(mask) << 3) - 4);
   for (; !(r.val & mask);) {
@@ -3791,7 +3794,7 @@ typedef struct {
  * (short lists). However, for complex IO needs or heavier loads, use the
  * system's native IO API, such as kqueue or epoll.
  */
-HFUNC int fio_sock_poll(fio_sock_poll_args args);
+FIO_IFUNC int fio_sock_poll(fio_sock_poll_args args);
 #define fio_sock_poll(...) fio_sock_poll((fio_sock_poll_args){__VA_ARGS__})
 
 typedef enum {
@@ -3808,9 +3811,9 @@ typedef enum {
  *
  * The `port` string will be ignored when `FIO_SOCK_UNIX` is set.
  */
-HFUNC int fio_sock_open(const char *restrict address,
-                        const char *restrict port,
-                        uint16_t flags);
+FIO_IFUNC int fio_sock_open(const char *restrict address,
+                            const char *restrict port,
+                            uint16_t flags);
 
 /**
  * Attempts to resolve an address to a valid IP6 / IP4 address pointer.
@@ -3820,12 +3823,12 @@ HFUNC int fio_sock_open(const char *restrict address,
  *
  * The address should be freed using `fio_sock_address_free`.
  */
-HFUNC struct addrinfo *fio_sock_address_new(const char *restrict address,
-                                            const char *restrict port,
-                                            int sock_type);
+FIO_IFUNC struct addrinfo *fio_sock_address_new(const char *restrict address,
+                                                const char *restrict port,
+                                                int sock_type);
 
 /** Frees the pointer returned by `fio_sock_address_new`. */
-HFUNC void fio_sock_address_free(struct addrinfo *a);
+FIO_IFUNC void fio_sock_address_free(struct addrinfo *a);
 
 /** Creates a new network socket and binds it to a local address. */
 SFUNC int fio_sock_open_local(struct addrinfo *addr, int nonblock);
@@ -3844,7 +3847,7 @@ IO Poll - Implementation (always static / inlined)
 ***************************************************************************** */
 
 int fio_sock_poll____(void); /* sublime text marker */
-HFUNC int fio_sock_poll FIO_NOOP(fio_sock_poll_args args) {
+FIO_IFUNC int fio_sock_poll FIO_NOOP(fio_sock_poll_args args) {
   size_t poll_count = 0;
   size_t event_count = 0;
   size_t limit = 0;
@@ -3889,9 +3892,9 @@ empty_list:
  *
  * The `port` string will be ignored when `FIO_SOCK_UNIX` is set.
  */
-HFUNC int fio_sock_open(const char *restrict address,
-                        const char *restrict port,
-                        uint16_t flags) {
+FIO_IFUNC int fio_sock_open(const char *restrict address,
+                            const char *restrict port,
+                            uint16_t flags) {
   struct addrinfo *addr = NULL;
   int fd;
   switch ((flags & ((uint16_t)FIO_SOCK_TCP | (uint16_t)FIO_SOCK_UDP |
@@ -3937,7 +3940,7 @@ HFUNC int fio_sock_open(const char *restrict address,
   return -1;
 }
 
-HFUNC struct addrinfo *
+FIO_IFUNC struct addrinfo *
 fio_sock_address_new(const char *restrict address,
                      const char *restrict port,
                      int sock_type /*i.e., SOCK_DGRAM */) {
@@ -3954,7 +3957,7 @@ fio_sock_address_new(const char *restrict address,
   return a;
 }
 
-HFUNC void fio_sock_address_free(struct addrinfo *a) { freeaddrinfo(a); }
+FIO_IFUNC void fio_sock_address_free(struct addrinfo *a) { freeaddrinfo(a); }
 
 /* *****************************************************************************
 FIO_SOCK - Implementation
@@ -5793,15 +5796,16 @@ typedef struct {
   FIO_MAP_TYPE value;
 } FIO_NAME(FIO_MAP_NAME, couplet_s);
 
-HFUNC void FIO_NAME(FIO_MAP_NAME,
-                    _couplet_copy)(FIO_NAME(FIO_MAP_NAME, couplet_s) * dest,
-                                   FIO_NAME(FIO_MAP_NAME, couplet_s) * src) {
+FIO_IFUNC void
+FIO_NAME(FIO_MAP_NAME, _couplet_copy)(FIO_NAME(FIO_MAP_NAME, couplet_s) * dest,
+                                      FIO_NAME(FIO_MAP_NAME, couplet_s) * src) {
   FIO_MAP_KEY_COPY((dest->key), (src->key));
   FIO_MAP_TYPE_COPY((dest->value), (src->value));
 }
 
-HFUNC void FIO_NAME(FIO_MAP_NAME,
-                    _couplet_destroy)(FIO_NAME(FIO_MAP_NAME, couplet_s) * c) {
+FIO_IFUNC void FIO_NAME(FIO_MAP_NAME,
+                        _couplet_destroy)(FIO_NAME(FIO_MAP_NAME, couplet_s) *
+                                          c) {
   FIO_MAP_KEY_DESTROY(c->key);
   FIO_MAP_TYPE_DESTROY(c->value);
   (void)c; /* in case where macros do nothing */
@@ -5892,19 +5896,19 @@ Hash Map / Set - API (initialization)
 /**
  * Allocates a new map on the heap.
  */
-HFUNC FIO_MAP_PTR FIO_NAME(FIO_MAP_NAME, new)(void);
+FIO_IFUNC FIO_MAP_PTR FIO_NAME(FIO_MAP_NAME, new)(void);
 
 /**
  * Frees a map that was allocated on the heap.
  */
-HFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m);
+FIO_IFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m);
 
 #endif /* FIO_REF_CONSTRUCTOR_ONLY */
 
 /**
  * Destroys the map's internal data and re-initializes it.
  */
-HFUNC void FIO_NAME(FIO_MAP_NAME, destroy)(FIO_MAP_PTR m);
+FIO_IFUNC void FIO_NAME(FIO_MAP_NAME, destroy)(FIO_MAP_PTR m);
 
 /* *****************************************************************************
 Hash Map / Set - API (hash map only)
@@ -5917,19 +5921,19 @@ SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
                                                FIO_MAP_KEY key);
 
 /** Returns a pointer to the object in the hash map (if any) or NULL. */
-HFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m,
-                                                    FIO_MAP_HASH hash,
-                                                    FIO_MAP_KEY key);
+FIO_IFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m,
+                                                        FIO_MAP_HASH hash,
+                                                        FIO_MAP_KEY key);
 /**
  * Inserts an object to the hash map, returning the new object.
  *
  * If `old` is given, existing data will be copied to that location.
  */
-HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
-                                               FIO_MAP_HASH hash,
-                                               FIO_MAP_KEY key,
-                                               FIO_MAP_TYPE obj,
-                                               FIO_MAP_TYPE *old);
+FIO_IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
+                                                   FIO_MAP_HASH hash,
+                                                   FIO_MAP_KEY key,
+                                                   FIO_MAP_TYPE obj,
+                                                   FIO_MAP_TYPE *old);
 
 /**
  * Removes an object from the hash map.
@@ -5938,10 +5942,10 @@ HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
  *
  * Returns 0 on success or -1 if the object couldn't be found.
  */
-HFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
-                                         FIO_MAP_HASH hash,
-                                         FIO_MAP_KEY key,
-                                         FIO_MAP_TYPE *old);
+FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
+                                             FIO_MAP_HASH hash,
+                                             FIO_MAP_KEY key,
+                                             FIO_MAP_TYPE *old);
 
 /* *****************************************************************************
 Hash Map / Set - API (set only)
@@ -5949,33 +5953,33 @@ Hash Map / Set - API (set only)
 #else /* !FIO_MAP_KEY */
 
 /** Returns the object in the hash map (if any) or FIO_MAP_TYPE_INVALID. */
-HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
-                                               FIO_MAP_HASH hash,
-                                               FIO_MAP_TYPE obj);
+FIO_IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
+                                                   FIO_MAP_HASH hash,
+                                                   FIO_MAP_TYPE obj);
 
 /** Returns a pointer to the object in the hash map (if any) or NULL. */
-HFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m,
-                                                    FIO_MAP_HASH hash,
-                                                    FIO_MAP_TYPE obj);
+FIO_IFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m,
+                                                        FIO_MAP_HASH hash,
+                                                        FIO_MAP_TYPE obj);
 /**
  * Inserts an object to the hash map, returning the existing or new object.
  *
  * If `old` is given, existing data will be copied to that location.
  */
-HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME,
-                            set_if_missing)(FIO_MAP_PTR m,
-                                            FIO_MAP_HASH hash,
-                                            FIO_MAP_TYPE existing);
+FIO_IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME,
+                                set_if_missing)(FIO_MAP_PTR m,
+                                                FIO_MAP_HASH hash,
+                                                FIO_MAP_TYPE existing);
 
 /**
  * Inserts an object to the hash map, returning the new object.
  *
  * If `old` is given, existing data will be copied to that location.
  */
-HFUNC void FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
-                                       FIO_MAP_HASH hash,
-                                       FIO_MAP_TYPE obj,
-                                       FIO_MAP_TYPE *old);
+FIO_IFUNC void FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
+                                           FIO_MAP_HASH hash,
+                                           FIO_MAP_TYPE obj,
+                                           FIO_MAP_TYPE *old);
 
 /**
  * Removes an object from the hash map.
@@ -5984,10 +5988,10 @@ HFUNC void FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
  *
  * Returns 0 on success or -1 if the object couldn't be found.
  */
-HFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
-                                         FIO_MAP_HASH hash,
-                                         FIO_MAP_TYPE obj,
-                                         FIO_MAP_TYPE *old);
+FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
+                                             FIO_MAP_HASH hash,
+                                             FIO_MAP_TYPE obj,
+                                             FIO_MAP_TYPE *old);
 
 #endif /* FIO_MAP_KEY */
 /* *****************************************************************************
@@ -5995,13 +5999,14 @@ Hash Map / Set - API (common)
 ***************************************************************************** */
 
 /** Returns the number of objects in the map. */
-HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, count)(FIO_MAP_PTR m);
+FIO_IFUNC uint32_t FIO_NAME(FIO_MAP_NAME, count)(FIO_MAP_PTR m);
 
 /** Returns the current map's theoretical capacity. */
-HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, capa)(FIO_MAP_PTR m);
+FIO_IFUNC uint32_t FIO_NAME(FIO_MAP_NAME, capa)(FIO_MAP_PTR m);
 
 /** Reserves a minimal capacity for the hash map. */
-HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, reserve)(FIO_MAP_PTR m, uint32_t capa);
+FIO_IFUNC uint32_t FIO_NAME(FIO_MAP_NAME, reserve)(FIO_MAP_PTR m,
+                                                   uint32_t capa);
 
 /**
  * Allows a peak at the Set's last element.
@@ -6009,13 +6014,13 @@ HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, reserve)(FIO_MAP_PTR m, uint32_t capa);
  * Remember that objects might be destroyed if the Set is altered
  * (`FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
  */
-HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, last)(FIO_MAP_PTR m);
+FIO_IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, last)(FIO_MAP_PTR m);
 
 /**
  * Allows the Hash to be momentarily used as a stack, destroying the last
  * object added (`FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
  */
-HFUNC int FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m, FIO_MAP_TYPE *old);
+FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m, FIO_MAP_TYPE *old);
 
 /** Rehashes the Hash Map / Set. Usually this is performed automatically. */
 SFUNC int FIO_NAME(FIO_MAP_NAME, rehash)(FIO_MAP_PTR m);
@@ -6125,6 +6130,11 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, __remove)(FIO_MAP_PTR m,
                                            FIO_MAP_OBJ o,
                                            FIO_MAP_TYPE *old);
 
+/** Internal: used for managing the Maps data structure. */
+SFUNC FIO_MAP_OBJ *FIO_NAME(FIO_MAP_NAME, __get)(FIO_MAP_PTR m,
+                                                 FIO_MAP_HASH hash,
+                                                 FIO_MAP_OBJ o);
+
 /* *****************************************************************************
 Hash Map / Set - API (initialization)
 ***************************************************************************** */
@@ -6133,7 +6143,7 @@ Hash Map / Set - API (initialization)
 /**
  * Allocates a new map on the heap.
  */
-HFUNC FIO_MAP_PTR FIO_NAME(FIO_MAP_NAME, new)(void) {
+FIO_IFUNC FIO_MAP_PTR FIO_NAME(FIO_MAP_NAME, new)(void) {
   FIO_MAP_PTR r;
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_MEM_CALLOC_(sizeof(*m), 1);
@@ -6145,7 +6155,7 @@ HFUNC FIO_MAP_PTR FIO_NAME(FIO_MAP_NAME, new)(void) {
 /**
  * Frees a map that was allocated on the heap.
  */
-HFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m_) {
+FIO_IFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m_) {
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
   if (!m)
@@ -6159,7 +6169,7 @@ HFUNC void FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR m_) {
 /**
  * Destroys the map's internal data and re-initializes it.
  */
-HFUNC void FIO_NAME(FIO_MAP_NAME, destroy)(FIO_MAP_PTR m_) {
+FIO_IFUNC void FIO_NAME(FIO_MAP_NAME, destroy)(FIO_MAP_PTR m_) {
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
   if (!m)
@@ -6185,9 +6195,9 @@ Hash Map / Set - API (hash map only)
 #ifdef FIO_MAP_KEY
 
 /** Returns the object in the hash map (if any) or FIO_MAP_TYPE_INVALID. */
-HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
-                                               FIO_MAP_HASH hash,
-                                               FIO_MAP_KEY key) {
+FIO_IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
+                                                   FIO_MAP_HASH hash,
+                                                   FIO_MAP_KEY key) {
   FIO_MAP_TYPE *p = FIO_NAME(FIO_MAP_NAME, get_ptr)(m, hash, key);
   if (p)
     return *p;
@@ -6195,28 +6205,25 @@ HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
 }
 
 /** Returns a pointer to the object in the hash map (if any) or NULL. */
-HFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m_,
-                                                    FIO_MAP_HASH hash,
-                                                    FIO_MAP_KEY key) {
+FIO_IFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m_,
+                                                        FIO_MAP_HASH hash,
+                                                        FIO_MAP_KEY key) {
   FIO_NAME(FIO_MAP_NAME, couplet_s) const c = {.key = key};
-  FIO_NAME(FIO_MAP_NAME, __pos_info_s)
-  i = FIO_NAME(FIO_MAP_NAME, __pos_info)(m_, hash, c);
-  if (i.index == (uint32_t)-1)
+  FIO_MAP_OBJ *p = FIO_NAME(FIO_MAP_NAME, __get)(m_, hash, c);
+  if (!p)
     return NULL;
-  const FIO_NAME(FIO_MAP_NAME, s) *m =
-      (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
-  return &m->data[i.index].obj.value;
+  return &p->value;
 }
 /**
  * Inserts an object to the hash map, returning the new object.
  *
  * If `old` is given, existing data will be copied to that location.
  */
-HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
-                                               FIO_MAP_HASH hash,
-                                               FIO_MAP_KEY key,
-                                               FIO_MAP_TYPE obj,
-                                               FIO_MAP_TYPE *old) {
+FIO_IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
+                                                   FIO_MAP_HASH hash,
+                                                   FIO_MAP_KEY key,
+                                                   FIO_MAP_TYPE obj,
+                                                   FIO_MAP_TYPE *old) {
   FIO_MAP_TYPE *p;
   FIO_NAME(FIO_MAP_NAME, couplet_s) const c = {.key = key, .value = obj};
   p = FIO_NAME(FIO_MAP_NAME, __set)(m, hash, c, old, 1);
@@ -6232,10 +6239,10 @@ HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
  *
  * Returns 0 on success or -1 if the object couldn't be found.
  */
-HFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
-                                         FIO_MAP_HASH hash,
-                                         FIO_MAP_KEY key,
-                                         FIO_MAP_TYPE *old) {
+FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
+                                             FIO_MAP_HASH hash,
+                                             FIO_MAP_KEY key,
+                                             FIO_MAP_TYPE *old) {
   FIO_NAME(FIO_MAP_NAME, couplet_s) const c = {.key = key};
   return FIO_NAME(FIO_MAP_NAME, __remove)(m, hash, c, old);
 }
@@ -6246,9 +6253,9 @@ Hash Map / Set - API (set only)
 #else /* !FIO_MAP_KEY */
 
 /** Returns the object in the hash map (if any) or FIO_MAP_TYPE_INVALID. */
-HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
-                                               FIO_MAP_HASH hash,
-                                               FIO_MAP_TYPE obj) {
+FIO_IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
+                                                   FIO_MAP_HASH hash,
+                                                   FIO_MAP_TYPE obj) {
   FIO_MAP_TYPE *p = FIO_NAME(FIO_MAP_NAME, get_ptr)(m, hash, obj);
   if (p)
     return *p;
@@ -6256,25 +6263,20 @@ HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, get)(FIO_MAP_PTR m,
 }
 
 /** Returns a pointer to the object in the hash map (if any) or NULL. */
-HFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m_,
-                                                    FIO_MAP_HASH hash,
-                                                    FIO_MAP_TYPE obj) {
-  FIO_NAME(FIO_MAP_NAME, __pos_info_s)
-  i = FIO_NAME(FIO_MAP_NAME, __pos_info)(m_, hash, obj);
-  if (i.index == (uint32_t)-1)
-    return NULL;
-  FIO_NAME(FIO_MAP_NAME, s) *const m =
-      (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
-  return &(FIO_MAP_OBJ2TYPE(m->data[i.index].obj));
+FIO_IFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, get_ptr)(FIO_MAP_PTR m_,
+                                                        FIO_MAP_HASH hash,
+                                                        FIO_MAP_TYPE obj) {
+  return FIO_NAME(FIO_MAP_NAME, __get)(m_, hash, obj);
 }
 /**
  * Inserts an object to the hash map, returning the existing or new object.
  *
  * If `old` is given, existing data will be copied to that location.
  */
-HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set_if_missing)(FIO_MAP_PTR m,
-                                                          FIO_MAP_HASH hash,
-                                                          FIO_MAP_TYPE obj) {
+FIO_IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME,
+                                set_if_missing)(FIO_MAP_PTR m,
+                                                FIO_MAP_HASH hash,
+                                                FIO_MAP_TYPE obj) {
   FIO_MAP_TYPE *p;
   p = FIO_NAME(FIO_MAP_NAME, __set)(m, hash, obj, NULL, 0);
   if (p)
@@ -6287,10 +6289,10 @@ HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set_if_missing)(FIO_MAP_PTR m,
  *
  * If `old` is given, existing data will be copied to that location.
  */
-HFUNC void FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
-                                       FIO_MAP_HASH hash,
-                                       FIO_MAP_TYPE obj,
-                                       FIO_MAP_TYPE *old) {
+FIO_IFUNC void FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
+                                           FIO_MAP_HASH hash,
+                                           FIO_MAP_TYPE obj,
+                                           FIO_MAP_TYPE *old) {
   FIO_NAME(FIO_MAP_NAME, __set)(m, hash, obj, old, 1);
 }
 
@@ -6301,10 +6303,10 @@ HFUNC void FIO_NAME(FIO_MAP_NAME, set)(FIO_MAP_PTR m,
  *
  * Returns 0 on success or -1 if the object couldn't be found.
  */
-HFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
-                                         FIO_MAP_HASH hash,
-                                         FIO_MAP_TYPE obj,
-                                         FIO_MAP_TYPE *old) {
+FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m,
+                                             FIO_MAP_HASH hash,
+                                             FIO_MAP_TYPE obj,
+                                             FIO_MAP_TYPE *old) {
   return FIO_NAME(FIO_MAP_NAME, __remove)(m, hash, obj, old);
 }
 
@@ -6314,7 +6316,7 @@ Hash Map / Set - API (common)
 ***************************************************************************** */
 
 /** Returns the number of objects in the map. */
-HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, count)(FIO_MAP_PTR m_) {
+FIO_IFUNC uint32_t FIO_NAME(FIO_MAP_NAME, count)(FIO_MAP_PTR m_) {
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
   if (!m)
@@ -6323,7 +6325,7 @@ HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, count)(FIO_MAP_PTR m_) {
 }
 
 /** Returns the current map's theoretical capacity. */
-HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, capa)(FIO_MAP_PTR m_) {
+FIO_IFUNC uint32_t FIO_NAME(FIO_MAP_NAME, capa)(FIO_MAP_PTR m_) {
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
   if (!m || !m->data || !m->used_bits)
@@ -6332,7 +6334,8 @@ HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, capa)(FIO_MAP_PTR m_) {
 }
 
 /** Reserves a minimal capacity for the hash map. */
-HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, reserve)(FIO_MAP_PTR m_, uint32_t capa) {
+FIO_IFUNC uint32_t FIO_NAME(FIO_MAP_NAME, reserve)(FIO_MAP_PTR m_,
+                                                   uint32_t capa) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
   if (!m)
@@ -6364,7 +6367,7 @@ HFUNC uint32_t FIO_NAME(FIO_MAP_NAME, reserve)(FIO_MAP_PTR m_, uint32_t capa) {
  * Remember that objects might be destroyed if the Set is altered
  * (`FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
  */
-HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, last)(FIO_MAP_PTR m_) {
+FIO_IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, last)(FIO_MAP_PTR m_) {
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
   if (!m || !m->data || !m->w)
@@ -6383,7 +6386,7 @@ HFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, last)(FIO_MAP_PTR m_) {
  * Allows the Hash to be momentarily used as a stack, destroying the last
  * object added (`FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
  */
-HFUNC int FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m_, FIO_MAP_TYPE *old) {
+FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, pop)(FIO_MAP_PTR m_, FIO_MAP_TYPE *old) {
   FIO_NAME(FIO_MAP_NAME, s) *const m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
   if (!m || !m->data || !m->w)
@@ -6410,7 +6413,7 @@ Hash Map / Set - helpers
 
 #ifdef FIO_MAP_HASH_OFFSET___INTERNAL
 /** Internal handler for the hash offset calculation. */
-HFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, __bit_avalanch)(uintptr_t hash) {
+FIO_IFUNC uintptr_t FIO_NAME(FIO_MAP_NAME, __bit_avalanch)(uintptr_t hash) {
   hash += (hash >> (sizeof(hash) << 2)) | (hash << (sizeof(hash) << 2));
   hash *= 1515868577ULL;
   hash += (hash >> (sizeof(hash) << 2)) | (hash << (sizeof(hash) << 2));
@@ -6567,7 +6570,8 @@ SFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, __set)(FIO_MAP_PTR m_,
   /* (last slot doesn't exist / reserved) */
   /* try to compress the array to before using more memory */
   if ((((i.map_pos == (uint32_t)-1) && m->map) || m->w == mask) &&
-      FIO_NAME(FIO_MAP_NAME, __compress_array)(m_)) {
+      (((m->count >> 1) > m->w) ||
+       FIO_NAME(FIO_MAP_NAME, __compress_array)(m_))) {
     if (m->used_bits == 32)
       goto failed_to_insert;
     const uint32_t __attribute__((unused)) old_mask = mask;
@@ -6646,6 +6650,18 @@ failed_to_allocate:
 failed_to_insert:
   FIO_MAP_OBJ_DESTROY(o);
   return NULL;
+}
+
+SFUNC FIO_MAP_OBJ *FIO_NAME(FIO_MAP_NAME, __get)(FIO_MAP_PTR m_,
+                                                 FIO_MAP_HASH hash,
+                                                 FIO_MAP_OBJ o) {
+  FIO_NAME(FIO_MAP_NAME, s) *const m =
+      (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(m_);
+  FIO_NAME(FIO_MAP_NAME, __pos_info_s)
+  i = FIO_NAME(FIO_MAP_NAME, __pos_info)(m_, hash, o);
+  if (i.index == (uint32_t)-1)
+    return NULL;
+  return &m->data[i.index].obj;
 }
 
 SFUNC int FIO_NAME(FIO_MAP_NAME, __remove)(FIO_MAP_PTR m_,
@@ -6812,8 +6828,8 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, compact)(FIO_MAP_PTR m_) {
 Hash Map / Set - Iteration
 ***************************************************************************** */
 
-HSFUNC __thread uint32_t FIO_NAME(FIO_MAP_NAME, __each_pos) = 0;
-HSFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
+FIO_SFUNC __thread uint32_t FIO_NAME(FIO_MAP_NAME, __each_pos) = 0;
+FIO_SFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
     FIO_NAME(FIO_MAP_NAME, __each_map) = NULL;
 
 /**
@@ -7238,8 +7254,9 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME,
                                       FIO_STRING_PTR const src);
 
 /** Alias for fio_str_concat */
-HFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME, join)(FIO_STRING_PTR dest,
-                                                     FIO_STRING_PTR const src) {
+FIO_IFUNC fio_str_info_s FIO_NAME(FIO_STRING_NAME,
+                                  join)(FIO_STRING_PTR dest,
+                                        FIO_STRING_PTR const src) {
   return FIO_NAME(FIO_STRING_NAME, concat)(dest, src);
 }
 
@@ -7394,8 +7411,8 @@ String Helpers
 #define FIO_STRING_CAPA2WORDS(num) (((num) + 1) | (sizeof(long double) - 1))
 
 /* Note: FIO_MEM_FREE_ might be different for each FIO_STRING_NAME */
-HSFUNC void FIO_NAME(FIO_STRING_NAME, __default_dealloc)(void *ptr,
-                                                         size_t size) {
+FIO_SFUNC void FIO_NAME(FIO_STRING_NAME, __default_dealloc)(void *ptr,
+                                                            size_t size) {
   FIO_MEM_FREE_(ptr, size);
   (void)ptr;  /* in case macro ignores value */
   (void)size; /* in case macro ignores value */
@@ -9298,19 +9315,19 @@ Collecting Monotonic / Real Time
 ***************************************************************************** */
 
 /** Returns human (watch) time... this value isn't as safe for measurements. */
-HFUNC struct timespec fio_time_real();
+FIO_IFUNC struct timespec fio_time_real();
 
 /** Returns monotonic time. */
-HFUNC struct timespec fio_time_mono();
+FIO_IFUNC struct timespec fio_time_mono();
 
 /** Returns monotonic time in nano-seconds (now in 1 billionth of a second). */
-HFUNC uint64_t fio_time_nano();
+FIO_IFUNC uint64_t fio_time_nano();
 
 /** Returns monotonic time in micro-seconds (now in 1 millionth of a second). */
-HFUNC uint64_t fio_time_micro();
+FIO_IFUNC uint64_t fio_time_micro();
 
 /** Returns monotonic time in milliseconds. */
-HFUNC uint64_t fio_time_milli();
+FIO_IFUNC uint64_t fio_time_milli();
 
 /**
  * A faster (yet less localized) alternative to `gmtime_r`.
@@ -9363,33 +9380,33 @@ Time Inline Helpers
 ***************************************************************************** */
 
 /** Returns human (watch) time... this value isn't as safe for measurements. */
-HFUNC struct timespec fio_time_real() {
+FIO_IFUNC struct timespec fio_time_real() {
   struct timespec t;
   clock_gettime(CLOCK_REALTIME, &t);
   return t;
 }
 
 /** Returns monotonic time. */
-HFUNC struct timespec fio_time_mono() {
+FIO_IFUNC struct timespec fio_time_mono() {
   struct timespec t;
   clock_gettime(CLOCK_MONOTONIC, &t);
   return t;
 }
 
 /** Returns monotonic time in nano-seconds (now in 1 micro of a second). */
-HFUNC uint64_t fio_time_nano() {
+FIO_IFUNC uint64_t fio_time_nano() {
   struct timespec t = fio_time_mono();
   return ((uint64_t)t.tv_sec * 1000000000) + (uint64_t)t.tv_nsec;
 }
 
 /** Returns monotonic time in micro-seconds (now in 1 millionth of a second). */
-HFUNC uint64_t fio_time_micro() {
+FIO_IFUNC uint64_t fio_time_micro() {
   struct timespec t = fio_time_mono();
   return ((uint64_t)t.tv_sec * 1000000) + (uint64_t)t.tv_nsec / 1000;
 }
 
 /** Returns monotonic time in milliseconds. */
-HFUNC uint64_t fio_time_milli() {
+FIO_IFUNC uint64_t fio_time_milli() {
   struct timespec t = fio_time_mono();
   return ((uint64_t)t.tv_sec * 1000) + (uint64_t)t.tv_nsec / 1000000;
 }
@@ -9773,7 +9790,7 @@ Queue API
 SFUNC void fio_queue_destroy(fio_queue_s *q);
 
 /** Creates a new queue object (allocated on the heap). */
-HFUNC fio_queue_s *fio_queue_new(void);
+FIO_IFUNC fio_queue_s *fio_queue_new(void);
 
 /** Frees a queue object after calling fio_queue_destroy. */
 SFUNC void fio_queue_free(fio_queue_s *q);
@@ -9808,7 +9825,7 @@ SFUNC int fio_queue_perform(fio_queue_s *q);
 SFUNC void fio_queue_perform_all(fio_queue_s *q);
 
 /** returns the number of tasks in the queue. */
-HFUNC size_t fio_queue_count(fio_queue_s *q);
+FIO_IFUNC size_t fio_queue_count(fio_queue_s *q);
 
 /* *****************************************************************************
 Timer Queue Types and API
@@ -9842,8 +9859,8 @@ typedef struct {
 } fio_timer_schedule_args_s;
 
 /** Adds a time-bound event to the timer queue. */
-FIO_SFUNC void fio_timer_schedule(fio_timer_queue_s *timer_queue,
-                                  fio_timer_schedule_args_s args);
+SFUNC void fio_timer_schedule(fio_timer_queue_s *timer_queue,
+                              fio_timer_schedule_args_s args);
 
 /** A MACRO allowing named arguments to be used. See fio_timer_schedule_args_s.
  */
@@ -9851,9 +9868,9 @@ FIO_SFUNC void fio_timer_schedule(fio_timer_queue_s *timer_queue,
   fio_timer_schedule((timer_queue), (fio_timer_schedule_args_s){__VA_ARGS__})
 
 /** Pushes due events from the timer queue to an event queue. */
-FIO_SFUNC size_t fio_timer_push2queue(fio_queue_s *queue,
-                                      fio_timer_queue_s *timer_queue,
-                                      uint64_t now_in_milliseconds);
+SFUNC size_t fio_timer_push2queue(fio_queue_s *queue,
+                                  fio_timer_queue_s *timer_queue,
+                                  uint64_t now_in_milliseconds);
 
 /*
  * Returns the millisecond at which the next event should occur.
@@ -9863,7 +9880,7 @@ FIO_SFUNC size_t fio_timer_push2queue(fio_queue_s *queue,
  * NOTE: unless manually specified, millisecond timers are relative to
  * `fio_time_milli()`.
  */
-HFUNC uint64_t fio_timer_next_at(fio_timer_queue_s *timer_queue);
+FIO_IFUNC uint64_t fio_timer_next_at(fio_timer_queue_s *timer_queue);
 
 /**
  * Clears any waiting timer bound tasks.
@@ -9876,14 +9893,14 @@ HFUNC uint64_t fio_timer_next_at(fio_timer_queue_s *timer_queue);
  * This is due to the fact that the tasks may try to reschedule themselves (if
  * they repeat).
  */
-FIO_SFUNC void fio_timer_clear(fio_timer_queue_s *timer_queue);
+SFUNC void fio_timer_clear(fio_timer_queue_s *timer_queue);
 
 /* *****************************************************************************
 Queue Inline Helpers
 ***************************************************************************** */
 
 /** Creates a new queue object (allocated on the heap). */
-HFUNC fio_queue_s *fio_queue_new(void) {
+FIO_IFUNC fio_queue_s *fio_queue_new(void) {
   fio_queue_s *q = (fio_queue_s *)FIO_MEM_CALLOC_(sizeof(*q), 1);
   if (!q)
     return NULL;
@@ -9892,7 +9909,7 @@ HFUNC fio_queue_s *fio_queue_new(void) {
 }
 
 /** returns the number of tasks in the queue. */
-HFUNC size_t fio_queue_count(fio_queue_s *q) { return q->count; }
+FIO_IFUNC size_t fio_queue_count(fio_queue_s *q) { return q->count; }
 
 /* *****************************************************************************
 Timer Queue Inline Helpers
@@ -9917,7 +9934,7 @@ struct fio___timer_event_s {
  * NOTE: unless manually specified, millisecond timers are relative to
  * `fio_time_milli()`.
  */
-HFUNC uint64_t fio_timer_next_at(fio_timer_queue_s *tq) {
+FIO_IFUNC uint64_t fio_timer_next_at(fio_timer_queue_s *tq) {
   if (!tq || !tq->next)
     return (uint64_t)-1;
   uint64_t v = (uint64_t)-1;
@@ -9951,7 +9968,8 @@ SFUNC void fio_queue_free(fio_queue_s *q) {
   FIO_MEM_FREE_(q, sizeof(*q));
 }
 
-HFUNC int fio___task_ring_push(fio___task_ring_s *r, fio_queue_task_s task) {
+FIO_IFUNC int fio___task_ring_push(fio___task_ring_s *r,
+                                   fio_queue_task_s task) {
   if (r->dir && r->r == r->w)
     return -1;
   r->buf[r->w] = task;
@@ -9963,7 +9981,8 @@ HFUNC int fio___task_ring_push(fio___task_ring_s *r, fio_queue_task_s task) {
   return 0;
 }
 
-HFUNC int fio___task_ring_unpop(fio___task_ring_s *r, fio_queue_task_s task) {
+FIO_IFUNC int fio___task_ring_unpop(fio___task_ring_s *r,
+                                    fio_queue_task_s task) {
   if (r->dir && r->r == r->w)
     return -1;
   if (!r->r) {
@@ -9975,7 +9994,7 @@ HFUNC int fio___task_ring_unpop(fio___task_ring_s *r, fio_queue_task_s task) {
   return 0;
 }
 
-HFUNC fio_queue_task_s fio___task_ring_pop(fio___task_ring_s *r) {
+FIO_IFUNC fio_queue_task_s fio___task_ring_pop(fio___task_ring_s *r) {
   fio_queue_task_s t = {.fn = NULL};
   if (!r->dir && r->r == r->w) {
     return t;
@@ -10146,7 +10165,7 @@ FIO_IFUNC void fio___timer_event_free(fio_timer_queue_s *tq,
   FIO_MEM_FREE_(t, sizeof(*t));
 }
 
-FIO_SFUNC void fio___timer_perform(void *timer_, void *t_) {
+SFUNC void fio___timer_perform(void *timer_, void *t_) {
   fio_timer_queue_s *tq = (fio_timer_queue_s *)timer_;
   fio___timer_event_s *t = (fio___timer_event_s *)t_;
   if (t->fn(t->udata1, t->udata2))
@@ -10155,9 +10174,9 @@ FIO_SFUNC void fio___timer_perform(void *timer_, void *t_) {
 }
 
 /** Pushes due events from the timer queue to an event queue. */
-FIO_SFUNC size_t fio_timer_push2queue(fio_queue_s *queue,
-                                      fio_timer_queue_s *timer,
-                                      uint64_t start_at) {
+SFUNC size_t fio_timer_push2queue(fio_queue_s *queue,
+                                  fio_timer_queue_s *timer,
+                                  uint64_t start_at) {
   size_t r = 0;
   if (!start_at)
     start_at = fio_time_milli();
@@ -10175,8 +10194,8 @@ FIO_SFUNC size_t fio_timer_push2queue(fio_queue_s *queue,
 
 void fio_timer_schedule___(void); /* sublimetext marker */
 /** Adds a time-bound event to the timer queue. */
-FIO_SFUNC void fio_timer_schedule FIO_NOOP(fio_timer_queue_s *timer,
-                                           fio_timer_schedule_args_s args) {
+SFUNC void fio_timer_schedule FIO_NOOP(fio_timer_queue_s *timer,
+                                       fio_timer_schedule_args_s args) {
   fio___timer_event_s *t = NULL;
   if (!timer || !args.fn || !args.every)
     goto no_timer_queue;
@@ -10206,7 +10225,7 @@ no_timer_queue:
  * This is due to the fact that the tasks may try to reschedule themselves (if
  * they repeat).
  */
-FIO_SFUNC void fio_timer_clear(fio_timer_queue_s *tq) {
+SFUNC void fio_timer_clear(fio_timer_queue_s *tq) {
   fio___timer_event_s *next;
   fio_lock(&tq->lock);
   next = tq->next;
@@ -10459,7 +10478,7 @@ typedef struct {
 CLI Parsing
 ***************************************************************************** */
 
-HSFUNC void fio___cli_map_line2alias(char const *line) {
+FIO_SFUNC void fio___cli_map_line2alias(char const *line) {
   fio___cli_cstr_s n = {.buf = line};
   while (n.buf[0] == '-') {
     while (n.buf[n.len] && n.buf[n.len] != ' ' && n.buf[n.len] != ',') {
@@ -10485,8 +10504,8 @@ HSFUNC void fio___cli_map_line2alias(char const *line) {
   }
 }
 
-HSFUNC char const *fio___cli_get_line_type(fio_cli_parser_data_s *parser,
-                                           const char *line) {
+FIO_SFUNC char const *fio___cli_get_line_type(fio_cli_parser_data_s *parser,
+                                              const char *line) {
   if (!line) {
     return NULL;
   }
@@ -10519,10 +10538,10 @@ found:
   return NULL;
 }
 
-HSFUNC void fio___cli_set_arg(fio___cli_cstr_s arg,
-                              char const *value,
-                              char const *line,
-                              fio_cli_parser_data_s *parser) {
+FIO_SFUNC void fio___cli_set_arg(fio___cli_cstr_s arg,
+                                 char const *value,
+                                 char const *line,
+                                 fio_cli_parser_data_s *parser) {
   char const *type = NULL;
   /* handle unnamed argument */
   if (!line || !arg.len) {
@@ -10913,334 +10932,6 @@ CLI - cleanup
 
 
 
-                  Hash Map for bigger items - less reallocations
-
-
-
-
-
-
-
-
-
-***************************************************************************** */
-
-#ifdef FIO_HMAP_NAME
-
-#ifndef FIO_HMAP_TYPE
-#define FIO_HMAP_TYPE void *
-#endif
-
-#ifndef FIO_HMAP_KEY
-#define FIO_HMAP_KEY void *
-#endif
-
-#ifndef FIO_HMAP_TYPE_CMP
-#define FIO_HMAP_TYPE_CMP(a, b) 1
-#endif
-
-#ifndef FIO_HMAP_TYPE_COPY
-#define FIO_HMAP_TYPE_COPY(dest, src) ((dest) = (src))
-#endif
-
-#ifndef FIO_HMAP_TYPE_DESTROY
-#define FIO_HMAP_TYPE_DESTROY(a)
-#endif
-
-#ifndef FIO_HMAP_KEY_CMP
-#define FIO_HMAP_KEY_CMP(a, b) 1
-#define FIO_HMAP_NO_COLLISIONS 1
-#endif
-
-#ifndef FIO_HMAP_KEY_COPY
-#define FIO_HMAP_KEY_COPY(dest, src) ((dest) = (src))
-#endif
-
-#ifndef FIO_HMAP_KEY_DESTROY
-#define FIO_HMAP_KEY_DESTROY(a)
-#endif
-
-#define FIO_HMAP_INVALID_POS ((uint32_t)-1)
-#define FIO_HMAP_MAX_SEEK (96)
-#define FIO_HMAP_CUCKOO_STEP (0x43F82D0B)
-
-/* *****************************************************************************
-Hash Map types
-***************************************************************************** */
-
-typedef struct {
-  uint32_t hash; /* the other half of the hash is the position in the array */
-  uint32_t pos;  /* the position in the ordered / data array */
-} FIO_NAME(FIO_HMAP_NAME, ___map_s);
-
-typedef struct {
-  uint64_t hash; /* the full hash value */
-  FIO_HMAP_KEY key;
-  FIO_HMAP_TYPE value;
-} FIO_NAME(FIO_HMAP_NAME, __data_s);
-
-typedef struct {
-  FIO_NAME(FIO_HMAP_NAME, __data_s) * data;
-  FIO_NAME(FIO_HMAP_NAME, ___map_s) * map;
-  uint32_t count;
-  uint16_t offset;
-  uint8_t bits;
-  uint8_t attacked;
-  uint8_t collisions;
-} FIO_NAME(FIO_HMAP_NAME, s);
-
-#ifdef FIO_PTR_TAG_TYPE
-#define FIO_HMAP_PTR FIO_PTR_TAG_TYPE
-#else
-#define FIO_HMAP_PTR FIO_NAME(FIO_HMAP_NAME, s) *
-#endif
-
-/* *****************************************************************************
-Hash Map helpers
-***************************************************************************** */
-
-IFUNC uint32_t FIO_NAME(FIO_HMAP_NAME, __hash4map)(FIO_HMAP_PTR m_,
-                                                   uint64_t hash) {
-  FIO_NAME(FIO_HMAP_NAME, s) *m =
-      (FIO_NAME(FIO_HMAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
-  return (hash ^ (hash >> (32 - ((m->bits) & 31)))) | 1;
-}
-
-SFUNC int FIO_NAME(FIO_HMAP_NAME, rehash)(FIO_HMAP_PTR m_);
-
-SFUNC uint32_t FIO_NAME(FIO_HMAP_NAME, __pos)(FIO_HMAP_PTR m_,
-                                              uint64_t hash,
-                                              FIO_HMAP_KEY key) {
-  FIO_NAME(FIO_HMAP_NAME, s) *m =
-      (FIO_NAME(FIO_HMAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
-  if (!m->map || !m->data)
-    return FIO_HMAP_INVALID_POS;
-  if (!hash)
-    hash = ~(uint64_t)0;
-  const uint32_t mask = ((uint32_t)1 << ((m->bits) & 31)) - 1;
-  const uint32_t target = FIO_NAME(FIO_HMAP_NAME, __hash4map)(m_, hash);
-  const uint32_t max_seek = mask > FIO_HMAP_MAX_SEEK ? FIO_HMAP_MAX_SEEK : mask;
-  uint32_t pos = (hash ^ (hash >> ((m->bits) & 31))) & mask;
-  if (m->offset >= ((1UL << (sizeof(m->offset) << 3)) - 8)) {
-    /* auto defragmentation when reaching offset's limit */
-    FIO_NAME(FIO_HMAP_NAME, rehash)(m_);
-  }
-#if !FIO_HMAP_NO_COLLISIONS
-  uint8_t full_collisions = 0;
-  if (m->collisions && m->offset)
-    FIO_NAME(FIO_HMAP_NAME, rehash)(m_);
-#endif
-
-  for (uint32_t i = 0; i < max_seek; ++i) {
-    if (!m->map[pos].hash) {
-      /* unused spot */
-      return pos;
-    }
-    if (m->map[pos].hash == target && m->map[pos].pos != FIO_HMAP_INVALID_POS) {
-      /* match / hole / collision */
-      const uint32_t o_pos = m->map[pos].pos;
-      if (m->data[o_pos].hash == hash) {
-        /* match / collision ? */
-#if FIO_HMAP_NO_COLLISIONS
-        return pos;
-#else
-        if (m->attacked || FIO_HMAP_KEY_CMP(m->data[o_pos].key, key)) {
-          return pos;
-        }
-        /* full collision! */
-        m->collisions |= 1;
-        if (++full_collisions >= 11)
-          m->attacked = 1;
-#endif
-      }
-      /* hole - nothing to do until rehashing */
-    }
-    pos = (pos + FIO_HMAP_CUCKOO_STEP) & mask;
-  }
-  return FIO_HMAP_INVALID_POS;
-  (void)key; /* if unused */
-}
-
-SFUNC int FIO_NAME(FIO_HMAP_NAME, rehash)(FIO_HMAP_PTR m_) {
-  FIO_NAME(FIO_HMAP_NAME, s) *m =
-      (FIO_NAME(FIO_HMAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
-  if (m->map)
-    FIO_MEM_FREE_(m->map, (1UL << m->bits) * sizeof(*m->map));
-  m->map = (FIO_NAME(FIO_HMAP_NAME, ___map_s) *)FIO_MEM_CALLOC_(
-      sizeof(*m->map), (1UL << m->bits));
-  if (!m->map)
-    return -1;
-  const uint32_t used_count = m->count + m->offset;
-  uint32_t w = 0;
-  m->offset = 0;
-  for (uint32_t i = 0; i < used_count; ++i) {
-    if (m->data[i].hash == 0)
-      continue;
-    if (w != i) {
-      m->data[w] = m->data[i];
-      m->data[i].hash = 0;
-    }
-    uint32_t pos =
-        FIO_NAME(FIO_HMAP_NAME, __pos)(m_, m->data[w].hash, m->data[w].key);
-    if (pos == FIO_HMAP_INVALID_POS) {
-      m->offset = used_count - m->count;
-      return -1;
-    }
-    m->map[pos] = (FIO_NAME(FIO_HMAP_NAME, ___map_s)){
-        .hash = FIO_NAME(FIO_HMAP_NAME, __hash4map)(m_, m->data[w].hash),
-        .pos = w,
-    };
-    ++w;
-  }
-  return 0;
-}
-
-SFUNC int FIO_NAME(FIO_HMAP_NAME, set)(FIO_HMAP_PTR m_,
-                                       uint64_t hash,
-                                       FIO_HMAP_KEY key,
-                                       FIO_HMAP_TYPE value,
-                                       FIO_HMAP_TYPE *old) {
-  FIO_NAME(FIO_HMAP_NAME, s) *m =
-      (FIO_NAME(FIO_HMAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
-  if (!hash)
-    hash = ~(uint64_t)0;
-  uint32_t pos = FIO_NAME(FIO_HMAP_NAME, __pos)(m_, hash, key);
-  if (pos == FIO_HMAP_INVALID_POS)
-    goto add_and_rehash;
-  if (!m->map[pos].hash || !m->map[pos].pos) {
-    /* new object - room in the map == room in the storage */
-    m->map[pos].pos = m->count + m->offset;
-    m->map[pos].hash = FIO_NAME(FIO_HMAP_NAME, __hash4map)(m_, hash);
-    m->data[m->count + m->offset].hash = hash;
-    FIO_HMAP_KEY_COPY((m->data[m->count + m->offset].key), key);
-    FIO_HMAP_TYPE_COPY((m->data[m->count + m->offset].value), value);
-    ++m->count;
-    if (old)
-      *old = (FIO_HMAP_TYPE){0};
-    return 0;
-  }
-  /* overwriting existing object */
-  if (old)
-    FIO_HMAP_TYPE_COPY((*old), (m->data[m->count + m->offset].value));
-  FIO_HMAP_TYPE_DESTROY((m->data[m->count + m->offset].value));
-  FIO_HMAP_TYPE_COPY((m->data[m->count + m->offset].value), value);
-  return 1;
-add_and_rehash:
-  if (m->map) {
-    FIO_MEM_FREE_(m->map, (1UL << m->bits) * sizeof(*m->map));
-    m->map = NULL;
-  }
-  m->data = (FIO_NAME(FIO_HMAP_NAME, __data_s) *)FIO_MEM_REALLOC_(
-      m->data,
-      (m->bits ? (1UL << m->bits) : 0) * sizeof(*m->data),
-      (1UL << (m->bits + 1)) * sizeof(*m->data),
-      (m->count + m->offset) * sizeof(*m->data));
-  if (!m->data) {
-#ifdef FIO_LOG2STDERR
-    FIO_LOG2STDERR("FATAL ERROR: no memory for map allocation.");
-#endif
-    exit(-1);
-  }
-  ++m->bits;
-  m->data[m->count + m->offset].hash = hash;
-  FIO_HMAP_KEY_COPY((m->data[m->count + m->offset].key), key);
-  FIO_HMAP_TYPE_COPY((m->data[m->count + m->offset].value), value);
-  ++m->count;
-  FIO_NAME(FIO_HMAP_NAME, rehash)(m_);
-  if (old)
-    *old = (FIO_HMAP_TYPE){0};
-  return 0;
-}
-
-IFUNC int FIO_NAME(FIO_HMAP_NAME, remove)(FIO_HMAP_PTR m_,
-                                          uint64_t hash,
-                                          FIO_HMAP_KEY key,
-                                          FIO_HMAP_TYPE *old) {
-  FIO_NAME(FIO_HMAP_NAME, s) *m =
-      (FIO_NAME(FIO_HMAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
-  if (!hash)
-    hash = ~(uint64_t)0;
-  uint32_t pos = FIO_NAME(FIO_HMAP_NAME, __pos)(m_, hash, key);
-  if (pos == FIO_HMAP_INVALID_POS || !m->map[pos].hash)
-    goto not_found;
-
-  if (1) {
-    /* mark position as invalid */
-    uint32_t tmp = m->map[pos].pos;
-    m->map[pos].pos = FIO_HMAP_INVALID_POS;
-    pos = tmp;
-  }
-  if (old)
-    FIO_HMAP_TYPE_COPY((*old), (m->data[pos].value));
-  FIO_HMAP_KEY_DESTROY((m->data[pos].key));
-  FIO_HMAP_TYPE_DESTROY((m->data[pos].value));
-  m->data[pos].hash = 0;
-  if (pos != m->count + m->offset - 1)
-    ++m->offset;
-  --m->count;
-  return 0;
-
-not_found:
-  if (old)
-    *old = (FIO_HMAP_TYPE){0};
-  return -1;
-}
-
-IFUNC FIO_HMAP_TYPE FIO_NAME(FIO_HMAP_NAME, get)(FIO_HMAP_PTR m_,
-                                                 uint64_t hash,
-                                                 FIO_HMAP_KEY key) {
-  FIO_NAME(FIO_HMAP_NAME, s) *m =
-      (FIO_NAME(FIO_HMAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
-  uint32_t pos = FIO_NAME(FIO_HMAP_NAME, __pos)(m_, hash, key);
-  if (pos == FIO_HMAP_INVALID_POS || !m->map[pos].hash ||
-      (pos = m->map[pos].pos) == FIO_HMAP_INVALID_POS || !m->data[pos].hash)
-    return (FIO_HMAP_TYPE){0};
-  return m->data[pos].value;
-}
-
-IFUNC void FIO_NAME(FIO_HMAP_NAME, destroy)(FIO_HMAP_PTR m_) {
-  FIO_NAME(FIO_HMAP_NAME, s) *m =
-      (FIO_NAME(FIO_HMAP_NAME, s) *)(FIO_PTR_UNTAG(m_));
-  if (!m->map)
-    return;
-  for (uint32_t i = 0; i < m->count + m->offset; ++i) {
-    if (m->data[i].hash == 0)
-      continue;
-    FIO_HMAP_KEY_DESTROY((m->data[i].key));
-    FIO_HMAP_TYPE_DESTROY((m->data[i].value));
-  }
-  FIO_MEM_FREE_(m->map, (1UL << m->bits) * sizeof(*m->map));
-  FIO_MEM_FREE_(m->data, (1UL << m->bits) * sizeof(*m->data));
-}
-
-/* *****************************************************************************
-Hash Map Cleanup
-***************************************************************************** */
-
-#undef FIO_HMAP_PTR
-#undef FIO_HMAP_TYPE
-#undef FIO_HMAP_KEY
-#undef FIO_HMAP_TYPE_CMP
-#undef FIO_HMAP_TYPE_COPY
-#undef FIO_HMAP_TYPE_DESTROY
-#undef FIO_HMAP_KEY_CMP
-#undef FIO_HMAP_KEY_COPY
-#undef FIO_HMAP_KEY_DESTROY
-#undef FIO_HMAP_NO_COLLISIONS
-#undef FIO_HMAP_NAME
-#endif
-
-/* *****************************************************************************
-
-
-
-
-
-
-
-
-
-
                       Reference Counting / Wrapper
                    (must be placed after all type macros)
 
@@ -11513,8 +11204,8 @@ JSON Parsing - Implementation - Parser
 Note: static Callacks must be implemented in the C file that uses the parser
 ***************************************************************************** */
 
-HFUNC const char *fio___json_skip_comments(const char *buffer,
-                                           const char *stop) {
+FIO_IFUNC const char *fio___json_skip_comments(const char *buffer,
+                                               const char *stop) {
   if (*buffer == '#' ||
       ((stop - buffer) > 2 && buffer[0] == '/' && buffer[1] == '/')) {
     /* EOL style comment, C style or Bash/Ruby style*/
@@ -11530,9 +11221,9 @@ HFUNC const char *fio___json_skip_comments(const char *buffer,
   return NULL;
 }
 
-HFUNC const char *fio___json_consume_string(fio_json_parser_s *p,
-                                            const char *buffer,
-                                            const char *stop) {
+FIO_IFUNC const char *fio___json_consume_string(fio_json_parser_s *p,
+                                                const char *buffer,
+                                                const char *stop) {
   const char *start = ++buffer;
   for (;;) {
     buffer = (const char *)memchr(buffer, '\"', stop - buffer);
@@ -11549,9 +11240,9 @@ HFUNC const char *fio___json_consume_string(fio_json_parser_s *p,
   return buffer + 1;
 }
 
-HFUNC const char *fio___json_consume_number(fio_json_parser_s *p,
-                                            const char *buffer,
-                                            const char *stop) {
+FIO_IFUNC const char *fio___json_consume_number(fio_json_parser_s *p,
+                                                const char *buffer,
+                                                const char *stop) {
 
   const char *const was = buffer;
   errno = 0; /* testo for E2BIG on number parsing */
@@ -11568,9 +11259,9 @@ HFUNC const char *fio___json_consume_number(fio_json_parser_s *p,
   return buffer;
 }
 
-HFUNC const char *fio___json_identify(fio_json_parser_s *p,
-                                      const char *buffer,
-                                      const char *stop) {
+FIO_IFUNC const char *fio___json_identify(fio_json_parser_s *p,
+                                          const char *buffer,
+                                          const char *stop) {
   /* Use `break` to change separator requirement status.
    * Use `continue` to keep separator requirement the same.
    */
@@ -11901,8 +11592,6 @@ Common cleanup
 #undef IFUNC
 #undef SFUNC_
 #undef IFUNC_
-#undef HSFUNC
-#undef HFUNC
 #undef FIO_PTR_TAG
 #undef FIO_PTR_UNTAG
 #undef FIO_PTR_TAG_TYPE
@@ -15459,58 +15148,6 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
 #undef HASHOFs
 
 /* *****************************************************************************
-Hash Map 2 type test
-***************************************************************************** */
-
-/* a simple set of numbers */
-#define FIO_HMAP_NAME hmap_____test
-#define FIO_HMAP_KEY size_t
-#define FIO_HMAP_TYPE size_t
-#define FIO_HMAP_KEY_CMP(a, b) ((a) == (b))
-#define FIO_PTR_TAG(p) fio___dynamic_types_test_tag(((uintptr_t)p))
-#define FIO_PTR_UNTAG(p) fio___dynamic_types_test_untag(((uintptr_t)p))
-#include __FILE__
-
-#define HASHOFi(i) i /* fio_risky_hash(&(i), sizeof((i)), 0) */
-
-TEST_FUNC void fio___dynamic_types_test___hmap_test(void) {
-  hmap_____test_s m = FIO_MAP_INIT;
-  fprintf(stderr, "* Testing dynamic hash map (2).\n");
-  FIO_T_ASSERT(m.count == 0, "freshly initialized map should have no objects");
-  for (size_t i = 0; i < TEST_REPEAT; ++i) {
-    hmap_____test_set(&m, HASHOFi(i), i, i + 1, NULL);
-  }
-
-  FIO_T_ASSERT(m.count == TEST_REPEAT,
-               "After inserting %zu items to hash map, got %zu items",
-               (size_t)TEST_REPEAT,
-               (size_t)m.count);
-  for (size_t i = 0; i < TEST_REPEAT; ++i) {
-    FIO_T_ASSERT(hmap_____test_get(&m, HASHOFi(i), i) == i + 1,
-                 "item retrival error in hash map.");
-  }
-  for (size_t i = 0; i < TEST_REPEAT; ++i) {
-    FIO_T_ASSERT(hmap_____test_get(&m, HASHOFi(i), i + 1) == 0,
-                 "item retrival error in hash map - object comparison error?");
-  }
-  for (size_t i = 1; i < TEST_REPEAT; i += 2) {
-    FIO_T_ASSERT(hmap_____test_remove(&m, HASHOFi(i), i, NULL) == 0,
-                 "item removal error in hash map - object wasn't found?");
-  }
-  for (size_t i = 1; i < TEST_REPEAT; i += 2) {
-    FIO_T_ASSERT(hmap_____test_get(&m, HASHOFi(i), i) == 0,
-                 "item retrival error in hash map - destroyed object alive?");
-  }
-  for (size_t i = 0; i < TEST_REPEAT; i += 2) {
-    FIO_T_ASSERT(hmap_____test_get(&m, HASHOFi(i), i) == i + 1,
-                 "item retrival error in hash map with holes.");
-  }
-  hmap_____test_destroy(&m);
-}
-
-#undef HASHOFi
-#undef HASHOFs
-/* *****************************************************************************
 Dynamic Strings - test
 ***************************************************************************** */
 
@@ -17323,8 +16960,6 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fio___dynamic_types_test___array_test();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___map_test();
-  fprintf(stderr, "===============\n");
-  fio___dynamic_types_test___hmap_test();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___str();
   fprintf(stderr, "===============\n");
