@@ -710,12 +710,6 @@ test/c99:| c99.___clean
 	@CSTD=-std=c99 DEBUG=1 $(MAKE) test/build
 	@echo "* C99 compilation success!"
 
-.PHONY : test/collisions
-test/collisions: | create_tree
-	@$(CC) -c ./tests/collisions.c -o $(TMP_ROOT)/collisions.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
-	@$(CCL) -o $(BIN) $(TMP_ROOT)/collisions.o $(LINKER_FLAGS) $(OPTIMIZATION)
-	@$(BIN)
-
 .PHONY : test/ci
 test/ci:| ci.___clean cmake test/set_debug_flags test/ci.___clean ci.test_build test/ci.run
 	@echo "* testing complete."
@@ -739,6 +733,19 @@ test/cpp: | cpp.___clean
 .PHONY : test/all
 test/all: | test/optimized test/cpp test/c99 test/poll
 	@$(MAKE) test/ci
+
+
+.PHONY : test/collisions
+test/collisions: | create_tree
+	@$(CC) -c ./tests/collisions.c -o $(TMP_ROOT)/collisions.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@$(CCL) -o $(BIN) $(TMP_ROOT)/collisions.o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@$(BIN)
+
+.PHONY : test/http1_parser
+test/http1_parser: | create_tree
+	@$(CC) -c ./tests/http1_parser.c -o $(TMP_ROOT)/http1_parser.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@$(CCL) -o $(BIN) $(TMP_ROOT)/http1_parser.o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@$(BIN)
 
 endif
 
