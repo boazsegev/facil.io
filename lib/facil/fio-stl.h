@@ -198,9 +198,9 @@ Basic macros and included files
 #endif
 
 #if FIO_UNALIGNED_ACCESS && (__amd64 || __amd64__ || __x86_64 || __x86_64__)
-#define FIO_UNALIGNED_MEMORY_ACCESS_OK 1
+#define FIO_UNALIGNED_MEMORY_ACCESS_ENABLED 1
 #else
-#define FIO_UNALIGNED_MEMORY_ACCESS_OK 0
+#define FIO_UNALIGNED_MEMORY_ACCESS_ENABLED 0
 #endif
 
 /* *****************************************************************************
@@ -1184,7 +1184,7 @@ FIO_IFUNC void FIO_NAME2(fio_u, buf64_local)(void *buf,
   __builtin_memcpy(buf, &i, sizeof(i));
 }
 
-#elif FIO_UNALIGNED_MEMORY_ACCESS_OK
+#elif FIO_UNALIGNED_MEMORY_ACCESS_ENABLED
 /** Converts an unaligned byte stream to a 16 bit number (local byte order). */
 FIO_IFUNC uint16_t FIO_NAME2(fio_buf, u16_local)(const void *c) {
   const uint16_t *tmp = (const uint16_t *)c; /* fio_buf2u16 */
@@ -1246,7 +1246,8 @@ FIO_IFUNC void FIO_NAME2(fio_u, buf32_local)(void *buf, uint32_t i) {
 FIO_IFUNC void FIO_NAME2(fio_u, buf64_local)(void *buf, uint64_t i) {
   memcpy(buf, &i, sizeof(i)); /* fio_u2buf64 */
 }
-#endif /* __has_builtin(__builtin_memcpy) / FIO_UNALIGNED_MEMORY_ACCESS_OK */
+#endif /* __has_builtin(__builtin_memcpy) /                                    \
+          FIO_UNALIGNED_MEMORY_ACCESS_ENABLED */
 
 /** Converts an unaligned byte stream to a 16 bit number (reversed order). */
 FIO_IFUNC uint16_t FIO_NAME2(fio_buf, u16_bswap)(const void *c) {
