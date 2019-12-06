@@ -272,7 +272,7 @@ String to Number
 ***************************************************************************** */
 
 /** Converts a String to a number using base 10 */
-static long long http1_atol(const uint8_t *buf) {
+static long long http1_atol(const uint8_t *buf, const uint8_t **end) {
   register unsigned long long i = 0;
   uint8_t inv = 0;
   while (*buf == ' ' || *buf == '\t' || *buf == '\f')
@@ -289,11 +289,13 @@ static long long http1_atol(const uint8_t *buf) {
     i = (~0ULL >> 1);
   if (inv)
     i = 0ULL - i;
+  if (end)
+    *end = buf;
   return i;
 }
 
 /** Converts a String to a number using base 16 */
-static long long http_atol16(const uint8_t *buf) {
+static long long http1_atol16(const uint8_t *buf, const uint8_t **end) {
   register unsigned long long i = 0;
   uint8_t inv = 0;
   while (*buf == ' ' || *buf == '\t' || *buf == '\f')
@@ -306,7 +308,7 @@ static long long http_atol16(const uint8_t *buf) {
     ++buf;
   while (*buf == '0')
     ++buf;
-  while (!(i & ((~(0ULL)) >> 4))) {
+  while (!(i & (~((~(0ULL)) >> 4)))) {
     if (*buf >= '0' && *buf <= '9') {
       i <<= 4;
       i |= *buf - '0';
@@ -319,6 +321,8 @@ static long long http_atol16(const uint8_t *buf) {
   }
   if (inv)
     i = 0ULL - i;
+  if (end)
+    *end = buf;
   return i;
 }
 
@@ -338,7 +342,8 @@ inline static int http1_consume_response_line(http1_parser_s *parser,
   tmp = start = tmp + 1;
   if (!seek2ch(&tmp, end, ' '))
     return -1;
-  if (http1_on_status(parser, http1_atol(start), (char *)(tmp + 1), end - tmp))
+  if (http1_on_status(
+          parser, http1_atol(start, NULL), (char *)(tmp + 1), end - tmp))
     return -1;
   return 0;
 }
@@ -428,7 +433,7 @@ http1_consume_header(http1_parser_s *parser, uint8_t *start, uint8_t *end) {
       *((uint64_t *)start) == *((uint64_t *)"content-") &&
       *((uint64_t *)(start + 6)) == *((uint64_t *)"t-length")) {
     /* handle the special `content-length` header */
-    parser->state.content_length = http1_atol(start_value);
+    parser->state.content_length = http1_atol(start_value, NULL);
   } else if ((end_name - start) == 17 &&
              *((uint64_t *)start) == *((uint64_t *)"transfer") &&
              *((uint64_t *)(start + 8)) == *((uint64_t *)"-encodin") &&
@@ -446,7 +451,7 @@ http1_consume_header(http1_parser_s *parser, uint8_t *start, uint8_t *end) {
   if ((end_name - start) == 14 &&
       HEADER_NAME_IS_EQ((char *)start, "content-length", 14)) {
     /* handle the special `content-length` header */
-    parser->state.content_length = http1_atol(start_value);
+    parser->state.content_length = http1_atol(start_value, NULL);
   } else if ((end_name - start) == 17 && (end - start_value) >= 7 &&
              HEADER_NAME_IS_EQ((char *)start, "transfer-encoding", 17)) {
     /* handle the special `transfer-encoding: chunked` header? */
@@ -585,7 +590,7 @@ inline static int http1_consume_body_chunked(http1_parser_s *parser,
       if (*start + eol_len > end && (*start = end) && !seek2eol(&end, stop)) {
         return 0;
       }
-      parser->state.content_length = 0 - http_atol16(*start);
+      parser->state.content_length = 0 - http1_atol16(*start, NULL);
       *start = end = end + 1;
       if (parser->state.content_length == 0) {
         /* all chunked data was parsed */
@@ -1343,6 +1348,92 @@ static int http1_on_error(http1_parser_s *parser) {
                     http1_test_data[i].result.field);
 static void http1_test(void) {
   http1_test_pos = 0;
+  struct {
+    const char *str;
+    long long num;
+    long long (*fn)(const uint8_t *, const uint8_t **);
+  } atol_test[] = {
+      {
+          .str = "0",
+          .num = 0,
+          .fn = http1_atol,
+      },
+      {
+          .str = "-0",
+          .num = 0,
+          .fn = http1_atol,
+      },
+      {
+          .str = "1",
+          .num = 1,
+          .fn = http1_atol,
+      },
+      {
+          .str = "-1",
+          .num = -1,
+          .fn = http1_atol,
+      },
+      {
+          .str = "123456789",
+          .num = 123456789,
+          .fn = http1_atol,
+      },
+      {
+          .str = "-123456789",
+          .num = -123456789,
+          .fn = http1_atol,
+      },
+      {
+          .str = "0x0",
+          .num = 0,
+          .fn = http1_atol16,
+      },
+      {
+          .str = "-0x0",
+          .num = 0,
+          .fn = http1_atol16,
+      },
+      {
+          .str = "-0x1",
+          .num = -1,
+          .fn = http1_atol16,
+      },
+      {
+          .str = "-f",
+          .num = -15,
+          .fn = http1_atol16,
+      },
+      {
+          .str = "-20",
+          .num = -32,
+          .fn = http1_atol16,
+      },
+      {
+          .str = "0xf0EAf9ff",
+          .num = 0xf0eaf9ff,
+          .fn = http1_atol16,
+      },
+      /* stop marker */
+      {
+          .str = NULL,
+      },
+  };
+  fprintf(stderr, "Testing string=>number conversion\n");
+  for (size_t i = 0; atol_test[i].str; ++i) {
+    const uint8_t *end;
+    fprintf(stderr, "  %s", atol_test[i].str);
+    HTTP1_TEST_ASSERT(atol_test[i].fn((const uint8_t *)atol_test[i].str,
+                                      &end) == atol_test[i].num,
+                      "\nhttp1_atol error: %s != %lld",
+                      atol_test[i].str,
+                      atol_test[i].num);
+    HTTP1_TEST_ASSERT((char *)end ==
+                          (atol_test[i].str + strlen(atol_test[i].str)),
+                      "\nhttp1_atol error: didn't end after (%s): %s",
+                      atol_test[i].str,
+                      (char *)end)
+  }
+  fprintf(stderr, "\n");
   for (size_t i = 0; http1_test_data[i].request[0]; ++i) {
     fprintf(stderr, "* http1 parser test: %s\n", http1_test_data[i].test_name);
     /* parse each request / response */
