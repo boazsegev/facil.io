@@ -764,8 +764,6 @@ HTTP/1.1 TESTING
 
 
 ***************************************************************************** */
-#define HTTP1_TEST_PARSER
-
 #ifdef HTTP1_TEST_PARSER
 #include "signal.h"
 
