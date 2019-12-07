@@ -31,6 +31,9 @@ Seeking for characters in a string
  */
 static int seek2ch(uint8_t **buffer, register uint8_t *const limit,
                    const uint8_t c) {
+  if (*buffer >= limit)
+    return 0;
+
   if (**buffer == c) {
 #if HTTP1_PARSER_CONVERT_EOL2NUL
     **buffer = 0;
@@ -92,7 +95,9 @@ finish:
 /* a helper that seeks any char, converts it to NUL and returns 1 if found. */
 inline static uint8_t seek2ch(uint8_t **pos, uint8_t *const limit, uint8_t ch) {
   /* This is library based alternative that is sometimes slower  */
-  if (*pos >= limit || **pos == ch) {
+  if (*pos >= limit)
+    return 0;
+  if (**pos == ch) {
     return 1;
   }
   uint8_t *tmp = memchr(*pos, ch, limit - (*pos));
@@ -121,6 +126,66 @@ inline static uint8_t seek2eol(uint8_t **pos, uint8_t *const limit) {
     return 2;
   }
   return 1;
+}
+
+/* *****************************************************************************
+String to Number
+***************************************************************************** */
+
+/** Converts a String to a number using base 10 */
+static long long http1_atol(const uint8_t *buf, const uint8_t **end) {
+  register unsigned long long i = 0;
+  uint8_t inv = 0;
+  while (*buf == ' ' || *buf == '\t' || *buf == '\f')
+    ++buf;
+  while (*buf == '-' || *buf == '+')
+    inv ^= (*(buf++) == '-');
+  while (i <= ((((~0ULL) >> 1) / 10)) && *buf >= '0' && *buf <= '9') {
+    i = i * 10;
+    i += *buf - '0';
+    ++buf;
+  }
+  /* test for overflow */
+  if (i >= (~((~0ULL) >> 1)) || (*buf >= '0' && *buf <= '9'))
+    i = (~0ULL >> 1);
+  if (inv)
+    i = 0ULL - i;
+  if (end)
+    *end = buf;
+  return i;
+}
+
+/** Converts a String to a number using base 16, overflow limited to 113bytes */
+static long long http1_atol16(const uint8_t *buf, const uint8_t **end) {
+  register unsigned long long i = 0;
+  uint8_t inv = 0;
+  for (int limit_ = 0;
+       (*buf == ' ' || *buf == '\t' || *buf == '\f') && limit_ < 32; ++limit_)
+    ++buf;
+  for (int limit_ = 0; (*buf == '-' || *buf == '+') && limit_ < 32; ++limit_)
+    inv ^= (*(buf++) == '-');
+  if (*buf == '0')
+    ++buf;
+  if ((*buf | 32) == 'x')
+    ++buf;
+  for (int limit_ = 0; (*buf == '0') && limit_ < 32; ++limit_)
+    ++buf;
+  while (!(i & (~((~(0ULL)) >> 4)))) {
+    if (*buf >= '0' && *buf <= '9') {
+      i <<= 4;
+      i |= *buf - '0';
+    } else if ((*buf | 32) >= 'a' && (*buf | 32) <= 'f') {
+      i <<= 4;
+      i |= (*buf | 32) - ('a' - 10);
+    } else
+      break;
+    ++buf;
+  }
+  if (inv)
+    i = 0ULL - i;
+  if (end)
+    *end = buf;
+  return i;
 }
 
 /* *****************************************************************************
@@ -222,43 +287,113 @@ inline static int consume_header(struct http1_fio_parser_args_s *args,
   if (start_value[0] == ' ') {
     start_value++;
   };
-#if ALLOW_UNALIGNED_MEMORY_ACCESS && HTTP_HEADERS_LOWERCASE
-  /* enable this section to test unaligned memory access */
+
   if ((end_name - start) == 14 &&
+#if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED && HTTP_HEADERS_LOWERCASE
       *((uint64_t *)start) == *((uint64_t *)"content-") &&
-      *((uint64_t *)(start + 6)) == *((uint64_t *)"t-length")) {
-    /* handle the special `content-length` header */
-    args->parser->state.content_length = atol((char *)start_value);
-  } else if ((end_name - start) == 17 &&
-             *((uint64_t *)start) == *((uint64_t *)"transfer") &&
-             *((uint64_t *)(start + 8)) == *((uint64_t *)"-encodin") &&
-             *((uint32_t *)start_value) == *((uint32_t *)"chun") &&
-             *((uint32_t *)(start_value + 3)) == *((uint32_t *)"nked")) {
-    /* handle the special `transfer-encoding: chunked` header */
-    args->parser->state.reserved |= 64;
-  } else if ((end_name - start) == 7 &&
-             *((uint64_t *)start) == *((uint64_t *)"trailer")) {
-    /* chunked data with trailer... */
-    args->parser->state.reserved |= 64;
-    args->parser->state.reserved |= 32;
-  }
+      *((uint64_t *)(start + 6)) == *((uint64_t *)"t-length")
 #else
-  if ((end_name - start) == 14 &&
-      HEADER_NAME_IS_EQ((char *)start, "content-length", 14)) {
+      HEADER_NAME_IS_EQ((char *)start, "content-length", 14)
+#endif
+  ) {
     /* handle the special `content-length` header */
-    args->parser->state.content_length = atol((char *)start_value);
-  } else if ((end_name - start) == 17 &&
-             HEADER_NAME_IS_EQ((char *)start, "transfer-encoding", 17) &&
-             memcmp(start_value, "chunked", 7)) {
-    /* handle the special `transfer-encoding: chunked` header */
-    args->parser->state.reserved |= 64;
+    args->parser->state.content_length = http1_atol(start_value, NULL);
+  } else if ((end_name - start) == 17 && (end - start_value) >= 7 &&
+#if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED && HTTP_HEADERS_LOWERCASE
+             *((uint64_t *)start) == *((uint64_t *)"transfer") &&
+             *((uint64_t *)(start + 8)) == *((uint64_t *)"-encodin")
+#else
+             HEADER_NAME_IS_EQ((char *)start, "transfer-encoding", 17)
+#endif
+  ) {
+    /* handle the special `transfer-encoding: chunked` header? */
+    /* this removes the `chunked` marker and "unchunks" the data */
+    if (
+#if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED
+        (((uint32_t *)(start_value))[0] | 0x20202020) ==
+            ((uint32_t *)"chun")[0] &&
+        (((uint32_t *)(start_value + 3))[0] | 0x20202020) ==
+            ((uint32_t *)"nked")[0]
+#else
+        ((start_value[0] | 32) == 'c' && (start_value[1] | 32) == 'h' &&
+         (start_value[2] | 32) == 'u' && (start_value[3] | 32) == 'n' &&
+         (start_value[4] | 32) == 'k' && (start_value[5] | 32) == 'e' &&
+         (start_value[6] | 32) == 'd')
+#endif
+    ) {
+      /* simple case,`chunked` at the beginning */
+      args->parser->state.reserved |= 64;
+      start_value += 7;
+      while (start_value < end && (*start_value == ',' || *start_value == ' '))
+        ++start_value;
+      if (!(end - start_value))
+        return 0;
+    } else if ((end - start_value) > 7 &&
+               ((end[(-7 + 0)] | 32) == 'c' && (end[(-7 + 1)] | 32) == 'h' &&
+                (end[(-7 + 2)] | 32) == 'u' && (end[(-7 + 3)] | 32) == 'n' &&
+                (end[(-7 + 4)] | 32) == 'k' && (end[(-7 + 5)] | 32) == 'e' &&
+                (end[(-7 + 6)] | 32) == 'd')) {
+      /* simple case,`chunked` at the end of list */
+      args->parser->state.reserved |= 64;
+      end -= 7;
+      while (start_value < end && (end[-1] == ',' || end[-1] == ' '))
+        --end;
+      if (!(end - start_value))
+        return 0;
+    } else if ((end - start_value) > 7 && (end - start_value) < 256) {
+      /* complex case, `the, chunked, marker, is in the middle of list */
+      uint8_t val[256];
+      size_t val_len = 0;
+      while (start_value < end) {
+        if (
+#if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED
+            (((uint32_t *)(start_value))[0] | 0x20202020) ==
+                ((uint32_t *)"chun")[0] &&
+            (((uint32_t *)(start_value + 3))[0] | 0x20202020) ==
+                ((uint32_t *)"nked")[0]
+#else
+            ((start_value[0] | 32) == 'c' && (start_value[1] | 32) == 'h' &&
+             (start_value[2] | 32) == 'u' && (start_value[3] | 32) == 'n' &&
+             (start_value[4] | 32) == 'k' && (start_value[5] | 32) == 'e' &&
+             (start_value[6] | 32) == 'd')
+#endif
+
+        ) {
+          args->parser->state.reserved |= 64;
+          start_value += 7;
+          /* skip comma / white space */
+          while (start_value < end &&
+                 (*start_value == ',' || *start_value == ' '))
+            ++start_value;
+          break;
+        }
+        val[val_len++] = *start_value;
+        ++start_value;
+      }
+      while (start_value < end) {
+        val[val_len++] = *start_value;
+        ++start_value;
+      }
+      /* perform callback with `val` */
+      val[val_len] = 0;
+      if (val_len && args->on_header(args->parser, (char *)start,
+                                     (end_name - start), (char *)val, val_len))
+        return -1;
+      return 0;
+    }
   } else if ((end_name - start) == 7 &&
-             HEADER_NAME_IS_EQ((char *)start, "trailer", 7)) {
+#if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED && HTTP_HEADERS_LOWERCASE
+             *((uint64_t *)start) == *((uint64_t *)"trailer")
+#else
+             HEADER_NAME_IS_EQ((char *)start, "trailer", 7)
+#endif
+  ) {
     /* chunked data with trailer... */
     args->parser->state.reserved |= 64;
     args->parser->state.reserved |= 32;
+    // return 0; /* hide Trailer header, since we process the headers? */
   }
-#endif
+
   /* perform callback */
   if (args->on_header(args->parser, (char *)start, (end_name - start),
                       (char *)start_value, end - start_value))
@@ -293,27 +428,30 @@ inline static int consume_body_chunked(struct http1_fio_parser_args_s *args,
   uint8_t *end = *start;
   while (*start < stop) {
     if (args->parser->state.content_length == 0) {
-      size_t eol_len;
-      /* consume seperator */
-      while (*start < stop && (**start == '\n' || **start == '\r'))
-        ++(*start);
-      /* collect chunked length */
-      if (!(eol_len = seek2eol(&end, stop))) {
-        /* requires length data to continue */
+      if (end + 2 >= stop)
         return 0;
+      if ((end[0] == '\r' && end[1] == '\n')) {
+        /* remove tailing EOL that wasn't processed and retest */
+        end += 2;
+        *start = end;
+        if (end + 2 >= stop)
+          return 0;
       }
-      /* an empty EOL is possible in mid stream processing */
-      if (*start + eol_len > end && (*start = end) && !seek2eol(&end, stop)) {
+      long long chunk_len = http1_atol16(end, (const uint8_t **)&end);
+      if (end + 2 > stop) /* overflowed? */
         return 0;
-      }
-      args->parser->state.content_length = 0 - strtol((char *)*start, NULL, 16);
-      *start = end = end + 1;
+      if ((end[0] != '\r' || end[1] != '\n'))
+        return -1; /* required EOL after content length */
+      end += 2;
+
+      args->parser->state.content_length = 0 - chunk_len;
+      *start = end;
       if (args->parser->state.content_length == 0) {
-        /* all chunked data was parsed */
+        /* all chunked data was parsed - update content-length */
         args->parser->state.content_length = args->parser->state.read;
         /* consume trailing EOL */
-        if (seek2eol(start, stop))
-          (*start)++;
+        if (*start + 2 <= stop)
+          *start += 2;
         if (args->parser->state.reserved & 32) {
           /* remove the "headers complete" and "trailer" flags */
           args->parser->state.reserved &= 0xDD; /* 0xDD == ~2 & ~32 & 0xFF */

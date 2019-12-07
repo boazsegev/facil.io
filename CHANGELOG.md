@@ -2,7 +2,9 @@
 
 ### v. 0.7.4
 
-**Fix**: requests will fail when the path contains a dangling `?` (empty query). Credit to @adam12 for exposing this and opening issue boazsegev/iodine#86.
+**Fix**: (`http`) fixes an issue and improves support for `chunked` encoded payloads. Credit to Ian Ker-Seymer ( @ianks ) for exposing this, writing tests  (for the Ruby wrapper) and opening both the issue boazsegev/iodine#87 and the PR boazsegev/iodine#88.
+
+**Fix**: (`http`) requests will fail when the path contains a dangling `?` (empty query). Credit to @adam12 for exposing this and opening issue boazsegev/iodine#86.
 
 ### v. 0.7.3
 
