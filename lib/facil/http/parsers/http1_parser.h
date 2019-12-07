@@ -55,8 +55,8 @@ Parser API
 /** this struct contains the state of the parser. */
 typedef struct http1_parser_s {
   struct http1_parser_protected_read_only_state_s {
-    ssize_t content_length; /* negative values indicate chuncked data state */
-    ssize_t read;           /* total number of bytes read so far (body only) */
+    long long content_length; /* negative values indicate chuncked data state */
+    ssize_t read;     /* total number of bytes read so far (body only) */
     uint8_t *next;    /* the known position for the end of request/response */
     uint8_t reserved; /* for internal use */
   } state;
@@ -178,6 +178,8 @@ Seeking for characters in a string
  */
 static int
 seek2ch(uint8_t **buffer, register uint8_t *const limit, const uint8_t c) {
+  if (*buffer >= limit)
+    return 0;
   if (**buffer == c) {
     return 1;
   }
@@ -232,7 +234,9 @@ finish:
 /* a helper that seeks any char, converts it to NUL and returns 1 if found. */
 inline static uint8_t seek2ch(uint8_t **pos, uint8_t *const limit, uint8_t ch) {
   /* This is library based alternative that is sometimes slower  */
-  if (*pos >= limit || **pos == ch) {
+  if (*pos >= limit)
+    return 0;
+  if (**pos == ch) {
     return 1;
   }
   uint8_t *tmp = memchr(*pos, ch, limit - (*pos));
@@ -294,19 +298,21 @@ static long long http1_atol(const uint8_t *buf, const uint8_t **end) {
   return i;
 }
 
-/** Converts a String to a number using base 16 */
+/** Converts a String to a number using base 16, overflow limited to 113bytes */
 static long long http1_atol16(const uint8_t *buf, const uint8_t **end) {
   register unsigned long long i = 0;
   uint8_t inv = 0;
-  while (*buf == ' ' || *buf == '\t' || *buf == '\f')
+  for (int limit_ = 0;
+       (*buf == ' ' || *buf == '\t' || *buf == '\f') && limit_ < 32;
+       ++limit_)
     ++buf;
-  while (*buf == '-' || *buf == '+')
+  for (int limit_ = 0; (*buf == '-' || *buf == '+') && limit_ < 32; ++limit_)
     inv ^= (*(buf++) == '-');
   if (*buf == '0')
     ++buf;
   if ((*buf | 32) == 'x')
     ++buf;
-  while (*buf == '0')
+  for (int limit_ = 0; (*buf == '0') && limit_ < 32; ++limit_)
     ++buf;
   while (!(i & (~((~(0ULL)) >> 4)))) {
     if (*buf >= '0' && *buf <= '9') {
@@ -427,33 +433,24 @@ http1_consume_header(http1_parser_s *parser, uint8_t *start, uint8_t *end) {
   if (start_value[0] == ' ') {
     start_value++;
   };
+  if ((end_name - start) == 14 &&
 #if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED && HTTP_HEADERS_LOWERCASE
-  /* enable this section to test unaligned memory access */
-  if ((end_name - start) == 14 &&
       *((uint64_t *)start) == *((uint64_t *)"content-") &&
-      *((uint64_t *)(start + 6)) == *((uint64_t *)"t-length")) {
-    /* handle the special `content-length` header */
-    parser->state.content_length = http1_atol(start_value, NULL);
-  } else if ((end_name - start) == 17 &&
-             *((uint64_t *)start) == *((uint64_t *)"transfer") &&
-             *((uint64_t *)(start + 8)) == *((uint64_t *)"-encodin") &&
-             *((uint32_t *)start_value) == *((uint32_t *)"chun") &&
-             *((uint32_t *)(start_value + 3)) == *((uint32_t *)"nked")) {
-    /* handle the special `transfer-encoding: chunked` header */
-    parser->state.reserved |= 64;
-  } else if ((end_name - start) == 7 &&
-             *((uint64_t *)start) == *((uint64_t *)"trailer")) {
-    /* chunked data with trailer... */
-    parser->state.reserved |= 64;
-    parser->state.reserved |= 32;
-  }
+      *((uint64_t *)(start + 6)) == *((uint64_t *)"t-length")
 #else
-  if ((end_name - start) == 14 &&
-      HEADER_NAME_IS_EQ((char *)start, "content-length", 14)) {
+      HEADER_NAME_IS_EQ((char *)start, "content-length", 14)
+#endif
+  ) {
     /* handle the special `content-length` header */
     parser->state.content_length = http1_atol(start_value, NULL);
   } else if ((end_name - start) == 17 && (end - start_value) >= 7 &&
-             HEADER_NAME_IS_EQ((char *)start, "transfer-encoding", 17)) {
+#if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED && HTTP_HEADERS_LOWERCASE
+             *((uint64_t *)start) == *((uint64_t *)"transfer") &&
+             *((uint64_t *)(start + 8)) == *((uint64_t *)"-encodin")
+#else
+             HEADER_NAME_IS_EQ((char *)start, "transfer-encoding", 17)
+#endif
+  ) {
     /* handle the special `transfer-encoding: chunked` header? */
     /* this removes the `chunked` marker and "unchunks" the data */
     if (
@@ -531,12 +528,17 @@ http1_consume_header(http1_parser_s *parser, uint8_t *start, uint8_t *end) {
       return 0;
     }
   } else if ((end_name - start) == 7 &&
-             HEADER_NAME_IS_EQ((char *)start, "trailer", 7)) {
+#if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED && HTTP_HEADERS_LOWERCASE
+             *((uint64_t *)start) == *((uint64_t *)"trailer")
+#else
+             HEADER_NAME_IS_EQ((char *)start, "trailer", 7)
+#endif
+  ) {
     /* chunked data with trailer... */
     parser->state.reserved |= 64;
     parser->state.reserved |= 32;
+    // return 0; /* hide Trailer header, since we process the headers? */
   }
-#endif
   /* perform callback */
   if (http1_on_header(parser,
                       (char *)start,
@@ -577,27 +579,49 @@ inline static int http1_consume_body_chunked(http1_parser_s *parser,
   uint8_t *end = *start;
   while (*start < stop) {
     if (parser->state.content_length == 0) {
-      size_t eol_len;
-      /* consume seperator */
-      while (*start < stop && (**start == '\n' || **start == '\r'))
-        ++(*start);
-      /* collect chunked length */
-      if (!(eol_len = seek2eol(&end, stop))) {
-        /* requires length data to continue */
+      if (end + 2 >= stop)
         return 0;
+      if ((end[0] == '\r' && end[1] == '\n')) {
+        /* remove tailing EOL that wasn't processed and retest */
+        end += 2;
+        *start = end;
+        if (end + 2 >= stop)
+          return 0;
       }
-      /* an empty EOL is possible in mid stream processing */
-      if (*start + eol_len > end && (*start = end) && !seek2eol(&end, stop)) {
+      long long chunk_len = http1_atol16(end, (const uint8_t **)&end);
+      if (end + 2 > stop) /* overflowed? */
         return 0;
-      }
-      parser->state.content_length = 0 - http1_atol16(*start, NULL);
-      *start = end = end + 1;
+      if ((end[0] != '\r' || end[1] != '\n'))
+        return -1; /* required EOL after content length */
+      end += 2;
+
+      parser->state.content_length = 0 - chunk_len;
+      *start = end;
       if (parser->state.content_length == 0) {
         /* all chunked data was parsed */
+        /* update content-length */
         parser->state.content_length = parser->state.read;
+        /* TODO: add virtual header ... ? */
+        if (0) {
+          char buf[512];
+          size_t buf_len = 512;
+          size_t tmp_len = parser->state.read;
+          buf[--buf_len] = 0;
+          while (tmp_len) {
+            size_t mod = tmp_len / 10;
+            buf[--buf_len] = '0' + (tmp_len - (mod * 10));
+            tmp_len = mod;
+          }
+          if (http1_on_header(parser,
+                              "content-length",
+                              14,
+                              (char *)buf + buf_len,
+                              511 - buf_len))
+            return -1;
+        }
         /* consume trailing EOL */
-        if (seek2eol(start, stop))
-          (*start)++;
+        if (*start + 2 <= stop)
+          *start += 2;
         if (parser->state.reserved & 32) {
           /* remove the "headers complete" and "trailer" flags */
           parser->state.reserved &= 0xDD; /* 0xDD == ~2 & ~32 & 0xFF */
@@ -776,6 +800,8 @@ HTTP/1.1 TESTING
   }
 
 static size_t http1_test_pos;
+static char http1_test_temp_buf[8092];
+static size_t http1_test_temp_buf_pos;
 static struct {
   char *test_name;
   char *request[16];
@@ -783,7 +809,7 @@ static struct {
     char body[1024];
     size_t body_len;
     const char *method;
-    size_t status;
+    ssize_t status;
     const char *path;
     const char *query;
     const char *version;
@@ -1196,7 +1222,7 @@ static struct {
             },
         .expect =
             {
-                .body = "Wikipedia in \r\n\r\nchunks",
+                .body = "Wikipedia in\r\n\r\nchunks.",
                 .body_len = 23,
                 .method = "POST",
                 .path = "/",
@@ -1296,7 +1322,14 @@ static int http1_on_header(http1_parser_s *parser,
   HTTP1_TEST_ASSERT(pos < 8,
                     "header result overflow for: %s",
                     http1_test_data[http1_test_pos].test_name);
-
+  memcpy(http1_test_temp_buf + http1_test_temp_buf_pos, name, name_len);
+  name = http1_test_temp_buf + http1_test_temp_buf_pos;
+  http1_test_temp_buf_pos += name_len;
+  http1_test_temp_buf[http1_test_temp_buf_pos++] = 0;
+  memcpy(http1_test_temp_buf + http1_test_temp_buf_pos, val, val_len);
+  val = http1_test_temp_buf + http1_test_temp_buf_pos;
+  http1_test_temp_buf_pos += val_len;
+  http1_test_temp_buf[http1_test_temp_buf_pos++] = 0;
   http1_test_data[http1_test_pos].result.headers[pos].name = name;
   http1_test_data[http1_test_pos].result.headers[pos].name_len = name_len;
   http1_test_data[http1_test_pos].result.headers[pos].val = val;
@@ -1331,6 +1364,7 @@ http1_on_body_chunk(http1_parser_s *parser, char *data, size_t data_len) {
 /** called when a protocol error occurred. */
 static int http1_on_error(http1_parser_s *parser) {
   (void)parser;
+  http1_test_data[http1_test_pos].result.status = -1;
   return 0;
 }
 
@@ -1344,7 +1378,7 @@ static int http1_on_error(http1_parser_s *parser) {
                     http1_test_data[i].test_name,                              \
                     http1_test_data[i].expect.field,                           \
                     http1_test_data[i].result.field);
-static void http1_test(void) {
+static void http1_parser_test(void) {
   http1_test_pos = 0;
   struct {
     const char *str;
@@ -1416,7 +1450,7 @@ static void http1_test(void) {
           .str = NULL,
       },
   };
-  fprintf(stderr, "Testing string=>number conversion\n");
+  fprintf(stderr, "* testing string=>number conversion\n");
   for (size_t i = 0; atol_test[i].str; ++i) {
     const uint8_t *end;
     fprintf(stderr, "  %s", atol_test[i].str);
@@ -1439,6 +1473,7 @@ static void http1_test(void) {
     char buf[4096];
     size_t r = 0;
     size_t w = 0;
+    http1_test_temp_buf_pos = 0;
     for (int j = 0; http1_test_data[i].request[j]; ++j) {
       memcpy(buf + w,
              http1_test_data[i].request[j],
@@ -1448,7 +1483,6 @@ static void http1_test(void) {
       r += p;
       HTTP1_TEST_ASSERT(r <= w, "parser consumed more than the buffer holds!");
     }
-    ++http1_test_pos;
     /* test each request / response before overwriting the buffer */
     HTTP1_TEST_STRING_FIELD(body, i);
     HTTP1_TEST_STRING_FIELD(method, i);
@@ -1469,6 +1503,8 @@ static void http1_test(void) {
                       "Expected header missing:\n\t%s: %s",
                       http1_test_data[i].expect.headers[r].name,
                       http1_test_data[i].expect.headers[r].val);
+    /* advance counter */
+    ++http1_test_pos;
   }
 }
 
