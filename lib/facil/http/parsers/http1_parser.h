@@ -34,6 +34,10 @@ Parser Settings
 #define HTTP_HEADERS_LOWERCASE 1
 #endif
 
+#ifndef HTTP_ADD_CONTENT_LENGTH_HEADER_IF_MISSING
+#define HTTP_ADD_CONTENT_LENGTH_HEADER_IF_MISSING 1
+#endif
+
 #ifndef FIO_MEMCHAR
 /** Prefer a custom memchr implementation. Usualy memchr is better. */
 #define FIO_MEMCHAR 0
@@ -444,6 +448,7 @@ http1_consume_header(http1_parser_s *parser, uint8_t *start, uint8_t *end) {
     /* handle the special `content-length` header */
     parser->state.content_length = http1_atol(start_value, NULL);
   } else if ((end_name - start) == 17 && (end - start_value) >= 7 &&
+             !parser->state.content_length &&
 #if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED && HTTP_HEADERS_LOWERCASE
              *((uint64_t *)start) == *((uint64_t *)"transfer") &&
              *((uint64_t *)(start + 8)) == *((uint64_t *)"-encodin")
@@ -527,7 +532,7 @@ http1_consume_header(http1_parser_s *parser, uint8_t *start, uint8_t *end) {
         return -1;
       return 0;
     }
-  } else if ((end_name - start) == 7 &&
+  } else if ((end_name - start) == 7 && !parser->state.content_length &&
 #if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED && HTTP_HEADERS_LOWERCASE
              *((uint64_t *)start) == *((uint64_t *)"trailer")
 #else
@@ -601,8 +606,8 @@ inline static int http1_consume_body_chunked(http1_parser_s *parser,
         /* all chunked data was parsed */
         /* update content-length */
         parser->state.content_length = parser->state.read;
-        /* TODO: add virtual header ... ? */
-        if (0) {
+#ifdef HTTP_ADD_CONTENT_LENGTH_HEADER_IF_MISSING
+        { /* add virtual header ... ? */
           char buf[512];
           size_t buf_len = 512;
           size_t tmp_len = parser->state.read;
@@ -619,6 +624,7 @@ inline static int http1_consume_body_chunked(http1_parser_s *parser,
                               511 - buf_len))
             return -1;
         }
+#endif
         /* consume trailing EOL */
         if (*start + 2 <= stop)
           *start += 2;
@@ -1036,6 +1042,14 @@ static struct {
                             .val = "with body",
                             .val_len = 9,
                         },
+#ifdef HTTP_ADD_CONTENT_LENGTH_HEADER_IF_MISSING
+                        {
+                            .name = "content-length",
+                            .name_len = 14,
+                            .val = "5",
+                            .val_len = 1,
+                        },
+#endif
                     },
             },
     },
@@ -1069,6 +1083,14 @@ static struct {
                             .val = "gzip",
                             .val_len = 4,
                         },
+#ifdef HTTP_ADD_CONTENT_LENGTH_HEADER_IF_MISSING
+                        {
+                            .name = "content-length",
+                            .name_len = 14,
+                            .val = "5",
+                            .val_len = 1,
+                        },
+#endif
                     },
             },
     },
@@ -1102,6 +1124,14 @@ static struct {
                             .val = "gzip, foo",
                             .val_len = 9,
                         },
+#ifdef HTTP_ADD_CONTENT_LENGTH_HEADER_IF_MISSING
+                        {
+                            .name = "content-length",
+                            .name_len = 14,
+                            .val = "5",
+                            .val_len = 1,
+                        },
+#endif
                     },
             },
     },
@@ -1133,6 +1163,14 @@ static struct {
                             .val = "with body",
                             .val_len = 9,
                         },
+#ifdef HTTP_ADD_CONTENT_LENGTH_HEADER_IF_MISSING
+                        {
+                            .name = "content-length",
+                            .name_len = 14,
+                            .val = "5",
+                            .val_len = 1,
+                        },
+#endif
                     },
             },
     },
@@ -1165,6 +1203,14 @@ static struct {
                             .val = "with body",
                             .val_len = 9,
                         },
+#ifdef HTTP_ADD_CONTENT_LENGTH_HEADER_IF_MISSING
+                        {
+                            .name = "content-length",
+                            .name_len = 14,
+                            .val = "5",
+                            .val_len = 1,
+                        },
+#endif
                     },
             },
     },
@@ -1199,11 +1245,19 @@ static struct {
                             .val = "with body",
                             .val_len = 9,
                         },
+#ifdef HTTP_ADD_CONTENT_LENGTH_HEADER_IF_MISSING
+                        {
+                            .name = "content-length",
+                            .name_len = 14,
+                            .val = "5",
+                            .val_len = 1,
+                        },
+#endif
                     },
             },
     },
     {
-        .test_name = "chunked body (hmmm)",
+        .test_name = "chunked body (...longer...)",
         .request =
             {
                 "POST / HTTP/1.1\r\nHost:with body\r\n",
@@ -1236,6 +1290,14 @@ static struct {
                             .val = "with body",
                             .val_len = 9,
                         },
+#ifdef HTTP_ADD_CONTENT_LENGTH_HEADER_IF_MISSING
+                        {
+                            .name = "content-length",
+                            .name_len = 14,
+                            .val = "23",
+                            .val_len = 2,
+                        },
+#endif
                     },
             },
     },
@@ -1371,9 +1433,11 @@ static int http1_on_error(http1_parser_s *parser) {
 #define HTTP1_TEST_STRING_FIELD(field, i)                                      \
   HTTP1_TEST_ASSERT((!http1_test_data[i].expect.field &&                       \
                      !http1_test_data[i].result.field) ||                      \
-                        !memcmp(http1_test_data[i].expect.field,               \
-                                http1_test_data[i].result.field,               \
-                                strlen(http1_test_data[i].expect.field)),      \
+                        http1_test_data[i].expect.field &&                     \
+                            http1_test_data[i].result.field &&                 \
+                            !memcmp(http1_test_data[i].expect.field,           \
+                                    http1_test_data[i].result.field,           \
+                                    strlen(http1_test_data[i].expect.field)),  \
                     "string field error for %s\n%s\n%s",                       \
                     http1_test_data[i].test_name,                              \
                     http1_test_data[i].expect.field,                           \
@@ -1466,6 +1530,16 @@ static void http1_parser_test(void) {
                       (char *)end)
   }
   fprintf(stderr, "\n");
+  for (unsigned long long i = 1; i; i <<= 1) {
+    char tmp[128];
+    size_t tmp_len = sprintf(tmp, "%llx", i);
+    uint8_t *pos = (uint8_t *)tmp;
+    HTTP1_TEST_ASSERT(http1_atol16(pos, (const uint8_t **)&pos) ==
+                              (long long)i &&
+                          pos == (uint8_t *)(tmp + tmp_len),
+                      "http1_atol16 roundtrip error.");
+  }
+
   for (size_t i = 0; http1_test_data[i].request[0]; ++i) {
     fprintf(stderr, "* http1 parser test: %s\n", http1_test_data[i].test_name);
     /* parse each request / response */
