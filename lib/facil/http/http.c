@@ -35,6 +35,7 @@ static inline void add_content_length(http_internal_s *h, uintptr_t length) {
 static inline void add_content_type(http_internal_s *h) {
   uint64_t hash = fiobj2hash(h->headers_out, HTTP_HEADER_CONTENT_TYPE);
   if (!fiobj_hash_get(h->headers_out, hash, HTTP_HEADER_CONTENT_TYPE)) {
+    FIO_LOG_DEBUG2("(HTTP) auto-set content type.");
     fiobj_hash_set(h->headers_out,
                    hash,
                    HTTP_HEADER_CONTENT_TYPE,
@@ -97,6 +98,9 @@ int http_set_header(http_s *h_, FIOBJ name, FIOBJ value) {
   http_internal_s *h = HTTP2PRIVATE(h_);
   if (!h_ || !name || !FIOBJ_TYPE_IS(h->headers_out, FIOBJ_T_HASH))
     goto error;
+  FIO_LOG_DEBUG2("(HTTP) set header for request: %s:%s",
+                 fiobj2cstr(name).buf,
+                 fiobj2cstr(value).buf);
   set_header_add(h->headers_out, name, value);
   return 0;
 error:

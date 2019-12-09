@@ -250,6 +250,7 @@ static void http_lib_init(void *ignr_) {
                          fiobj_str_new_cstr((char *)type, sizeof(type) - 1))
 
 #if HTTP_MIME_REGISTRY_AUTO
+  FIO_LOG_DEBUG2("(HTTP) Registering core mime-types");
   REGISTER_MIME("html", "text/html");
   REGISTER_MIME("txt", "text/plain");
   REGISTER_MIME("htm", "text/html");
@@ -259,6 +260,7 @@ static void http_lib_init(void *ignr_) {
 #endif
 
 #if HTTP_MIME_REGISTRY_AUTO > 0
+  FIO_LOG_DEBUG2("(HTTP) Registering all known mime-types");
   REGISTER_MIME("123", "application/vnd.lotus-1-2-3");
   REGISTER_MIME("3dml", "text/vnd.in3d.3dml");
   REGISTER_MIME("3ds", "image/x-3ds");
