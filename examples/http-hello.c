@@ -37,7 +37,7 @@ HTTP request / response handling
 ***************************************************************************** */
 static void on_http_request(http_s *h) {
   /* set a response and send it (finnish vs. destroy). */
-  http_set_header(h, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("txt", 4));
+  http_set_header(h, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("txt", 3));
   http_send_body(h, "Hello World!", 12);
 }
 

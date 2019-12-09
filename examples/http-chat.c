@@ -87,13 +87,16 @@ int main(int argc, char const *argv[]) {
   /* optimize WebSocket pub/sub for multi-connection broadcasting */
   websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB, 1);
   /* listen for inncoming connections */
-  if (http_listen(fio_cli_get("-p"), fio_cli_get("-b"),
-                  .on_request = on_http_request, .on_upgrade = on_http_upgrade,
+  if (http_listen(fio_cli_get("-p"),
+                  fio_cli_get("-b"),
+                  .on_request = on_http_request,
+                  .on_upgrade = on_http_upgrade,
                   .max_body_size = (fio_cli_get_i("-maxbd") * 1024 * 1024),
                   .ws_max_msg_size = (fio_cli_get_i("-maxms") * 1024),
                   .public_folder = fio_cli_get("-public"),
                   .log = fio_cli_get_bool("-log"),
-                  .timeout = fio_cli_get_i("-keep-alive"), .tls = tls,
+                  .timeout = fio_cli_get_i("-keep-alive"),
+                  .tls = tls,
                   .ws_timeout = fio_cli_get_i("-ping")) == -1) {
     /* listen failed ?*/
     perror(
@@ -112,6 +115,7 @@ HTTP Request / Response Handling
 
 static void on_http_request(http_s *h) {
   /* set a response and send it (finnish vs. destroy). */
+  http_set_header(h, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("txt", 3));
   http_send_body(h, "Hello World!", 12);
 }
 
@@ -142,21 +146,31 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
   /* Test for upgrade protocol (websocket vs. sse) */
   if (len == 3 && requested_protocol[1] == 's') {
     if (fio_cli_get_bool("-v")) {
-      fprintf(stderr, "* (%d) new SSE connection: %s.\n", getpid(),
+      fprintf(stderr,
+              "* (%d) new SSE connection: %s.\n",
+              getpid(),
               fiobj_obj2cstr(nickname).data);
     }
-    http_upgrade2sse(h, .on_open = sse_on_open, .on_close = sse_on_close,
+    http_upgrade2sse(h,
+                     .on_open = sse_on_open,
+                     .on_close = sse_on_close,
                      .udata = (void *)nickname);
   } else if (len == 9 && requested_protocol[1] == 'e') {
     if (fio_cli_get_bool("-v")) {
-      fprintf(stderr, "* (%d) new WebSocket connection: %s.\n", getpid(),
+      fprintf(stderr,
+              "* (%d) new WebSocket connection: %s.\n",
+              getpid(),
               fiobj_obj2cstr(nickname).data);
     }
-    http_upgrade2ws(h, .on_message = ws_on_message, .on_open = ws_on_open,
-                    .on_shutdown = ws_on_shutdown, .on_close = ws_on_close,
+    http_upgrade2ws(h,
+                    .on_message = ws_on_message,
+                    .on_open = ws_on_open,
+                    .on_shutdown = ws_on_shutdown,
+                    .on_close = ws_on_close,
                     .udata = (void *)nickname);
   } else {
-    fprintf(stderr, "WARNING: unrecognized HTTP upgrade request: %s\n",
+    fprintf(stderr,
+            "WARNING: unrecognized HTTP upgrade request: %s\n",
             requested_protocol);
     http_send_error(h, 400);
     fiobj_free(nickname); // we didn't use this
@@ -178,9 +192,10 @@ HTTP SSE (Server Sent Events) Callbacks
  * connection is established.
  */
 static void sse_on_open(http_sse_s *sse) {
-  http_sse_write(sse, .data = {.data = "Welcome to the SSE chat channel.\r\n"
-                                       "You can only listen, not write.",
-                               .len = 65});
+  http_sse_write(sse,
+                 .data = {.data = "Welcome to the SSE chat channel.\r\n"
+                                  "You can only listen, not write.",
+                          .len = 65});
   http_sse_subscribe(sse, .channel = CHAT_CANNEL);
   http_sse_set_timout(sse, fio_cli_get_i("-ping"));
   FIOBJ tmp = fiobj_str_copy((FIOBJ)sse->udata);
@@ -225,7 +240,8 @@ static void ws_on_open(ws_s *ws) {
 }
 static void ws_on_shutdown(ws_s *ws) {
   websocket_write(
-      ws, (fio_str_info_s){.data = "Server shutting down, goodbye.", .len = 30},
+      ws,
+      (fio_str_info_s){.data = "Server shutting down, goodbye.", .len = 30},
       1);
 }
 
@@ -248,12 +264,12 @@ static void initialize_redis(void) {
                fio_cli_get("-redis"));
   fio_url_s info =
       fio_url_parse(fio_cli_get("-redis"), strlen(fio_cli_get("-redis")));
-  fio_pubsub_engine_s *e =
-      redis_engine_create(.address = info.host, .port = info.port,
-                          .auth = info.password);
+  fio_pubsub_engine_s *e = redis_engine_create(.address = info.host,
+                                               .port = info.port,
+                                               .auth = info.password);
   if (e)
-    fio_state_callback_add(FIO_CALL_ON_FINISH,
-                           (void (*)(void *))redis_engine_destroy, e);
+    fio_state_callback_add(
+        FIO_CALL_ON_FINISH, (void (*)(void *))redis_engine_destroy, e);
   FIO_PUBSUB_DEFAULT = e;
 }
 
@@ -263,7 +279,11 @@ CLI helpers
 static void initialize_cli(int argc, char const *argv[]) {
   /*     ****  Command line arguments ****     */
   fio_cli_start(
-      argc, argv, 0, 0, NULL,
+      argc,
+      argv,
+      0,
+      0,
+      NULL,
       // Address Binding
       FIO_CLI_PRINT_HEADER("Address Binding:"),
       FIO_CLI_INT("-port -p port number to listen to. defaults port 3000"),
