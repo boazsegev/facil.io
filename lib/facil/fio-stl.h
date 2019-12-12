@@ -6676,24 +6676,26 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, __remove)(FIO_MAP_PTR m_,
   }
   if (!m || !m->count)
     goto not_found;
-  FIO_NAME(FIO_MAP_NAME, __pos_info_s)
-  i = FIO_NAME(FIO_MAP_NAME, __pos_info)(m_, hash, o);
-  if (i.index == (uint32_t)-1)
-    goto not_found;
-  if (old) {
-    FIO_MAP_TYPE_COPY((*old), FIO_MAP_OBJ2TYPE(m->data[i.index].obj));
-    FIO_MAP_OBJ_DESTROY_AFTER((m->data[i.index].obj));
-  } else {
-    FIO_MAP_OBJ_DESTROY((m->data[i.index].obj));
-  }
-  m->data[i.index].obj = FIO_MAP_OBJ_INVALID;
-  FIO_MAP_HASH_COPY(m->data[i.index].hash, FIO_MAP_HASH_INVALID);
-  --m->count;
-  m->has_collisions |= m->has_collisions << 1;
-  if (i.index + 1 == m->w) {
-    --m->w;
-    if (i.map_pos != (uint32_t)-1 && m->map)
-      m->map[i.map_pos] = 0;
+  {
+    FIO_NAME(FIO_MAP_NAME, __pos_info_s)
+    i = FIO_NAME(FIO_MAP_NAME, __pos_info)(m_, hash, o);
+    if (i.index == (uint32_t)-1)
+      goto not_found;
+    if (old) {
+      FIO_MAP_TYPE_COPY((*old), FIO_MAP_OBJ2TYPE(m->data[i.index].obj));
+      FIO_MAP_OBJ_DESTROY_AFTER((m->data[i.index].obj));
+    } else {
+      FIO_MAP_OBJ_DESTROY((m->data[i.index].obj));
+    }
+    m->data[i.index].obj = FIO_MAP_OBJ_INVALID;
+    FIO_MAP_HASH_COPY(m->data[i.index].hash, FIO_MAP_HASH_INVALID);
+    --m->count;
+    m->has_collisions |= m->has_collisions << 1;
+    if (i.index + 1 == m->w) {
+      --m->w;
+      if (i.map_pos != (uint32_t)-1 && m->map)
+        m->map[i.map_pos] = 0;
+    }
   }
   return 0;
 not_found:
@@ -11781,8 +11783,8 @@ The FIOBJ Type
 ***************************************************************************** */
 
 /** Use the FIOBJ type for dynamic types. */
-typedef struct FIOBJ {
-  struct FIOBJ *compiler_validation_type;
+typedef struct FIOBJ_s {
+  struct FIOBJ_s *compiler_validation_type;
 } * FIOBJ;
 
 /** FIOBJ type enum for common / primitive types. */
@@ -15744,11 +15746,11 @@ TEST_FUNC void fio___dynamic_types_test___gmtime(void) {
             "\t- gmtime_r speed test took:  \t%zuus\n",
             (size_t)(stop - start));
     fprintf(stderr, "\n");
-    volatile struct tm tm_now = fio_time2gm(now);
+    struct tm tm_now = fio_time2gm(now);
     start = fio_time_micro();
     for (size_t i = 0; i < (1 << 17); ++i) {
       tm_now = fio_time2gm(now + i);
-      volatile time_t t_tmp = fio_gm2time(tm_now);
+      time_t t_tmp = fio_gm2time(tm_now);
       __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
       (void)t_tmp;
     }

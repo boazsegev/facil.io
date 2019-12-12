@@ -4,8 +4,6 @@
 
 #include "fio-stl.h"
 
-#include "fio.h"
-#include "fiobj.h"
 #include "http.h"
 
 int main(int argc, char const *argv[]) {
