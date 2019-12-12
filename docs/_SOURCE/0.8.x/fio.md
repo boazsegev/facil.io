@@ -461,14 +461,14 @@ The following arguments are supported:
         // callback example:
         void on_connect(intptr_t uuid, void *udata);
 
-* `on_connect`:
+* `on_fail`:
 
     This callback will be called when a socket fails to connect. It's often a good place for cleanup.
 
     The callback should accept the attempted connection's uuid (might be -1) and a void pointer (the optional `udata` pointer one passed to `fio_connect`)
 
         // callback example:
-        void on_connect(intptr_t uuid, void *udata);
+        void on_fail(intptr_t uuid, void *udata);
 
 
 * `udata`:
