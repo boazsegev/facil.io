@@ -341,6 +341,10 @@ Memory allocation macros
 #define FIO_MEM_FREE(ptr, size) free((ptr))
 #endif
 
+#ifndef FIO_MEM_INTERNAL_MALLOC
+#define FIO_MEM_INTERNAL_MALLOC 0
+#endif
+
 /* *****************************************************************************
 Security Related macros
 ***************************************************************************** */
@@ -1768,6 +1772,9 @@ Memory Allocation - redefine default allocation macros
 #undef FIO_MEM_FREE
 /** Frees allocated memory. */
 #define FIO_MEM_FREE(ptr, size) fio_free((ptr))
+
+#undef FIO_MEM_INTERNAL_MALLOC
+#define FIO_MEM_INTERNAL_MALLOC 1
 
 /* *****************************************************************************
 
@@ -7592,7 +7599,7 @@ SFUNC uint64_t FIO_NAME(FIO_STRING_NAME, hash)(const FIO_STRING_PTR s_,
       (FIO_NAME(FIO_STRING_NAME, s) *)FIO_PTR_UNTAG(s_);
   if (FIO_STRING_IS_SMALL(s))
     return fio_risky_hash(
-        (void *)FIO_STRING_SMALL_DATA(s), FIO_STRING_SMALL_LEN(s), 0);
+        (void *)FIO_STRING_SMALL_DATA(s), FIO_STRING_SMALL_LEN(s), seed);
   return fio_risky_hash((void *)s->buf, s->len, seed);
 }
 #endif
@@ -12057,12 +12064,53 @@ FIO_IFUNC fio_str_info_s FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
  * String data might be allocated dynamically.
  */
 #define FIOBJ_STR_TEMP_VAR(str_name)                                           \
-  FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), s)                            \
-  FIO_NAME(str_name, __tmp)[2] = {FIO_STRING_INIT, FIO_STRING_INIT};           \
-  memset(                                                                      \
-      FIO_NAME(str_name, __tmp), 0x7f, sizeof(FIO_NAME(str_name, __tmp)[0]));  \
-  FIOBJ str_name = (FIOBJ)(((uintptr_t) & (FIO_NAME(str_name, __tmp)[1])) |    \
-                           FIOBJ_T_STRING);
+  struct {                                                                     \
+    uint64_t i1;                                                               \
+    uint64_t i2;                                                               \
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), s) s;                       \
+  } FIO_NAME(str_name, __auto_mem_tmp) = {                                     \
+      0x7f7f7f7f7f7f7f7fULL, 0x7f7f7f7f7f7f7f7fULL, FIO_STRING_INIT};          \
+  FIOBJ str_name =                                                             \
+      (FIOBJ)(((uintptr_t) & (FIO_NAME(str_name, __auto_mem_tmp).s)) |         \
+              FIOBJ_T_STRING);
+
+/**
+ * Creates a temporary FIOBJ String object on the stack, initialized with a
+ * static string.
+ *
+ * String data might be allocated dynamically.
+ */
+#define FIOBJ_STR_TEMP_VAR_STATIC(str_name, buf_, len_)                        \
+  struct {                                                                     \
+    uint64_t i1;                                                               \
+    uint64_t i2;                                                               \
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), s) s;                       \
+  } FIO_NAME(str_name,                                                         \
+             __auto_mem_tmp) = {0x7f7f7f7f7f7f7f7fULL,                         \
+                                0x7f7f7f7f7f7f7f7fULL,                         \
+                                FIO_STRING_INIT_STATIC2((buf_), (len_))};      \
+  FIOBJ str_name =                                                             \
+      (FIOBJ)(((uintptr_t) & (FIO_NAME(str_name, __auto_mem_tmp).s)) |         \
+              FIOBJ_T_STRING);
+
+/**
+ * Creates a temporary FIOBJ String object on the stack, initialized with a
+ * static string.
+ *
+ * String data might be allocated dynamically.
+ */
+#define FIOBJ_STR_TEMP_VAR_EXISTING(str_name, buf_, len_, capa_, dealloc_)     \
+  struct {                                                                     \
+    uint64_t i1;                                                               \
+    uint64_t i2;                                                               \
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), s) s;                       \
+  } FIO_NAME(str_name, __auto_mem_tmp) = {                                     \
+      0x7f7f7f7f7f7f7f7fULL,                                                   \
+      0x7f7f7f7f7f7f7f7fULL,                                                   \
+      FIO_STRING_INIT_EXISTING((buf_), (len_), (capa_), (dealloc_))};          \
+  FIOBJ str_name =                                                             \
+      (FIOBJ)(((uintptr_t) & (FIO_NAME(str_name, __auto_mem_tmp).s)) |         \
+              FIOBJ_T_STRING);
 
 /** Resets a temporary FIOBJ String, freeing and any resources allocated. */
 #define FIOBJ_STR_TEMP_DESTROY(str_name)                                       \
@@ -12731,13 +12779,9 @@ FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
  */
 FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                          get3)(FIOBJ hash, const char *buf, size_t len) {
-  FIOBJ_STR_TEMP_VAR(tmp);
-  tmp___tmp[1] =
-      (FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
-                s))FIO_STRING_INIT_EXISTING((char *)buf, len, 0, NULL);
+  FIOBJ_STR_TEMP_VAR_STATIC(tmp, buf, len);
   FIOBJ v = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
                      get)(hash, fio_risky_hash(buf, len, (uint64_t)hash), tmp);
-  FIOBJ_STR_TEMP_DESTROY(tmp);
   return v;
 }
 
@@ -12748,10 +12792,7 @@ FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
 FIO_IFUNC int
 FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
          remove3)(FIOBJ hash, const char *buf, size_t len, FIOBJ *old) {
-  FIOBJ_STR_TEMP_VAR(tmp);
-  tmp___tmp[1] =
-      (FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
-                s))FIO_STRING_INIT_EXISTING((char *)buf, len, 0, NULL);
+  FIOBJ_STR_TEMP_VAR_STATIC(tmp, buf, len);
   int r = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), remove)(
       hash, fio_risky_hash(buf, len, (uint64_t)hash), tmp, old);
   FIOBJ_STR_TEMP_DESTROY(tmp);
