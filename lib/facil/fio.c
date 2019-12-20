@@ -3661,6 +3661,7 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
   fio_data->threads = (uint16_t)args.threads;
   fio_data->active = 1;
   fio_data->is_worker = 0;
+  fio_data->parent = getpid();
 
   fio_state_callback_force(FIO_CALL_PRE_START);
 
