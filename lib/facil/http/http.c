@@ -690,10 +690,9 @@ int http_sendfile2(http_s *h_,
                    size_t encoded_len) {
   if (HTTP_S_INVALID(h_))
     return -1;
-  FIOBJ_STR_TEMP_VAR(fn);
   /* stack allocated buffer for filename data */
   char buffer[2048];
-  fn___tmp[1] = (fiobj_str_s)FIO_STRING_INIT_EXISTING(buffer, 0, 2048, NULL);
+  FIOBJ_STR_TEMP_VAR_EXISTING(fn, buffer, 0, 2048, NULL);
   /* copy file name, protect against root (//) and tree traversal (..) */
   if (prefix && prefix_len) {
     fiobj_str_write(fn, prefix, prefix_len);
