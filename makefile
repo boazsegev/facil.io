@@ -741,6 +741,12 @@ test/collisions: | create_tree
 	@$(CCL) -o $(BIN) $(TMP_ROOT)/collisions.o $(LINKER_FLAGS) $(OPTIMIZATION)
 	@$(BIN)
 
+.PHONY : test/malloc
+test/malloc: | create_tree
+	@$(CC) -c ./tests/malloc_speed.c -o $(TMP_ROOT)/malloc_speed.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@$(CCL) -o $(BIN) $(TMP_ROOT)/malloc_speed.o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@$(BIN)
+
 .PHONY : test/http1_parser
 test/http1_parser: | create_tree
 	@$(CC) -c ./tests/http1_parser.c -o $(TMP_ROOT)/http1_parser.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)

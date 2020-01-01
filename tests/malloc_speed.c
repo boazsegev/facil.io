@@ -1,4 +1,6 @@
-#include <fio.h>
+#define FIO_MALLOC
+#define FIO_LOG
+#include <fio-stl.h>
 
 #include <pthread.h>
 #include <stdint.h>
@@ -99,7 +101,7 @@ static size_t test_mem_functions(void *(*malloc_func)(size_t),
           if (!pointers[j])
             ++errors;
           else
-            ((char *)pointers[j])[0] = '1';
+            ((char *)pointers[j])[(i << 4) - 1] = '1';
         }
         free_func(pointers[j]);
       }
@@ -119,8 +121,8 @@ static size_t test_mem_functions(void *(*malloc_func)(size_t),
   fprintf(stderr, "* Avrg. clock count for calloc: %zu\n", clock_calloc);
   fprintf(stderr, "* Avrg. clock count for realloc: %zu\n", clock_realloc);
   fprintf(stderr, "* Avrg. clock count for free: %zu\n", clock_free);
-  fprintf(stderr, "* Avrg. clock count for free (re-cycle): %zu\n",
-          clock_free2);
+  fprintf(
+      stderr, "* Avrg. clock count for free (re-cycle): %zu\n", clock_free2);
   fprintf(stderr,
           "* Avrg. clock count for a facil.io use-case round"
           " (medium-short life): %zu\n",
@@ -147,15 +149,17 @@ void *test_facil_malloc(void *ignr) {
 
 int main(void) {
 #if DEBUG
-  fprintf(stderr, "\n=== WARNING: performance tests using the DEBUG mode are "
-                  "invalid. \n");
+  fprintf(stderr,
+          "\n=== WARNING: performance tests using the DEBUG mode are "
+          "invalid. \n");
 #endif
   pthread_t thread2;
   void *thrd_result;
 
   /* test system allocations */
-  fprintf(stderr, "===== Performance Testing system memory allocator "
-                  "(please wait):\n ");
+  fprintf(stderr,
+          "===== Performance Testing system memory allocator "
+          "(please wait):\n ");
   FIO_ASSERT(pthread_create(&thread2, NULL, test_system_malloc, NULL) == 0,
              "Couldn't spawn thread.");
   size_t system = test_mem_functions(malloc, calloc, realloc, free);
@@ -164,8 +168,9 @@ int main(void) {
   fprintf(stderr, "Total Cycles: %zu\n", system);
 
   /* test facil.io allocations */
-  fprintf(stderr, "\n===== Performance Testing facil.io memory allocator "
-                  "(please wait):\n");
+  fprintf(stderr,
+          "\n===== Performance Testing facil.io memory allocator "
+          "(please wait):\n");
   FIO_ASSERT(pthread_create(&thread2, NULL, test_facil_malloc, NULL) == 0,
              "Couldn't spawn thread.");
   size_t fio =
