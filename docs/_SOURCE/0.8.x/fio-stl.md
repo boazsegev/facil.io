@@ -1726,10 +1726,10 @@ size_t SMALL_STR_len(const FIO_SMALL_STR_PTR s);
 
 Returns the String's length in bytes.
 
-#### `SMALL_STR_allocated`
+#### `SMALL_STR_is_allocated`
 
 ```c
-int SMALL_STR_allocated(const FIO_SMALL_STR_PTR s);
+int SMALL_STR_is_allocated(const FIO_SMALL_STR_PTR s);
 ```
 
 Returns 1 if memory was allocated and (the String must be destroyed).
@@ -3070,13 +3070,15 @@ Long term allocation can use `fio_mmap` to directly allocate memory from the sys
 
 The memory allocator uses `mmap` to collect memory from the system.
 
-Each allocation collects ~8Mb from the system, aligned on a 32Kb alignment boundary (except direct `mmap` allocation for large `fio_malloc` or `fio_mmap` calls). This memory is divided into 32Kb blocks which are added to a doubly linked "free" list.
+Each allocation collects ~8Mb from the system, aligned on a 32Kb alignment boundary (except direct `mmap` allocation for large `fio_malloc` or `fio_mmap` calls).
+
+By default, this memory is divided into 256Kb blocks which are added to a doubly linked "free" list (controlled by the `FIO_MEMORY_BLOCK_SIZE_LOG` value).
 
 The allocator utilizes per-CPU arenas / bins to allow for concurrent memory allocations across threads and to minimize lock contention.
 
-Each arena / bin collects a 32Kb block and allocates "slices" as required by `fio_malloc`/`fio_realloc`.
+Each arena / bin collects a single block and allocates "slices" as required by `fio_malloc`/`fio_realloc`.
 
-The `fio_free` function will free the whole 32Kb block as a single unit once the whole of the allocations for that block were freed (no small-allocation "free list" and no per-slice meta-data).
+The `fio_free` function will return the whole memory block to the free list as a single unit once the whole of the allocations for that block were freed (no small-allocation "free list" and no per-slice meta-data).
 
 The memory collected from the system (the 8Mb) will be returned to the system once all the memory was both allocated and freed (or during cleanup).
 
@@ -3100,8 +3102,7 @@ void * fio_malloc(size_t size);
 
 Allocates memory using a per-CPU core block memory pool. Memory is zeroed out.
 
-Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
-will be redirected to `mmap`, as if `fio_mmap` was called.
+Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (defaults to half a memory block, 128Kb) will be redirected to `mmap`, as if `fio_mmap` was called.
 
 #### `fio_calloc`
 
@@ -3111,8 +3112,7 @@ void * fio_calloc(size_t size_per_unit, size_t unit_count);
 
 Same as calling `fio_malloc(size_per_unit * unit_count)`;
 
-Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
-will be redirected to `mmap`, as if `fio_mmap` was called.
+Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (128Kb for 256Kb blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
 
 #### `fio_free`
 
@@ -3128,8 +3128,7 @@ Frees memory that was allocated using this library.
 void * fio_realloc(void *ptr, size_t new_size);
 ```
 
-Re-allocates memory. An attempt to avoid copying the data is made only for big
-memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
+Re-allocates memory. An attempt to avoid copying the data is made only for big memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
 
 #### `fio_realloc2`
 
@@ -3137,8 +3136,7 @@ memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
 void * fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
 ```
 
-Re-allocates memory. An attempt to avoid copying the data is made only for big
-memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
+Re-allocates memory. An attempt to avoid copying the data is made only for big memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
 
 This variation is slightly faster as it might copy less data.
 
@@ -3148,11 +3146,9 @@ This variation is slightly faster as it might copy less data.
 void * fio_mmap(size_t size);
 ```
 
-Allocates memory directly using `mmap`, this is preferred for objects that both
-require almost a page of memory (or more) and expect a long lifetime.
+Allocates memory directly using `mmap`, this is preferred for objects that both require almost a page of memory (or more) and expect a long lifetime.
 
-However, since this allocation will invoke the system call (`mmap`), it will be
-inherently slower.
+However, since this allocation will invoke the system call (`mmap`), it will be inherently slower.
 
 `fio_free` can be used for deallocating the memory.
 
@@ -3162,12 +3158,9 @@ inherently slower.
 void fio_malloc_after_fork(void);
 ```
 
-Never fork a multi-threaded process. Doing so might corrupt the memory
-allocation system. The risk is more relevant for child processes.
+Never fork a multi-threaded process. Doing so might corrupt the memory allocation system. The risk is more relevant for child processes.
 
-However, if a multi-threaded process, calling this function from the child
-process would perform a best attempt at mitigating any arising issues (at the
-expense of possible leaks).
+However, if a multi-threaded process, calling this function from the child process would perform a best attempt at mitigating any arising issues (at the expense of possible leaks).
 
 #### `FIO_MALLOC_FORCE_SYSTEM`
 
@@ -3176,6 +3169,22 @@ If `FIO_MALLOC_FORCE_SYSTEM` is defined, the facil.io memory allocator functions
 #### `FIO_MALLOC_OVERRIDE_SYSTEM`
 
 If `FIO_MALLOC_OVERRIDE_SYSTEM` is defined, the facil.io memory allocator will replace the system's memory allocator.
+
+#### `FIO_MEMORY_BLOCK_SIZE_LOG`
+
+Controls the size of a memory block in logarithmic value, 15 == 32Kb, 16 == 64Kb, etc'.
+
+Defaults to 18, resulting in a memory block size of 256Kb and a `FIO_MEMORY_BLOCK_ALLOC_LIMIT` of 128Kb.
+
+Lower values improve fragmentation handling while increasing costs for memory block rotation (per arena) and large size allocations.
+
+Larger values improve allocation speeds.
+
+The `FIO_MEMORY_BLOCK_SIZE_LOG` limit is 20 (the memory allocator will break at that point).
+
+#### `FIO_MEMORY_BLOCK_ALLOC_LIMIT`
+
+The memory pool allocation size limit. By default, this is half a memory block (see `FIO_MEMORY_BLOCK_SIZE_LOG`).
 
 #### `FIO_MEMORY_ARENA_COUNT_MAX`
 

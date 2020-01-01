@@ -1710,16 +1710,17 @@ SFUNC void fio_malloc_after_fork(void);
 /**
  * The logarithmic value for a memory block, 15 == 32Kb, 16 == 64Kb, etc'
  *
- * By default, a block of memory is 32Kb silce from an 8Mb allocation.
+ * Breaks at FIO_MEMORY_BLOCK_SIZE_LOG == 20
  *
- * A value of 16 will make this a 64Kb silce from a 16Mb allocation.
+ * By default, a block of memory is 256Kb silce from an 8Mb allocation.
  */
-#define FIO_MEMORY_BLOCK_SIZE_LOG (15)
+#define FIO_MEMORY_BLOCK_SIZE_LOG (18)
 #endif
 
-/* The number of blocks pre-allocated each system call, 256 == 8Mb */
+/* The number of blocks pre-allocated each system call, 8Mb by default */
 #ifndef FIO_MEMORY_BLOCKS_PER_ALLOCATION
-#define FIO_MEMORY_BLOCKS_PER_ALLOCATION 256
+#define FIO_MEMORY_BLOCKS_PER_ALLOCATION                                       \
+  ((1 << 23) >> FIO_MEMORY_BLOCK_SIZE_LOG)
 #endif
 
 /*
@@ -2413,7 +2414,7 @@ FIO_SFUNC void *fio___mem_block_slice(size_t bytes) {
   bytes = (bytes + 15) >> 4; /* convert to 16 byte units */
   fio___mem_arena_aquire();
   fio___mem_block_s *b = fio___mem_arena->block;
-  if (!b || (b->pos + bytes) >= max) {
+  if (!b || ((size_t)b->pos + bytes) >= (size_t)max) {
     fio___mem_block_rotate();
     b = fio___mem_arena->block;
   }
@@ -2667,10 +2668,12 @@ Memory management macros
 #define FIO_MEM_REALLOC_(ptr, old_size, new_size, copy_len)                    \
   realloc((ptr), (new_size))
 #define FIO_MEM_FREE_(ptr, size) free((ptr))
+#define FIO_MEM_INTERNAL_MALLOC_ 0
 #else
 #define FIO_MEM_CALLOC_ FIO_MEM_CALLOC
 #define FIO_MEM_REALLOC_ FIO_MEM_REALLOC
 #define FIO_MEM_FREE_ FIO_MEM_FREE
+#define FIO_MEM_INTERNAL_MALLOC_ FIO_MEM_INTERNAL_MALLOC
 #endif
 
 /* *****************************************************************************
@@ -11608,6 +11611,7 @@ Common cleanup
 #undef FIO_MEM_CALLOC_
 #undef FIO_MEM_REALLOC_
 #undef FIO_MEM_FREE_
+#undef FIO_MEM_INTERNAL_MALLOC_
 #undef FIO_MALLOC_TMP_USE_SYSTEM
 
 /* undefine FIO_EXTERN_COMPLETE only if it was defined locally */
@@ -16134,7 +16138,7 @@ TEST_FUNC void fio___dynamic_types_test___mem(void) {
   fprintf(stderr, "* Testing core memory allocator (fio_malloc).\n");
   const size_t three_blocks = ((size_t)3ULL * FIO_MEMORY_BLOCKS_PER_ALLOCATION)
                               << FIO_MEMORY_BLOCK_SIZE_LOG;
-  for (int cycles = 4; cycles < 16; ++cycles) {
+  for (int cycles = 4; cycles < FIO_MEMORY_BLOCK_SIZE_LOG; ++cycles) {
     fprintf(stderr,
             "* Testing %zu byte allocation blocks.\n",
             (size_t)(1UL << cycles));
