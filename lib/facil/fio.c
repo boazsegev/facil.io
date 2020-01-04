@@ -5507,28 +5507,20 @@ static void fio_cluster_at_exit(void *ignore) {
   /* unlock all */
   fio_pubsub_on_fork();
   /* clear subscriptions of all types */
-  while (fio_ch_set_count(&fio_postoffice.patterns.channels)) {
-    channel_s *ch = fio_ch_set_last(&fio_postoffice.patterns.channels);
-    while (subscriptions_any(&ch->subscriptions)) {
-      fio_unsubscribe(subscriptions_root(ch->subscriptions.next));
+  FIO_MAP_EACH2(fio_ch_set, &fio_postoffice.patterns.channels, pos) {
+    while (subscriptions_any(&pos->obj->subscriptions)) {
+      fio_unsubscribe(subscriptions_root(pos->obj->subscriptions.next));
     }
-    fio_ch_set_pop(&fio_postoffice.patterns.channels, NULL);
   }
-
-  while (fio_ch_set_count(&fio_postoffice.pubsub.channels)) {
-    channel_s *ch = fio_ch_set_last(&fio_postoffice.pubsub.channels);
-    while (subscriptions_any(&ch->subscriptions)) {
-      fio_unsubscribe(subscriptions_root(ch->subscriptions.next));
+  FIO_MAP_EACH2(fio_ch_set, &fio_postoffice.pubsub.channels, pos) {
+    while (subscriptions_any(&pos->obj->subscriptions)) {
+      fio_unsubscribe(subscriptions_root(pos->obj->subscriptions.next));
     }
-    fio_ch_set_pop(&fio_postoffice.pubsub.channels, NULL);
   }
-
-  while (fio_ch_set_count(&fio_postoffice.filters.channels)) {
-    channel_s *ch = fio_ch_set_last(&fio_postoffice.filters.channels);
-    while (subscriptions_any(&ch->subscriptions)) {
-      fio_unsubscribe(subscriptions_root(ch->subscriptions.next));
+  FIO_MAP_EACH2(fio_ch_set, &fio_postoffice.filters.channels, pos) {
+    while (subscriptions_any(&pos->obj->subscriptions)) {
+      fio_unsubscribe(subscriptions_root(pos->obj->subscriptions.next));
     }
-    fio_ch_set_pop(&fio_postoffice.filters.channels, NULL);
   }
   fio_ch_set_destroy(&fio_postoffice.filters.channels);
   fio_ch_set_destroy(&fio_postoffice.patterns.channels);
@@ -5536,9 +5528,8 @@ static void fio_cluster_at_exit(void *ignore) {
 
   /* clear engines */
   FIO_PUBSUB_DEFAULT = FIO_PUBSUB_CLUSTER;
-  while (fio_engine_set_count(&fio_postoffice.engines.set)) {
-    fio_pubsub_detach(fio_engine_set_last(&fio_postoffice.engines.set));
-    fio_engine_set_last(&fio_postoffice.engines.set);
+  FIO_MAP_EACH2(fio_engine_set, &fio_postoffice.engines.set, pos) {
+    fio_pubsub_detach(pos->obj);
   }
   fio_engine_set_destroy(&fio_postoffice.engines.set);
 
