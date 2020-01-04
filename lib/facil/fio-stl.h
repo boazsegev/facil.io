@@ -6412,7 +6412,7 @@ FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m_,
     --m->w;
   return 0;
 not_found:
-  if (*old)
+  if (old)
     *old = FIO_MAP_TYPE_INVALID;
   return -1;
 }
