@@ -816,27 +816,27 @@ It's possible to edit elements within the loop, but avoid editing the array itse
 
 -------------------------------------------------------------------------------
 
-## Hash Maps / Sets
+## Maps - Hash Maps / Sets
 
 Hash maps and sets are extremely useful and common mapping / dictionary primitives, also sometimes known as "dictionary".
 
 Hash maps use both a `hash` and a `key` to identify a `value`. The `hash` value is calculated by feeding the key's data to a hash function (such as Risky Hash or SipHash).
 
-A hash map without a `key` is known as a Set or a Bag. It uses only a `hash` (often calculated using the `value`) to identify a `value`, sometimes requiring a `value` equality test as well. This approach often promises a collection of unique values (no duplicate values).
+A hash map without a `key` is known as a Set or a Bag. It uses only a `hash` (often calculated using `value`) to identify the `value` in the Set, sometimes requiring a `value` equality test as well. This approach often promises a collection of unique values (no duplicate values).
 
-Some map implementations support a FIFO limited storage, which could be used for limited-space caching.
+Some map implementations support a FIFO limited storage, which could be used for naive limited-space caching (though caching solutions may require a more complex data-storage).
 
 ### Map Performance
 
-Memory overhead (on 64bit machines) is 24 bytes for the map container + 16 bytes of metadata per object container.
+Memory overhead depends on the settings used to create the Map. By default, the overhead will be 24 bytes for the Map container (on 64bit machines) + 12 bytes per object (hash + index).
 
-For example, assuming a hash map (not a set) with 8 byte keys and 8 byte values, that would add up to 32 bytes per object (`32 * map_capa(map) + 24`).
+For example, assuming a hash map (not a set) with 8 byte keys and 8 byte values, that would add up to 28 bytes per object (`28 * map_capa(map) + 24`).
 
 Seeking time is usually a fast O(1), although partial or full `hash` collisions may increase the cost of the operation.
 
 Adding, editing and removing items is also a very fast O(1), especially if enough memory was previously reserved. However, memory allocation and copying will slow performance, especially when the map need to grow or requires de-fragmentation.
 
-Iteration in this implementation doesn't enjoy memory locality, except for small maps or where the order of insertion randomly produces neighboring hashes. Maps are implemented using an array. The objects are accessed by order of insertion, but they are stored out of order (according to their hash value).
+Iteration enjoys memory locality at the expense of an expected cache miss per seeking operation. Maps are implemented using an array and an index map. When the index map is large, a cache miss will occur when reading data from the array.
 
 This map implementation has protection features against too many full collisions or non-random hashes. When the map detects a possible "attack", it will start overwriting existing data instead of trying to resolve collisions. This can be adjusted using the `FIO_MAP_MAX_FULL_COLLISIONS` macro.
 
@@ -859,14 +859,14 @@ Other helpful macros to define might include:
 - `FIO_MAP_KEY_COPY(dest, src)`
 - `FIO_MAP_KEY_DESTROY(obj)`
 - `FIO_MAP_KEY_CMP(a, b)`
-- `FIO_MAP_MAX_FULL_COLLISIONS`, which defaults to `96`
+- `FIO_MAP_MAX_FULL_COLLISIONS`, which defaults to `22`
 
 
 - `FIO_MAP_DESTROY_AFTER_COPY` - uses "smart" defaults to decide if to destroy an object after it was copied (when using `set` / `remove` / `pop` with a pointer to contain `old` object)
 - `FIO_MAP_TYPE_DISCARD(obj)` - Handles discarded element data (i.e., insert without overwrite in a Set).
 - `FIO_MAP_KEY_DISCARD(obj)` - Handles discarded element data (i.e., when overwriting an existing value in a hash map).
 - `FIO_MAP_MAX_ELEMENTS` - The maximum number of elements allowed before removing old data (FIFO).
-- `FIO_MAP_MAX_SEEK` -  The maximum number of bins to rotate when (partial/full) collisions occur. Limited to a maximum of 255.
+- `FIO_MAP_MAX_SEEK` -  The maximum number of bins to rotate when (partial/full) collisions occur. Limited to a maximum of 255 and should be higher than `FIO_MAP_MAX_FULL_COLLISIONS`. By default `96`.
 
 To limit the number of elements in a map (FIFO, ignoring last access time), allowing it to behave similarly to a simple caching primitive, define: `FIO_MAP_MAX_ELEMENTS`.
 
@@ -876,6 +876,16 @@ Example:
 
 ```c
 /* TODO */
+/* We'll use small immutable binary strings as keys */
+#define FIO_SMALL_STR_NAME key
+#include "fio-stl.h"
+
+#define FIO_MAP_NAME number_map /* results in the type: number_map_s */
+#define FIO_MAP_TYPE size_t
+#define FIO_MAP_KEY key_s
+#define FIO_MAP_KEY_DESTROY(k) key_destroy(&k)
+#define FIO_MAP_KEY_DISCARD(k) key_destroy(&k)
+#include "fio-stl.h"
 ```
 
 ### Hash Map / Set - API (initialization)
