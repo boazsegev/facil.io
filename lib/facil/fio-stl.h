@@ -6814,6 +6814,7 @@ SFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, __set)(FIO_MAP_S *m,
     FIO_MAP_TYPE_COPY((m->map[m->w].obj), obj);
 #endif
     m->map[m->w].hash = hash;
+    i.i = m->w;
     ++m->w;
     ++m->count;
 
@@ -6826,36 +6827,35 @@ SFUNC FIO_MAP_TYPE *FIO_NAME(FIO_MAP_NAME, __set)(FIO_MAP_S *m,
     }
     if (old)
       *old = FIO_MAP_TYPE_INVALID;
-  } else {
-    /* existing. overwrite? */
-    if (overwrite) {
-#ifdef FIO_MAP_KEY
-      if (old) {
-        FIO_MAP_TYPE_COPY((*old), (m->map[i.i].obj.value));
-#if FIO_MAP_DESTROY_AFTER_COPY
-        FIO_MAP_TYPE_DESTROY(m->map[i.i].obj.value);
-#endif
-      } else {
-        FIO_MAP_TYPE_DESTROY(m->map[i.i].obj.value);
-      }
-      FIO_MAP_TYPE_COPY((m->map[i.i].obj.value), obj);
-      FIO_MAP_KEY_DISCARD(key);
-#else  /* !FIO_MAP_KEY */
-      if (old) {
-        FIO_MAP_TYPE_COPY((*old), (m->map[i.i].obj));
-        FIO_MAP_OBJ_DESTROY_AFTER((m->map[i.i].obj));
-      } else {
-        FIO_MAP_OBJ_DESTROY((m->map[i.i].obj));
-      }
-      FIO_MAP_OBJ_COPY((m->map[i.i].obj), obj);
-#endif /* FIO_MAP_KEY */
-    } else {
-      FIO_MAP_KEY_DISCARD(key);
-      FIO_MAP_TYPE_DISCARD(obj);
-    }
     return &FIO_MAP_OBJ2TYPE(m->map[i.i].obj);
   }
-  return NULL;
+  /* existing. overwrite? */
+  if (overwrite) {
+#ifdef FIO_MAP_KEY
+    if (old) {
+      FIO_MAP_TYPE_COPY((*old), (m->map[i.i].obj.value));
+#if FIO_MAP_DESTROY_AFTER_COPY
+      FIO_MAP_TYPE_DESTROY(m->map[i.i].obj.value);
+#endif
+    } else {
+      FIO_MAP_TYPE_DESTROY(m->map[i.i].obj.value);
+    }
+    FIO_MAP_TYPE_COPY((m->map[i.i].obj.value), obj);
+    FIO_MAP_KEY_DISCARD(key);
+#else  /* !FIO_MAP_KEY */
+    if (old) {
+      FIO_MAP_TYPE_COPY((*old), (m->map[i.i].obj));
+      FIO_MAP_OBJ_DESTROY_AFTER((m->map[i.i].obj));
+    } else {
+      FIO_MAP_OBJ_DESTROY((m->map[i.i].obj));
+    }
+    FIO_MAP_OBJ_COPY((m->map[i.i].obj), obj);
+#endif /* FIO_MAP_KEY */
+  } else {
+    FIO_MAP_KEY_DISCARD(key);
+    FIO_MAP_TYPE_DISCARD(obj);
+  }
+  return &FIO_MAP_OBJ2TYPE(m->map[i.i].obj);
 
 error:
 
