@@ -1131,7 +1131,7 @@ Returns the relative "stop" position, i.e., the number of items processed + the 
 #### `MAP_each_get_key`
 
 ```c
-FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
+FIO_MAP_KEY MAP_each_get_key(void);
 ```
 
 Returns the current `key` within an `each` task.
@@ -1139,6 +1139,36 @@ Returns the current `key` within an `each` task.
 Only available within an `each` loop.
 
 _Note: For sets, returns the hash value, for hash maps, returns the key value._
+
+#### `FIO_MAP_EACH2`
+
+```c
+#define FIO_MAP_EACH2(map_type, map_p, pos)                                    \
+  for (FIO_NAME(map_type, each_s) *pos =                                       \
+           FIO_NAME(map_type, each_next)(map_p, NULL);                         \
+       pos;                                                                    \
+       pos = FIO_NAME(map_type, each_next)(map_p, pos))
+```
+
+A macro for a `for` loop that iterates over all the Map's objects (in
+order).
+
+Use this macro for small Hash Maps / Sets.
+
+- `map_type` is the Map's type name/function prefix, same as FIO_MAP_NAME.
+
+- `map_p` is a pointer to the Hash Map / Set variable.
+
+- `pos` is a temporary variable name to be created for iteration. This
+   variable may SHADOW external variables, be aware.
+
+To access the object information, use:
+
+- `pos->hash` to access the hash value.
+
+- `pos->obj` to access the object's data.
+
+   For Hash Maps, use `pos->obj.key` and `pos->obj.value`.
 
 #### `FIO_MAP_EACH`
 
