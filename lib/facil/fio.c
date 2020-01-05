@@ -506,9 +506,9 @@ void fio_uuid_env_set FIO_NOOP(intptr_t uuid, fio_uuid_env_args_s args) {
   fio_uuid_env_obj_s i = {.data = NULL};
   if (args.name.buf && args.name.len) {
     if (args.const_name) {
-      fio_uuid_env_name_set_const(&n, args.name.buf, args.name.len);
+      fio_uuid_env_name_init_const(&n, args.name.buf, args.name.len);
     } else {
-      fio_uuid_env_name_set_copy(&n, args.name.buf, args.name.len);
+      fio_uuid_env_name_init_copy(&n, args.name.buf, args.name.len);
     }
   }
   fio_lock(&uuid_data(uuid).sock_lock);
@@ -538,7 +538,7 @@ void fio_uuid_env_remove FIO_NOOP(intptr_t uuid,
                                   fio_uuid_env_unset_args_s args) {
   fio_uuid_env_name_s n = FIO_SMALL_STR_INIT;
   fio_uuid_env_obj_s i = {.data = NULL};
-  fio_uuid_env_name_set_const(&n, args.name.buf, args.name.len);
+  fio_uuid_env_name_init_const(&n, args.name.buf, args.name.len);
   if (!uuid_is_valid(uuid))
     goto invalid;
   fio_lock(&uuid_data(uuid).sock_lock);
@@ -564,7 +564,7 @@ invalid:
 void *fio_uuid_env_get FIO_NOOP(intptr_t uuid, fio_uuid_env_unset_args_s args) {
   fio_uuid_env_name_s n = FIO_SMALL_STR_INIT;
   fio_uuid_env_obj_s i = {.data = NULL};
-  fio_uuid_env_name_set_const(&n, args.name.buf, args.name.len);
+  fio_uuid_env_name_init_const(&n, args.name.buf, args.name.len);
   if (!uuid_is_valid(uuid))
     goto invalid;
   fio_lock(&uuid_data(uuid).sock_lock);
@@ -588,7 +588,7 @@ fio_uuid_env_args_s fio_uuid_env_unset
 FIO_NOOP(intptr_t uuid, fio_uuid_env_unset_args_s args) {
 
   fio_uuid_env_name_s n = FIO_SMALL_STR_INIT;
-  fio_uuid_env_name_set_const(&n, args.name.buf, args.name.len);
+  fio_uuid_env_name_init_const(&n, args.name.buf, args.name.len);
   if (!uuid_is_valid(uuid))
     goto invalid;
   fio_lock(&uuid_data(uuid).sock_lock);
@@ -4607,9 +4607,7 @@ static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
 /* runs in lock(!) let'm all know */
 static void fio_pubsub_on_channel_create(channel_s *ch) {
   fio_lock(&fio_postoffice.engines.lock);
-  FIO_MAP_EACH(&fio_postoffice.engines.set, pos) {
-    if (!pos->hash)
-      continue;
+  FIO_MAP_EACH2(fio_engine_set, &fio_postoffice.engines.set, pos) {
     pos->obj->subscribe(pos->obj,
                         (fio_str_info_s){.buf = ch->name, .len = ch->name_len},
                         ch->match);
@@ -4621,9 +4619,7 @@ static void fio_pubsub_on_channel_create(channel_s *ch) {
 /* runs in lock(!) let'm all know */
 static void fio_pubsub_on_channel_destroy(channel_s *ch) {
   fio_lock(&fio_postoffice.engines.lock);
-  FIO_MAP_EACH(&fio_postoffice.engines.set, pos) {
-    if (!pos->hash)
-      continue;
+  FIO_MAP_EACH2(fio_engine_set, &fio_postoffice.engines.set, pos) {
     pos->obj->unsubscribe(
         pos->obj,
         (fio_str_info_s){.buf = ch->name, .len = ch->name_len},
@@ -4686,9 +4682,7 @@ int fio_pubsub_is_attached(fio_pubsub_engine_s *engine) {
  */
 void fio_pubsub_reattach(fio_pubsub_engine_s *eng) {
   fio_lock(&fio_postoffice.pubsub.lock);
-  FIO_MAP_EACH(&fio_postoffice.pubsub.channels, pos) {
-    if (!pos->hash)
-      continue;
+  FIO_MAP_EACH2(fio_ch_set, &fio_postoffice.pubsub.channels, pos) {
     eng->subscribe(
         eng,
         (fio_str_info_s){.buf = pos->obj->name, .len = pos->obj->name_len},
@@ -4696,9 +4690,7 @@ void fio_pubsub_reattach(fio_pubsub_engine_s *eng) {
   }
   fio_unlock(&fio_postoffice.pubsub.lock);
   fio_lock(&fio_postoffice.patterns.lock);
-  FIO_MAP_EACH(&fio_postoffice.patterns.channels, pos) {
-    if (!pos->hash)
-      continue;
+  FIO_MAP_EACH2(fio_ch_set, &fio_postoffice.patterns.channels, pos) {
     eng->subscribe(
         eng,
         (fio_str_info_s){.buf = pos->obj->name, .len = pos->obj->name_len},
@@ -4871,11 +4863,7 @@ static void fio_publish2process(fio_msg_internal_s *m) {
   if (m->filter == 0) {
     /* pattern matching match */
     fio_lock(&fio_postoffice.patterns.lock);
-    FIO_MAP_EACH(&fio_postoffice.patterns.channels, p) {
-      if (!p->hash) {
-        continue;
-      }
-
+    FIO_MAP_EACH2(fio_ch_set, &fio_postoffice.patterns.channels, p) {
       if (p->obj->match(
               (fio_str_info_s){.buf = p->obj->name, .len = p->obj->name_len},
               m->channel)) {
@@ -5388,18 +5376,12 @@ static void fio_cluster_on_connect(intptr_t uuid, void *udata) {
 
   /* inform root about all existing channels */
   fio_lock(&fio_postoffice.pubsub.lock);
-  FIO_MAP_EACH(&fio_postoffice.pubsub.channels, pos) {
-    if (!pos->hash) {
-      continue;
-    }
+  FIO_MAP_EACH2(fio_ch_set, &fio_postoffice.pubsub.channels, pos) {
     fio_cluster_inform_root_about_channel(pos->obj, 1);
   }
   fio_unlock(&fio_postoffice.pubsub.lock);
   fio_lock(&fio_postoffice.patterns.lock);
-  FIO_MAP_EACH(&fio_postoffice.patterns.channels, pos) {
-    if (!pos->hash) {
-      continue;
-    }
+  FIO_MAP_EACH2(fio_ch_set, &fio_postoffice.patterns.channels, pos) {
     fio_cluster_inform_root_about_channel(pos->obj, 1);
   }
   fio_unlock(&fio_postoffice.patterns.lock);
@@ -5561,25 +5543,19 @@ static void fio_pubsub_on_fork(void) {
   fio_postoffice.meta.lock = FIO_LOCK_INIT;
   cluster_data.lock = FIO_LOCK_INIT;
   cluster_data.uuid = 0;
-  FIO_MAP_EACH(&fio_postoffice.filters.channels, pos) {
-    if (!pos->hash)
-      continue;
+  FIO_MAP_EACH2(fio_ch_set, &fio_postoffice.filters.channels, pos) {
     pos->obj->lock = FIO_LOCK_INIT;
     FIO_LIST_EACH(subscription_s, node, &pos->obj->subscriptions, n) {
       n->lock = FIO_LOCK_INIT;
     }
   }
-  FIO_MAP_EACH(&fio_postoffice.pubsub.channels, pos) {
-    if (!pos->hash)
-      continue;
+  FIO_MAP_EACH2(fio_ch_set, &fio_postoffice.pubsub.channels, pos) {
     pos->obj->lock = FIO_LOCK_INIT;
     FIO_LIST_EACH(subscription_s, node, &pos->obj->subscriptions, n) {
       n->lock = FIO_LOCK_INIT;
     }
   }
-  FIO_MAP_EACH(&fio_postoffice.patterns.channels, pos) {
-    if (!pos->hash)
-      continue;
+  FIO_MAP_EACH2(fio_ch_set, &fio_postoffice.patterns.channels, pos) {
     pos->obj->lock = FIO_LOCK_INIT;
     FIO_LIST_EACH(subscription_s, node, &pos->obj->subscriptions, n) {
       n->lock = FIO_LOCK_INIT;
@@ -5990,7 +5966,7 @@ FIO_IFUNC void fio___tls_alpn_add(fio_tls_s *tls,
 FIO_IFUNC alpn_s *fio___tls_alpn_default(fio_tls_s *tls) {
   if (!tls || !fio___tls_alpn_list_count(&tls->alpn))
     return NULL;
-  FIO_MAP_EACH(&tls->alpn, pos) { return &pos->obj; }
+  FIO_MAP_EACH2(fio___tls_alpn_list, &tls->alpn, pos) { return &pos->obj; }
   return NULL;
 }
 
@@ -6052,7 +6028,7 @@ static void fio___tls_build_context(fio_tls_s *tls) {
   }
 
   /* ALPN Protocols */
-  FIO_MAP_EACH(&tls->alpn, pos) {
+  FIO_MAP_EACH2(fio___tls_alpn_list, &tls->alpn, pos) {
     fio_str_info_s name = fio_str_info(&pos->obj.name);
     (void)name;
     // map to pos->callback;

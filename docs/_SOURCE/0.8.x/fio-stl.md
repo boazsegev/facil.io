@@ -1061,26 +1061,6 @@ uintptr_t MAP_reserve(FIO_MAP_PTR m, uint32_t capa);
 
 Reserves a minimal capacity for the hash map.
 
-#### `MAP_last`
-
-```c
-FIO_MAP_TYPE MAP_last(FIO_MAP_PTR m);
-```
-
-Allows a peak at the Set's last element.
-
-Remember that objects might be destroyed if the Set is altered (`FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
-
-#### `MAP_pop`
-
-```c
-void MAP_pop(FIO_MAP_PTR m, FIO_MAP_TYPE * old);
-```
-
-Allows the Hash to be momentarily used as a stack, destroying the last object added (using `FIO_MAP_TYPE_DESTROY` / `FIO_MAP_KEY_DESTROY`).
-
-If `old` is given, existing data will be copied to that location.
-
 #### `MAP_compact`
 
 ```c
@@ -1097,13 +1077,47 @@ int MAP_rehash(FIO_MAP_PTR m);
 
 Rehashes the Hash Map / Set. Usually this is performed automatically, no need to call the function.
 
+#### `MAP_each_next`
+
+```c
+MAP_each_s * MAP_each_next(FIO_MAP_PTR m, MAP_each_s * pos);
+```
+
+
+
+Returns a pointer to the (next) object's information in the map.
+
+To access the object information, use:
+
+```c
+MAP_each_s * pos = MAP_each_next(map, NULL);
+```
+
+- `i->hash` to access the hash value.
+
+- `i->obj` to access the object's data.
+
+   For Hash Maps, use `i->obj.key` and `i->obj.value`.
+
+Returns the first object if `pos == NULL` and there are objects in the map.
+
+Returns the next object if `pos` is valid.
+
+Returns NULL if `pos` was the last object or no object exist.
+
+**Note**:
+
+Behavior is undefined if `pos` is invalid.
+
+The value of `pos` may become invalid if an object is added to the Map after the value of `pos` was retrieved. However, object removal and replacement (same key and hash value) are safe (will not invalidate `pos`).
+
 #### `MAP_each`
 
 ```c
-uint32_t FIO_NAME(FIO_MAP_NAME, each)(FIO_MAP_PTR m,
-                                      int32_t start_at,
-                                      int (*task)(FIO_MAP_TYPE obj, void *arg),
-                                      void *arg);
+uint32_t MAP_each(FIO_MAP_PTR m,
+                  int32_t start_at,
+                  int (*task)(FIO_MAP_TYPE obj, void *arg),
+                  void *arg);
 ```
 
 Iteration using a callback for each element in the map.
@@ -1621,19 +1635,28 @@ To create a small, non-dynamic, string type, define the type name using the `FIO
 The type (`FIO_SMALL_STR_NAME_s`) and the functions will be automatically defined.
 
 ```c
-#define FIO_SMALL_STR_NAME key
+#define FIO_SMALL_STR_NAME key  /* results in the type name: key_s */
 #define FIO_ATOL
 #include "fio-stl.h"
 
 #define FIO_MAP_NAME map
 #define FIO_MAP_TYPE uintptr_t
-#define FIO_MAP_KEY key_s
+#define FIO_MAP_KEY key_s /* the small string type */
 #define FIO_MAP_KEY_INVALID (key_s)FIO_SMALL_STR_INIT
-#define FIO_MAP_KEY_INVALID_SIMPLE 1 /* invalid type bytes are all zeros */
 #define FIO_MAP_KEY_DESTROY(k) key_destroy(&k)
 /* destroy discarded keys when overwriting existing data (duplicate keys aren't copied): */
 #define FIO_MAP_KEY_DISCARD(k) key_destroy(&k)
 #include "fio-stl.h"
+
+/* helper for setting values in the map */
+FIO_IFUNC uintptr_t map_set2(map_s * m, key_s key, uintptr_t value) {
+  return map_set(m, key_hash(&key, (uint64_t)m), key, value, NULL);
+}
+
+/* helper for getting values from the map */
+FIO_IFUNC uintptr_t map_get2(map_s * m, key_s key) {
+  return map_get(m, key_hash(&key, (uint64_t)m), key);
+}
 
 void example(void) {
   map_s m = FIO_MAP_INIT;
@@ -1643,8 +1666,8 @@ void example(void) {
       char buf[128] = "a long key will require memory allocation: ";
       size_t len = fio_ltoa(buf + 43, i, 16) + 43;
       key_s k;
-      key_set_copy(&k, buf, len);
-      map_set(&m, key_hash(&k, (uint64_t)&m), k, (uintptr_t)i, NULL);
+      key_init_copy(&k, buf, len); /* creates a copy of the string */
+      map_set2(&m, k, (uintptr_t)i);
     }
   }
   /* short keys don't allocate external memory (string embedded in the object) */
@@ -1653,8 +1676,8 @@ void example(void) {
     char buf[128] = "embed: ";
     size_t len = fio_ltoa(buf + 7, i, 16) + 7;
     key_s k;
-    key_set_copy(&k, buf, len);
-    map_set(&m, key_hash(&k, (uint64_t)&m), k, (uintptr_t)i, NULL);
+    key_init_copy(&k, buf, len);
+    map_set2(&m, k, (uintptr_t)i);
   }
   FIO_MAP_EACH(&m, pos) {
     fprintf(stderr, "[%d] %s - memory allocated: %s\n", (int)pos->obj.value,
@@ -1670,92 +1693,88 @@ void example(void) {
 
 The small string object fits perfectly in one `char * ` pointer and one `size_t` value, meaning it takes as much memory as storing a string's location and length.
 
-However, the type information isn't stored as simply as one might imagine, allowing short strings to be stored within the object itself, improving locality.
+However, the type information isn't stored as simply as one might imagine, allowing short strings to be stored within the object itself, improving locality and memory consumption.
 
-small strings aren't dynamically allocated and their initialization is performed using the `FIO_SMALL_STR_INIT` macro (for empty strings) or the `SMALL_STR_set_const` and `SMALL_STR_set_copy` functions (see example above).
+Small strings aren't dynamically allocated and their initialization is performed using the `FIO_SMALL_STR_INIT` macro (for empty strings) or the `SSTR_init_const` and `SSTR_init_copy` functions (see example above).
 
 ### Small String API
 
-#### `SMALL_STR_set_const`
+#### `SSTR_init_const`
 
 ```c
-void SMALL_STR_set_const(FIO_SMALL_STR_PTR s, const char *str, size_t len);
+void SSTR_init_const(FIO_SMALL_STR_PTR s, const char *str, size_t len);
 ```
 
 Initializes the container with the provided static / constant string.
 
-The string will be copied to the container **only** if it will fit in the
-container itself. Otherwise, the supplied pointer will be used as is and it
-should remain valid until the string is destroyed.
+The string will be copied to the container **only** if it will fit in the container itself. Otherwise, the supplied pointer will be used as is and it should remain valid until the string is destroyed.
 
-The final string can be safely be destroyed (using the `destroy` function).
+The final string can be safely destroyed (using the `destroy` function).
 
-#### `SMALL_STR_set_copy`
+#### `SSTR_init_copy`
 
 ```c
-void SMALL_STR_set_copy(FIO_SMALL_STR_PTR s, const char *str, size_t len);
+void SSTR_init_copy(FIO_SMALL_STR_PTR s, const char *str, size_t len);
 ```
 
 Initializes the container with the provided dynamic string.
 
-The string is always copied and the final string must be destroyed (using the
-`destroy` function).
+The string is always copied and the final string must be destroyed (using the `destroy` function).
 
-#### `SMALL_STR_destroy`
+#### `SSTR_destroy`
 
 ```c
-void SMALL_STR_destroy(FIO_SMALL_STR_PTR s);
+void SSTR_destroy(FIO_SMALL_STR_PTR s);
 ```
 
 Frees the String's resources and reinitializes the container.
 
-Note: if the container isn't allocated on the stack, it should be freed
-separately using the appropriate `free` function.
+Note: if the container isn't allocated on the stack, it should be freed separately using the appropriate `free` function.
 
-#### `SMALL_STR_info`
+#### `SSTR_info`
 
 ```c
-fio_str_info_s SMALL_STR_info(const FIO_SMALL_STR_PTR s);
+fio_str_info_s SSTR_info(const FIO_SMALL_STR_PTR s);
 ```
 
 Returns information regarding the embedded string.
 
-#### `SMALL_STR2ptr`
+#### `SSTR2ptr`
 
 ```c
-const char *SMALL_STR2ptr(const FIO_SMALL_STR_PTR s);
+const char *SSTR2ptr(const FIO_SMALL_STR_PTR s);
 ```
 
 Returns a pointer (`char *`) to the String's content.
 
-#### `SMALL_STR_len`
+#### `SSTR_len`
 
 ```c
-size_t SMALL_STR_len(const FIO_SMALL_STR_PTR s);
+size_t SSTR_len(const FIO_SMALL_STR_PTR s);
 ```
 
 Returns the String's length in bytes.
 
-#### `SMALL_STR_is_allocated`
+#### `SSTR_is_allocated`
 
 ```c
-int SMALL_STR_is_allocated(const FIO_SMALL_STR_PTR s);
+int SSTR_is_allocated(const FIO_SMALL_STR_PTR s);
 ```
 
 Returns 1 if memory was allocated and (the String must be destroyed).
 
-#### `SMALL_STR_hash`
+#### `SSTR_hash`
 
 ```c
-uint64_t SMALL_STR_hash(const FIO_SMALL_STR_PTR s, uint64_t seed);
+uint64_t SSTR_hash(const FIO_SMALL_STR_PTR s, uint64_t seed);
 ```
 
 Returns the String's Risky Hash.
 
-#### `SMALL_STR_eq`
+#### `SSTR_eq`
 
 ```c
-int SMALL_STR_eq(const FIO_SMALL_STR_PTR str1, const FIO_SMALL_STR_PTR str2);
+int SSTR_eq(const FIO_SMALL_STR_PTR str1, const FIO_SMALL_STR_PTR str2);
 ```
 
 Binary comparison returns `1` if both strings are equal and `0` if not.
