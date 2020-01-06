@@ -245,9 +245,11 @@ static void http_lib_init(void *ignr_) {
   HTTP_HVALUE_WS_VERSION = fiobj_str_new_cstr("13", 2);
 
 #define REGISTER_MIME(ext, type)                                               \
-  http_mimetype_register((char *)ext,                                          \
-                         sizeof(ext) - 1,                                      \
-                         fiobj_str_new_cstr((char *)type, sizeof(type) - 1))
+  do {                                                                         \
+    FIOBJ tmp_str = fiobj_str_new();                                           \
+    fiobj_str_init_const(tmp_str, (char *)type, sizeof(type) - 1);             \
+    http_mimetype_register((char *)ext, sizeof(ext) - 1, tmp_str);             \
+  } while (0)
 
 #if HTTP_MIME_REGISTRY_AUTO
   FIO_LOG_DEBUG2("(HTTP) Registering core mime-types");

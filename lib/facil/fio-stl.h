@@ -640,8 +640,11 @@ Common macros
 #endif
 #endif /* FIO_RISKY_HASH */
 
-/* FIO_STR_NAME dependencies */
+/* FIO_STR_NAME / FIO_STR_SMALL dependencies */
 #if defined(FIO_STR_NAME) || defined(FIO_STR_SMALL)
+#ifndef FIO_ATOL
+#define FIO_ATOL
+#endif
 #ifndef FIO_BITWISE
 #define FIO_BITWISE
 #endif
@@ -6834,27 +6837,29 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR m_,
   FIO_MAP_S *const m = (FIO_MAP_S *)FIO_PTR_UNTAG(m_);
   if (!m || !m_ || !m->count)
     goto not_found;
-  hash = FIO_MAP_HASH_FIX(hash);
-  const FIO_MAP_SIZE_TYPE ihash =
-      FIO_NAME(FIO_MAP_NAME, __hash2index)(hash, m->bits);
-  FIO_NAME(FIO_MAP_NAME, __pos_s)
-  i = FIO_NAME(FIO_MAP_NAME, __get_pos)(m, hash, ihash, key);
-  if (i.i == FIO_MAP_INDEX_INVALID)
-    goto not_found;
-  if (old) {
-    FIO_MAP_TYPE_COPY((*old), FIO_MAP_OBJ2TYPE(m->map[i.i].obj));
-    FIO_MAP_OBJ_DESTROY_AFTER((m->map[i.i].obj));
-  } else {
-    FIO_MAP_OBJ_DESTROY(m->map[i.i].obj);
+  {
+    hash = FIO_MAP_HASH_FIX(hash);
+    const FIO_MAP_SIZE_TYPE ihash =
+        FIO_NAME(FIO_MAP_NAME, __hash2index)(hash, m->bits);
+    FIO_NAME(FIO_MAP_NAME, __pos_s)
+    i = FIO_NAME(FIO_MAP_NAME, __get_pos)(m, hash, ihash, key);
+    if (i.i == FIO_MAP_INDEX_INVALID)
+      goto not_found;
+    if (old) {
+      FIO_MAP_TYPE_COPY((*old), FIO_MAP_OBJ2TYPE(m->map[i.i].obj));
+      FIO_MAP_OBJ_DESTROY_AFTER((m->map[i.i].obj));
+    } else {
+      FIO_MAP_OBJ_DESTROY(m->map[i.i].obj);
+    }
+    m->map[i.i].obj = FIO_MAP_OBJ_INVALID;
+    m->map[i.i].hash = 0;
+    if (i.imap != FIO_MAP_INDEX_INVALID) {
+      FIO_NAME(FIO_MAP_NAME, __imap)(m)[i.imap] = FIO_MAP_INDEX_INVALID;
+    }
+    --m->count;
+    while (m->w && !m->map[m->w - 1].hash)
+      --m->w;
   }
-  m->map[i.i].obj = FIO_MAP_OBJ_INVALID;
-  m->map[i.i].hash = 0;
-  if (i.imap != FIO_MAP_INDEX_INVALID) {
-    FIO_NAME(FIO_MAP_NAME, __imap)(m)[i.imap] = FIO_MAP_INDEX_INVALID;
-  }
-  --m->count;
-  while (m->w && !m->map[m->w - 1].hash)
-    --m->w;
   return 0;
 not_found:
   if (old)
@@ -7081,11 +7086,19 @@ Hash Map / Set - cleanup
 #define FIO_STR_OPTIMIZE4IMMUTABILITY 0
 #endif
 
+#if FIO_STR_OPTIMIZE4IMMUTABILITY
+/* enforce limit after which FIO_STR_OPTIMIZE4IMMUTABILITY makes no sense */
+#if FIO_STR_OPTIMIZE_LOCALITY > 1
+#undef FIO_STR_OPTIMIZE_LOCALITY
+#define FIO_STR_OPTIMIZE_LOCALITY 1
+#endif
+#else
 /* enforce limit due to 6 bit embedded string length limit */
 #if FIO_STR_OPTIMIZE_LOCALITY > 4
 #undef FIO_STR_OPTIMIZE_LOCALITY
 #define FIO_STR_OPTIMIZE_LOCALITY 4
 #endif
+#endif /* FIO_STR_OPTIMIZE4IMMUTABILITY*/
 
 /* *****************************************************************************
 String API - Initialization and Destruction
@@ -7106,12 +7119,12 @@ String API - Initialization and Destruction
 typedef struct {
   uint8_t special; /* Flags and small string data */
   uint8_t reserved[(sizeof(void *) * (1 + FIO_STR_OPTIMIZE_LOCALITY)) -
-                   (sizeof(uint8_t))]; /* normal padding length */
+                   (sizeof(uint8_t))]; /* padding length */
 #if !FIO_STR_OPTIMIZE4IMMUTABILITY
-  size_t capa; /* Known capacity for longer Strings */
+  size_t capa; /* known capacity for longer Strings */
   size_t len;  /* String length for longer Strings */
 #endif         /* FIO_STR_OPTIMIZE4IMMUTABILITY */
-  char *buf;   /* Buffer for longer Strings */
+  char *buf;   /* pointer for longer Strings */
 } FIO_NAME(FIO_STR_NAME, s);
 
 #ifdef FIO_PTR_TAG_TYPE
@@ -7777,7 +7790,8 @@ FIO_IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, init_copy)(FIO_STR_PTR s_,
   }
 
   FIO_STR_BIG_CAPA_SET(s, FIO_STR_CAPA2WORDS(len));
-  FIO_STR_BIG_DATA(s) = FIO_MEM_CALLOC_((FIO_STR_CAPA2WORDS(len) + 1), 1);
+  FIO_STR_BIG_DATA(s) =
+      (char *)FIO_MEM_CALLOC_((FIO_STR_CAPA2WORDS(len) + 1), 1);
   FIO_STR_BIG_LEN_SET(s, len);
   if (str)
     memcpy(FIO_STR_BIG_DATA(s), str, len);
@@ -8014,7 +8028,7 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
         .capa = amount,
     };
     return i;
-  } else if (FIO_STR_BIG_CAPA(s) == amount) {
+  } else if (FIO_STR_BIG_IS_DYNAMIC(s) && FIO_STR_BIG_CAPA(s) == amount) {
     i = (fio_str_info_s){
         .buf = FIO_STR_BIG_DATA(s),
         .len = FIO_STR_BIG_LEN(s),
@@ -8031,11 +8045,11 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
     }
     char *tmp = NULL;
     if (FIO_STR_BIG_IS_DYNAMIC(s)) {
-      tmp =
-          FIO_MEM_REALLOC_(FIO_STR_BIG_DATA(s), old_capa, amount + 1, data_len);
+      tmp = (char *)FIO_MEM_REALLOC_(
+          FIO_STR_BIG_DATA(s), old_capa, amount + 1, data_len);
       (void)old_capa; /* might not be used by macro */
     } else {
-      tmp = FIO_MEM_CALLOC_(amount + 1, sizeof(char));
+      tmp = (char *)FIO_MEM_CALLOC_(amount + 1, sizeof(char));
       if (tmp) {
         if (data_len)
           memcpy(tmp, FIO_STR_BIG_DATA(s), data_len);
@@ -8295,9 +8309,9 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s_,
   FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
   if (!s_ || !s || !src_len || !src || FIO_STR_IS_FROZEN(s))
     return FIO_NAME(FIO_STR_NAME, info)(s_);
-  fio_str_info_s state = FIO_NAME(FIO_STR_NAME, resize)(
-      s_, src_len + FIO_NAME(FIO_STR_NAME, len)(s_));
-  memcpy(state.buf + (state.len - src_len), src, src_len);
+  size_t const org_len = FIO_NAME(FIO_STR_NAME, len)(s_);
+  fio_str_info_s state = FIO_NAME(FIO_STR_NAME, resize)(s_, src_len + org_len);
+  memcpy(state.buf + org_len, src, src_len);
   return state;
 }
 

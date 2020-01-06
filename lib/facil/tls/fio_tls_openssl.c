@@ -189,7 +189,7 @@ FIO_IFUNC void fio___tls_alpn_add(fio_tls_s *tls,
 FIO_IFUNC alpn_s *fio___tls_alpn_default(fio_tls_s *tls) {
   if (!tls || !fio___tls_alpn_list_count(&tls->alpn))
     return NULL;
-  FIO_MAP_EACH(&tls->alpn, pos) { return &pos->obj; }
+  FIO_MAP_EACH2(fio___tls_alpn_list, &tls->alpn, pos) { return &pos->obj; }
   return NULL;
 }
 
@@ -471,7 +471,7 @@ static void fio___tls_build_context(fio_tls_s *tls) {
   if (1) {
     size_t alpn_pos = 0;
     /* looping twice is better than malloc fragmentation. */
-    FIO_MAP_EACH(&tls->alpn, pos) {
+    FIO_MAP_EACH2(fio___tls_alpn_list, &tls->alpn, pos) {
       fio_str_info_s s = fio_str_info(&pos->obj.name);
       if (!s.len)
         continue;
@@ -479,7 +479,7 @@ static void fio___tls_build_context(fio_tls_s *tls) {
     }
     tls->alpn_str = malloc((alpn_pos | 15) + 1); /* round up to 16 + padding */
     alpn_pos = 0;
-    FIO_MAP_EACH(&tls->alpn, pos) {
+    FIO_MAP_EACH2(fio___tls_alpn_list, &tls->alpn, pos) {
       fio_str_info_s s = fio_str_info(&pos->obj.name);
       if (!s.len)
         continue;

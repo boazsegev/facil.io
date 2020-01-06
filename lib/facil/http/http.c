@@ -495,7 +495,7 @@ static int http_sendfile___test_filename(http_s *h,
   // FIO_LOG_DEBUG2("(HTTP) sendfile found: %s", filename.buf);
   if (hpriv->pr->settings->static_headers) { /* copy default headers */
     FIOBJ defs = hpriv->pr->settings->static_headers;
-    FIO_MAP_EACH(((fiobj_hash_s *)FIOBJ_PTR_UNTAG(defs)), pos) {
+    FIO_MAP_EACH2(FIO_NAME(fiobj, FIOBJ___NAME_HASH), defs, pos) {
       set_header_if_missing(
           hpriv->headers_out, pos->obj.key, fiobj_dup(pos->obj.value));
     }
