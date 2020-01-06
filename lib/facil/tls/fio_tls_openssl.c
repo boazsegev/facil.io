@@ -25,7 +25,7 @@ Feel free to copy, use and enjoy according to the license provided.
 The SSL/TLS helper data types (can be left as is)
 ***************************************************************************** */
 
-#define FIO_STRING_NAME fio_str
+#define FIO_STR_NAME fio_str
 #define FIO_MALLOC_TMP_USE_SYSTEM 1
 #include <fio-stl.h>
 
@@ -40,9 +40,9 @@ static inline int fio___tls_cert_cmp(const cert_s *dest, const cert_s *src) {
 }
 static inline void fio___tls_cert_copy(cert_s *dest, cert_s *src) {
   *dest = (cert_s){
-      .private_key = FIO_STRING_INIT,
-      .public_key = FIO_STRING_INIT,
-      .password = FIO_STRING_INIT,
+      .private_key = FIO_STR_INIT,
+      .public_key = FIO_STR_INIT,
+      .password = FIO_STR_INIT,
   };
   fio_str_concat(&dest->private_key, &src->private_key);
   fio_str_concat(&dest->public_key, &src->public_key);
@@ -73,7 +73,7 @@ static inline int fio___tls_trust_cmp(const trust_s *dest, const trust_s *src) {
 }
 static inline void fio___tls_trust_copy(trust_s *dest, trust_s *src) {
   *dest = (trust_s){
-      .pem = FIO_STRING_INIT,
+      .pem = FIO_STR_INIT,
   };
   fio_str_concat(&dest->pem, &src->pem);
 }
@@ -103,7 +103,7 @@ static inline int fio_alpn_cmp(const alpn_s *dest, const alpn_s *src) {
 }
 static inline void fio_alpn_copy(alpn_s *dest, alpn_s *src) {
   *dest = (alpn_s){
-      .name = FIO_STRING_INIT,
+      .name = FIO_STR_INIT,
       .on_selected = src->on_selected,
       .udata_tls = src->udata_tls,
       .on_cleanup = src->on_cleanup,
@@ -156,7 +156,7 @@ ALPN Helpers
 
 /** Returns a pointer to the ALPN data (callback, etc') IF exists in the TLS. */
 FIO_IFUNC alpn_s *fio___tls_alpn_find(fio_tls_s *tls, char *name, size_t len) {
-  alpn_s tmp = {.name = FIO_STRING_INIT_STATIC2(name, len)};
+  alpn_s tmp = {.name = FIO_STR_INIT_STATIC2(name, len)};
   alpn_s *pos =
       fio___tls_alpn_list_get_ptr(&tls->alpn, fio_str_hash(&tmp.name, 0), tmp);
   return pos;
@@ -171,7 +171,7 @@ FIO_IFUNC void fio___tls_alpn_add(fio_tls_s *tls,
                                   void *udata_tls,
                                   void (*on_cleanup)(void *udata_tls)) {
   alpn_s tmp = {
-      .name = FIO_STRING_INIT_STATIC(protocol_name),
+      .name = FIO_STR_INIT_STATIC(protocol_name),
       .on_selected = on_selected,
       .udata_tls = udata_tls,
       .on_cleanup = on_cleanup,
@@ -894,10 +894,10 @@ void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls,
                                    const char *pk_password) {
   REQUIRE_TLS_LIBRARY();
   cert_s c = {
-      .private_key = FIO_STRING_INIT,
-      .public_key = FIO_STRING_INIT,
-      .password = FIO_STRING_INIT_STATIC2(
-          pk_password, (pk_password ? strlen(pk_password) : 0)),
+      .private_key = FIO_STR_INIT,
+      .public_key = FIO_STR_INIT,
+      .password = FIO_STR_INIT_STATIC2(pk_password,
+                                       (pk_password ? strlen(pk_password) : 0)),
   };
   if (key && cert) {
     if (fio_str_readfile(&c.private_key, key, 0, 0).buf == NULL)
@@ -907,7 +907,7 @@ void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls,
     fio___tls_cert_ary_push(&tls->sni, c);
   } else if (server_name) {
     /* Self-Signed TLS Certificates */
-    c.private_key = (fio_str_s)FIO_STRING_INIT_STATIC(server_name);
+    c.private_key = (fio_str_s)FIO_STR_INIT_STATIC(server_name);
     fio___tls_cert_ary_push(&tls->sni, c);
   }
   fio___tls_cert_destroy(&c);
@@ -968,7 +968,7 @@ uintptr_t FIO_TLS_WEAK fio_tls_alpn_count(fio_tls_s *tls) {
 void FIO_TLS_WEAK fio_tls_trust(fio_tls_s *tls, const char *public_cert_file) {
   REQUIRE_TLS_LIBRARY();
   trust_s c = {
-      .pem = FIO_STRING_INIT,
+      .pem = FIO_STR_INIT,
   };
   if (!public_cert_file)
     return;

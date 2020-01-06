@@ -692,7 +692,7 @@ int http_sendfile2(http_s *h_,
     return -1;
   /* stack allocated buffer for filename data */
   char buffer[2048];
-  FIOBJ_STR_TEMP_VAR_EXISTING(fn, buffer, 0, 2048, NULL);
+  FIOBJ_STR_TEMP_VAR_EXISTING(fn, buffer, 0, 2048);
   /* copy file name, protect against root (//) and tree traversal (..) */
   if (prefix && prefix_len) {
     fiobj_str_write(fn, prefix, prefix_len);

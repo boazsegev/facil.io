@@ -10,7 +10,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FIO_VERSION_GUARD
 #include <fio.h>
 
-#define FIO_STRING_NAME fio_str
+#define FIO_STR_NAME fio_str
 #define FIO_REF_NAME fio_str
 #define FIO_REF_CONSTRUCTOR_ONLY
 #include "fio-stl.h"
@@ -122,7 +122,7 @@ typedef struct {
   void (*on_close)(void *data);
 } fio_uuid_env_obj_s;
 
-#define FIO_SMALL_STR_NAME fio_uuid_env_name
+#define FIO_STR_SMALL fio_uuid_env_name
 #include <fio-stl.h>
 
 #define FIO_MAP_NAME fio___uuid_env
@@ -133,7 +133,7 @@ typedef struct {
       o.on_close(o.data);                                                      \
   } while (0)
 #define FIO_MAP_KEY fio_uuid_env_name_s
-#define FIO_MAP_KEY_INVALID (fio_uuid_env_name_s) FIO_SMALL_STR_INIT
+#define FIO_MAP_KEY_INVALID (fio_uuid_env_name_s) FIO_STR_INIT
 #define FIO_MAP_KEY_INVALID_SIMPLE 1 /* invalid type bytes are all zeros */
 #define FIO_MAP_KEY_DESTROY(k) fio_uuid_env_name_destroy(&k)
 /* destroy discarded keys when overwriting existing data (duplicate keys aren't
@@ -502,7 +502,7 @@ void fio_uuid_env_set___(void); /* for sublime text function listing */
 void fio_uuid_env_set FIO_NOOP(intptr_t uuid, fio_uuid_env_args_s args) {
   if ((!args.data && !args.on_close) || !uuid_is_valid(uuid))
     goto invalid;
-  fio_uuid_env_name_s n = FIO_SMALL_STR_INIT;
+  fio_uuid_env_name_s n = FIO_STR_INIT;
   fio_uuid_env_obj_s i = {.data = NULL};
   if (args.name.buf && args.name.len) {
     if (args.const_name) {
@@ -536,7 +536,7 @@ void fio_uuid_env_remove____(void); /* for sublime text function listing */
 /* public API. */
 void fio_uuid_env_remove FIO_NOOP(intptr_t uuid,
                                   fio_uuid_env_unset_args_s args) {
-  fio_uuid_env_name_s n = FIO_SMALL_STR_INIT;
+  fio_uuid_env_name_s n = FIO_STR_INIT;
   fio_uuid_env_obj_s i = {.data = NULL};
   fio_uuid_env_name_init_const(&n, args.name.buf, args.name.len);
   if (!uuid_is_valid(uuid))
@@ -562,7 +562,7 @@ invalid:
 #if 0 /* UNSAFE don't enable unless single threaded mode is ensured */
 /* public API. */
 void *fio_uuid_env_get FIO_NOOP(intptr_t uuid, fio_uuid_env_unset_args_s args) {
-  fio_uuid_env_name_s n = FIO_SMALL_STR_INIT;
+  fio_uuid_env_name_s n = FIO_STR_INIT;
   fio_uuid_env_obj_s i = {.data = NULL};
   fio_uuid_env_name_init_const(&n, args.name.buf, args.name.len);
   if (!uuid_is_valid(uuid))
@@ -587,7 +587,7 @@ void fio_uuid_env_unset___(void); /* for sublime text function listing */
 fio_uuid_env_args_s fio_uuid_env_unset
 FIO_NOOP(intptr_t uuid, fio_uuid_env_unset_args_s args) {
 
-  fio_uuid_env_name_s n = FIO_SMALL_STR_INIT;
+  fio_uuid_env_name_s n = FIO_STR_INIT;
   fio_uuid_env_name_init_const(&n, args.name.buf, args.name.len);
   if (!uuid_is_valid(uuid))
     goto invalid;
@@ -4888,7 +4888,7 @@ finish:
 #define FIO_MAP_TYPE subscription_s *
 #define FIO_MAP_KEY fio_str_s
 #define FIO_MAP_KEY_COPY(k1, k2)                                               \
-  (k1) = (fio_str_s)FIO_STRING_INIT;                                           \
+  (k1) = (fio_str_s)FIO_STR_INIT;                                              \
   fio_str_concat(&(k1), &(k2))
 #define FIO_MAP_KEY_CMP(k1, k2) fio_str_is_eq(&(k1), &(k2))
 #define FIO_MAP_KEY_DESTROY(key) fio_str_destroy(&(key))
@@ -5188,8 +5188,8 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     subscription_s *s = fio_subscribe(.on_message = fio_mock_on_message,
                                       .match = NULL,
                                       .channel = pr->msg->channel);
-    fio_str_s tmp = (fio_str_s)FIO_STRING_INIT_EXISTING(
-        pr->msg->channel.buf, pr->msg->channel.len, 0, NULL); // don't free
+    fio_str_s tmp = (fio_str_s)FIO_STR_INIT_EXISTING(
+        pr->msg->channel.buf, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_set(&pr->pubsub,
                      fio_risky_hash(pr->msg->channel.buf,
@@ -5202,8 +5202,8 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     break;
   }
   case FIO_CLUSTER_MSG_PUBSUB_UNSUB: {
-    fio_str_s tmp = FIO_STRING_INIT_EXISTING(
-        pr->msg->channel.buf, pr->msg->channel.len, 0, NULL); // don't free
+    fio_str_s tmp = FIO_STR_INIT_EXISTING(
+        pr->msg->channel.buf, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_remove(&pr->pubsub,
                         fio_risky_hash(pr->msg->channel.buf,
@@ -5220,8 +5220,8 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     subscription_s *s = fio_subscribe(.on_message = fio_mock_on_message,
                                       .match = (fio_match_fn)match,
                                       .channel = pr->msg->channel);
-    fio_str_s tmp = FIO_STRING_INIT_EXISTING(
-        pr->msg->channel.buf, pr->msg->channel.len, 0, NULL); // don't free
+    fio_str_s tmp = FIO_STR_INIT_EXISTING(
+        pr->msg->channel.buf, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_set(&pr->patterns,
                      fio_risky_hash(pr->msg->channel.buf,
@@ -5235,8 +5235,8 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
   }
 
   case FIO_CLUSTER_MSG_PATTERN_UNSUB: {
-    fio_str_s tmp = FIO_STRING_INIT_EXISTING(
-        pr->msg->channel.buf, pr->msg->channel.len, 0, NULL); // don't free
+    fio_str_s tmp = FIO_STR_INIT_EXISTING(
+        pr->msg->channel.buf, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_remove(&pr->patterns,
                         fio_risky_hash(pr->msg->channel.buf,
@@ -5821,9 +5821,9 @@ static inline int fio___tls_cert_cmp(const cert_s *dest, const cert_s *src) {
 }
 static inline void fio___tls_cert_copy(cert_s *dest, cert_s *src) {
   *dest = (cert_s){
-      .private_key = FIO_STRING_INIT,
-      .public_key = FIO_STRING_INIT,
-      .password = FIO_STRING_INIT,
+      .private_key = FIO_STR_INIT,
+      .public_key = FIO_STR_INIT,
+      .password = FIO_STR_INIT,
   };
   fio_str_concat(&dest->private_key, &src->private_key);
   fio_str_concat(&dest->public_key, &src->public_key);
@@ -5854,7 +5854,7 @@ static inline int fio___tls_trust_cmp(const trust_s *dest, const trust_s *src) {
 }
 static inline void fio___tls_trust_copy(trust_s *dest, trust_s *src) {
   *dest = (trust_s){
-      .pem = FIO_STRING_INIT,
+      .pem = FIO_STR_INIT,
   };
   fio_str_concat(&dest->pem, &src->pem);
 }
@@ -5884,7 +5884,7 @@ static inline int fio_alpn_cmp(const alpn_s *dest, const alpn_s *src) {
 }
 static inline void fio_alpn_copy(alpn_s *dest, alpn_s *src) {
   *dest = (alpn_s){
-      .name = FIO_STRING_INIT,
+      .name = FIO_STR_INIT,
       .on_selected = src->on_selected,
       .udata_tls = src->udata_tls,
       .on_cleanup = src->on_cleanup,
@@ -5933,7 +5933,7 @@ ALPN Helpers
 
 /** Returns a pointer to the ALPN data (callback, etc') IF exists in the TLS. */
 FIO_IFUNC alpn_s *fio___tls_alpn_find(fio_tls_s *tls, char *name, size_t len) {
-  alpn_s tmp = {.name = FIO_STRING_INIT_STATIC2(name, len)};
+  alpn_s tmp = {.name = FIO_STR_INIT_STATIC2(name, len)};
   alpn_s *pos =
       fio___tls_alpn_list_get_ptr(&tls->alpn, fio_str_hash(&tmp.name, 0), tmp);
   return pos;
@@ -5948,7 +5948,7 @@ FIO_IFUNC void fio___tls_alpn_add(fio_tls_s *tls,
                                   void *udata_tls,
                                   void (*on_cleanup)(void *udata_tls)) {
   alpn_s tmp = {
-      .name = FIO_STRING_INIT_STATIC(protocol_name),
+      .name = FIO_STR_INIT_STATIC(protocol_name),
       .on_selected = on_selected,
       .udata_tls = udata_tls,
       .on_cleanup = on_cleanup,
@@ -6280,10 +6280,10 @@ void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls,
                                    const char *pk_password) {
   REQUIRE_TLS_LIBRARY();
   cert_s c = {
-      .private_key = FIO_STRING_INIT,
-      .public_key = FIO_STRING_INIT,
-      .password = FIO_STRING_INIT_STATIC2(
-          pk_password, (pk_password ? strlen(pk_password) : 0)),
+      .private_key = FIO_STR_INIT,
+      .public_key = FIO_STR_INIT,
+      .password = FIO_STR_INIT_STATIC2(pk_password,
+                                       (pk_password ? strlen(pk_password) : 0)),
   };
   if (key && cert) {
     if (fio_str_readfile(&c.private_key, key, 0, 0).buf == NULL)
@@ -6293,7 +6293,7 @@ void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls,
     fio___tls_cert_ary_push(&tls->sni, c);
   } else if (server_name) {
     /* Self-Signed TLS Certificates */
-    c.private_key = (fio_str_s)FIO_STRING_INIT_STATIC(server_name);
+    c.private_key = (fio_str_s)FIO_STR_INIT_STATIC(server_name);
     fio___tls_cert_ary_push(&tls->sni, c);
   }
   fio___tls_cert_destroy(&c);
@@ -6354,7 +6354,7 @@ uintptr_t FIO_TLS_WEAK fio_tls_alpn_count(fio_tls_s *tls) {
 void FIO_TLS_WEAK fio_tls_trust(fio_tls_s *tls, const char *public_cert_file) {
   REQUIRE_TLS_LIBRARY();
   trust_s c = {
-      .pem = FIO_STRING_INIT,
+      .pem = FIO_STR_INIT,
   };
   if (!public_cert_file)
     return;
@@ -7421,7 +7421,7 @@ FIO_SFUNC int fio_timer_test_task(void *arg1, void *arg2) {
 
 FIO_SFUNC void fio_socket_test(void) {
   /* initialize unix socket name */
-  fio_str_s sock_name = FIO_STRING_INIT;
+  fio_str_s sock_name = FIO_STR_INIT;
 #ifdef P_tmpdir
   fio_str_write(&sock_name, P_tmpdir, strlen(P_tmpdir));
   if (fio_str_len(&sock_name) &&
