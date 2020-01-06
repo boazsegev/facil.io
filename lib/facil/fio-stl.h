@@ -8080,8 +8080,8 @@ String Implementation - UTF-8 State
  *      map[0b11110] = 4; map;
  */
 static __attribute__((unused))
-uint8_t fio__str_utf8_map2[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-                                5, 5, 5, 5, 5, 5, 5, 5, 2, 2, 2, 2, 3, 3, 4, 0};
+uint8_t fio__str_utf8_map[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                               5, 5, 5, 5, 5, 5, 5, 5, 2, 2, 2, 2, 3, 3, 4, 0};
 
 /**
  * Advances the `ptr` by one utf-8 character, placing the value of the UTF-8
@@ -8093,14 +8093,14 @@ uint8_t fio__str_utf8_map2[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
  */
 #define FIO_STR_UTF8_CODE_POINT(ptr, end, i32)                                 \
   do {                                                                         \
-    switch (fio__str_utf8_map2[((uint8_t *)(ptr))[0] >> 3]) {                  \
+    switch (fio__str_utf8_map[((uint8_t *)(ptr))[0] >> 3]) {                   \
     case 1:                                                                    \
       (i32) = ((uint8_t *)(ptr))[0];                                           \
       ++(ptr);                                                                 \
       break;                                                                   \
     case 2:                                                                    \
       if (((ptr) + 2 > (end)) ||                                               \
-          fio__str_utf8_map2[((uint8_t *)(ptr))[1] >> 3] != 5) {               \
+          fio__str_utf8_map[((uint8_t *)(ptr))[1] >> 3] != 5) {                \
         (i32) = -1;                                                            \
         break;                                                                 \
       }                                                                        \
@@ -8110,8 +8110,8 @@ uint8_t fio__str_utf8_map2[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
       break;                                                                   \
     case 3:                                                                    \
       if (((ptr) + 3 > (end)) ||                                               \
-          fio__str_utf8_map2[((uint8_t *)(ptr))[1] >> 3] != 5 ||               \
-          fio__str_utf8_map2[((uint8_t *)(ptr))[2] >> 3] != 5) {               \
+          fio__str_utf8_map[((uint8_t *)(ptr))[1] >> 3] != 5 ||                \
+          fio__str_utf8_map[((uint8_t *)(ptr))[2] >> 3] != 5) {                \
         (i32) = -1;                                                            \
         break;                                                                 \
       }                                                                        \
@@ -8122,9 +8122,9 @@ uint8_t fio__str_utf8_map2[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
       break;                                                                   \
     case 4:                                                                    \
       if (((ptr) + 4 > (end)) ||                                               \
-          fio__str_utf8_map2[((uint8_t *)(ptr))[1] >> 3] != 5 ||               \
-          fio__str_utf8_map2[((uint8_t *)(ptr))[2] >> 3] != 5 ||               \
-          fio__str_utf8_map2[((uint8_t *)(ptr))[3] >> 3] != 5) {               \
+          fio__str_utf8_map[((uint8_t *)(ptr))[1] >> 3] != 5 ||                \
+          fio__str_utf8_map[((uint8_t *)(ptr))[2] >> 3] != 5 ||                \
+          fio__str_utf8_map[((uint8_t *)(ptr))[3] >> 3] != 5) {                \
         (i32) = -1;                                                            \
         break;                                                                 \
       }                                                                        \
@@ -8221,7 +8221,7 @@ SFUNC int FIO_NAME(FIO_STR_NAME,
       c = 0;
       ++*pos;
       do {
-        switch (fio__str_utf8_map2[((uint8_t *)p)[0] >> 3]) {
+        switch (fio__str_utf8_map[((uint8_t *)p)[0] >> 3]) {
         case 5:
           ++c;
           break;
@@ -8512,22 +8512,22 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
         src[i] == ' ')
       continue;
     /* skip valid UTF-8 */
-    switch (fio__str_utf8_map2[src[i] >> 3]) {
+    switch (fio__str_utf8_map[src[i] >> 3]) {
     case 4:
-      if (fio__str_utf8_map2[src[i + 3] >> 3] != 5) {
+      if (fio__str_utf8_map[src[i + 3] >> 3] != 5) {
         break; /* from switch */
       }
     /* fallthrough */
     case 3:
-      if (fio__str_utf8_map2[src[i + 2] >> 3] != 5) {
+      if (fio__str_utf8_map[src[i + 2] >> 3] != 5) {
         break; /* from switch */
       }
     /* fallthrough */
     case 2:
-      if (fio__str_utf8_map2[src[i + 1] >> 3] != 5) {
+      if (fio__str_utf8_map[src[i + 1] >> 3] != 5) {
         break; /* from switch */
       }
-      i += fio__str_utf8_map2[src[i] >> 3] - 1;
+      i += fio__str_utf8_map[src[i] >> 3] - 1;
       continue;
     }
     /* store first instance of character that needs escaping */
@@ -8577,22 +8577,22 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
       continue;
     }
     /* skip valid UTF-8 */
-    switch (fio__str_utf8_map2[src[i] >> 3]) {
+    switch (fio__str_utf8_map[src[i] >> 3]) {
     case 4:
-      if (fio__str_utf8_map2[src[i + 3] >> 3] != 5) {
+      if (fio__str_utf8_map[src[i + 3] >> 3] != 5) {
         break; /* from switch */
       }
     /* fallthrough */
     case 3:
-      if (fio__str_utf8_map2[src[i + 2] >> 3] != 5) {
+      if (fio__str_utf8_map[src[i + 2] >> 3] != 5) {
         break; /* from switch */
       }
     /* fallthrough */
     case 2:
-      if (fio__str_utf8_map2[src[i + 1] >> 3] != 5) {
+      if (fio__str_utf8_map[src[i + 1] >> 3] != 5) {
         break; /* from switch */
       }
-      switch (fio__str_utf8_map2[src[i] >> 3]) {
+      switch (fio__str_utf8_map[src[i] >> 3]) {
       case 4:
         dest.buf[at++] = src[i++];
       /* fallthrough */
