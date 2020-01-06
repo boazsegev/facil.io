@@ -4,19 +4,19 @@ sidebar: 0.8.x/_sidebar.md
 ---
 # {{{title}}}
 
-At the core of the facil.io library is a single header Simple Template Library for C.
+At the core of the facil.io library it's powerful Simple Template Library for C and C++.
 
 The Simple Template Library is a "swiss-army-knife" library, that uses MACROS to generate code for different common types, such as Hash Maps, Arrays, Linked Lists, Binary-Safe Strings, etc'.
 
-The Simple Template Library also offers common functional primitives, such as bit operations, atomic operations, CLI parsing, JSON, task queues, and a custom memory allocator.
+The Simple Template Library also offers common functional primitives and helpers, such as bit operations, atomic operations, CLI parsing, JSON, task queues, and a custom memory allocator.
 
 In other words, all the common building blocks one could need in a C project are placed in this single header file.
 
-The header could be included multiple times with different results, creating different types or exposing different helper functions.
+The header could be included multiple times with different results, creating different types or exposing different functionality.
 
-## A Lower Level API Notice for facil.io Application Developers
+#### A Lower Level API Notice for facil.io Application Developers
 
->> **The core library is probably not the API most facil.io web application developers need to focus on**.
+>> **This core library is probably not the API most facil.io web application developers need to focus on**.
 >>
 >> This API is used to power the higher level API offered by the facil.io web framework. If you're developing a facil.io web application, use the higher level API when possible.
 
@@ -24,7 +24,7 @@ The header could be included multiple times with different results, creating dif
 
 The core Simple Template Library (STL) is a single file header library (`fio-stl.h`).
 
-The header includes a Simple Template Library for common types, such as:
+The header includes a Simple Template Library for the following common types:
 
 * [Linked Lists](#linked-lists) - defined by `FIO_LIST_NAME`
 
@@ -39,6 +39,8 @@ The header includes a Simple Template Library for common types, such as:
 * [Soft / Dynamic Types (FIOBJ)](#fiobj-soft-dynamic-types) - defined by `FIO_FIOBJ`
 
 In addition, the core Simple Template Library (STL) includes helpers for common tasks, such as:
+
+* [Pointer Arithmetics](#pointer-arithmetics) (included by default)
 
 * [Pointer Tagging](#pointer-tagging-support) - defined by `FIO_PTR_TAG(p)`/`FIO_PTR_UNTAG(p)`
 
@@ -214,6 +216,14 @@ Marks a function as `static`, `inline` and possibly unused.
 ```
 
 Marks a function as `static` and possibly unused.
+
+#### `FIO_MACRO2STR`
+
+```c
+#define FIO_MACRO2STR(macro) FIO_MACRO2STR_STEP2(macro)
+```
+
+Converts a macro's content to a string literal.
 
 #### `FIO_NAME`
 

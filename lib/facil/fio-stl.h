@@ -207,9 +207,9 @@ Basic macros and included files
 Macro Stringifier
 ***************************************************************************** */
 
-/* Automatically convert version data to a string constant - ignore these two */
 #ifndef FIO_MACRO2STR
 #define FIO_MACRO2STR_STEP2(macro) #macro
+/** Converts a macro's content to a string literal. */
 #define FIO_MACRO2STR(macro) FIO_MACRO2STR_STEP2(macro)
 #endif
 
