@@ -661,6 +661,9 @@ Common macros
 #ifndef FIO_ATOL
 #define FIO_ATOL
 #endif
+#ifndef FIO_ATOMIC
+#define FIO_ATOMIC
+#endif
 #endif /* FIO_QUEUE */
 
 /* FIO_TIME dependencies */
@@ -2294,10 +2297,16 @@ static size_t fio___mem_block_count;
       fio___mem_block_count,                                                   \
       fio___mem_block_count_max)
 #define FIO_MEMORY_PRINT_BLOCK_STAT_END()                                      \
-  FIO_LOG_INFO("(fio) Total memory blocks allocated "                          \
-               "after cleanup%s %zu\n",                                        \
-               (fio___mem_block_count ? " (possible leaks!):" : ":"),          \
-               fio___mem_block_count)
+  do {                                                                         \
+    if (fio___mem_block_count) {                                               \
+      FIO_LOG_ERROR("(fio) Total memory blocks allocated "                     \
+                    "after cleanup (POSSIBLE LEAKS): %zu\n",                   \
+                    fio___mem_block_count);                                    \
+    } else {                                                                   \
+      FIO_LOG_INFO("(fio) Total memory blocks allocated after cleanup: %zu\n", \
+                   fio___mem_block_count);                                     \
+    }                                                                          \
+  } while (0)
 #else /* FIO_LOG_INFO */
 #define FIO_MEMORY_PRINT_BLOCK_STAT()
 #define FIO_MEMORY_PRINT_BLOCK_STAT_END()
@@ -7369,9 +7378,9 @@ String API - Content Manipulation and Review
 /**
  * Writes data at the end of the String.
  */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s,
-                                                   const void *src,
-                                                   size_t src_len);
+FIO_IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s,
+                                                       const void *src,
+                                                       size_t src_len);
 
 /**
  * Writes a number at the end of the String using normal base 10 notation.
@@ -7960,6 +7969,27 @@ FIO_IFUNC uint64_t FIO_NAME(FIO_STR_NAME, hash)(const FIO_STR_PTR s_,
 }
 
 /* *****************************************************************************
+String API - Content Manipulation and Review (inline)
+***************************************************************************** */
+
+/**
+ * Writes data at the end of the String (similar to `fio_str_insert` with the
+ * argument `pos == -1`).
+ */
+FIO_IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s_,
+                                                       const void *src,
+                                                       size_t src_len) {
+  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
+  if (!s_ || !s || !src_len || FIO_STR_IS_FROZEN(s))
+    return FIO_NAME(FIO_STR_NAME, info)(s_);
+  size_t const org_len = FIO_NAME(FIO_STR_NAME, len)(s_);
+  fio_str_info_s state = FIO_NAME(FIO_STR_NAME, resize)(s_, src_len + org_len);
+  if (src)
+    memcpy(state.buf + org_len, src, src_len);
+  return state;
+}
+
+/* *****************************************************************************
 
 
                              String Implementation
@@ -8051,6 +8081,7 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
     } else {
       tmp = (char *)FIO_MEM_CALLOC_(amount + 1, sizeof(char));
       if (tmp) {
+        s->special = 0;
         if (data_len)
           memcpy(tmp, FIO_STR_BIG_DATA(s), data_len);
       }
@@ -8298,22 +8329,6 @@ error:
 /* *****************************************************************************
 String Implementation - Content Manipulation and Review
 ***************************************************************************** */
-
-/**
- * Writes data at the end of the String (similar to `fio_str_insert` with the
- * argument `pos == -1`).
- */
-IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write)(FIO_STR_PTR s_,
-                                                   const void *src,
-                                                   size_t src_len) {
-  FIO_NAME(FIO_STR_NAME, s) *s = (FIO_NAME(FIO_STR_NAME, s) *)FIO_PTR_UNTAG(s_);
-  if (!s_ || !s || !src_len || !src || FIO_STR_IS_FROZEN(s))
-    return FIO_NAME(FIO_STR_NAME, info)(s_);
-  size_t const org_len = FIO_NAME(FIO_STR_NAME, len)(s_);
-  fio_str_info_s state = FIO_NAME(FIO_STR_NAME, resize)(s_, src_len + org_len);
-  memcpy(state.buf + org_len, src, src_len);
-  return state;
-}
 
 /**
  * Writes a number at the end of the String using normal base 10 notation.
@@ -9741,13 +9756,25 @@ SFUNC struct tm fio_time2gm(time_t time);
 /** Converts a `struct tm` to time in seconds (assuming UTC). */
 SFUNC time_t fio_gm2time(struct tm tm);
 
-/** Writes an RFC 7231 date representation (HTTP date format) to target. */
+/**
+ * Writes an RFC 7231 date representation (HTTP date format) to target.
+ *
+ * Usually requires 29 characters, although this may vary.
+ */
 SFUNC size_t fio_time2rfc7231(char *target, time_t time);
 
-/** Writes an RFC 2109 date representation to target. */
+/**
+ * Writes an RFC 2109 date representation to target.
+ *
+ * Usually requires 31 characters, although this may vary.
+ */
 SFUNC size_t fio_time2rfc2109(char *target, time_t time);
 
-/** Writes an RFC 2822 date representation to target. */
+/**
+ * Writes an RFC 2822 date representation to target.
+ *
+ * Usually requires 28 to 29 characters, although this may vary.
+ */
 SFUNC size_t fio_time2rfc2822(char *target, time_t time);
 
 /* *****************************************************************************
