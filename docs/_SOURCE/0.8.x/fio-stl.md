@@ -1520,10 +1520,10 @@ uint8_t STR_is_frozen(FIO_STR_PTR s);
 
 Returns true if the string is frozen.
 
-#### `SSTR_is_allocated`
+#### `STR_is_allocated`
 
 ```c
-int SSTR_is_allocated(const FIO_SMALL_STR_PTR s);
+int STR_is_allocated(const FIO_STR_PTR s);
 ```
 
 Returns 1 if memory was allocated and (the String must be destroyed).
