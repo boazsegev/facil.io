@@ -7070,7 +7070,7 @@ Hash Map / Set - cleanup
 
 #if defined(FIO_STR_NAME)
 
-#ifndef FIO_STR_OPTIMIZE_LOCALITY
+#ifndef FIO_STR_OPTIMIZE_EMBEDDED
 /**
  * For each unit (0 by default), adds `sizeof(char *)` bytes to the type size,
  * increasing the amount of strings that could be embedded within the type
@@ -7080,7 +7080,7 @@ Hash Map / Set - cleanup
  * would make sense to set this value to 1 - allowing the type size to fully
  * utilize a 16 byte memory allocation alignment.
  */
-#define FIO_STR_OPTIMIZE_LOCALITY 0
+#define FIO_STR_OPTIMIZE_EMBEDDED 0
 #endif
 
 #ifndef FIO_STR_OPTIMIZE4IMMUTABILITY
@@ -7097,15 +7097,15 @@ Hash Map / Set - cleanup
 
 #if FIO_STR_OPTIMIZE4IMMUTABILITY
 /* enforce limit after which FIO_STR_OPTIMIZE4IMMUTABILITY makes no sense */
-#if FIO_STR_OPTIMIZE_LOCALITY > 1
-#undef FIO_STR_OPTIMIZE_LOCALITY
-#define FIO_STR_OPTIMIZE_LOCALITY 1
+#if FIO_STR_OPTIMIZE_EMBEDDED > 1
+#undef FIO_STR_OPTIMIZE_EMBEDDED
+#define FIO_STR_OPTIMIZE_EMBEDDED 1
 #endif
 #else
 /* enforce limit due to 6 bit embedded string length limit */
-#if FIO_STR_OPTIMIZE_LOCALITY > 4
-#undef FIO_STR_OPTIMIZE_LOCALITY
-#define FIO_STR_OPTIMIZE_LOCALITY 4
+#if FIO_STR_OPTIMIZE_EMBEDDED > 4
+#undef FIO_STR_OPTIMIZE_EMBEDDED
+#define FIO_STR_OPTIMIZE_EMBEDDED 4
 #endif
 #endif /* FIO_STR_OPTIMIZE4IMMUTABILITY*/
 
@@ -7127,7 +7127,7 @@ String API - Initialization and Destruction
  */
 typedef struct {
   uint8_t special; /* Flags and small string data */
-  uint8_t reserved[(sizeof(void *) * (1 + FIO_STR_OPTIMIZE_LOCALITY)) -
+  uint8_t reserved[(sizeof(void *) * (1 + FIO_STR_OPTIMIZE_EMBEDDED)) -
                    (sizeof(uint8_t))]; /* padding length */
 #if !FIO_STR_OPTIMIZE4IMMUTABILITY
   size_t capa; /* known capacity for longer Strings */
@@ -9713,7 +9713,7 @@ String Cleanup
 #undef FIO_STR_NAME
 
 #undef FIO_STR_OPTIMIZE4IMMUTABILITY
-#undef FIO_STR_OPTIMIZE_LOCALITY
+#undef FIO_STR_OPTIMIZE_EMBEDDED
 #undef FIO_STR_PTR
 #undef FIO_STR_THAW_
 #undef FIO_STR_WRITE_ESCAPED_CT_OR
@@ -12446,7 +12446,7 @@ FIOBJ Strings
 ***************************************************************************** */
 
 #define FIO_STR_NAME FIO_NAME(fiobj, FIOBJ___NAME_STRING)
-#define FIO_STR_OPTIMIZE_LOCALITY 1
+#define FIO_STR_OPTIMIZE_EMBEDDED 1
 #define FIO_REF_NAME FIO_NAME(fiobj, FIOBJ___NAME_STRING)
 #define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_DESTROY(s)                                                     \

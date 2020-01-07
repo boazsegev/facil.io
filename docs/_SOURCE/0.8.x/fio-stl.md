@@ -1231,7 +1231,7 @@ The default optimization stores information about the allocated memory's capacit
 
 * Multiple `write` operations are required.
 
-* It's pre-known that most strings will be longer than a small container's embedded string limit (`(2 * sizeof(char*)) - 2`) and still fit within the default container's embedded string limit (`((2 + FIO_STR_OPTIMIZE_LOCALITY) * sizeof(char*)) - 2`).
+* It's pre-known that most strings will be longer than a small container's embedded string limit (`(2 * sizeof(char*)) - 2`) and still fit within the default container's embedded string limit (`((2 + FIO_STR_OPTIMIZE_EMBEDDED) * sizeof(char*)) - 2`).
 
    This is because short Strings are stored directly within a String's data container, minimizing both memory indirection and memory allocation.
 
@@ -1245,7 +1245,7 @@ The default optimization stores information about the allocated memory's capacit
 
    If it's **pre-known** that most strings are likely to be longer than 14 bytes and shorter than 31 bytes (on 64 bit systems), than the default `FIO_STR_NAME` optimization should perform better.
 
-   **Note**: the default container size can be extended by `sizeof(void*)` units using the `FIO_STR_OPTIMIZE_LOCALITY` macro (i.e., `#define FIO_STR_OPTIMIZE_LOCALITY 2` will add 16 bytes to the container on 64 bit systems).
+   **Note**: the default container size can be extended by `sizeof(void*)` units using the `FIO_STR_OPTIMIZE_EMBEDDED` macro (i.e., `#define FIO_STR_OPTIMIZE_EMBEDDED 2` will add 16 bytes to the container on 64 bit systems).
 
 #### Example `FIO_STR_NAME` Use-Case
 
