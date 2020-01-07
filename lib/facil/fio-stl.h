@@ -7816,13 +7816,18 @@ FIO_IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, init_copy)(FIO_STR_PTR s_,
     return i;
   }
 
-  const size_t capa = FIO_STR_CAPA2WORDS(len);
-  FIO_STR_BIG_CAPA_SET(s, capa);
-  FIO_STR_BIG_DATA(s) = (char *)FIO_MEM_CALLOC_(capa + 1, 1);
+  {
+    char *buf = (char *)FIO_MEM_CALLOC_(FIO_STR_CAPA2WORDS(len) + 1, 1);
+    if (!buf)
+      return i;
+    i = (fio_str_info_s){
+        .buf = buf, .len = len, .capa = FIO_STR_CAPA2WORDS(len)};
+  }
+  FIO_STR_BIG_CAPA_SET(s, i.capa);
+  FIO_STR_BIG_DATA(s) = i.buf;
   FIO_STR_BIG_LEN_SET(s, len);
   if (str)
     memcpy(FIO_STR_BIG_DATA(s), str, len);
-  i = (fio_str_info_s){.buf = FIO_STR_BIG_DATA(s), .len = len, .capa = capa};
   return i;
 }
 
