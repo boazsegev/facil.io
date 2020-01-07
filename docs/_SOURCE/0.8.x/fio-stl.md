@@ -1521,6 +1521,19 @@ Initializes the container with a copy of the `src` string.
 
 The string is always copied and the final string must be destroyed (using the `destroy` function).
 
+#### `STR_init_copy2`
+
+```c
+fio_str_info_s STR_init_copy2(FIO_STR_PTR dest,
+                             FIO_STR_PTR src);
+```
+
+Initializes the `dest` container with a copy of the `src` String object's content.
+
+The `src` metadata, such as `freeze` state, is ignored - resulting in a mutable String object.
+
+The string is always copied and the final string must be destroyed (using the `destroy` function).
+
 #### `STR_destroy`
 
 ```c

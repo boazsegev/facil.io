@@ -10,7 +10,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FIO_VERSION_GUARD
 #include <fio.h>
 
-#define FIO_STR_NAME fio_str
+#define FIO_STR_SMALL fio_str
 #define FIO_REF_NAME fio_str
 #define FIO_REF_CONSTRUCTOR_ONLY
 #include "fio-stl.h"
@@ -4887,9 +4887,7 @@ finish:
 #define FIO_MAP_NAME fio_sub_hash
 #define FIO_MAP_TYPE subscription_s *
 #define FIO_MAP_KEY fio_str_s
-#define FIO_MAP_KEY_COPY(k1, k2)                                               \
-  (k1) = (fio_str_s)FIO_STR_INIT;                                              \
-  fio_str_concat(&(k1), &(k2))
+#define FIO_MAP_KEY_COPY(k1, k2) fio_str_init_copy2(&(k1), &(k2))
 #define FIO_MAP_KEY_CMP(k1, k2) fio_str_is_eq(&(k1), &(k2))
 #define FIO_MAP_KEY_DESTROY(key) fio_str_destroy(&(key))
 #define FIO_MAP_TYPE_DESTROY(obj) fio_unsubscribe(obj)
@@ -5188,8 +5186,8 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     subscription_s *s = fio_subscribe(.on_message = fio_mock_on_message,
                                       .match = NULL,
                                       .channel = pr->msg->channel);
-    fio_str_s tmp = (fio_str_s)FIO_STR_INIT_EXISTING(
-        pr->msg->channel.buf, pr->msg->channel.len, 0); // don't free
+    fio_str_s tmp;
+    fio_str_init_const(&tmp, pr->msg->channel.buf, pr->msg->channel.len);
     fio_lock(&pr->lock);
     fio_sub_hash_set(&pr->pubsub,
                      fio_risky_hash(pr->msg->channel.buf,
@@ -5202,8 +5200,8 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     break;
   }
   case FIO_CLUSTER_MSG_PUBSUB_UNSUB: {
-    fio_str_s tmp = FIO_STR_INIT_EXISTING(
-        pr->msg->channel.buf, pr->msg->channel.len, 0); // don't free
+    fio_str_s tmp;
+    fio_str_init_const(&tmp, pr->msg->channel.buf, pr->msg->channel.len);
     fio_lock(&pr->lock);
     fio_sub_hash_remove(&pr->pubsub,
                         fio_risky_hash(pr->msg->channel.buf,
@@ -5220,8 +5218,8 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     subscription_s *s = fio_subscribe(.on_message = fio_mock_on_message,
                                       .match = (fio_match_fn)match,
                                       .channel = pr->msg->channel);
-    fio_str_s tmp = FIO_STR_INIT_EXISTING(
-        pr->msg->channel.buf, pr->msg->channel.len, 0); // don't free
+    fio_str_s tmp;
+    fio_str_init_const(&tmp, pr->msg->channel.buf, pr->msg->channel.len);
     fio_lock(&pr->lock);
     fio_sub_hash_set(&pr->patterns,
                      fio_risky_hash(pr->msg->channel.buf,
@@ -5235,8 +5233,8 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
   }
 
   case FIO_CLUSTER_MSG_PATTERN_UNSUB: {
-    fio_str_s tmp = FIO_STR_INIT_EXISTING(
-        pr->msg->channel.buf, pr->msg->channel.len, 0); // don't free
+    fio_str_s tmp;
+    fio_str_init_const(&tmp, pr->msg->channel.buf, pr->msg->channel.len);
     fio_lock(&pr->lock);
     fio_sub_hash_remove(&pr->patterns,
                         fio_risky_hash(pr->msg->channel.buf,
@@ -6293,7 +6291,7 @@ void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls,
     fio___tls_cert_ary_push(&tls->sni, c);
   } else if (server_name) {
     /* Self-Signed TLS Certificates */
-    c.private_key = (fio_str_s)FIO_STR_INIT_STATIC(server_name);
+    fio_str_init_const(&c.private_key, server_name, strlen(server_name));
     fio___tls_cert_ary_push(&tls->sni, c);
   }
   fio___tls_cert_destroy(&c);

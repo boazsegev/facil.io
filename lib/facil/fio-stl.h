@@ -7226,7 +7226,7 @@ FIO_IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, init_const)(FIO_STR_PTR s,
                                                             size_t len);
 
 /**
- * Initializes the container with the provided dynamic string.
+ * Initializes the container with a copy of the provided dynamic string.
  *
  * The string is always copied and the final string must be destroyed (using the
  * `destroy` function).
@@ -7234,6 +7234,15 @@ FIO_IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, init_const)(FIO_STR_PTR s,
 FIO_IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, init_copy)(FIO_STR_PTR s,
                                                            const char *str,
                                                            size_t len);
+
+/**
+ * Initializes the container with a copy of an existing String object.
+ *
+ * The string is always copied and the final string must be destroyed (using the
+ * `destroy` function).
+ */
+FIO_IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, init_copy2)(FIO_STR_PTR dest,
+                                                            FIO_STR_PTR src);
 
 /**
  * Frees the String's resources and reinitializes the container.
@@ -7806,6 +7815,19 @@ FIO_IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, init_copy)(FIO_STR_PTR s_,
     memcpy(FIO_STR_BIG_DATA(s), str, len);
   i = (fio_str_info_s){
       .buf = FIO_STR_BIG_DATA(s), .len = len, .capa = FIO_STR_BIG_CAPA(s)};
+  return i;
+}
+
+/**
+ * Initializes the container with a copy of an existing String object.
+ *
+ * The string is always copied and the final string must be destroyed (using the
+ * `destroy` function).
+ */
+FIO_IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, init_copy2)(FIO_STR_PTR dest,
+                                                            FIO_STR_PTR src) {
+  fio_str_info_s i = FIO_NAME(FIO_STR_NAME, info)(src);
+  i = FIO_NAME(FIO_STR_NAME, init_copy)(dest, i.buf, i.len);
   return i;
 }
 
