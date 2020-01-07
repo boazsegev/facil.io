@@ -169,7 +169,7 @@ Find the root object (of a `struct`) from it's field.
 
 By setting these macros, the memory allocator used by facil.io could be changed from the default allocator (either the custom allocator or, if missing, the system's allocator).
 
-When facil.io's memory allocator is defined (using `FIO_MALLOC`), these macros will be automatically overwritten to use the custom memory allocator. To use a different allocator, you may redefine the macros.
+When facil.io's memory allocator is defined (using `FIO_MALLOC`), **these macros will be automatically overwritten to use the custom memory allocator**. To use a different allocator, you may redefine the macros.
 
 #### `FIO_MEM_CALLOC`
 
@@ -1247,6 +1247,50 @@ The default optimization stores information about the allocated memory's capacit
 
    **Note**: the default container size can be extended by `sizeof(void*)` units using the `FIO_STR_OPTIMIZE_LOCALITY` macro (i.e., `#define FIO_STR_OPTIMIZE_LOCALITY 2` will add 16 bytes to the container on 64 bit systems).
 
+#### Example `FIO_STR_NAME` Use-Case
+
+```c
+#define FIO_LOG
+#define FIO_QUEUE
+#include "fio-stl.h"
+
+#define FIO_STR_NAME fio_str
+#define FIO_REF_NAME fio_str
+#define FIO_REF_CONSTRUCTOR_ONLY
+#include "fio-stl.h"
+
+/* this is NOT thread safe... just an example */
+void example_task(void *str_, void *ignore_) {
+  fio_str_s *str = (fio_str_s *)str_; /* C++ style cast */
+  fprintf(stderr, "%s\n", fio_str2ptr(str));
+  fio_str_write(str, ".", 1);
+  fio_str_free(str); /* decreases reference count or frees object */
+  (void)ignore_;
+}
+
+void example(void) {
+  fio_queue_s queue = FIO_QUEUE_INIT(queue);
+  fio_str_s *str = fio_str_new();
+  /* writes to the String */
+  fio_str_write(str, "Starting time was: ", 19);
+  {
+    /* reserves space and resizes String, without writing any data */
+    const size_t org_len = fio_str_len(str);
+    fio_str_info_s str_info = fio_str_resize(str, 29 + org_len);
+    /* write data directly to the existing String buffer */
+    size_t r = fio_time2rfc7231(str_info.buf + org_len, fio_time_real().tv_sec);
+    FIO_ASSERT(r == 29, "this example self destructs at 9999");
+  }
+  for (size_t i = 0; i < 10; ++i) {
+    /* allow each task to hold a reference to the object */
+    fio_queue_push(&queue, .fn = example_task, .udata1 = fio_str_up_ref(str));
+  }
+  fio_str_free(str);             /* decreases reference count */
+  fio_queue_perform_all(&queue); /* performs all tasks */
+  fio_queue_destroy(&queue);
+}
+```
+
 #### When to use the smaller Dynamic Strings (`FIO_STR_SMALL`)
 
 The classic use-case for the smaller dynamic string type is as a `key` in a Map object. The memory "savings" in these cases could become meaningful.
@@ -1257,6 +1301,8 @@ In addition, the `FIO_STR_SMALL` optimization is likely to perform better than t
 
 * Strings will point to static memory (`STR_init_const`).
 
+#### Example `FIO_STR_SMALL` Use-Case
+
 ```c
 #define FIO_STR_SMALL key /* results in the type name: key_s */
 #include "fio-stl.h"
@@ -1264,19 +1310,21 @@ In addition, the `FIO_STR_SMALL` optimization is likely to perform better than t
 #define FIO_MAP_NAME map
 #define FIO_MAP_TYPE uintptr_t
 #define FIO_MAP_KEY key_s /* the small string type */
+#define FIO_MAP_KEY_COPY(dest, src)                                            \
+  do {                                                                         \
+    fio_str_info_s tmp_info = key_info(&src);                                  \
+    key_init_copy(&(dest), tmp_info.buf, tmp_info.len);                        \
+  } while (0)
 #define FIO_MAP_KEY_DESTROY(k) key_destroy(&k)
 #define FIO_MAP_KEY_CMP(a, b) key_is_eq(&(a), &(b))
-/* destroy discarded keys when overwriting existing data...
- * (duplicate keys aren't copied when overwriting existing values): */
-#define FIO_MAP_KEY_DISCARD(k) key_destroy(&k)
 #include "fio-stl.h"
 
-/* helper for setting values in the map */
+/* helper for setting values in the map using risky hash with a safe seed */
 FIO_IFUNC uintptr_t map_set2(map_s *m, key_s key, uintptr_t value) {
   return map_set(m, key_hash(&key, (uint64_t)m), key, value, NULL);
 }
 
-/* helper for getting values from the map */
+/* helper for getting values from the map using risky hash with a safe seed */
 FIO_IFUNC uintptr_t map_get2(map_s *m, key_s key) {
   return map_get(m, key_hash(&key, (uint64_t)m), key);
 }
@@ -1286,11 +1334,12 @@ void example(void) {
   /* write the long keys twice, to prove they self-destruct in the Hash-Map */
   for (int overwrite = 0; overwrite < 2; ++overwrite) {
     for (int i = 0; i < 10; ++i) {
-      char *prefix = "a long key will require memory allocation: ";
+      const char *prefix = "a long key will require memory allocation: ";
       key_s k;
       key_init_const(&k, prefix, strlen(prefix)); /* points to string literal */
       key_write_hex(&k, i); /* automatically converted into a dynamic string */
       map_set2(&m, k, (uintptr_t)i);
+      key_destroy(&k);
     }
   }
   /* short keys don't allocate external memory (string embedded in the object)
@@ -1298,11 +1347,12 @@ void example(void) {
   for (int i = 0; i < 10; ++i) {
     /* short keys fit in pointer + length type... test assumes 64bit addresses
      */
-    char *prefix = "embed: ";
+    const char *prefix = "embed: ";
     key_s k;
     key_init_const(&k, prefix, strlen(prefix)); /* embeds the (short) string */
     key_write_hex(&k, i); /* automatically converted into a dynamic string */
     map_set2(&m, k, (uintptr_t)i);
+    key_destroy(&k);
   }
   FIO_MAP_EACH(&m, pos) {
     fprintf(stderr,
@@ -1442,6 +1492,35 @@ This macro allows the string container to be initialized with existing static da
   { .buf = (char *)(buffer), .len = (length) }
 ```
 
+
+#### `STR_init_const`
+
+```c
+fio_str_info_s STR_init_const(FIO_STR_PTR s,
+                              const char *str,
+                              size_t len);
+```
+
+Initializes the container with a pointer to the provided static / constant string.
+
+The string will be copied to the container **only** if it will fit in the container itself. 
+
+Otherwise, the supplied pointer will be used as is **and must remain valid until the string is destroyed** (or written to, at which point the data is duplicated).
+
+The final string can be safely be destroyed (using the `STR_destroy` function).
+
+#### `STR_init_copy`
+
+```c
+fio_str_info_s STR_init_copy(FIO_STR_PTR s,
+                             const char *str,
+                             size_t len);
+```
+
+Initializes the container with a copy of the `src` string.
+
+The string is always copied and the final string must be destroyed (using the `destroy` function).
+
 #### `STR_destroy`
 
 ```c
@@ -1475,6 +1554,8 @@ char * STR_detach(FIO_STR_PTR s);
 ```
 
 Returns a C string with the existing data, **re-initializing** the String.
+
+The returned C string is **always dynamic** and **must be freed** using the same memory allocator assigned to the type (i.e., `free` or `fio_free`, see [`FIO_MALLOC`](#memory-allocation), [`FIO_MEM_CALLOC`](#FIO_MEM_CALLOC) and [`FIO_MALLOC_TMP_USE_SYSTEM`](#FIO_MALLOC_TMP_USE_SYSTEM))
 
 **Note**: the String data is removed from the container, but the container is **not** freed.
 
@@ -2783,6 +2864,8 @@ size_t fio_time2rfc7231(char *target, time_t time);
 
 Writes an RFC 7231 date representation (HTTP date format) to target.
 
+Requires 29 characters (for positive, 4 digit years).
+
 The format is similar to DDD, dd, MON, YYYY, HH:MM:SS GMT
 
 i.e.: Sun, 06 Nov 1994 08:49:37 GMT
@@ -2795,6 +2878,8 @@ size_t fio_time2rfc2109(char *target, time_t time);
 
 Writes an RFC 2109 date representation to target.
 
+Requires 31 characters (for positive, 4 digit years).
+
 #### `fio_time2rfc2822`
 
 ```c
@@ -2802,6 +2887,8 @@ size_t fio_time2rfc2822(char *target, time_t time);
 ```
 
 Writes an RFC 2822 date representation to target.
+
+Requires 28 or 29 characters (for positive, 4 digit years).
 
 -------------------------------------------------------------------------------
 
