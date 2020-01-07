@@ -7816,14 +7816,13 @@ FIO_IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, init_copy)(FIO_STR_PTR s_,
     return i;
   }
 
-  FIO_STR_BIG_CAPA_SET(s, FIO_STR_CAPA2WORDS(len));
-  FIO_STR_BIG_DATA(s) =
-      (char *)FIO_MEM_CALLOC_((FIO_STR_CAPA2WORDS(len) + 1), 1);
+  const size_t capa = FIO_STR_CAPA2WORDS(len);
+  FIO_STR_BIG_CAPA_SET(s, capa);
+  FIO_STR_BIG_DATA(s) = (char *)FIO_MEM_CALLOC_(capa + 1, 1);
   FIO_STR_BIG_LEN_SET(s, len);
   if (str)
     memcpy(FIO_STR_BIG_DATA(s), str, len);
-  i = (fio_str_info_s){
-      .buf = FIO_STR_BIG_DATA(s), .len = len, .capa = FIO_STR_BIG_CAPA(s)};
+  i = (fio_str_info_s){.buf = FIO_STR_BIG_DATA(s), .len = len, .capa = capa};
   return i;
 }
 
@@ -7923,12 +7922,12 @@ FIO_IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, resize)(FIO_STR_PTR s_,
     };
   } else {
     FIO_STR_BIG_DATA(s)[size] = 0;
+    FIO_STR_BIG_LEN_SET(s, size);
     i = (fio_str_info_s){
         .buf = FIO_STR_BIG_DATA(s),
         .len = size,
         .capa = i.capa,
     };
-    FIO_STR_BIG_LEN_SET(s, size); /* delayed in case it effects CAPA */
   }
   return i;
 }
@@ -9817,10 +9816,10 @@ Patch for OSX version < 10.12 from https://stackoverflow.com/a/9781275/4025095
 #ifndef CLOCK_MONOTONIC
 #define CLOCK_MONOTONIC 0
 #endif
-#define clock_gettime patch_clock_gettime
+#define clock_gettime fio___patch_clock_gettime
 // clock_gettime is not implemented on older versions of OS X (< 10.12).
 // If implemented, CLOCK_MONOTONIC will have already been defined.
-FIO_IFUNC int patch_clock_gettime(int clk_id, struct timespec *t) {
+FIO_IFUNC int fio___patch_clock_gettime(int clk_id, struct timespec *t) {
   struct timeval now;
   int rv = gettimeofday(&now, NULL);
   if (rv)
