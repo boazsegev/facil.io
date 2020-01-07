@@ -7528,6 +7528,15 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME,
                                                size_t encoded_len);
 
 /* *****************************************************************************
+String API - Testing
+***************************************************************************** */
+#ifdef FIO_STR_WRITE_TEST_FUNC
+/**
+ * Tests the fio_str functionality.
+ */
+SFUNC void FIO_NAME(FIO_STR_NAME, __dynamic_test)(void);
+#endif
+/* *****************************************************************************
 
 
                              String Implementation
@@ -9246,7 +9255,7 @@ finish:
 /**
  * Tests the fio_str functionality.
  */
-FIO_IFUNC void FIO_NAME(FIO_STR_NAME, __dynamic_test)(void) {
+SFUNC void FIO_NAME(FIO_STR_NAME, __dynamic_test)(void) {
   FIO_NAME(FIO_STR_NAME, s) str = {0}; /* test zeroed out memory */
 #define FIO__STR_SMALL_CAPA FIO_STR_SMALL_CAPA(&str)
   fprintf(
