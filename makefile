@@ -720,6 +720,14 @@ test/poll:| poll.___clean
 	@DEBUG=1 FIO_POLL=1 $(MAKE) test
 	@echo "* FIO_FORCE_POLL testing complete."
 
+.PHONY : test/stl
+test/stl: | stl.___clean
+	@echo "* Compiling facil.io STL test"
+	@time $(CC) -c ./tests/stl_test.c -o $(TMP_ROOT)/stl_test.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@echo "* Linking STL test"
+	@$(CC) -o $(BIN) $(TMP_ROOT)/stl_test.o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@$(BIN)
+
 .PHONY : test/cpp
 test/cpp: | cpp.___clean
 	@echo "* Compiling C++ test"
