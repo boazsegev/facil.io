@@ -441,6 +441,13 @@ Sleep / Thread Scheduling Macros
 Miscellaneous helper macros
 ***************************************************************************** */
 
+/* avoid printing a full / nested path when __FILE_NAME__ is available */
+#ifdef __FILE_NAME__
+#define FIO__FILE__ __FILE_NAME__
+#else
+#define FIO__FILE__ __FILE__
+#endif
+
 /** An empty macro, adding white space. Used to avoid function like macros. */
 #define FIO_NOOP
 /* allow logging to quitely fail unless enabled */
@@ -457,7 +464,7 @@ Miscellaneous helper macros
 /* Asserts a condition is true, or kills the application using SIGINT. */
 #define FIO_ASSERT(cond, ...)                                                  \
   if (!(cond)) {                                                               \
-    FIO_LOG_FATAL("(" __FILE__ ":" FIO_MACRO2STR(__LINE__) ") " __VA_ARGS__);  \
+    FIO_LOG_FATAL("(" FIO__FILE__ ":" FIO_MACRO2STR(__LINE__) ") " __VA_ARGS__);  \
     perror("     errno");                                                      \
     kill(0, SIGINT);                                                           \
     exit(-1);                                                                  \
@@ -467,7 +474,7 @@ Miscellaneous helper macros
 /** Tests for an allocation failure. The behavior can be overridden. */
 #define FIO_ASSERT_ALLOC(ptr)                                                  \
   if (!(ptr)) {                                                                \
-    FIO_LOG_FATAL("memory allocation error " __FILE__                          \
+    FIO_LOG_FATAL("memory allocation error " FIO__FILE__                          \
                   ":" FIO_MACRO2STR(__LINE__));                                \
     kill(0, SIGINT);                                                           \
     exit(-1);                                                                  \
@@ -759,7 +766,10 @@ FIO_LOG2STDERR(const char *format, ...) {
              24);
       len___log = FIO_LOG____LENGTH_BORDER + 24;
     } else {
-      fwrite("ERROR: log output error (can't write).\n", 39, 1, stderr);
+      fwrite("\x1B[1mERROR\x1B[0m: log output error (can't write).\n",
+             39,
+             1,
+             stderr);
       return;
     }
   }
@@ -772,7 +782,7 @@ FIO_LOG2STDERR(const char *format, ...) {
 
 // clang-format off
 #undef FIO_LOG2STDERR2
-#define FIO_LOG2STDERR2(...) FIO_LOG2STDERR("(" __FILE__ ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
+#define FIO_LOG2STDERR2(...) FIO_LOG2STDERR("(" FIO__FILE__ ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
 // clang-format on
 
 /** Logging level of zero (no logging). */
@@ -806,17 +816,17 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 
 // clang-format off
 #undef FIO_LOG_DEBUG
-#define FIO_LOG_DEBUG(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG,"DEBUG (" __FILE__ ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
+#define FIO_LOG_DEBUG(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG,"DEBUG:\t(" FIO__FILE__ ":" FIO_MACRO2STR(__LINE__) ") " __VA_ARGS__)
 #undef FIO_LOG_DEBUG2
-#define FIO_LOG_DEBUG2(...)  FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG, "DEBUG: " __VA_ARGS__)
+#define FIO_LOG_DEBUG2(...)  FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG, "DEBUG:\t" __VA_ARGS__)
 #undef FIO_LOG_INFO
-#define FIO_LOG_INFO(...)    FIO_LOG_PRINT__(FIO_LOG_LEVEL_INFO, "INFO: " __VA_ARGS__)
+#define FIO_LOG_INFO(...)    FIO_LOG_PRINT__(FIO_LOG_LEVEL_INFO, "\x1B[2mINFO:\x1B[0m\t" __VA_ARGS__)
 #undef FIO_LOG_WARNING
 #define FIO_LOG_WARNING(...) FIO_LOG_PRINT__(FIO_LOG_LEVEL_WARNING, "WARNING: " __VA_ARGS__)
 #undef FIO_LOG_ERROR
-#define FIO_LOG_ERROR(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_ERROR, "ERROR: " __VA_ARGS__)
+#define FIO_LOG_ERROR(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_ERROR, "\x1B[1mERROR:\x1B[0m\t" __VA_ARGS__)
 #undef FIO_LOG_FATAL
-#define FIO_LOG_FATAL(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_FATAL, "FATAL: " __VA_ARGS__)
+#define FIO_LOG_FATAL(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_FATAL, "\x1B[1;7mFATAL:\x1B[0m\t" __VA_ARGS__)
 // clang-format on
 
 #endif /* FIO_LOG */
@@ -6642,7 +6652,7 @@ SFUNC FIO_NAME(FIO_MAP_NAME, __pos_s)
       }
       if (++full_collisions >= FIO_MAP_MAX_FULL_COLLISIONS) {
         m->under_attack = 1;
-        FIO_LOG2STDERR("SECURITY: (core type) Map under attack?"
+        FIO_LOG2STDERR("\x1B[1mSECURITY:\x1B[0m (core type) Map under attack?"
                        " (multiple full collisions)");
       }
     }
@@ -16935,7 +16945,7 @@ Testing functiun
 ***************************************************************************** */
 
 TEST_FUNC void fio_test_dynamic_types(void) {
-  char *filename = (char *)__FILE__;
+  char *filename = (char *)FIO__FILE__;
   while (filename[0] == '.' && filename[1] == '/')
     filename += 2;
   fprintf(stderr, "===============\n");
@@ -16947,6 +16957,13 @@ TEST_FUNC void fio_test_dynamic_types(void) {
       "Please give credit where credit is due.\n"
       "\x1B[1mYour support for is only fair\x1B[0m "
       "(code contributions / donations).\n");
+  fprintf(stderr, "===============\n");
+  FIO_LOG_DEBUG("example FIO_LOG_DEBUG message.");
+  FIO_LOG_DEBUG2("example FIO_LOG_DEBUG2 message.");
+  FIO_LOG_INFO("example FIO_LOG_INFO message.");
+  FIO_LOG_WARNING("example FIO_LOG_WARNING message.");
+  FIO_LOG_ERROR("example FIO_LOG_ERROR message.");
+  FIO_LOG_FATAL("example FIO_LOG_FATAL message.");
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___print_sizes();
   fprintf(stderr, "===============\n");
