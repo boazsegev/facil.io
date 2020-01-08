@@ -287,6 +287,19 @@ int FIO_NAME2(number, zero)(FIO_NAME(number, s) n) {
 
 ## Linked Lists
 
+```c
+// initial `include` defines the `FIO_LIST_NODE` macro and type
+#include "fio-stl.h"
+// list element 
+typedef struct {
+  char * data;
+  FIO_LIST_NODE node;
+} my_list_s;
+// create linked list helper functions
+#define FIO_LIST_NAME my_list
+#include "fio-stl.h"
+```
+
 Doubly Linked Lists are an incredibly common and useful data structure.
 
 ### Linked Lists Performance
@@ -494,6 +507,13 @@ _Note: this macro won't work with pointer tagging_
 -------------------------------------------------------------------------------
 
 ## Dynamic Arrays
+
+```c
+#define FIO_ARRAY_NAME str_ary
+#define FIO_ARRAY_TYPE char *
+#define FIO_ARRAY_TYPE_CMP(a,b) (!strcmp((a),(b)))
+#include "fio-stl.h"
+```
 
 Dynamic arrays are extremely common and useful data structures.
 
@@ -826,6 +846,30 @@ It's possible to edit elements within the loop, but avoid editing the array itse
 
 ## Maps - Hash Maps / Sets
 
+```c
+#define FIO_STR_SMALL str /* a binary string type */
+#include "fio-stl.h"
+/* a binary safe string based key-value hash map */
+#define FIO_MAP_NAME map
+#define FIO_MAP_TYPE str_s
+#define FIO_MAP_TYPE_COPY(dest, src) str_init_copy2(&(dest), &(src))
+#define FIO_MAP_TYPE_DESTROY(k) str_destroy(&k)
+#define FIO_MAP_TYPE_CMP(a, b) str_is_eq(&(a), &(b))
+#define FIO_MAP_KEY FIO_MAP_TYPE
+#define FIO_MAP_KEY_COPY FIO_MAP_TYPE_COPY
+#define FIO_MAP_KEY_DESTROY FIO_MAP_TYPE_DESTROY
+#define FIO_MAP_KEY_CMP FIO_MAP_TYPE_CMP
+#include "fio-stl.h"
+/** set helper for consistent hash values */
+FIO_IFUNC str_s map_set2(map_s *m, str_s key, str_s obj) {
+  return map_set(m, str_hash(&key, (uint64_t)m), key, obj, NULL);
+}
+/** get helper for consistent hash values */
+FIO_IFUNC str_s * map_get2(map_s *m, str_s key, str_s obj) {
+  return map_get_ptr(m, str_hash(&key, (uint64_t)m), str_s key);
+}
+```
+
 Hash maps and sets are extremely useful and common mapping / dictionary primitives, also sometimes known as "dictionary".
 
 Hash maps use both a `hash` and a `key` to identify a `value`. The `hash` value is calculated by feeding the key's data to a hash function (such as Risky Hash or SipHash).
@@ -885,12 +929,12 @@ Example:
 ```c
 /* TODO */
 /* We'll use small immutable binary strings as keys */
-#define FIO_SMALL_STR_NAME key
+#define FIO_STR_SMALL str
 #include "fio-stl.h"
 
 #define FIO_MAP_NAME number_map /* results in the type: number_map_s */
 #define FIO_MAP_TYPE size_t
-#define FIO_MAP_KEY key_s
+#define FIO_MAP_KEY str_s
 #define FIO_MAP_KEY_DESTROY(k) key_destroy(&k)
 #define FIO_MAP_KEY_DISCARD(k) key_destroy(&k)
 #include "fio-stl.h"
@@ -1204,6 +1248,11 @@ _Note: this macro doesn't work with pointer tagging_.
 -------------------------------------------------------------------------------
 
 ## Dynamic Strings
+
+```c
+FIO_STR_NAME fio_str
+#include "fio-stl.h"
+```
 
 Dynamic Strings are extremely useful, since:
 
@@ -1879,6 +1928,13 @@ Writes an escaped data into the string after unescaping the data.
 -------------------------------------------------------------------------------
 
 ## Reference Counting / Type Wrapping
+
+```c
+#define FIO_STR_SMALL fio_str
+#define FIO_REF_NAME fio_str
+#define FIO_REF_CONSTRUCTOR_ONLY
+#include "fio-stl.h"
+```
 
 If the `FIO_REF_NAME` macro is defined, then reference counting helpers can be
 defined for any named type.
@@ -3512,6 +3568,11 @@ The JSON parsing should stop with an error.
 
 ## FIOBJ Soft Dynamic Types
 
+```c
+#define FIO_FIOBJ
+#include "fio-stl.h"
+```
+
 The facil.io library includes a dynamic type system that makes it a easy to handle mixed-type tasks, such as JSON object construction.
 
 This soft type system included in the facil.io STL, it is based on the Core types mentioned above and it shares their API (Dynamic Strings, Dynamic Arrays, and Hash Maps).
@@ -4388,7 +4449,7 @@ The Static String Type (internal implementation)
 #undef FIO_EXTERN
 #undef FIOBJ_EXTERN
 /* leverage the small-string type to hold static string data */
-#define FIO_SMALL_STR_NAME fiobj_static_string
+#define FIO_STR_SMALL fiobj_static_string
 /* add required pointer tagging */
 #define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_OTHER)
 #define FIO_PTR_UNTAG(p) FIOBJ_PTR_UNTAG(p)
@@ -4399,7 +4460,7 @@ The Static String Type (internal implementation)
 /* initialization - for demonstration purposes, we don't use it here. */
 #define FIO_REF_INIT(o)                                                        \
   do {                                                                         \
-    o = (fiobj_static_string_s){.aligned = NULL};                              \
+    o = (fiobj_static_string_s){0};                                            \
     FIOBJ_MARK_MEMORY_ALLOC(); /* mark memory allocation for debugging */      \
   } while (0)
 /* cleanup - destroy the object data when the reference count reaches zero. */
@@ -4425,7 +4486,7 @@ The Public API
 FIOBJ fiobj_static_new(const char *str, size_t len) {
   FIOBJ o = fiobj_static_string_new();
   FIO_ASSERT_ALLOC(FIOBJ_PTR_UNTAG(o));
-  fiobj_static_string_set_const(o, str, len);
+  fiobj_static_string_init_const(o, str, len);
   return o;
 }
 
