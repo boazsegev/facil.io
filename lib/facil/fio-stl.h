@@ -9635,8 +9635,17 @@ SFUNC void FIO_NAME(FIO_STR_NAME, __dynamic_test)(void) {
     /* prevent encoded data from being deallocated during unencoding */
     encoded = FIO_NAME(FIO_STR_NAME, FIO_STR_RESERVE_NAME)(
         &str, encoded.len + ((encoded.len >> 2) * 3) + 8);
-    fio_str_info_s decoded =
-        FIO_NAME(FIO_STR_NAME, write_base64dec)(&str, encoded.buf, encoded.len);
+    fio_str_info_s decoded;
+    {
+      FIO_NAME(FIO_STR_NAME, s) tmps;
+      FIO_NAME(FIO_STR_NAME, init_copy2)(&tmps, &str);
+      decoded = FIO_NAME(FIO_STR_NAME,
+                         write_base64dec)(&str,
+                                          FIO_NAME2(FIO_STR_NAME, ptr)(&tmps),
+                                          FIO_NAME(FIO_STR_NAME, len)(&tmps));
+      FIO_NAME(FIO_STR_NAME, destroy)(&tmps);
+      encoded.buf = decoded.buf;
+    }
     FIO_ASSERT(encoded.len, "Base64 encoding failed");
     FIO_ASSERT(
         decoded.len > encoded.len, "Base64 decoding failed:\n%s", encoded.buf);
@@ -9668,9 +9677,17 @@ SFUNC void FIO_NAME(FIO_STR_NAME, __dynamic_test)(void) {
     fio_str_info_s encoded =
         FIO_NAME(FIO_STR_NAME, write_escape)(&str, ue.buf, ue.len);
     // fprintf(stderr, "* %s\n", encoded.buf);
-    fio_str_info_s decoded =
-        FIO_NAME(FIO_STR_NAME, write_unescape)(&str, encoded.buf, encoded.len);
-    encoded.buf = decoded.buf;
+    fio_str_info_s decoded;
+    {
+      FIO_NAME(FIO_STR_NAME, s) tmps;
+      FIO_NAME(FIO_STR_NAME, init_copy2)(&tmps, &str);
+      decoded = FIO_NAME(FIO_STR_NAME,
+                         write_unescape)(&str,
+                                         FIO_NAME2(FIO_STR_NAME, ptr)(&tmps),
+                                         FIO_NAME(FIO_STR_NAME, len)(&tmps));
+      FIO_NAME(FIO_STR_NAME, destroy)(&tmps);
+      encoded.buf = decoded.buf;
+    }
     FIO_ASSERT(!memcmp(encoded.buf, utf8_sample, strlen(utf8_sample)),
                "valid UTF-8 data shouldn't be escaped:\n%.*s\n%s",
                (int)encoded.len,
