@@ -2276,11 +2276,11 @@ Performs the operation indicated in constant time.
 
     Tests if `condition` is zero (returns `1` / `0`).
 
-- `fio_ct_if(bool, a_if_true, b_if_false)`
+- `fio_ct_if_bool(bool, a_if_true, b_if_false)`
 
     Tests if `bool == 1` (returns `a` / `b`).
 
-- `fio_ct_if2(condition, a_if_true, b_if_false)`
+- `fio_ct_if(condition, a_if_true, b_if_false)`
 
     Tests if `condition` is non-zero (returns `a` / `b`).
 

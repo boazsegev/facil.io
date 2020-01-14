@@ -586,15 +586,7 @@ Common macros
 
 
 
-
-
-
-
                           Internal Dependencies
-
-
-
-
 
 
 
@@ -725,7 +717,7 @@ Use:
 ```c
 FIO_LOG2STDERR("message.") // => message.
 FIO_LOG_LEVEL = FIO_LOG_LEVEL_WARNING; // set dynamic logging level
-FIO_LOG_INFO("message"); // => [no output]
+FIO_LOG_INFO("message"); // => [no output, exceeds logging level]
 int i = 3;
 FIO_LOG_WARNING("number invalid: %d", i); // => WARNING: number invalid: 3
 ```
@@ -1408,15 +1400,15 @@ FIO_IFUNC uintptr_t fio_ct_false(uintptr_t cond) {
 }
 
 /** Returns `a` if `cond` is boolean and true, returns b otherwise. */
-FIO_IFUNC uintptr_t fio_ct_if(uint8_t cond, uintptr_t a, uintptr_t b) {
+FIO_IFUNC uintptr_t fio_ct_if_bool(uint8_t cond, uintptr_t a, uintptr_t b) {
   // b^(a^b) cancels b out. 0-1 => sets all bits.
   return (b ^ ((0 - (cond & 1)) & (a ^ b)));
 }
 
 /** Returns `a` if `cond` isn't zero (uses fio_ct_true), returns b otherwise. */
-FIO_IFUNC uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
+FIO_IFUNC uintptr_t fio_ct_if(uintptr_t cond, uintptr_t a, uintptr_t b) {
   // b^(a^b) cancels b out. 0-1 => sets all bits.
-  return fio_ct_if(fio_ct_true(cond), a, b);
+  return fio_ct_if_bool(fio_ct_true(cond), a, b);
 }
 
 /* *****************************************************************************
@@ -3581,8 +3573,12 @@ SFUNC size_t fio_ftoa(char *dest, double num, uint8_t base) {
   if (base == 2 || base == 16) {
     /* handle binary / Hex representation the same as an int64_t */
     /* FIXME: Hex representation should use floating-point hex instead */
-    int64_t *i = (int64_t *)&num;
-    return fio_ltoa(dest, *i, base);
+    union {
+      int64_t i;
+      double d;
+    } p;
+    p.d = num;
+    return fio_ltoa(dest, p.i, base);
   }
   size_t written = 0;
   uint8_t need_zero = 1;
@@ -14373,10 +14369,12 @@ TEST_FUNC void fio___dynamic_types_test___bitwise(void) {
   FIO_T_ASSERT(!fio_ct_true(0), "fio_ct_true should be false.");
   FIO_T_ASSERT(!fio_ct_false(8), "fio_ct_false should be false.");
   FIO_T_ASSERT(fio_ct_false(0), "fio_ct_false should be true.");
+  FIO_T_ASSERT(fio_ct_if_bool(0, 1, 2) == 2,
+               "fio_ct_if_bool selection error (false).");
+  FIO_T_ASSERT(fio_ct_if_bool(1, 1, 2) == 1,
+               "fio_ct_if_bool selection error (true).");
   FIO_T_ASSERT(fio_ct_if(0, 1, 2) == 2, "fio_ct_if selection error (false).");
-  FIO_T_ASSERT(fio_ct_if(1, 1, 2) == 1, "fio_ct_if selection error (true).");
-  FIO_T_ASSERT(fio_ct_if2(0, 1, 2) == 2, "fio_ct_if2 selection error (false).");
-  FIO_T_ASSERT(fio_ct_if2(8, 1, 2) == 1, "fio_ct_if2 selection error (true).");
+  FIO_T_ASSERT(fio_ct_if(8, 1, 2) == 1, "fio_ct_if selection error (true).");
   {
     uint8_t bitmap[1024];
     memset(bitmap, 0, 1024);
@@ -15883,7 +15881,7 @@ TEST_FUNC void fio___dynamic_types_test___queue(void) {
     fprintf(stderr, "\n");
   }
 
-  for (size_t i = 1; FIO___QUEUE_TOTAL_COUNT >> i; ++i) {
+  for (size_t i = 1; i < 32 && FIO___QUEUE_TOTAL_COUNT >> i; ++i) {
     i_count = 0;
     fio___queue_test_s info = {
         .q = q, .count = (uintptr_t)(FIO___QUEUE_TOTAL_COUNT >> i)};
