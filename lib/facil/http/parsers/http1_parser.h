@@ -1379,9 +1379,9 @@ static int http1_on_header(http1_parser_s *parser,
                            size_t val_len) {
   (void)parser;
   size_t pos = 0;
-  while (http1_test_data[http1_test_pos].result.headers[pos].name && pos < 8)
+  while (pos < 12 && http1_test_data[http1_test_pos].result.headers[pos].name)
     ++pos;
-  HTTP1_TEST_ASSERT(pos < 8,
+  HTTP1_TEST_ASSERT(pos < 12,
                     "header result overflow for: %s",
                     http1_test_data[http1_test_pos].test_name);
   memcpy(http1_test_temp_buf + http1_test_temp_buf_pos, name, name_len);

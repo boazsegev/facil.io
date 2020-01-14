@@ -4005,7 +4005,6 @@ String data might be allocated dynamically, requiring the use of `FIOBJ_STR_TEMP
 ```c
 #define FIOBJ_STR_TEMP_DESTROY(str_name)                                       \
   FIO_NAME(fiobj_str, destroy)(str_name);
-
 ```
 
 Resets a temporary `FIOBJ` String, freeing and any resources allocated.

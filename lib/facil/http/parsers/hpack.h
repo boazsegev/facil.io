@@ -369,7 +369,7 @@ hpack_huffman_pack(void *dest_, const int limit, void *data_, size_t len) {
   uint8_t *pos = data;
   const uint8_t *end = pos + len;
   uint8_t offset = 0;
-  if (!len)
+  if (!dest_ || !data_ || !len)
     return 0;
   if (!limit)
     goto calc_final_length;
