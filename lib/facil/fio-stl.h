@@ -282,7 +282,7 @@ char *__attribute__((weak)) fio_version_string(void) {
 #undef FIO_VERSION_GUARD
 #endif /* FIO_VERSION_GUARD */
 
-#if !defined(__GNUC__) && !defined(__clang__)
+#if !defined(FIO_NO_COOKIE)
 /** If implemented, does stuff. */
 void __attribute__((weak)) fio___(void) {
   volatile uint8_t tmp[] =
