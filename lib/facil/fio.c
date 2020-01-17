@@ -11,8 +11,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <fio.h>
 
 #define FIO_STR_SMALL fio_str
-#define FIO_REF_NAME fio_str
-#define FIO_REF_CONSTRUCTOR_ONLY
 #include "fio-stl.h"
 
 #define FIO_SOCK

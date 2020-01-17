@@ -16168,9 +16168,10 @@ TEST_FUNC void fio___sock_test_before_events(void *udata) {
 }
 TEST_FUNC void fio___sock_test_on_event(int fd, size_t index, void *udata) {
   *(size_t *)udata += 1;
-  if (errno)
-    perror("\t(possibly expected) error reported");
-  errno = 0;
+  if (errno) {
+    FIO_LOG_WARNING("(possibly expected) %s", strerror(errno));
+    errno = 0;
+  }
   (void)fd;
   (void)index;
 }
@@ -16276,6 +16277,7 @@ TEST_FUNC void fio___dynamic_types_test___sock(void) {
     //               .on_error = NULL, .udata = &flag,
     //               .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(cl)));
     // FIO_T_ASSERT(!flag, "No event should have occured here! (%zu)", flag);
+    FIO_LOG_INFO("error may print when polling server for `write`.");
     fio_sock_poll(.before_events = fio___sock_test_before_events,
                   .on_ready = NULL,
                   .on_data = fio___sock_test_on_event,
@@ -16285,6 +16287,7 @@ TEST_FUNC void fio___dynamic_types_test___sock(void) {
                   .timeout = 100,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(srv)));
     FIO_T_ASSERT(flag == 2, "Event should have occured here! (%zu)", flag);
+    FIO_LOG_INFO("error may have been emitted.");
 
     int accepted = accept(srv, NULL, NULL);
     FIO_T_ASSERT(accepted != -1, "client socket failed to open");
@@ -17006,6 +17009,9 @@ TEST_FUNC void fio_test_dynamic_types(void) {
       "Please give credit where credit is due.\n"
       "\x1B[1mYour support for is only fair\x1B[0m "
       "(code contributions / donations).\n\n");
+#if !defined(FIO_NO_COOKIE)
+  fio___();
+#endif
 }
 
 /* *****************************************************************************
