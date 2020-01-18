@@ -1405,7 +1405,7 @@ intptr_t http_hijack(http_s *h_, fio_str_info_s *leftover) {
 }
 
 /* *****************************************************************************
-Websocket Upgrade (Server and Client connection establishment)
+Websocket Upgrade (Server and Client connection establishment) TODO
 ***************************************************************************** */
 
 /**
@@ -1439,7 +1439,7 @@ void websocket_connect___(void); /* SublimeText Marker */
 int websocket_connect FIO_NOOP(const char *url, websocket_settings_s settings);
 
 /* *****************************************************************************
-EventSource Support (SSE)
+EventSource Support (SSE) TODO
 ***************************************************************************** */
 
 /**

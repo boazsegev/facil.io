@@ -365,7 +365,7 @@ static int http1_stream(http_internal_s *h, void *data, uintptr_t length) {
       /* Streaming without chuncked encoding */
       should_chunk = 0;
     } else {
-      /* add chunking related headers... */
+      /* add chunking related headers... FIXME (test for value in list) */
       FIOBJ tmp =
           fiobj_hash_get2(h->headers_out, HTTP_HEADER_TRANSFER_ENCODING);
       if (!tmp || !fiobj_is_eq(tmp, HTTP_HVALUE_CHUNKED_ENCODING))
@@ -407,13 +407,18 @@ static int http1_stream(http_internal_s *h, void *data, uintptr_t length) {
         i++;
         n = n << 4;
       }
-    } else
+    } else {
       goto finish;
-    fiobj_str_reserve(out, fiobj_str_len(out) + length + hex_len + 2);
-    fiobj_str_write(out, buffer, hex_len);
-    fiobj_str_write(out, "\r\n", 2);
-    fiobj_str_write(out, data, length);
-    fiobj_str_write(out, "\r\n", 2);
+    }
+    {
+      /* copy to string */
+      size_t old_len = fiobj_str_len(out);
+      fio_str_info_s s = fiobj_str_resize(out, old_len + length + hex_len + 4);
+      memcpy(s.buf + old_len, buffer, hex_len);
+      memcpy(s.buf + old_len + hex_len, "\r\n", 2);
+      memcpy(s.buf + old_len + hex_len + 2, data, length);
+      memcpy(s.buf + old_len + hex_len + length + 2, "\r\n", 2);
+    }
   } else {
     fiobj_str_write(out, data, length);
   }
@@ -517,30 +522,37 @@ static int http1_upgrade2sse(http_internal_s *h, http_sse_settings_s *sse) {
   if (!FIOBJ_TYPE_IS(h->headers_out, FIOBJ_T_HASH))
     return -1;
   set_header_overwite(h->headers_out,
-                      HTTP_HEADER_CONTENT_ENCODING,
+                      HTTP_HEADER_CONTENT_TYPE,
                       fiobj_dup(HTTP_HVALUE_SSE_MIME));
+  set_header_overwite(h->headers_out,
+                      HTTP_HEADER_CACHE_CONTROL,
+                      fiobj_dup(HTTP_HVALUE_NO_CACHE));
+  set_header_overwite(h->headers_out,
+                      HTTP_HEADER_CONTENT_ENCODING,
+                      fiobj_dup(HTTP_HVALUE_IDENTITY));
   if (http1_stream(h, NULL, 0) == -1)
     goto upgrade_failed;
 
-  (void)sse; /* FIXME */
+  (void)sse; /* TODO FIXME */
+  http_sse_s *sse_handle = (http_sse_s *)h->pr;
 
   if (sse->on_open)
-    sse->on_open(sse);
+    sse->on_open(sse_handle);
   return 0;
 upgrade_failed:
   if (sse->on_close)
-    sse->on_close(sse);
+    sse->on_close(sse_handle);
   return -1;
 }
 /** Writes data to an EventSource (SSE) connection. MUST free the FIOBJ. */
 static int http1_sse_write(http_sse_s *sse, FIOBJ str) {
   fiobj_free(str);
-  (void)sse; /* FIXME */
+  (void)sse; /* TODO FIXME */
   return -1;
 }
 /** Closes an EventSource (SSE) connection. */
 static int http1_sse_close(http_sse_s *sse) {
-  (void)sse; /* FIXME */
+  (void)sse; /* TODO FIXME */
   return -1;
 }
 
