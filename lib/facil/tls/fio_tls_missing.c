@@ -156,7 +156,7 @@ ALPN Helpers
 
 /** Returns a pointer to the ALPN data (callback, etc') IF exists in the TLS. */
 FIO_FUNC inline alpn_s *alpn_find(fio_tls_s *tls, char *name, size_t len) {
-  alpn_s tmp = {.name = FIO_STR_INIT_STATIC2(name, len)};
+  alpn_s tmp = {.name = FIO_STR_INIT_STATIC2(name, len), NULL, NULL, NULL};
   alpn_list__map_s_ *pos =
       alpn_list__find_map_pos_(&tls->alpn, fio_str_hash(&tmp.name), tmp);
   if (!pos || !pos->pos)
