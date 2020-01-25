@@ -73,7 +73,7 @@ void initialize_cli(int argc, char const *argv[]) {
   if (fio_cli_get("-redis") && strlen(fio_cli_get("-redis"))) {
     FIO_LOG_INFO("* Initializing Redis connection to %s\n",
                  fio_cli_get("-redis"));
-    http_url_s info =
+    fio_url_s info =
         http_url_parse(fio_cli_get("-redis"), strlen(fio_cli_get("-redis")));
     fio_pubsub_engine_s *e =
         redis_engine_create(.address = info.host, .port = info.port,
