@@ -1,9 +1,9 @@
-project(facil.io C)
+project(facilio C)
 cmake_minimum_required(VERSION 2.4)
 
 find_package(Threads REQUIRED)
 
-set(facil.io_SOURCES
+set(facilio_SOURCES
   lib/facil/fio.c
   lib/facil/tls/fio_tls_missing.c
   lib/facil/tls/fio_tls_openssl.c
@@ -25,13 +25,13 @@ set(facil.io_SOURCES
   lib/facil/redis/redis_engine.c
 )
 
-add_library(facil.io ${facil.io_SOURCES})
-target_link_libraries(facil.io
+add_library(facilio_objlib OBJECT ${facilio_SOURCES})
+target_link_libraries(facilio_objlib
   PRIVATE Threads::Threads
   PUBLIC pthread
   PUBLIC m
   )
-target_include_directories(facil.io
+target_include_directories(facilio_objlib
   PUBLIC  lib
   PUBLIC  lib/facil
   PUBLIC  lib/facil/tls
@@ -42,3 +42,6 @@ target_include_directories(facil.io
   PUBLIC  lib/facil/redis
 )
 
+set_property(TARGET facilio_objlib PROPERTY POSITION_INDEPENDENT_CODE 1)
+add_library(facilio_static STATIC $<TARGET_OBJECTS:facilio_objlib>)
+add_library(facilio SHARED $<TARGET_OBJECTS:facilio_objlib>)
