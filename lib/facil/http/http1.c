@@ -411,7 +411,7 @@ static int http1_stream(http_internal_s *h, void *data, uintptr_t length) {
       goto finish;
     }
     {
-      /* copy to string */
+      /* format output */
       size_t old_len = fiobj_str_len(out);
       fio_str_info_s s = fiobj_str_resize(out, old_len + length + hex_len + 4);
       memcpy(s.buf + old_len, buffer, hex_len);
