@@ -7779,7 +7779,7 @@ FIO_IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, init_const)(FIO_STR_PTR s_,
   *s = (FIO_NAME(FIO_STR_NAME, s)){0};
   if (len < FIO_STR_SMALL_CAPA(s)) {
     FIO_STR_SMALL_LEN_SET(s, len);
-    if (len)
+    if (len && str)
       memcpy(FIO_STR_SMALL_DATA(s), str, len);
     FIO_STR_SMALL_DATA(s)[len] = 0;
     i = (fio_str_info_s){.buf = FIO_STR_SMALL_DATA(s),
