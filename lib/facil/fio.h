@@ -1038,8 +1038,6 @@ typedef struct {
   void *data;
   /** A callback that will be called once the connection is closed. */
   void (*on_close)(void *data);
-  /** Set to 1 if the name's buffer can be stored for the life of the object. */
-  uint8_t const_name;
 } fio_uuid_env_args_s;
 
 /** Named arguments for the `fio_uuid_env_unset` function. */
@@ -1611,7 +1609,7 @@ typedef struct fio_msg_s {
    */
   intptr_t uuid;
   /**
-   * The connection's (if any), belonging to the connection's uuid (if any).
+   * The connection's protocol (if any).
    *
    * If the subscription is bound to a connection, the protocol will be locked
    * using a task lock and will be available using this pointer.
@@ -1621,7 +1619,7 @@ typedef struct fio_msg_s {
    * The actual message.
    *
    * NOTE: the channel and msg strings should be considered immutable. The .capa
-   *field might be used for internal data.
+   * field might be used for internal data.
    **/
   fio_str_info_s msg;
   /** The `udata1` argument associated with the subscription. */
@@ -1714,11 +1712,17 @@ typedef struct fio_publish_args_s {
 /**
  * Subscribes to either a filter OR a channel (never both).
  *
- * Returns a subscription pointer on success or NULL on failure.
+ * Returns a subscription pointer on success or NULL on failure. Returns NULL on
+ * success when the subscription is bound to a connnection's uuid.
+ *
+ * Note: since ownership of the subscription is transferred to a connection's
+ * UUID when the subscription is linked to a connection, the caller will not
+ * receive a link to the subscription object.
  *
  * See `subscribe_args_s` for details.
  */
 subscription_s *fio_subscribe(subscribe_args_s args);
+
 /**
  * Subscribes to either a filter OR a channel (never both).
  *

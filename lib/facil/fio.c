@@ -120,23 +120,21 @@ typedef struct {
   void (*on_close)(void *data);
 } fio_uuid_env_obj_s;
 
-#define FIO_STR_SMALL fio_uuid_env_name
-#include <fio-stl.h>
+FIO_IFUNC void fio_uuid_env_obj_call_callback(fio_uuid_env_obj_s o) {
+  if (o.on_close)
+    o.on_close(o.data);
+}
 
 #define FIO_MAP_NAME fio___uuid_env
 #define FIO_MAP_TYPE fio_uuid_env_obj_s
-#define FIO_MAP_TYPE_DESTROY(o)                                                \
-  do {                                                                         \
-    if (o.on_close)                                                            \
-      o.on_close(o.data);                                                      \
-  } while (0)
-#define FIO_MAP_KEY fio_uuid_env_name_s
-#define FIO_MAP_KEY_INVALID (fio_uuid_env_name_s) FIO_STR_INIT
-#define FIO_MAP_KEY_INVALID_SIMPLE 1 /* invalid type bytes are all zeros */
-#define FIO_MAP_KEY_DESTROY(k) fio_uuid_env_name_destroy(&k)
-/* destroy discarded keys when overwriting existing data (duplicate keys aren't
- * copied): */
-#define FIO_MAP_KEY_DISCARD(k) fio_uuid_env_name_destroy(&k)
+#define FIO_MAP_TYPE_DESTROY(o) fio_uuid_env_obj_call_callback((o))
+#define FIO_MAP_DESTROY_AFTER_COPY 0
+
+// // We can't use this because we would lose the `const_name` optimization.
+#define FIO_MAP_KEY fio_str_s /* the small string type */
+#define FIO_MAP_KEY_COPY(dest, src) fio_str_init_copy2(&(dest), &(src))
+#define FIO_MAP_KEY_DESTROY(k) fio_str_destroy(&k)
+#define FIO_MAP_KEY_CMP(a, b) fio_str_is_eq(&(a), &(b))
 #include <fio-stl.h>
 
 /** User-space socket buffer data */
@@ -500,26 +498,21 @@ void fio_uuid_env_set___(void); /* for sublime text function listing */
 void fio_uuid_env_set FIO_NOOP(intptr_t uuid, fio_uuid_env_args_s args) {
   if ((!args.data && !args.on_close) || !uuid_is_valid(uuid))
     goto invalid;
-  fio_uuid_env_name_s n = FIO_STR_INIT;
+  fio_str_s n = FIO_STR_INIT;
   fio_uuid_env_obj_s i = {.data = NULL};
-  if (args.name.buf && args.name.len) {
-    if (args.const_name) {
-      fio_uuid_env_name_init_const(&n, args.name.buf, args.name.len);
-    } else {
-      fio_uuid_env_name_init_copy(&n, args.name.buf, args.name.len);
-    }
-  }
+  if (args.name.buf && args.name.len)
+    fio_str_init_const(&n, args.name.buf, args.name.len);
   fio_lock(&uuid_data(uuid).sock_lock);
   if (!uuid_is_valid(uuid))
     goto locked_invalid;
   fio___uuid_env_set(
       &uuid_data(uuid).env,
-      fio_uuid_env_name_hash(&n, args.type),
+      fio_str_hash(&n, args.type),
       n,
       (fio_uuid_env_obj_s){.on_close = args.on_close, .data = args.data},
       &i);
   fio_unlock(&uuid_data(uuid).sock_lock);
-  if (i.on_close)
+  if (i.on_close) /* i now contains the old data, which wasn't destroyed */
     i.on_close(i.data);
   return;
 locked_invalid:
@@ -534,16 +527,17 @@ void fio_uuid_env_remove____(void); /* for sublime text function listing */
 /* public API. */
 void fio_uuid_env_remove FIO_NOOP(intptr_t uuid,
                                   fio_uuid_env_unset_args_s args) {
-  fio_uuid_env_name_s n = FIO_STR_INIT;
+  fio_str_s n = FIO_STR_INIT;
   fio_uuid_env_obj_s i = {.data = NULL};
-  fio_uuid_env_name_init_const(&n, args.name.buf, args.name.len);
+  if (args.name.buf && args.name.len)
+    fio_str_init_const(&n, args.name.buf, args.name.len);
   if (!uuid_is_valid(uuid))
     goto invalid;
   fio_lock(&uuid_data(uuid).sock_lock);
   if (!uuid_is_valid(uuid))
     goto locked_invalid;
   fio___uuid_env_remove(
-      &uuid_data(uuid).env, fio_uuid_env_name_hash(&n, args.type), n, &i);
+      &uuid_data(uuid).env, fio_str_hash(&n, args.type), n, &i);
   fio_unlock(&uuid_data(uuid).sock_lock);
   if (i.on_close)
     i.on_close(i.data);
@@ -560,16 +554,17 @@ invalid:
 #if 0 /* UNSAFE don't enable unless single threaded mode is ensured */
 /* public API. */
 void *fio_uuid_env_get FIO_NOOP(intptr_t uuid, fio_uuid_env_unset_args_s args) {
-  fio_uuid_env_name_s n = FIO_STR_INIT;
+  fio_str_s n = FIO_STR_INIT;
   fio_uuid_env_obj_s i = {.data = NULL};
-  fio_uuid_env_name_init_const(&n, args.name.buf, args.name.len);
+  if(args.name.buf && args.name.len)
+    fio_str_init_const(&n, args.name.buf, args.name.len);
   if (!uuid_is_valid(uuid))
     goto invalid;
   fio_lock(&uuid_data(uuid).sock_lock);
   if (!uuid_is_valid(uuid))
     goto locked_invalid;
   i = fio___uuid_env_get(&uuid_data(uuid).env,
-                         fio_uuid_env_name_hash(&n, args.type), n);
+                         fio_str_hash(&n, args.type), n);
   fio_unlock(&uuid_data(uuid).sock_lock);
   return i.data;
 locked_invalid:
@@ -585,8 +580,9 @@ void fio_uuid_env_unset___(void); /* for sublime text function listing */
 fio_uuid_env_args_s fio_uuid_env_unset
 FIO_NOOP(intptr_t uuid, fio_uuid_env_unset_args_s args) {
 
-  fio_uuid_env_name_s n = FIO_STR_INIT;
-  fio_uuid_env_name_init_const(&n, args.name.buf, args.name.len);
+  fio_str_s n = FIO_STR_INIT;
+  if (args.name.buf && args.name.len)
+    fio_str_init_const(&n, args.name.buf, args.name.len);
   if (!uuid_is_valid(uuid))
     goto invalid;
   fio_lock(&uuid_data(uuid).sock_lock);
@@ -595,7 +591,7 @@ FIO_NOOP(intptr_t uuid, fio_uuid_env_unset_args_s args) {
   fio_uuid_env_obj_s i = {.data = NULL};
   /* default object comparison is always true */
   int test = fio___uuid_env_remove(
-      &uuid_data(uuid).env, fio_uuid_env_name_hash(&n, args.type), n, &i);
+      &uuid_data(uuid).env, fio_str_hash(&n, args.type), n, &i);
   if (test) {
     goto remove_error;
   }
