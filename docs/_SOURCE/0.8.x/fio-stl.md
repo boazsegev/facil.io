@@ -1359,11 +1359,7 @@ In addition, the `FIO_STR_SMALL` optimization is likely to perform better than t
 #define FIO_MAP_NAME map
 #define FIO_MAP_TYPE uintptr_t
 #define FIO_MAP_KEY key_s /* the small string type */
-#define FIO_MAP_KEY_COPY(dest, src)                                            \
-  do {                                                                         \
-    fio_str_info_s tmp_info = key_info(&src);                                  \
-    key_init_copy(&(dest), tmp_info.buf, tmp_info.len);                        \
-  } while (0)
+#define FIO_MAP_KEY_COPY(dest, src) key_init_copy2(&(dest), &(src))
 #define FIO_MAP_KEY_DESTROY(k) key_destroy(&k)
 #define FIO_MAP_KEY_CMP(a, b) key_is_eq(&(a), &(b))
 #include "fio-stl.h"

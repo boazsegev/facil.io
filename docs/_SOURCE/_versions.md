@@ -19,5 +19,3 @@ Review the [change-log](changelog) when migrating between versions.
 * **Latest (stable)**: 0.7.2
 
 * **Legacy**: 0.6.4
-
-
