@@ -18,14 +18,14 @@ body
         -webkit-filter: blur(10px);
         pointer-events: none;
     }
-    -webkit-overflow-scrolling: auto;
 }
 
-code
+code, pre
 {
     // overflow: scroll !important;
     // word-wrap: break-word;
     // pointer-events: none;
+    -webkit-overflow-scrolling: touch;
 }
 #output
 {
@@ -37,10 +37,6 @@ code
     display: inline-block;
     margin-left: 0;
     width: 100%;
-    height: 100%;
-    overflow-x: hidden;
-    overflow-y: scroll;
-    -webkit-overflow-scrolling: touch;
 }
 .toc
 {
@@ -119,7 +115,6 @@ code
     z-index: 400;
     position: fixed;
     top:0; left:0;
-    overflow: scroll;
     background-color: rgb(240,240,240);
     background-color: rgba(240, 240, 240, 0.9);
     transform: translateX(-100%);

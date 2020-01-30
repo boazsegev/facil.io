@@ -27,7 +27,6 @@ html, body
     width: 100%; height: 100%;
     background-color: #eaeaf3;
     color: #202020;
-    overflow-x: hidden;
     box-sizing: border-box;
     font-family: $main_font;
     font-size: 1em;
@@ -37,6 +36,7 @@ html, body
 body
 {
     -webkit-overflow-scrolling: touch;
+    overflow-x: hidden;
     overflow-y: scroll;
 }
 input
@@ -212,15 +212,17 @@ hr { display: none; }
 {
     display: block;
     position: fixed;
-    overflow-y: scroll;
     -webkit-overflow-scrolling: touch;
     left:0; top:7em;
     width: 20%; height:100%;
+    overflow: scroll;
+    max-height: 100%;
     padding-bottom: 9em;
     padding-top:0;
     padding-left: 0.5em;
     border-right: 1px solid;
     box-sizing: border-box;
+    z-index: +100;
     h1, h2, h3 {
         display: inline-block;
         width: 100%;
@@ -238,9 +240,10 @@ hr { display: none; }
     ul
     {
         display: inline-block;
+        overflow-y: scroll;
         width: 100%;
         margin: 0; padding:0;
-        z-index: +100;
+        z-index: +200;
     }
     li
     {

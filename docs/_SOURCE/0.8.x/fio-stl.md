@@ -3983,13 +3983,16 @@ Returns information about the string. Same as [`fiobj_str_info()`](#str_info).
 #### `FIOBJ_STR_TEMP_VAR(name)`
 
 ```c
-#define FIOBJ_STR_TEMP_VAR(str_name)                                           \
-  FIO_NAME(fiobj_str, s)                            \
-  FIO_NAME(str_name, __tmp)[2] = {FIO_STR_INIT, FIO_STR_INIT};           \
-  memset(FIO_NAME(str_name, __tmp), 0x7f,                                      \
-         sizeof(FIO_NAME(str_name, __tmp)[0]));                                \
-  FIOBJ str_name = (FIOBJ)(((uintptr_t) & (FIO_NAME(str_name, __tmp)[1])) |    \
-                           FIOBJ_T_STRING);
+#define FIOBJ_STR_TEMP_VAR(str_name)                                   \
+  struct {                                                             \
+    uint64_t i1;                                                       \
+    uint64_t i2;                                                       \
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), s) s;               \
+  } FIO_NAME(str_name, __auto_mem_tmp) = {                             \
+      0x7f7f7f7f7f7f7f7fULL, 0x7f7f7f7f7f7f7f7fULL, FIO_STR_INIT};     \
+  FIOBJ str_name =                                                     \
+      (FIOBJ)(((uintptr_t) & (FIO_NAME(str_name, __auto_mem_tmp).s)) | \
+              FIOBJ_T_STRING);
 ```
 
 Creates a temporary `FIOBJ` String object on the stack.
@@ -3999,7 +4002,7 @@ String data might be allocated dynamically, requiring the use of `FIOBJ_STR_TEMP
 #### `FIOBJ_STR_TEMP_DESTROY(name)`
 
 ```c
-#define FIOBJ_STR_TEMP_DESTROY(str_name)                                       \
+#define FIOBJ_STR_TEMP_DESTROY(str_name)  \
   FIO_NAME(fiobj_str, destroy)(str_name);
 ```
 
@@ -4249,7 +4252,7 @@ The `fiobj_hash_update_json2` function is a helper function, it calls `fiobj_has
 ```c
 FIOBJ fiobj_json_parse(fio_str_info_s str, size_t *consumed);
 
-#define fiobj_json_parse2(data_, len_, consumed)                               \
+#define fiobj_json_parse2(data_, len_, consumed)                      \
   fiobj_json_parse((fio_str_info_s){.buf = data_, .len = len_}, consumed)
 ```
 
