@@ -17,8 +17,8 @@ extern "C" {
 /** used internally: attaches the Websocket protocol to the socket. */
 void websocket_attach(intptr_t uuid,
                       http_settings_s *http_settings,
-                      websocket_settings_s *args,
-                      void *data,
+                      websocket_settings_s args,
+                      void *data_in_buffer,
                       size_t length);
 
 /* *****************************************************************************
@@ -67,86 +67,68 @@ Websocket Pub/Sub
 API for websocket pub/sub that can be used to publish messages across process
 boundries.
 
-Supports pub/sub engines (see {pubsub.h}) that can connect to a backend service
+Supports pub/sub engines (see {fio.h}) that can connect to a backend service
 such as Redis.
 
 The default pub/sub engine (if `NULL` or unspecified) will publish the messages
-to the process cluster (all the processes in `fio_run`).
-
-To publish to a channel, use the API provided in {pubsub.h}.
+to the process cluster (all the processes in `fio_start`).
 ***************************************************************************** */
 
-/** Possible arguments for the {websocket_subscribe} function. */
-struct websocket_subscribe_s {
-  /** the websocket receiving the message. REQUIRED. */
-  ws_s *ws;
-  /** the channel where the message was published. */
-  fio_str_info_s channel;
-  /**
-   * The callback that handles pub/sub notifications.
-   *
-   * Default: send directly to websocket client.
-   */
-  void (*on_message)(ws_s *ws,
-                     fio_str_info_s channel,
-                     fio_str_info_s msg,
-                     void *udata);
-  /**
-   * An optional cleanup callback for the `udata`.
-   */
-  void (*on_unsubscribe)(void *udata);
-  /** User opaque data, passed along to the notification. */
-  void *udata;
-  /** An optional callback for pattern matching. */
-  fio_match_fn match;
-  /**
-   * When using client forwarding (no `on_message` callback), this indicates if
-   * messages should be sent to the client as binary blobs, which is the safest
-   * approach.
-   *
-   * Default: tests for UTF-8 data encoding and sends as text if valid UTF-8.
-   * Messages above ~32Kb are always assumed to be binary.
-   */
-  unsigned force_binary : 1;
-  /**
-   * When using client forwarding (no `on_message` callback), this indicates if
-   * messages should be sent to the client as text.
-   *
-   * `force_binary` has precedence.
-   *
-   * Default: see above.
-   *
-   */
-  unsigned force_text : 1;
-};
+FIO_IFUNC subscribe_args_s
+websocket_subscribe_update_args(ws_s *ws, subscribe_args_s args) {
+  args.uuid = websocket_uuid(ws);
+  if (!args.on_message) {
+  }
+  return args;
+}
+
+/** INTERNAL: helper for the websocket_subscribe macro */
+FIO_IFUNC void websocket_subscribe(ws_s *ws, subscribe_args_s args) {
+  if (!ws)
+    goto err;
+  args = websocket_subscribe_update_args(ws, args);
+  fio_subscribe FIO_NOOP(args);
+  return;
+err:
+  fio_defer(args.on_unsubscribe, args.udata1, args.udata2);
+}
+
+/** INTERNAL: helper for the websocket_unsubscribe macro */
+FIO_IFUNC void websocket_unsubscribe(ws_s *ws, subscribe_args_s args) {
+  if (!ws)
+    return;
+  args = websocket_subscribe_update_args(ws, args);
+  fio_unsubscribe_uuid FIO_NOOP(args);
+}
 
 /**
- * Subscribes to a channel. See {struct websocket_subscribe_s} for possible
- * arguments.
+ * Subscribes the WebSocket's UUID to a channel. See {fio_subscribe} for
+ * possible arguments.
  *
- * Returns a subscription ID on success and 0 on failure.
+ * On failure, the `on_unsubscribe` callback is scheduled.
  *
  * All subscriptions are automatically revoked once the websocket is closed.
  *
- * If the connections subscribes to the same channel more than once, messages
- * will be merged. However, another subscription ID will be assigned, since two
- * calls to {websocket_unsubscribe} will be required in order to unregister from
- * the channel.
+ * The `ws` object is avilable through the message's `pr` (`fio_protocol_s`)
+ * field. Simply cast to `ws_s*`.
+ *
+ * If the connections subscribes to the same channel more than once, it may
+ * cancle a previous subscription (though, for a time, both subscriptions may
+ * exist).
  */
-uintptr_t websocket_subscribe(struct websocket_subscribe_s args);
-
 #define websocket_subscribe(wbsckt, ...)                                       \
-  websocket_subscribe((struct websocket_subscribe_s){.ws = wbsckt, __VA_ARGS__})
+  websocket_subscribe((wbsckt), (subscribe_args_s){__VA_ARGS__})
 
 /**
- * Unsubscribes from a channel.
+ * Revokes a WebSocket's subscription to a channel. See {fio_unsubscribe_uuid}
+ * for more details.
  *
- * Failures are silent.
+ * All subscriptions are automatically revoked once the websocket is closed.
  *
- * All subscriptions are automatically revoked once the websocket is closed. So
- * only use this function to unsubscribe while the websocket is open.
+ * The `on_unsubscribe` callback is automatically scheduled.
  */
-void websocket_unsubscribe(ws_s *ws, uintptr_t subscription_id);
+#define websocket_unsubscribe(wbsckt, ...)                                     \
+  websocket_unsubscribe((wbsckt), (subscribe_args_s){__VA_ARGS__})
 
 /** Optimize generic broadcasts, for use in websocket_optimize4broadcasts. */
 #define WEBSOCKET_OPTIMIZE_PUBSUB (-32)
