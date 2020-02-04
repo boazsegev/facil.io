@@ -119,10 +119,24 @@ typedef struct {
   void *data;
   void (*on_close)(void *data);
 } fio_uuid_env_obj_s;
-
+/* cleanup event task */
+static void fio_uuid_env_obj_call_callback_task(void *p, void *udata) {
+  union {
+    void *p;
+    void (*fn)(void *);
+  } u;
+  u.p = p;
+  u.fn(udata);
+}
+/* cleanup event scheduling */
 FIO_IFUNC void fio_uuid_env_obj_call_callback(fio_uuid_env_obj_s o) {
+  union {
+    void *p;
+    void (*fn)(void *);
+  } u;
+  u.fn = o.on_close;
   if (o.on_close)
-    o.on_close(o.data);
+    fio_defer(fio_uuid_env_obj_call_callback_task, u.p, o.data);
 }
 
 #define FIO_MAP_NAME fio___uuid_env
@@ -130,10 +144,11 @@ FIO_IFUNC void fio_uuid_env_obj_call_callback(fio_uuid_env_obj_s o) {
 #define FIO_MAP_TYPE_DESTROY(o) fio_uuid_env_obj_call_callback((o))
 #define FIO_MAP_DESTROY_AFTER_COPY 0
 
-// // We can't use this because we would lose the `const_name` optimization.
+/* destroy discarded keys when overwriting existing data (const_name support) */
 #define FIO_MAP_KEY fio_str_s /* the small string type */
-#define FIO_MAP_KEY_COPY(dest, src) fio_str_init_copy2(&(dest), &(src))
+#define FIO_MAP_KEY_COPY(dest, src) (dest) = (src)
 #define FIO_MAP_KEY_DESTROY(k) fio_str_destroy(&k)
+#define FIO_MAP_KEY_DISCARD FIO_MAP_KEY_DESTROY
 #define FIO_MAP_KEY_CMP(a, b) fio_str_is_eq(&(a), &(b))
 #include <fio-stl.h>
 
@@ -496,12 +511,15 @@ UUID attachments (linking objects to the UUID's lifetime)
 void fio_uuid_env_set___(void); /* for sublime text function listing */
 /* public API. */
 void fio_uuid_env_set FIO_NOOP(intptr_t uuid, fio_uuid_env_args_s args) {
+  fio_str_s n = FIO_STR_INIT;
   if ((!args.data && !args.on_close) || !uuid_is_valid(uuid))
     goto invalid;
-  fio_str_s n = FIO_STR_INIT;
-  fio_uuid_env_obj_s i = {.data = NULL};
-  if (args.name.buf && args.name.len)
-    fio_str_init_const(&n, args.name.buf, args.name.len);
+  if (args.name.buf && args.name.len) {
+    if (args.const_name)
+      fio_str_init_const(&n, args.name.buf, args.name.len);
+    else
+      fio_str_init_copy(&n, args.name.buf, args.name.len);
+  }
   fio_lock(&uuid_data(uuid).sock_lock);
   if (!uuid_is_valid(uuid))
     goto locked_invalid;
@@ -510,14 +528,13 @@ void fio_uuid_env_set FIO_NOOP(intptr_t uuid, fio_uuid_env_args_s args) {
       fio_str_hash(&n, args.type),
       n,
       (fio_uuid_env_obj_s){.on_close = args.on_close, .data = args.data},
-      &i);
+      NULL);
   fio_unlock(&uuid_data(uuid).sock_lock);
-  if (i.on_close) /* i now contains the old data, which wasn't destroyed */
-    i.on_close(i.data);
   return;
 locked_invalid:
   fio_unlock(&uuid_data(uuid).sock_lock);
 invalid:
+  fio_str_destroy(&n);
   errno = EBADF;
   if (args.on_close)
     args.on_close(args.data);
@@ -8161,14 +8178,15 @@ FIO_SFUNC void fio_uuid_env_test(void) {
                    .data = &overwritten,
                    .on_close = fio_uuid_env_test_on_close,
                    .type = 0,
-                   .name.buf = "a",
-                   .name.len = 1);
+                   .name.buf = "abcdefghijklmnopqrstuvwxyz",
+                   .name.len = 26);
   fio_uuid_env_set(uuid,
                    .data = &overwritten,
                    .on_close = fio_uuid_env_test_on_close,
                    .type = 0,
-                   .name.buf = "a",
-                   .name.len = 1);
+                   .name.buf = "abcdefghijklmnopqrstuvwxyz",
+                   .name.len = 26,
+                   .const_name = 1);
   fio_uuid_env_unset(uuid, .type = 0);
   fio_close(uuid);
   fio_defer_perform();

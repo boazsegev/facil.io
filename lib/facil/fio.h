@@ -1038,6 +1038,8 @@ typedef struct {
   void *data;
   /** A callback that will be called once the connection is closed. */
   void (*on_close)(void *data);
+  /** Set to true (1) if the name string's life lives as long as the `env` . */
+  uint8_t const_name;
 } fio_uuid_env_args_s;
 
 /** Named arguments for the `fio_uuid_env_unset` function. */
