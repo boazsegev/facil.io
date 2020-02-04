@@ -15629,7 +15629,7 @@ TEST_FUNC void fio___dynamic_types_test___map_test(void) {
   {
     set_____test_s s = FIO_MAP_INIT;
     map_____test_s m = FIO_MAP_INIT;
-    fprintf(stderr, "* Testing attack resistance.\n");
+    fprintf(stderr, "* Testing attack resistance (SHOULD print warnings).\n");
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
       char buf[64];
       fio_ltoa(buf, i, 16);
