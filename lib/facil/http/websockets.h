@@ -130,42 +130,6 @@ FIO_IFUNC void websocket_unsubscribe(ws_s *ws, subscribe_args_s args) {
 #define websocket_unsubscribe(wbsckt, ...)                                     \
   websocket_unsubscribe((wbsckt), (subscribe_args_s){__VA_ARGS__})
 
-/** Optimize generic broadcasts, for use in websocket_optimize4broadcasts. */
-#define WEBSOCKET_OPTIMIZE_PUBSUB (-32)
-/** Optimize text broadcasts, for use in websocket_optimize4broadcasts. */
-#define WEBSOCKET_OPTIMIZE_PUBSUB_TEXT (-33)
-/** Optimize binary broadcasts, for use in websocket_optimize4broadcasts. */
-#define WEBSOCKET_OPTIMIZE_PUBSUB_BINARY (-34)
-
-/**
- * Enables (or disables) broadcast optimizations.
- *
- * This is performed automatically by the `websocket_subscribe` function.
- * However, this function is provided for enabling the pub/sub metadata based
- * optimizations for external connections / subscriptions.
- *
- * This function allows enablement (or disablement) of these optimizations:
- *
- * * WEBSOCKET_OPTIMIZE_PUBSUB - optimize all direct transmission messages,
- *                               best attempt to detect Text vs. Binary data.
- * * WEBSOCKET_OPTIMIZE_PUBSUB_TEXT - optimize direct pub/sub text messages.
- * * WEBSOCKET_OPTIMIZE_PUBSUB_BINARY - optimize direct pub/sub binary messages.
- *
- * Note: to disable an optimization it should be disabled the same amount of
- * times it was enabled - multiple optimization enablements for the same type
- * are merged, but reference counted (disabled when reference is zero).
- *
- * Note2: The pub/sub metadata type ID will match the optimnization type
- * requested (i.e., `WEBSOCKET_OPTIMIZE_PUBSUB`) and the optimized data is a
- * FIOBJ String containing a pre-encoded WebSocket packet ready to be sent.
- * i.e.:
- *
- *     FIOBJ pre_wrapped = (FIOBJ)fio_message_metadata(msg,
- *                               WEBSOCKET_OPTIMIZE_PUBSUB);
- *     fiobj_send_free((intptr_t)msg->udata1, fiobj_dup(pre_wrapped));
- */
-void websocket_optimize4broadcasts(intptr_t type, int enable);
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

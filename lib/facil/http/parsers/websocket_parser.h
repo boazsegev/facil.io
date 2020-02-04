@@ -293,14 +293,14 @@ static inline uint64_t websocket_wrapped_len(uint64_t len) {
  * * client: set to 1 to use client mode (data  masking).
  *
  * Further opcode values:
- * * %x0 denotes a continuation frame
- * *  %x1 denotes a text frame
- * *  %x2 denotes a binary frame
- * *  %x3-7 are reserved for further non-control frames
- * *  %x8 denotes a connection close
- * *  %x9 denotes a ping
- * *  %xA denotes a pong
- * *  %xB-F are reserved for further control frames
+ * *  0x0 denotes a continuation frame
+ * *  0x1 denotes a text frame
+ * *  0x2 denotes a binary frame
+ * *  0x3-7 are reserved for further non-control frames
+ * *  0x8 denotes a connection close
+ * *  0x9 denotes a ping
+ * *  0xA denotes a pong
+ * *  0xB-F are reserved for further control frames
  *
  * Returns the number of bytes written. Always `websocket_wrapped_len(len)`
  */
