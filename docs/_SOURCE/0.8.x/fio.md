@@ -241,7 +241,7 @@ void fio_suspend(intptr_t uuid);
 
 Temporarily prevents `on_data` events from firing.
 
-Resume listening to `on_data` events by calling the `fio_force_event(uuid, FIO_EVENT_ON_DATA`.
+Resume listening to `on_data` events by calling the `fio_force_event(uuid, FIO_EVENT_ON_DATA)`.
 
 Note: the function will work as expected when called within the protocol's `on_data` callback and the `uuid` refers to a valid socket. Otherwise the function might quietly fail.
 
@@ -484,69 +484,6 @@ The following arguments are supported:
 
         // type:
         uint8_t timeout;
-
-
-### URL Parsing
-
-#### `fio_url_parse`
-
-```c
-fio_url_s fio_url_parse(const char *url, size_t length);
-```
-
-Parses the URI returning it's components and their lengths - no decoding
-performed, doesn't accept decoded URIs.
-
-the result returned by `fio_url_parse` is a `fio_url_s` structure:
-
-```c
-typedef struct {
-  fio_str_info_s scheme;
-  fio_str_info_s user;
-  fio_str_info_s password;
-  fio_str_info_s host;
-  fio_str_info_s port;
-  fio_str_info_s path;
-  fio_str_info_s query;
-  fio_str_info_s target;
-} fio_url_s;
-```
-
-The returned string are NOT NUL terminated, they are merely locations within the original string.
-
-This function attempts to accept different formats, including any of the following formats:
-
-* `/complete_path?query#target`
-
-    i.e.:
-
-    * /index.html?page=1#list
-
-* `host:port/complete_path?query#target`
-
-    i.e.:
-
-    * example.com
-    * example.com:8080
-    * example.com/index.html
-    * example.com:8080/index.html
-
-* `user:password@host:port[/path?query#target]`
-
-      i.e.:
-
-      * user:1234@example.com:8080/index.html
-      * user:1234@example.com?query=1
-      * john:1234@example.com
-
-* `scheme://user:password@host:port/path?query#target`
-
-     i.e.:
-
-     * http://example.com/index.html?page=1#list
-     * tcp://example.com
-
-Invalid formats might produce unexpected results. No error testing is performed.
 
 ### Manual Protocol Locking
 
@@ -1273,7 +1210,7 @@ Sets a connection's hook callback object (`fio_rw_hook_s`).
 
 Returns 0 on success or -1 on error (closed / invalid `uuid`).
 
-If the function fails, than the `cleanup` callback will be called before the function returns.
+If the function fails, than the `cleanup` callback will be automatically called before the function returns.
 
 
 #### `fio_rw_hook_replace_unsafe`
@@ -1942,117 +1879,13 @@ int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);
 Returns true (1) if the engine is attached to the system.
 
 
-## The Custom Memory Allocator
+## Memory Allocation
 
-facil.io includes a custom memory allocator designed for network application use.
+Use the facil.io [custom memory allocator](/fio-stl#memory-allocation) for network data.
 
-The allocator is very fast (tested with `tests/malloc_speed.c`) and protects against fragmentation issues when used correctly (when abused, fragmentation will increase).
+The allocator is very fast (test using `make test/malloc`) and protects against fragmentation issues when used correctly (when abused, fragmentation will significantly increase).
 
-Allocated memory is always zeroed out and aligned on a 16 byte boundary.
-
-Reallocated memory is always aligned on a 16 byte boundary but it might be filled with junk data after the valid data (this can be minimized by using [`fio_realloc2`](#fio_realloc2)).
-
-Memory allocation overhead is ~ 0.1% (1/1000 per byte, or 32 bytes per 32Kb). In addition there's a small per-process overhead for the allocator's state-machine (1 page / 4Kb per process). 
-
-The memory allocator assumes multiple concurrent allocation/deallocation, short to medium life spans (memory is freed shortly, but not immediately, after it was allocated) and relatively small allocations (anything over 16Kb is forwarded to `mmap`).
-
-This allocator should prevent memory fragmentation when allocating memory for shot / medium object life-spans (classic network use).
-
-The memory allocator can be used in conjuncture with the system's `malloc` to minimize heap fragmentation (long-life objects use `malloc`, short life objects use `fio_malloc`).
-
-Long term allocation can use `fio_mmap` to directly allocate memory from the system. The overhead for `fio_mmap` is 16 bytes per allocation (freed with `fio_free`).
-
-**Note**: this custom allocator could increase memory fragmentation if long-life allocations are performed periodically (rather than performed during startup). Use [`fio_mmap`](#fio_mmap) or the system's `malloc` for long-term allocations.
-
-### Memory Allocator Overview
-
-The memory allocator uses `mmap` to collect memory from the system.
-
-Each allocation collects ~8Mb from the system, aligned on a 32Kb alignment boundary (except direct `mmap` allocation for large `fio_malloc` or `fio_mmap` calls). This memory is divided into 32Kb blocks which are added to a doubly linked "free" list.
-
-The allocator utilizes per-CPU arenas / bins to allow for concurrent memory allocations across threads and to minimize lock contention.
-
-Each arena / bin collects a 32Kb block and allocates "slices" as required by `fio_malloc`/`fio_realloc`.
-
-The `fio_free` function will free the whole 32Kb block as a single unit once the whole of the allocations for that block were freed (no small-allocation "free list" and no per-slice meta-data).
-
-The memory collected from the system (the 8Mb) will be returned to the system once all the memory was both allocated and freed (or during cleanup).
-
-To replace the system's `malloc` function family compile with the `FIO_OVERRIDE_MALLOC` defined (`-DFIO_OVERRIDE_MALLOC`).
-
-It should be possible to use tcmalloc or jemalloc alongside facil.io's allocator.It's also possible to prevent facil.io's custom allocator from compiling by defining `FIO_FORCE_MALLOC` (`-DFIO_FORCE_MALLOC`).
-
-More details in the `fio.h` header.
-
-### The Memory Allocator's API
-
-The functions were designed to be a drop in replacement to the system's memory allocation functions (`malloc`, `free` and friends).
-
-Where some improvement could be made, it was made using an added function name to add improved functionality (such as `fio_realloc2`).
-
-#### `fio_malloc`
-
-```c
-void *fio_malloc(size_t size)
-```
-
-Allocates memory using a per-CPU core block memory pool.
-
-Memory is always zeroed out.
-
-Allocations above `FIO_MEMORY_BLOCK_ALLOC_LIMIT` (16Kb bytes when using the default 32Kb blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
-
-#### `fio_calloc`
-
-```c
-void *fio_calloc(size_t size_per_unit, size_t unit_count)
-```
-
-Same as calling `fio_malloc(size_per_unit * unit_count)`;
-
-Allocations above `FIO_MEMORY_BLOCK_ALLOC_LIMIT` (16Kb bytes when using the default 32Kb blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
-
-#### `fio_free`
-
-```c
-void fio_free(void *ptr);
-```
-
-Frees memory that was allocated using this library.
-
-#### `fio_realloc`
-
-```c
-void *fio_realloc(void *ptr, size_t new_size);
-```
-
-Re-allocates memory. An attempt to avoid copying the data is made only for big
-memory allocations (larger than `FIO_MEMORY_BLOCK_ALLOC_LIMIT`).
-
-#### `fio_realloc2`
-
-```c
-void *fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
-```
-
-Re-allocates memory. An attempt to avoid copying the data is made only for big
-memory allocations (larger than `FIO_MEMORY_BLOCK_ALLOC_LIMIT`).
-
-This variation is slightly faster as it might copy less data.
-
-####
-
-```c
-void *fio_mmap(size_t size);
-```
-
-Allocates memory directly using `mmap`, this is prefered for objects that
-both require almost a page of memory (or more) and expect a long lifetime.
-
-However, since this allocation will invoke the system call (`mmap`), it will
-be inherently slower.
-
-`fio_free` can be used for deallocating the memory.
+It's designed to speed up allocations for small size allocation (up to 192Kb by default) with short to medium lifespan. It utilizes a memory pool divided among different allocation "arenas", hopefully minimizing lock contention while improving performance and memory consumption.
 
 ## Linked Lists
 
