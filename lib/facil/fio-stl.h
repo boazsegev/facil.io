@@ -632,13 +632,6 @@ Common macros
 #endif
 #endif /* FIO_RAND */
 
-/* FIO_RISKY_HASH dependencies */
-#ifdef FIO_RISKY_HASH
-#ifndef FIO_BITWISE
-#define FIO_BITWISE
-#endif
-#endif /* FIO_RISKY_HASH */
-
 /* FIO_STR_NAME / FIO_STR_SMALL dependencies */
 #if defined(FIO_STR_NAME) || defined(FIO_STR_SMALL)
 #ifndef FIO_ATOL
@@ -680,6 +673,9 @@ Common macros
 #ifndef FIO_RISKY_HASH
 #define FIO_RISKY_HASH
 #endif
+#ifndef FIO_BITWISE
+#define FIO_BITWISE
+#endif
 #endif /* FIO_CLI */
 
 /* FIO_JSON dependencies */
@@ -694,6 +690,13 @@ Common macros
 #define FIO_ATOMIC
 #endif
 #endif /* FIO_JSON */
+
+/* FIO_RISKY_HASH dependencies */
+#ifdef FIO_RISKY_HASH
+#ifndef FIO_BITWISE
+#define FIO_BITWISE
+#endif
+#endif /* FIO_RISKY_HASH */
 
 /* *****************************************************************************
 
@@ -6660,7 +6663,7 @@ SFUNC FIO_NAME(FIO_MAP_NAME, __pos_s)
 seek_as_array:
   for (i = 0; i < m->w; ++i) {
     if (m->map[i].hash == hash &&
-        FIO_MAP_OBJ_KEY_CMP(m->map[(imap[i] & imask)].obj, key)) {
+        FIO_MAP_OBJ_KEY_CMP(m->map[(i & imask)].obj, key)) {
       r = (FIO_NAME(FIO_MAP_NAME, __pos_s)){
           .i = i,
           .imap = i,
@@ -11045,6 +11048,9 @@ FIO_SFUNC void fio___cli_set_arg(fio___cli_cstr_s arg,
       arg.len = 0;
       goto error;
     }
+    FIO_LOG_DEBUG2("(CLI) set an unnamed argument: %s", value);
+    FIO_ASSERT_DEBUG(fio___cli_hash_get(&fio___cli_values, n.len, n) == value,
+                     "(CLI) set argument failed!");
     return;
   }
 
@@ -11083,6 +11089,10 @@ FIO_SFUNC void fio___cli_set_arg(fio___cli_cstr_s arg,
       }
       fio___cli_hash_set(
           &fio___cli_values, FIO_CLI_HASH_VAL(n), n, value, NULL);
+      FIO_LOG_DEBUG2("(CLI) set argument %.*s = %s", (int)n.len, n.buf, value);
+      FIO_ASSERT_DEBUG(fio___cli_hash_get(
+                           &fio___cli_values, FIO_CLI_HASH_VAL(n), n) == value,
+                       "(CLI) set argument failed!");
       while (n.buf[n.len] && (n.buf[n.len] == ' ' || n.buf[n.len] == ',')) {
         ++n.len;
       }
@@ -11100,6 +11110,7 @@ finish:
   return;
 
 error: /* handle errors*/
+  FIO_LOG_DEBUG2("(CLI) error detected, printing help and exiting.");
   fprintf(stderr,
           "\n\r\x1B[31mError:\x1B[0m invalid argument %.*s %s %s\n\n",
           (int)arg.len,
@@ -16090,6 +16101,12 @@ TEST_FUNC void fio___dynamic_types_test___cli(void) {
   FIO_T_ASSERT(fio_cli_get_i("-i2") == 2, "CLI second integer error.");
   FIO_T_ASSERT(fio_cli_get_i("-i3") == 3, "CLI third integer error.");
   FIO_T_ASSERT(fio_cli_get_i("-i1") == 1, "CLI first integer error.");
+  FIO_T_ASSERT(fio_cli_get_i("-i2") == fio_cli_get_i("-integer2"),
+               "CLI second integer error.");
+  FIO_T_ASSERT(fio_cli_get_i("-i3") == fio_cli_get_i("-integer3"),
+               "CLI third integer error.");
+  FIO_T_ASSERT(fio_cli_get_i("-i1") == fio_cli_get_i("-integer1"),
+               "CLI first integer error.");
   FIO_T_ASSERT(fio_cli_get_i("-t") == 1, "CLI boolean true error.");
   FIO_T_ASSERT(fio_cli_get_i("-f") == 0, "CLI boolean false error.");
   FIO_T_ASSERT(!strcmp(fio_cli_get("-s"), "test"), "CLI string error.");

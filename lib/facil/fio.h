@@ -151,6 +151,7 @@ Import STL
 #endif
 
 /* let it run once without side-effects, to prevent self-inclusion CLI errors */
+#define FIO_LOG
 #include "fio-stl.h"
 
 #define FIO_RISKY_HASH 1
