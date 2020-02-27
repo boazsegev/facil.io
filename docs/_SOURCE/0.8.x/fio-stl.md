@@ -3242,7 +3242,7 @@ Reallocated memory is always aligned on a 16 byte boundary but it might be fille
 
 Memory allocation overhead is ~ 0.05% (1/2048 bytes per byte, or 16 bytes per 32Kb). In addition there's a small per-process overhead for the allocator's state-machine (usually just 1 page / 4Kb per process, unless you have more then 250 CPU cores). 
 
-The memory allocator assumes multiple concurrent allocation/deallocation, short to medium life spans (memory is freed shortly, but not immediately, after it was allocated) and relatively small allocations - anything over `FIO_MEMORY_BLOCK_ALLOC_LIMIT` (16Kb) is forwarded to `mmap`.
+The memory allocator assumes multiple concurrent allocation/deallocation, short to medium life spans (memory is freed shortly, but not immediately, after it was allocated) and relatively small allocations - anything over `FIO_MEMORY_BLOCK_ALLOC_LIMIT` (192Kb) is forwarded to `mmap`.
 
 The memory allocator can be used in conjuncture with the system's `malloc` to minimize heap fragmentation (long-life objects use `malloc`, short life objects use `fio_malloc`) or as a memory pool for specific objects (when used as static functions in a specific C file).
 
@@ -3254,9 +3254,9 @@ Long term allocation can use `fio_mmap` to directly allocate memory from the sys
 
 The memory allocator uses `mmap` to collect memory from the system.
 
-Each allocation collects ~8Mb from the system, aligned on a 32Kb alignment boundary (except direct `mmap` allocation for large `fio_malloc` or `fio_mmap` calls).
+Each allocation collects ~8Mb from the system, aligned on a constant alignment boundary (except direct `mmap` allocation for large `fio_malloc` or `fio_mmap` calls).
 
-By default, this memory is divided into 256Kb blocks which are added to a doubly linked "free" list (controlled by the `FIO_MEMORY_BLOCK_SIZE_LOG` value).
+By default, this memory is divided into 256Kb blocks which are added to a doubly linked "free" list (controlled by the `FIO_MEMORY_BLOCK_SIZE_LOG` value, which also controls the alignment).
 
 The allocator utilizes per-CPU arenas / bins to allow for concurrent memory allocations across threads and to minimize lock contention.
 
@@ -3286,7 +3286,7 @@ void * fio_malloc(size_t size);
 
 Allocates memory using a per-CPU core block memory pool. Memory is zeroed out.
 
-Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (defaults to half a memory block, 128Kb) will be redirected to `mmap`, as if `fio_mmap` was called.
+Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (defaults to 75% of a memory block, 192Kb) will be redirected to `mmap`, as if `fio_mmap` was called.
 
 #### `fio_calloc`
 
@@ -3296,7 +3296,7 @@ void * fio_calloc(size_t size_per_unit, size_t unit_count);
 
 Same as calling `fio_malloc(size_per_unit * unit_count)`;
 
-Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (128Kb for 256Kb blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
+Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (defaults to 75% of a memory block, 192Kb) will be redirected to `mmap`, as if `fio_mmap` was called.
 
 #### `fio_free`
 
@@ -3358,7 +3358,7 @@ If `FIO_MALLOC_OVERRIDE_SYSTEM` is defined, the facil.io memory allocator will r
 
 Controls the size of a memory block in logarithmic value, 15 == 32Kb, 16 == 64Kb, etc'.
 
-Defaults to 18, resulting in a memory block size of 256Kb and a `FIO_MEMORY_BLOCK_ALLOC_LIMIT` of 128Kb.
+Defaults to 18, resulting in a memory block size of 256Kb and a `FIO_MEMORY_BLOCK_ALLOC_LIMIT` of 192Kb.
 
 Lower values improve fragmentation handling while increasing costs for memory block rotation (per arena) and large size allocations.
 
@@ -3368,7 +3368,7 @@ The `FIO_MEMORY_BLOCK_SIZE_LOG` limit is 20 (the memory allocator will break at 
 
 #### `FIO_MEMORY_BLOCK_ALLOC_LIMIT`
 
-The memory pool allocation size limit. By default, this is half a memory block (see `FIO_MEMORY_BLOCK_SIZE_LOG`).
+The memory pool allocation size limit. By default, this is 75% of a memory block (see `FIO_MEMORY_BLOCK_SIZE_LOG`).
 
 #### `FIO_MEMORY_ARENA_COUNT_MAX`
 

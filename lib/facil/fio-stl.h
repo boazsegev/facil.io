@@ -1711,7 +1711,7 @@ SFUNC void fio_malloc_after_fork(void);
 /**
  * The logarithmic value for a memory block, 15 == 32Kb, 16 == 64Kb, etc'
  *
- * Breaks at FIO_MEMORY_BLOCK_SIZE_LOG == 20
+ * Breaks at FIO_MEMORY_BLOCK_SIZE_LOG >= 20 || FIO_MEMORY_BLOCK_SIZE_LOG < 10
  *
  * By default, a block of memory is 256Kb silce from an 8Mb allocation.
  */
@@ -1753,10 +1753,11 @@ SFUNC void fio_malloc_after_fork(void);
  * The maximum allocation size, after which `mmap` will be called instead of the
  * facil.io allocator.
  *
- * Defaults to 50% of the block (16Kb), after which `mmap` is used instead
+ * Defaults to 75% of the block (192Kb), after which `mmap` is used instead.
  */
 #ifndef FIO_MEMORY_BLOCK_ALLOC_LIMIT
-#define FIO_MEMORY_BLOCK_ALLOC_LIMIT (FIO_MEMORY_BLOCK_SIZE >> 1)
+#define FIO_MEMORY_BLOCK_ALLOC_LIMIT                                           \
+  ((uintptr_t)3 << (FIO_MEMORY_BLOCK_SIZE_LOG - 2))
 #endif
 
 /* *****************************************************************************
