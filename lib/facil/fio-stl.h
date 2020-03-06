@@ -460,6 +460,11 @@ Miscellaneous helper macros
 #define FIO_LOG2STDERR(...)
 #define FIO_LOG2STDERR2(...)
 
+#ifndef FIO_LOG_LENGTH_LIMIT
+/** Defines a point at which logging truncates (limited by stack memory) */
+#define FIO_LOG_LENGTH_LIMIT 1024
+#endif
+
 // clang-format off
 /* Asserts a condition is true, or kills the application using SIGINT. */
 #define FIO_ASSERT(cond, ...)                                                  \
@@ -732,10 +737,6 @@ FIO_LOG_WARNING("number invalid: %d", i); // => WARNING: number invalid: 3
  */
 #if !defined(FIO_LOG_PRINT__) && defined(FIO_LOG)
 
-#ifndef FIO_LOG_LENGTH_LIMIT
-#define FIO_LOG_LENGTH_LIMIT 1024
-#endif
-
 #if FIO_LOG_LENGTH_LIMIT > 128
 #define FIO_LOG____LENGTH_ON_STACK FIO_LOG_LENGTH_LIMIT
 #define FIO_LOG____LENGTH_BORDER (FIO_LOG_LENGTH_LIMIT - 32)
@@ -851,7 +852,7 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 
 ***************************************************************************** */
 
-#if defined(FIO_ATOMIC) && !defined(fio_atomic_xchange)
+#if defined(FIO_ATOMIC) && !defined(fio_atomic_exchange)
 
 /* C11 Atomics are defined? */
 #if defined(__ATOMIC_RELAXED)
@@ -861,7 +862,7 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
     dest = __atomic_load_n((p_obj), __ATOMIC_SEQ_CST);                         \
   } while (0)
 /** An atomic exchange operation, returns previous value */
-#define fio_atomic_xchange(p_obj, value)                                       \
+#define fio_atomic_exchange(p_obj, value)                                      \
   __atomic_exchange_n((p_obj), (value), __ATOMIC_SEQ_CST)
 /** An atomic addition operation, returns new value */
 #define fio_atomic_add(p_obj, value)                                           \
@@ -891,7 +892,7 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
     dest = *(p_obj);                                                           \
   } while (!__sync_bool_compare_and_swap((p_obj), dest, dest))
 /** An atomic exchange operation, ruturns previous value */
-#define fio_atomic_xchange(p_obj, value)                                       \
+#define fio_atomic_exchange(p_obj, value)                                      \
   __sync_val_compare_and_swap((p_obj), *(p_obj), (value))
 /** An atomic addition operation, returns new value */
 #define fio_atomic_add(p_obj, value) __sync_add_and_fetch((p_obj), (value))
@@ -916,7 +917,7 @@ typedef volatile unsigned char fio_lock_i;
 /** Returns 0 on success and 1 on failure. */
 FIO_IFUNC uint8_t fio_trylock(fio_lock_i *lock) {
   __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
-  return fio_atomic_xchange(lock, 1);
+  return fio_atomic_exchange(lock, 1);
 }
 
 /** Busy waits for a lock to become available - not recommended. */
@@ -927,7 +928,7 @@ FIO_IFUNC void fio_lock(fio_lock_i *lock) {
 }
 
 /** Unlocks the lock, no matter which thread owns the lock. */
-FIO_IFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_xchange(lock, 0); }
+FIO_IFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_exchange(lock, 0); }
 
 /** Returns 1 if the lock is locked, 0 otherwise. */
 FIO_IFUNC uint8_t FIO_NAME_BL(fio, locked)(fio_lock_i *lock) { return *lock; }
@@ -4091,15 +4092,22 @@ SFUNC int fio_sock_open_unix(const char *address, int is_client, int nonblock) {
   // get the file descriptor
   int fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (fd == -1) {
+    FIO_LOG_DEBUG("couldn't open unix socket (client? == %d) %s",
+                  is_client,
+                  strerror(errno));
     return -1;
   }
+  /* chmod for foreign connections */
+  fchmod(fd, S_IRWXO | S_IRWXG | S_IRWXU);
   if (nonblock && fio_sock_set_non_block(fd) == -1) {
+    FIO_LOG_DEBUG("couldn't set socket to nonblocking mode");
     close(fd);
     return -1;
   }
   if (is_client) {
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1 &&
         errno != EINPROGRESS) {
+      FIO_LOG_DEBUG("couldn't connect unix client: %s", strerror(errno));
       close(fd);
       return -1;
     }
@@ -4107,16 +4115,16 @@ SFUNC int fio_sock_open_unix(const char *address, int is_client, int nonblock) {
     unlink(addr.sun_path);
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
       FIO_LOG_DEBUG("couldn't bind unix socket to %s", address);
+      // umask(old_umask);
       close(fd);
       return -1;
     }
+    // umask(old_umask);
     if (listen(fd, SOMAXCONN) < 0) {
       FIO_LOG_DEBUG("couldn't start listening to unix socket at %s", address);
       close(fd);
       return -1;
     }
-    /* chmod for foreign connections */
-    fchmod(fd, 0777);
   }
   return fd;
 }
@@ -14654,17 +14662,17 @@ TEST_FUNC void fio___dynamic_types_test___atomic(void) {
   fio_atomic_add(&p->s, 1);
   fio_atomic_add(&p->l, 1);
   fio_atomic_add(&p->w, 1);
-  s.c = fio_atomic_xchange(&p->c, 99);
-  s.s = fio_atomic_xchange(&p->s, 99);
-  s.l = fio_atomic_xchange(&p->l, 99);
-  s.w = fio_atomic_xchange(&p->w, 99);
-  FIO_T_ASSERT(s.c == 1 && p->c == 99, "fio_atomic_xchange failed for c");
-  FIO_T_ASSERT(s.s == 1 && p->s == 99, "fio_atomic_xchange failed for s");
-  FIO_T_ASSERT(s.l == 1 && p->l == 99, "fio_atomic_xchange failed for l");
-  FIO_T_ASSERT(s.w == 1 && p->w == 99, "fio_atomic_xchange failed for w");
+  s.c = fio_atomic_exchange(&p->c, 99);
+  s.s = fio_atomic_exchange(&p->s, 99);
+  s.l = fio_atomic_exchange(&p->l, 99);
+  s.w = fio_atomic_exchange(&p->w, 99);
+  FIO_T_ASSERT(s.c == 1 && p->c == 99, "fio_atomic_exchange failed for c");
+  FIO_T_ASSERT(s.s == 1 && p->s == 99, "fio_atomic_exchange failed for s");
+  FIO_T_ASSERT(s.l == 1 && p->l == 99, "fio_atomic_exchange failed for l");
+  FIO_T_ASSERT(s.w == 1 && p->w == 99, "fio_atomic_exchange failed for w");
   FIO_MEM_FREE(p, sizeof(*p));
-  FIO_T_ASSERT(fio_atomic_xchange(&val, 2) == 1,
-               "fio_atomic_xchange should return old value");
+  FIO_T_ASSERT(fio_atomic_exchange(&val, 2) == 1,
+               "fio_atomic_exchange should return old value");
   FIO_T_ASSERT(fio_atomic_add(&val, 2) == 4,
                "fio_atomic_add should return new value");
   FIO_T_ASSERT(val == 4, "fio_atomic_add should update value");
@@ -16026,13 +16034,14 @@ TEST_FUNC void fio___dynamic_types_test___queue(void) {
 
     /* test single-use task */
     tester = 0;
+    uint64_t milli_now = fio_time_milli();
     fio_timer_schedule(&tq,
                        .fn = fio___queue_test_timer_task,
                        .udata1 = &tester,
                        .on_finish = fio___queue_test_sample_task,
                        .every = 100,
                        .repeat = 1,
-                       .start_at = fio_time_milli() - 10);
+                       .start_at = milli_now - 10);
     FIO_T_ASSERT(tester == 0,
                  "fio_timer_schedule should have scheduled the task.");
     fio_timer_schedule(&tq,
@@ -16041,14 +16050,14 @@ TEST_FUNC void fio___dynamic_types_test___queue(void) {
                        .on_finish = fio___queue_test_sample_task,
                        .every = 1,
                        .repeat = 1,
-                       .start_at = fio_time_milli() - 10);
+                       .start_at = milli_now - 10);
     FIO_T_ASSERT(tester == 0,
                  "fio_timer_schedule should have scheduled the task.");
-    FIO_T_ASSERT(fio_timer_next_at(&tq) == fio_time_milli() - 9,
+    FIO_T_ASSERT(fio_timer_next_at(&tq) == milli_now - 9,
                  "fio_timer_next_at value error.");
-    fio_timer_push2queue(&q2, &tq, fio_time_milli());
+    fio_timer_push2queue(&q2, &tq, milli_now);
     FIO_T_ASSERT(fio_queue_count(&q2) == 1, "task should have been scheduled");
-    FIO_T_ASSERT(fio_timer_next_at(&tq) == fio_time_milli() + 90,
+    FIO_T_ASSERT(fio_timer_next_at(&tq) == milli_now + 90,
                  "fio_timer_next_at value error for unscheduled task.");
     fio_queue_perform(&q2);
     FIO_T_ASSERT(!fio_queue_count(&q2), "queue should be empty");
@@ -16208,7 +16217,14 @@ TEST_FUNC void fio___dynamic_types_test___sock(void) {
     uint16_t flag;
   } server_tests[] = {
       {"127.0.0.1", "9437", "TCP", FIO_SOCK_TCP},
-      {"./tmp_unix_testing_socket_facil_io", NULL, "Unix", FIO_SOCK_UNIX},
+#ifdef P_tmpdir
+      {P_tmpdir "/tmp_unix_testing_socket_facil_io.sock",
+       NULL,
+       "Unix",
+       FIO_SOCK_UNIX},
+#else
+      {"./tmp_unix_testing_socket_facil_io.sock", NULL, "Unix", FIO_SOCK_UNIX},
+#endif
       /* accept doesn't work with UDP, not like this... UDP test is seperate */
       // {"127.0.0.1", "9437", "UDP", FIO_SOCK_UDP},
       {.address = NULL},
@@ -16377,6 +16393,8 @@ TEST_FUNC void fio___dynamic_types_test___sock(void) {
                   .udata = &flag,
                   .fds = FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW(cl)));
     FIO_T_ASSERT(flag, "Event should have occured here! (%zu)", flag);
+    if (FIO_SOCK_UNIX == server_tests[i].flag)
+      unlink(server_tests[i].address);
   }
   {
     /* UDP semi test */
@@ -16471,7 +16489,7 @@ TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h,
 
 TEST_FUNC uintptr_t fio___dynamic_types_test___risky_wrapper(char *buf,
                                                              size_t len) {
-  return fio_risky_hash(buf, len, 0);
+  return fio_risky_hash(buf, len, 1);
 }
 
 // TEST_FUNC uintptr_t

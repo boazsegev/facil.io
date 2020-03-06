@@ -24,7 +24,11 @@ I though about it as a small standard-library extension with a minimal STL, much
 
    This updates the core type API in an attempt to create a more unified and intuitive API. for both core types and dynamic types (FIOBJ).
 
-   Hash Maps and Arrays are now limited to a theoretical capacity of 1^31 elements, improving memory usage for most common use-cases.
+   Note that this changes some function and macro names as well as possible behavior.
+
+   Some changes are semantic - such as renaming `fio_atomic_xchange` to `fio_atomic_exchange`.
+
+   Some have meaningful side-effects. i.e., Hash Maps and Arrays are now limited to a theoretical capacity of 1^31 elements, improving memory usage for most common use-cases.
 
    This increases facil.io's core IO library to a 3 file library (from a 2 file library), however, the `fio-stl.h` library can be used as a powerful single-file macro based library.
 
@@ -38,7 +42,9 @@ I though about it as a small standard-library extension with a minimal STL, much
 
 - Risky Hash algorithm was updated.
 
-- The HTTP static file service just got a lot smarter, with customizable default headers, tests for missing `.html` file extensions, tests for `index.html` in folders and automatic support for `gzip` (`.gz`), `deflate` (`.zz`), `br` pre-compressed resources. 
+- The HTTP static file service just got a lot smarter, with customizable default headers, tests for missing `.html` file extensions, tests for `index.html` in folders and automatic support for `gzip` (`.gz`), `deflate` (`.zz`), `br` pre-compressed resources.
+
+- The old HTTP client API was deprecated in favor of a future (smarter) HTTP client approach that allows for persistent connections, as suggested by @stephenkgu in [issue #87](https://github.com/boazsegev/facil.io/issues/87).
 
 ### v. 0.7.3
 

@@ -2105,7 +2105,7 @@ If the `FIO_ATOMIC` macro is defined than the following macros will be defined:
 
 Atomically loads and returns the value stored in the object pointed to by `p_obj`.
 
-#### `fio_atomic_xchange(p_obj, value)`
+#### `fio_atomic_exchange(p_obj, value)`
 
 Atomically sets the object pointer to by `p_obj` to `value`, returning the
 previous value.
