@@ -4,6 +4,9 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
+#include <fio.c>
+#include <fio.h>
+
 #define FIO_RAND 1
 #define FIO_LOG 1
 #define FIO_RISKY_HASH 1
@@ -23,15 +26,19 @@ Feel free to copy, use and enjoy according to the license provided.
 /* *****************************************************************************
 State machine and types
 ***************************************************************************** */
-#define FIO_STRING_NAME fio_str
+#ifndef H_FACIL_IO_H
+#define FIO_STR_NAME fio_str
 #include <fio-stl.h>
+#endif
 
 static uint8_t print_flag = 0;
 
 static inline int fio_str_eq_print(fio_str_s *a, fio_str_s *b) {
   /* always return 1, to avoid internal set collision mitigation. */
   if (print_flag)
-    fprintf(stderr, "* Collision Detected: %s vs. %s\n", fio_str2ptr(a),
+    fprintf(stderr,
+            "* Collision Detected: %s vs. %s\n",
+            fio_str2ptr(a),
             fio_str2ptr(b));
   return 1;
 }
@@ -46,7 +53,7 @@ static inline int fio_str_eq_print(fio_str_s *a, fio_str_s *b) {
 #define FIO_MAP_TYPE_COPY(dest, src)                                           \
   do {                                                                         \
     (dest) = fio_str_new();                                                    \
-    fio_str_concat((dest), (src));                                             \
+    fio_str_init_copy2((dest), (src));                                         \
   } while (0)
 #define FIO_MAP_TYPE_CMP(a, b) fio_str_eq_print((a), (b))
 #define FIO_MAP_TYPE_DESTROY(a) fio_str_free((a))
@@ -60,11 +67,7 @@ typedef uintptr_t (*hashing_func_fn)(char *, size_t);
 #define FIO_ARRAY_NAME words
 #define FIO_ARRAY_TYPE fio_str_s
 #define FIO_ARRAY_TYPE_CMP(a, b) fio_str_is_eq(&(a), &(b))
-#define FIO_ARRAY_TYPE_COPY(dest, src)                                         \
-  do {                                                                         \
-    fio_str_destroy(&(dest));                                                  \
-    fio_str_concat(&(dest), &(src));                                           \
-  } while (0)
+#define FIO_ARRAY_TYPE_COPY(dest, src) fio_str_init_copy2(&(dest), &(src))
 #define FIO_ARRAY_TYPE_DESTROY(a) fio_str_destroy(&(a))
 #include <fio-stl.h>
 
@@ -91,7 +94,8 @@ int main(int argc, char const *argv[]) {
   load_words();
   initialize_hash_names();
   if (fio_cli_get("-t")) {
-    fio_str_s tmp = FIO_STRING_INIT_STATIC(fio_cli_get("-t"));
+    fio_str_s tmp;
+    fio_str_init_const(&tmp, fio_cli_get("-t"), strlen(fio_cli_get("-t")));
     hashing_func_fn h = hash_name_get(&hash_names, fio_str_hash(&tmp, 0), NULL);
     if (h) {
       test_hash_function(h);
@@ -154,13 +158,19 @@ CLI
 
 static void initialize_cli(int argc, char const *argv[]) {
   fio_cli_start(
-      argc, argv, 0, 0,
+      argc,
+      argv,
+      0,
+      0,
       "This is a Hash algorythm collision test program. It accepts the "
       "following arguments:",
       FIO_CLI_STRING(
           "-test -t test only the specified algorithm. Options include:"),
-      FIO_CLI_PRINT("\t\tsiphash13"), FIO_CLI_PRINT("\t\tsiphash24"),
+#ifdef H_FACIL_IO_H
+      FIO_CLI_PRINT("\t\tsiphash13"),
+      FIO_CLI_PRINT("\t\tsiphash24"),
       FIO_CLI_PRINT("\t\tsha1"),
+#endif
       FIO_CLI_PRINT("\t\trisky (fio_str_hash_risky)"),
       FIO_CLI_PRINT("\t\trisky2 (fio_str_hash_risky alternative)"),
       // FIO_CLI_PRINT("\t\txor (xor all bytes and length)"),
@@ -181,8 +191,8 @@ Dictionary management
 ***************************************************************************** */
 
 static void load_words(void) {
-  fio_str_s filename = FIO_STRING_INIT;
-  fio_str_s data = FIO_STRING_INIT;
+  fio_str_s filename = FIO_STR_INIT;
+  fio_str_s data = FIO_STR_INIT;
 
   if (fio_cli_get("-d")) {
     fio_str_write(&filename, fio_cli_get("-d"), strlen(fio_cli_get("-d")));
@@ -207,9 +217,11 @@ static void load_words(void) {
   words_reserve(&words, d.len >> 3);
   while (d.len) {
     char *eol = memchr(d.buf, '\n', d.len);
+    fio_str_s wrd = FIO_STR_INIT;
     if (!eol) {
       /* push what's left */
-      words_push(&words, (fio_str_s)FIO_STRING_INIT_STATIC2(d.buf, d.len));
+      fio_str_init_const(&wrd, d.buf, d.len);
+      words_push(&words, wrd);
       break;
     }
     if (eol == d.buf || (eol == d.buf + 1 && eol[-1] == '\r')) {
@@ -218,8 +230,8 @@ static void load_words(void) {
       --d.len;
       continue;
     }
-    words_push(&words, (fio_str_s)FIO_STRING_INIT_STATIC2(
-                           d.buf, (eol - (d.buf + (eol[-1] == '\r')))));
+    fio_str_init_const(&wrd, d.buf, (eol - (d.buf + (eol[-1] == '\r'))));
+    words_push(&words, wrd);
     d.len -= (eol + 1) - d.buf;
     d.buf = eol + 1;
   }
@@ -374,7 +386,8 @@ static uint64_t fall(const void *data_, size_t len, uint64_t seed) {
 
   for (size_t i = len >> 5; i; --i) {
     /* vectorized 32 bytes / 256 bit access */
-    FIO_RISKY3_ROUND256(fio_buf2u64_little(data), fio_buf2u64_little(data + 8),
+    FIO_RISKY3_ROUND256(fio_buf2u64_little(data),
+                        fio_buf2u64_little(data + 8),
                         fio_buf2u64_little(data + 16),
                         fio_buf2u64_little(data + 24));
     data += 32;
@@ -451,7 +464,8 @@ static uintptr_t xxhash_test(char *data, size_t len) {
 /**
 Working version.
 */
-inline FIO_FUNC uint64_t fio_risky_hash_v3(const void *data, size_t len,
+inline FIO_FUNC uint64_t fio_risky_hash_v3(const void *data,
+                                           size_t len,
                                            uint64_t salt);
 
 inline FIO_FUNC uintptr_t risky2(char *data, size_t len) {
@@ -498,10 +512,13 @@ struct hash_fn_names_s {
 
 static void initialize_hash_names(void) {
   for (size_t i = 0; hash_fn_list[i].name; ++i) {
-    fio_str_s tmp = FIO_STRING_INIT_STATIC(hash_fn_list[i].name);
+    fio_str_s tmp;
+    fio_str_init_const(
+        &tmp, hash_fn_list[i].name, strlen(hash_fn_list[i].name));
     hash_name_set(&hash_names, fio_str_hash(&tmp, 0), hash_fn_list[i].fn, NULL);
     FIO_LOG_DEBUG("Registered %s hashing function.\n\t\t(%zu registered)",
-                  hash_fn_list[i].name, hash_name_count(&hash_names));
+                  hash_fn_list[i].name,
+                  hash_name_count(&hash_names));
   }
 }
 
@@ -542,7 +559,9 @@ static void test_hash_function_speed(hashing_func_fn h, char *name) {
     memcpy(buffer, &hash, sizeof(hash));
     if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
         cycles >= ((uint64_t)1 << 62)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", name,
+      fprintf(stderr,
+              "%-20s %8.2f MB/s\n",
+              name,
               (double)(sizeof(buffer) * cycles) /
                   (((end - start) * (1000000.0 / CLOCKS_PER_SEC))));
       break;
@@ -596,25 +615,32 @@ static void test_hash_function(hashing_func_fn h) {
     test_for_best();
   }
   printf("\33[2K\r\n");
-  fprintf(stderr, "* Total collisions detected for %s: %zu\n", name,
-          words_count(&words) - collisions_count(&c));
-  fprintf(stderr, "* Final set utilization ratio (over 1024) %zu/%zu\n",
-          collisions_count(&c), collisions_capa(&c));
-  fprintf(stderr, "* Best set utilization ratio  %zu/%zu\n", best_count,
-          best_capa);
+  fprintf(stderr,
+          "* Total collisions detected for %s: %zu\n",
+          name,
+          (size_t)words_count(&words) - collisions_count(&c));
+  fprintf(stderr,
+          "* Final set utilization ratio (over 1024) %zu/%zu\n",
+          (size_t)collisions_count(&c),
+          (size_t)collisions_capa(&c));
+  fprintf(
+      stderr, "* Best set utilization ratio  %zu/%zu\n", best_count, best_capa);
   collisions_destroy(&c);
 }
 
-static void find_bit_collisions(hashing_func_fn fn, size_t collision_count,
+static void find_bit_collisions(hashing_func_fn fn,
+                                size_t collision_count,
                                 uint8_t bit_count) {
   words_s c = FIO_ARRAY_INIT;
   const uint64_t mask = (1ULL << bit_count) - 1;
   time_t start = clock();
-  words_reserve(&c, collision_count);
+  words_reserve(&c, collision_count * 2);
   while (words_count(&c) < collision_count) {
     uint64_t rnd = fio_rand64();
-    if ((fn((char *)&rnd, 8) & mask) == mask) {
-      words_push(&c, (fio_str_s)FIO_STRING_INIT_STATIC2((char *)&rnd, 8));
+    if (!(fn((char *)&rnd, 8) & mask)) {
+      fio_str_s tmp;
+      fio_str_init_const(&tmp, (const char *)&rnd, sizeof(rnd));
+      words_push(&c, tmp);
     }
   }
   time_t end = clock();
@@ -624,7 +650,10 @@ static void find_bit_collisions(hashing_func_fn fn, size_t collision_count,
   fprintf(stderr,
           "* It took %zu cycles to find %zu (%u bit) collisions for %s (brute "
           "fource):\n",
-          end - start, (size_t)words_count(&c), bit_count, name);
+          end - start,
+          (size_t)words_count(&c),
+          bit_count,
+          name);
   FIO_ARRAY_EACH(&c, pos) {
     uint64_t tmp = fio_buf2u64(fio_str2ptr(pos));
     char ctmp[128];
@@ -666,7 +695,8 @@ static void find_full_collisions_rot(hashing_func_fn fn) {
         fprintf(stderr,
                 "* Found full collision for %s using 512 bit vector with 2nd "
                 "half shift or %d:\n",
-                name, i);
+                name,
+                i);
     }
 }
 
@@ -689,7 +719,7 @@ FIO_FUNC uint64_t inverse64(uint64_t x) {
   y = inverse64_test(x, y);
   if (FIO_LOG_LEVEL >= FIO_LOG_LEVEL_DEBUG) {
     char buff[64];
-    fio_str_s t = FIO_STRING_INIT;
+    fio_str_s t = FIO_STR_INIT;
     fio_str_write(&t, "\n\t\tinverse for:\t", 16);
     fio_str_write(&t, buff, fio_ltoa(buff, x, 16));
     fio_str_write(&t, "\n\t\tis:\t\t\t", 8);

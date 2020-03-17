@@ -40,17 +40,17 @@ This is the third draft of the RiskyHash algorithm and it incorporates updates f
 
     Following this input, RiskyHash updated the way the message length is incorporated into the final hash and updated the consumption stage to replace the initial XOR with ADD.
 
-After [Risky Hash Version 2](riskyhash_v2) many changes were made. The `LROT` value was reduced (avoiding it becoming an `RROT`). Each consumption vector was allotted it's own prime multiplied. Seed initialization was simplified. Prime numbers were added / updated. The mixing round was simplified.
+After [Risky Hash Version 2](riskyhash_v2) many changes were made. The `LROT` value was reduced (avoiding it becoming an `RROT`). Each consumption vector was allotted it's own prime multiplier. Seed initialization was simplified. Prime numbers were added / updated. The mixing round was simplified.
 
 After [Risky Hash Version 1](riskyhash_v1), the consumption approach was simplified to make RiskyHash easier to implement.
-
-The [previous version can be accessed here](riskyhash_v1).
 
 ## Purpose
 
 Risky Hash is designed for fast Hash Map key calculation for both big and small keys. It attempts to act as a 64 bit keyed PRF.
 
-The Risky Hash is designed as a temporary hash (values shouldn't be stored, as the algorithm might be updated without notice) and it is used internally for facil.io's `FIOBJ` Hash Maps.
+The Risky Hash is designed as a temporary hash (values shouldn't be stored, as the algorithm might be updated without notice).
+
+Risky Hash is used internally for facil.io's `FIOBJ` Hash Maps as the default hashing algorithm.
 
 ## Algorithm
 
@@ -155,11 +155,9 @@ In the consumption stage, Risky Hash attempts to achieves three goals:
 
     However, Risky Hash still could probably be attacked by carefully crafted malicious data that would result in a collision.
 
-Risky Hash consumes data in 64 bit chunks/words.
+Risky Hash consumes data in 4 parallel vectors, each consuming 64 bit chunks/words.
 
-Each vector reads a single 64 bit word within a 256 bit block, allowing the vectors to be parallelized though any message length of 256 bits or longer.
-
-`V0` reads the first 64 bits, `V0` reads bits 65-128, and so forth...
+Each vector reads a single 64 bit word within a 256 bit block, so that `V0` reads the first 64 bits, `V1` reads bits 65-128, and so forth...
 
 The 64 bits (8 bytes) are read in **Little Endian** network byte order (improving performance on most common CPUs) and treated as a numerical value.
 

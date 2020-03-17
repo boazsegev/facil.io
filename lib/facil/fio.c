@@ -5800,7 +5800,7 @@ Section Start Marker
 
 ***************************************************************************** */
 
-#if !FIO_TLS_FOUND && !HAVE_OPENSSL /* TODO: list flags here */
+#if !FIO_TLS_FOUND || FIO_WEAK_TLS /* TODO: list flags here */
 
 #define REQUIRE_TLS_LIBRARY()
 
@@ -5942,7 +5942,8 @@ ALPN Helpers
 
 /** Returns a pointer to the ALPN data (callback, etc') IF exists in the TLS. */
 FIO_IFUNC alpn_s *fio___tls_alpn_find(fio_tls_s *tls, char *name, size_t len) {
-  alpn_s tmp = {.name = FIO_STR_INIT_STATIC2(name, len)};
+  alpn_s tmp = {.udata_tls = NULL};
+  fio_str_init_const(&tmp.name, name, len);
   alpn_s *pos =
       fio___tls_alpn_list_get_ptr(&tls->alpn, fio_str_hash(&tmp.name, 0), tmp);
   return pos;
@@ -5957,11 +5958,13 @@ FIO_IFUNC void fio___tls_alpn_add(fio_tls_s *tls,
                                   void *udata_tls,
                                   void (*on_cleanup)(void *udata_tls)) {
   alpn_s tmp = {
-      .name = FIO_STR_INIT_STATIC(protocol_name),
+      .name = FIO_STR_INIT,
       .on_selected = on_selected,
       .udata_tls = udata_tls,
       .on_cleanup = on_cleanup,
   };
+  if (protocol_name)
+    fio_str_init_const(&tmp.name, protocol_name, strlen(protocol_name));
   if (fio_str_len(&tmp.name) > 255) {
     FIO_LOG_ERROR("ALPN protocol names are limited to 255 bytes.");
     return;
@@ -6291,9 +6294,10 @@ void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls,
   cert_s c = {
       .private_key = FIO_STR_INIT,
       .public_key = FIO_STR_INIT,
-      .password = FIO_STR_INIT_STATIC2(pk_password,
-                                       (pk_password ? strlen(pk_password) : 0)),
+      .password = FIO_STR_INIT,
   };
+  if (pk_password)
+    fio_str_init_const(&c.password, pk_password, strlen(pk_password));
   if (key && cert) {
     if (fio_str_readfile(&c.private_key, key, 0, 0).buf == NULL)
       goto file_missing;

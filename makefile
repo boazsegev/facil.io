@@ -745,8 +745,11 @@ test/all: | test/optimized test/cpp test/c99 test/poll
 
 .PHONY : test/collisions
 test/collisions: | create_tree
-	@$(CC) -c ./tests/collisions.c -o $(TMP_ROOT)/collisions.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@echo "* Compiling tests/collisions.c"
+	@$(CC) -c ./tests/collisions.c -o $(TMP_ROOT)/collisions.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION) -DFIO_WEAK_TLS
+	@echo "* Linking"
 	@$(CCL) -o $(BIN) $(TMP_ROOT)/collisions.o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@echo "* Starting test:"
 	@$(BIN)
 
 .PHONY : test/malloc
