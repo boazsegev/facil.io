@@ -10943,7 +10943,9 @@ typedef struct {
 #define FIO_MAP_TYPE const char *
 #define FIO_MAP_KEY fio___cli_cstr_s
 #define FIO_MAP_KEY_CMP(o1, o2)                                                \
-  (o1.len == o2.len && (o1.buf == o2.buf || !memcmp(o1.buf, o2.buf, o1.len)))
+  (o1.len == o2.len &&                                                         \
+   (!o1.len || o1.buf == o2.buf ||                                             \
+    (o1.buf && o2.buf && !memcmp(o1.buf, o2.buf, o1.len))))
 #define FIO_MAP_NAME fio___cli_hash
 #ifndef FIO_STL_KEEP__
 #define FIO_STL_KEEP__ 1
