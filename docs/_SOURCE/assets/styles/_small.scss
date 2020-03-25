@@ -65,43 +65,153 @@ code, pre
     right: 0.5em; bottom:0.5em;
     z-index:250;
 }
+// // // Burger Styles (no JavaScript)
+// .burger {
+//   display: block;
+//   width:0em; height: 0em;
+//   position: fixed;
+//   overflow: visible;
+//   z-index: 900;
+//   transform: translate(-999999px);
+// }
+// .burger:before,
+// .burger:after {
+//   content: "";
+//   display: block;
+//   width:2.5em; height: 2.5em;
+//   position: absolute;
+//   background-size: cover;
+//   border-radius: 10%;
+//   transition: transform 0.4s, transform-origin 0.4s;
+//   transform-origin: 50% 50%;
+//   transform: translate(999999px) rotate(0deg) scale(1);
+// }
 
-#show_sidebar, #show_nav
-{
-    display: block;
-    position: fixed;
-    top: 5em; left:0;
-    overflow: visible;
-    transform: translateX(999999px);
-    z-index: 900;
-    &:after
-    {
-        transform: translateX(-999999px);
-        content: "|||";
-        font-size: 1.4em;
-        display: block;
-        box-sizing: border-box;
-        padding: 0.3em 0.5em;
-        text-align: center;
-        @include border-radius;
-        background-color: rgb(128,128,128);
-        background-color: rgba(64, 64, 64, 0.64);
-        position: absolute;
-        left: 0; top:0;
-        transition: transform 0.3s ease, opacity 0.3s ease;
-        -webkit-transition: transform 0.3s ease, opacity 0.3s ease;
-        -moz-transition: transform 0.3s ease, opacity 0.3s ease;
-        -o-transition: transform 0.3s ease, opacity 0.3s ease;
-    }
-    &:checked
-    {
-        &:after
-        {
-            transform: translateX(-999999px) rotate(-90deg);
-            background-color: rgba(64, 32, 64, 0.64);
-        }
-    }
+// .burger:before {
+//   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><line x1='10%' y1='50%' x2='90%' y2='50%' stroke='rgba(120,120,255, 0.85)' stroke-width='20%' stroke-linecap='round'/></svg>");
+//   transform: translate(999999px) rotate(0deg) scale(1);
+// }
+// .burger:checked:before {
+//   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><line x1='10%' y1='50%' x2='90%' y2='50%' stroke='rgba(255,64,64, 0.85)' stroke-width='20%' stroke-linecap='round'/></svg>");
+//   transform: translate(999999px) rotate(45deg) scale(1);
+//   /*transform: translate(999999px) rotate(-45deg) scale(1);*/
+// }
+// .burger:hover:before {
+//   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><line x1='10%' y1='50%' x2='90%' y2='50%' stroke='rgba(255,112,112, 0.85)' stroke-width='20%' stroke-linecap='round'/></svg>");
+// }
+// .burger:after {
+//   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><line x1='10%' y1='10%' x2='90%' y2='10%' stroke='rgba(120,120,255, 0.85)' stroke-width='20%' stroke-linecap='round'/><line x1='10%' y1='90%' x2='90%' y2='90%' stroke='rgba(120,120,255, 0.85)' stroke-width='20%' stroke-linecap='round'/></svg>");
+// }
+// .burger:checked:after {
+//   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><line x1='10%' y1='10%' x2='90%' y2='10%' stroke='rgba(255,64,64, 0.85)' stroke-width='20%' stroke-linecap='round'/><line x1='10%' y1='90%' x2='90%' y2='90%' stroke='rgba(255,64,64, 0.85)' stroke-width='20%' stroke-linecap='round'/></svg>");
+//   transform: translate(999999px) rotate(-45deg) translate(0%,38%) scale(1);
+//   /*transform: translate(999999px) rotate(45deg) translate(0%,38%) scale(1);*/
+// }
+// .burger:hover:after {
+//   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><line x1='10%' y1='10%' x2='90%' y2='10%' stroke='rgba(255,112,112, 0.85)' stroke-width='20%' stroke-linecap='round'/><line x1='10%' y1='90%' x2='90%' y2='90%' stroke='rgba(255,112,112, 0.85)' stroke-width='20%' stroke-linecap='round'/></svg>");
+// }
+// // // Navigation Updates
+// .burger:checked+nav,
+// .burger:checked+#top_nav,
+// .burger:checked+#side_bar
+// {
+//     transform: translateX(0);
+// }
+
+// .burger2:checked:before {
+//   transform: translate(999999px) rotate(-45deg) scale(1);
+// }
+// .burger2:checked:after {
+//   transform: translate(999999px) rotate(45deg) translate(0%,38%) scale(1);
+// }
+
+// // burger Styles (requires JavaScript)
+input.burger {
+  display: block;
+  width:0em; height: 0em;
+  position: absolute;
+  transform: translate(-999999px)
 }
+
+input.burger+svg+nav,
+input.burger+nav {
+  transform: translateX(100%);
+}
+input.burger.left+svg+nav,
+input.burger.left+nav {
+  transform: translateX(-100%);
+}
+input.burger:checked+svg+nav,
+input.burger:checked+nav {
+  transform: translateX(0);
+}
+input.burger+svg {
+  width:2.5em; height: 2.5em;
+  display: block;
+  border-radius: 10%;
+  position: absolute;
+  z-index: 999;
+}
+input.burger+svg .line1,
+input.burger+svg .line2,
+input.burger+svg .line3,
+input.burger+svg .line4 {
+  transition: 0.25s;
+  stroke: rgb(120,120,255);
+  stroke-width: 20%;
+  stroke-linecap: round;
+  transform-origin: center center;
+}
+input.burger+svg:hover .line2 {
+  transform-origin: right center;
+  transform: translate(0, 50%) rotate(30deg) scale(1);
+}
+input.burger+svg:hover .line3 {
+  transform-origin: right center;
+  transform: translate(0, -50%) rotate(-30deg) scale(1);
+}
+input.burger.left+svg:hover .line2 {
+  transform-origin: left center;
+  transform: translate(0, 50%) rotate(-30deg) scale(1);
+}
+input.burger.left+svg:hover .line3 {
+  transform-origin: left center;
+  transform: translate(0,-50%) rotate(30deg) scale(1);
+}
+input.burger:checked+svg .line1 {
+  stroke: rgb(200,60,60);
+  transform-origin: 5% 35%;
+  transform: translate(-3%, 0%) rotate(45deg) scale(1);
+}
+input.burger:checked+svg .line2,
+input.burger:checked+svg .line3,
+input.burger.left:checked+svg .line2,
+input.burger.left:checked+svg .line3, {
+  stroke: rgb(200,60,60);
+  transform-origin: 50% 50%;
+  transform: translate(0%, 0%) rotate(-45deg) scale(0.1);
+}
+input.burger:checked+svg .line4 {
+  stroke: rgb(200,60,60);
+  transform-origin: 5% 70%;
+  transform: translate(-1.5%, -3%) rotate(-45deg) scale(1);
+}
+input.burger+svg:hover .line1,
+input.burger+svg:hover .line2,
+input.burger+svg:hover .line3,
+input.burger+svg:hover .line4 {
+  stroke: rgb(255,90,90);
+}
+
+#show_sidebar+svg
+{
+    top: 5em; left:0.4em;
+}
+#show_nav+svg
+{
+    top: 0.4em; right:0.4em;
+}
+
 #ruby_lang
 {
     transform: translateX(200px);
@@ -117,32 +227,10 @@ code, pre
     top:0; left:0;
     background-color: rgb(240,240,240);
     background-color: rgba(240, 240, 240, 0.9);
-    transform: translateX(-100%);
     transition: transform 0.3s ease, opacity 0.3s ease;
     -webkit-transition: transform 0.3s ease, opacity 0.3s ease;
     -moz-transition: transform 0.3s ease, opacity 0.3s ease;
     -o-transition: transform 0.3s ease, opacity 0.3s ease;
-}
-#show_sidebar:checked+#side_bar
-{
-    transform: translateX(0);
-}
-#show_nav
-{
-    display: block;
-    position: fixed;
-    top: 0.2em; right:0; left:initial;
-    &:after
-    {
-        right:0; left:initial;
-    }
-    &:checked
-    {
-        &:after
-        {
-            transform: translateX(-999999px) rotate(90deg);
-        }
-    }
 }
 #top_nav
 {
@@ -156,7 +244,6 @@ code, pre
     padding-bottom: 5em;
     background-color: rgb(240,240,240);
     background-color: rgba(240, 240, 240, 0.9);
-    transform: translateX(100%);
     transition: transform 0.3s ease, opacity 0.3s ease;
     -webkit-transition: transform 0.3s ease, opacity 0.3s ease;
     -moz-transition: transform 0.3s ease, opacity 0.3s ease;
@@ -184,11 +271,6 @@ code, pre
     }
 
 }
-#show_nav:checked+#top_nav
-{
-    transform: translateX(0);
-}
-
 
 
 

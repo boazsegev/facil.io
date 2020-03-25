@@ -8,6 +8,8 @@
 
 ### [The FIOBJ types](/0.8.x/fio-stl#fiobj-soft-dynamic-types)
 
+* [Core FIOBJ Types](#fiobj-types-and-identification)
+* [Memory Management](#fiobj-core-memory-management)
 * [Common Functions](/0.8.x/fio-stl#fiobj-common-functions)
 * [Primitives](/0.8.x/fio-stl#fiobj-primitive-types)
 * [Numbers](/0.8.x/fio-stl#fiobj-integers)
@@ -34,7 +36,7 @@
 * [Linked Lists](/0.8.x/fio-stl#linked-lists)
 * [Dynamic Strings](/0.8.x/fio-stl#dynamic-strings)
 * [Dynamic Arrays](/0.8.x/fio-stl#dynamic-arrays)
-* [Hash Maps / Sets](/0.8.x/fio-stl#hash-maps-sets)
+* [Hash Maps / Sets](/0.8.x/fio-stl#maps-hash-maps-sets)
 * [Atomic operations](/0.8.x/fio-stl#atomic-operations)
 * [Pointer Arithmetics](/0.8.x/fio-stl#pointer-arithmetics)
 * [CLI (command line)](/0.8.x/fio-stl#cli-command-line-interface)

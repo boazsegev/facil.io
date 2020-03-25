@@ -36,7 +36,12 @@ html
 
     body
         a#logo href='/'
-        input#show_nav type='checkbox'
+        input#show_nav type='checkbox' class='burger burger2'
+        svg xmlns='http://www.w3.org/2000/svg' onclick="document.getElementById('show_nav').checked = !document.getElementById('show_nav').checked"
+            line class='line1' x1='0' y1='10%' x2='100%' y2='10%'
+            line class='line2' x1='0' y1='50%' x2='100%' y2='50%'
+            line class='line3' x1='0' y1='50%' x2='100%' y2='50%'
+            line class='line4' x1='0' y1='90%' x2='100%' y2='90%'
         nav#top_nav
             ul
                 li
@@ -44,12 +49,17 @@ html
                 li
                     a href='https://github.com/boazsegev/facil.io' target='_blank' Source Code
                 li
-                    a#theme href='javascript: change_themes();' Night Theme
+                    a#theme href='#' onclick="change_themes()" Night Theme
 
         - if !self['sidebar']
            #md_container == yield
         - else
-            input#show_sidebar type='checkbox'
+            input#show_sidebar type='checkbox' class='burger left'
+            svg xmlns='http://www.w3.org/2000/svg' onclick="document.getElementById('show_sidebar').checked = !document.getElementById('show_sidebar').checked"
+                line class='line1' x1='0' y1='10%' x2='100%' y2='10%'
+                line class='line2' x1='0' y1='50%' x2='100%' y2='50%'
+                line class='line3' x1='0' y1='50%' x2='100%' y2='50%'
+                line class='line4' x1='0' y1='90%' x2='100%' y2='90%'
             nav#side_bar == self['sidebar']
             #md_container
                 == yield
@@ -64,7 +74,7 @@ html
                 a.notice_close onclick='hide_notice()' X
                 div#notice_text
         javascript:
-            function change_themes() {
+            function change_themes(e) {
                 var obj = document.getElementById("theme");
                 if(obj.text[0] == 'D') {
                     localStorage.setItem("theme", "light");
@@ -76,6 +86,7 @@ html
                 set_theme_link();
                 obj = document.getElementById("show_nav");
                 obj.checked = false;
+                if(e) e.preventDefault();
                 return false;
             };
             function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }

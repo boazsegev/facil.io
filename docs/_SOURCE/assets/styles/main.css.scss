@@ -49,6 +49,9 @@ input
     outline: 0;
     padding: 0.3em 1em;
 }
+input.burger+svg {
+    display: none;
+}
 input[type=submit]
 {
     margin: 0 0 0 1em;
@@ -198,12 +201,7 @@ hr { display: none; }
     }
 }
 
-#show_nav
-{
-    transform: translateX(999999px);
-    display: hidden;
-}
-#show_sidebar
+.burger
 {
     transform: translateX(999999px);
     display: hidden;
