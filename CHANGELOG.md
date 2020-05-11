@@ -46,7 +46,7 @@ I though about it as a small standard-library extension with a minimal STL, much
 
 - The old HTTP client API was deprecated in favor of a future (smarter) HTTP client approach that allows for persistent connections, as suggested by @stephenkgu in [issue #87](https://github.com/boazsegev/facil.io/issues/87).
 
-### v. 0.7.3
+### v. 0.7.3 - 2019-10-04
 
 **Fix**: (`http`) fixes a security issue in the static file name resolution logic, where a maliciously encoded request could invoke an arbitrary response.
 
@@ -58,7 +58,7 @@ I though about it as a small standard-library extension with a minimal STL, much
 
 **Fix**: (`fio`) fixes signal handler (re)establishment test to prevent recursive signal calling.
 
-### v. 0.7.2
+### v. 0.7.2 - 2019-08-29
 
 **Fix**: (`fio_tls`) fixes a memory leak in the trusted certificate chain. Credit to @fbrausse for opening PR #71.
 
@@ -66,11 +66,11 @@ I though about it as a small standard-library extension with a minimal STL, much
 
 **Fix**: (`http1`) fixes a race-condition between the `on_ready` and `on_data` events, that could result in the `on_data` event being called twice instead of once (only possible with some clients). On multi-threaded workers, this could result in the CPU spinning while the task lock remains busy. Credit to Néstor Coppi (@Shelvak) for exposing the issue and providing an example application with detailed reports. Issue #75.
 
-### v. 0.7.1
+### v. 0.7.1 - 2019-05-18
 
 **Security**: a heap-overflow vulnerability was fixed in the WebSocket parser, which could have been triggered by a maliciously crafted message-header. Credit to Dane (4cad@silvertoque) for exposing this issue and providing a Python script demonstrating the attack. 
 
-### v. 0.7.0
+### v. 0.7.0 - 2019-03-29
 
 Stable API release. Future API updates will be wait for the 0.8.x release.
 
@@ -80,7 +80,7 @@ Stable API release. Future API updates will be wait for the 0.8.x release.
 
 **Compatibility**: (`http`) updated time-zone compile-time tests with a safer fall-back.
 
-### v. 0.7.0.beta8
+### v. 0.7.0.beta8 - 2019-03-03
 
 **Security**: (`fio`) Slowloris mitigation is now part of the core library, where `FIO_SLOWLORIS_LIMIT` pending calls to `write` (currently 1,024 backlogged calls) will flag the connection as an attacker and either close the connection or ignore it. This protocol independent approach improves security.
 
@@ -130,7 +130,7 @@ Stable API release. Future API updates will be wait for the 0.8.x release.
 
 **Compatibility**: (`fio`) various Solaris OS compatibility patches, courtesy of @Low-power (PR #52, #53).
 
-### v. 0.7.0.beta7
+### v. 0.7.0.beta7 - 2019-01-18
 
 **BREAK**: (`fio_tls`) breaking API changes to the SSL/TLS API... I know, I'm sorry, especially since there's a small and misleading change in argument ordering for `fio_tls_cert_add` and `fio_tls_new`... but if we don't fix the API now, before the 0.7.0 release, bad design might ruin our Wednesday meditation for all eternity.
 
@@ -154,7 +154,7 @@ Stable API release. Future API updates will be wait for the 0.8.x release.
 
 **Update**: (`fio`) added Risky Hash, for fast hashing of safe data. This is a fast hashing function (about twice as fast as the default SipHash1-3 secure function) that wasn't tested for security. For this reason it should be limited to internal / safe data, such as CLI argument names.
 
-### v. 0.7.0.beta6
+### v. 0.7.0.beta6 - 2018-12-31
 
 **BREAK**: (`fio_tls`) breaking API changes to the SSL/TLS API, adding support for password protected private key files. *Note*: The TLS API is still fragile and should only be considered stable once version 0.7.0 is released with SSL/TLS support.
 
