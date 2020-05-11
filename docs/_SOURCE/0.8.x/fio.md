@@ -1285,7 +1285,7 @@ Returns true if there are deferred functions waiting for execution.
 #### `fio_run_every`
 
 ```c
-int fio_run_every(size_t milliseconds, size_t repetitions, void (*task)(void *),
+int fio_run_every(size_t milliseconds, int32_t repetitions, void (*task)(void *),
                  void *arg, void (*on_finish)(void *));
 ```
 
@@ -1293,7 +1293,7 @@ Creates a timer to run a task at the specified interval.
 
 Timer tasks accept only a single user data pointer (`udata` ).
 
-The task will repeat `repetitions` times. If `repetitions` is set to 0, task
+The task will repeat `repetitions` times. If `repetitions` is set to -1, task
 will repeat forever.
 
 The `on_finish` handler is always called (even on error).

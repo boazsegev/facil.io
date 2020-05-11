@@ -1,5 +1,5 @@
 /* *****************************************************************************
-Copyright: Boaz Segev, 2018-2019
+Copyright: Boaz Segev, 2018-2020
 License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
@@ -186,10 +186,10 @@ typedef struct {
   fio_lock_i scheduled;
   /* protocol lock */
   fio_lock_i protocol_lock;
-  /* used to convert `fd` to `uuid` and validate connections */
-  uint8_t counter;
   /* socket lock */
   fio_lock_i sock_lock;
+  /* used to convert `fd` to `uuid` and validate connections */
+  uint8_t counter;
   /** Connection is open */
   uint8_t open;
   /** indicated that the connection should be closed. */
@@ -1076,13 +1076,13 @@ static size_t fio_timer_calc_first_interval(void) {
 /**
  * Creates a timer to run a task at the specified interval.
  *
- * The task will repeat `repetitions` times. If `repetitions` is set to 0, task
+ * The task will repeat `repetitions` times. If `repetitions` is set to -1, task
  * will repeat forever.
  *
  * The `on_finish` handler is always called (even on error).
  */
 void fio_run_every(size_t milliseconds,
-                   size_t repetitions,
+                   int32_t repetitions,
                    int (*task)(void *, void *),
                    void *udata1,
                    void *udata2,
@@ -1095,7 +1095,7 @@ void fio_run_every(size_t milliseconds,
                      .udata2 = udata2,
                      .on_finish = on_finish,
                      .every = milliseconds,
-                     .repeat = repetitions,
+                     .repetitions = repetitions,
                      .start_at = start_at);
 }
 

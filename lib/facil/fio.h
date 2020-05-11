@@ -1,5 +1,5 @@
 /*
-Copyright: Boaz Segev, 2018-2019
+Copyright: Boaz Segev, 2018-2020
 License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
@@ -1333,7 +1333,7 @@ int fio_defer(void (*task)(void *, void *), void *udata1, void *udata2);
 /**
  * Creates a timer to run a task at the specified interval.
  *
- * The task will repeat `repetitions` times. If `repetitions` is set to 0, task
+ * The task will repeat `repetitions` times. If `repetitions` is set to -1, task
  * will repeat forever.
  *
  * If `task` returns a non-zero value, it will stop repeating.
@@ -1341,7 +1341,7 @@ int fio_defer(void (*task)(void *, void *), void *udata1, void *udata2);
  * The `on_finish` handler is always called (even on error).
  */
 void fio_run_every(size_t milliseconds,
-                   size_t repetitions,
+                   int32_t repetitions,
                    int (*task)(void *, void *),
                    void *udata1,
                    void *udata2,
