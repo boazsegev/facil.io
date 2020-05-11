@@ -61,6 +61,7 @@ int main(int argc, char const *argv[]) {
     exit(1);
   }
   fio_start(.threads = fio_cli_get_i("-t"), .workers = fio_cli_get_i("-w"));
+  fio_cli_end();
   return 0;
 }
 
