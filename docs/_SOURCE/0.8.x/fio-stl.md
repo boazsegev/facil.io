@@ -145,7 +145,7 @@ Masks a pointer's right-most bits, returning the left bits (i.e., `0xFFFFFF00`).
   ((T_type *)((uintptr_t)(ptr) + (uintptr_t)(offset)))
 ```
 
-Add offset bytes to pointer, updating the pointer's type.
+Add offset bytes to pointer's address, updating the pointer's type.
 
 #### `FIO_PTR_MATH_SUB`
 
@@ -154,7 +154,7 @@ Add offset bytes to pointer, updating the pointer's type.
   ((T_type *)((uintptr_t)(ptr) - (uintptr_t)(offset)))
 ```
 
-Subtract X bytes from pointer, updating the pointer's type.
+Subtract X bytes from pointer's address, updating the pointer's type.
 
 #### `FIO_PTR_FROM_FIELD`
 
@@ -163,7 +163,7 @@ Subtract X bytes from pointer, updating the pointer's type.
   FIO_PTR_MATH_SUB(T_type, ptr, (&((T_type *)0)->field))
 ```
 
-Find the root object (of a `struct`) from it's field.
+Find the root object (of a `struct`) from a pointer to its field's (the field's address).
 
 ### Default Memory Allocation
 
@@ -3173,8 +3173,8 @@ typedef struct {
   void (*on_finish)(void *, void *);
   /** Timer interval, in milliseconds. */
   uint32_t every;
-  /** The number of times the timer should repeat itself. 0 == infinity. */
-  int32_t repeat;
+  /** The number of times the timer should be performed. -1 == infinity. */
+  int32_t repetitions;
   /** Millisecond at which to start. If missing, filled automatically. */
   uint64_t start_at;
 } fio_timer_schedule_args_s;
@@ -3183,7 +3183,7 @@ typedef struct {
   fio_timer_schedule((timer_queue), (fio_timer_schedule_args_s){__VA_ARGS__})
 ```
 
-Note, the event will repeat every `every` milliseconds.
+Note, the event will repeat every `every` milliseconds (or the same unites as `start_at` and `now`).
 
 It the scheduler is busy or the event is otherwise delayed, its next scheduling may compensate for the delay by being scheduled sooner.
 
@@ -3193,10 +3193,14 @@ It the scheduler is busy or the event is otherwise delayed, its next scheduling 
 /**  */
 size_t fio_timer_push2queue(fio_queue_s *queue,
                             fio_timer_queue_s *timer_queue,
-                            uint64_t now_in_milliseconds);
+                            uint64_t now); // now is in milliseconds
 ```
 
 Pushes due events from the timer queue to an event queue.
+
+If `now` is `0`, than `fio_time_milli` will be called to supply `now`'s value.
+
+**Note**: all the `start_at` values for all the events in the timer queue will be treated as if they use the same units as (and are relative to) `now`. By default, this unit should be milliseconds, to allow `now` to be zero.
 
 #### `fio_timer_next_at`
 
@@ -3346,6 +3350,10 @@ Never fork a multi-threaded process. Doing so might corrupt the memory allocatio
 
 However, if a multi-threaded process, calling this function from the child process would perform a best attempt at mitigating any arising issues (at the expense of possible leaks).
 
+### Memory Allocation Customization Macros
+
+The following macros allow control over the custom memory allocator performance or behavior.
+
 #### `FIO_MALLOC_FORCE_SYSTEM`
 
 If `FIO_MALLOC_FORCE_SYSTEM` is defined, the facil.io memory allocator functions will simply pass requests through to the system's memory allocator (`calloc` / `free`) rather then use the facil.io custom allocator.
@@ -3374,6 +3382,8 @@ The memory pool allocation size limit. By default, this is 75% of a memory block
 
 Sets the maximum number of memory arenas to initialize. Defaults to 64.
 
+The custom memory allocator will initialize as many arenas as the CPU cores detected, but no more than `FIO_MEMORY_ARENA_COUNT_MAX`.
+
 When set to `0` the number of arenas will always match the maximum number of detected CPU cores.
 
 #### `FIO_MEMORY_ARENA_COUNT_DEFAULT`
@@ -3381,6 +3391,22 @@ When set to `0` the number of arenas will always match the maximum number of det
 The default number of memory arenas to initialize when CPU core detection fails or isn't available. Defaults to `5`.
 
 Normally, facil.io tries to initialize as many memory allocation arenas as the number of CPU cores. This value will only be used if core detection isn't available or fails.
+
+### Memory Allocation Status Macros
+
+#### `FIO_MEM_INTERNAL_MALLOC`
+
+Set to 0 when `fio_malloc` routes to the system allocator (`calloc(size, 1)`) or set to 1 when using the facil.io allocator.
+
+This is mostly relevant when calling `fio_realloc2`, since the system allocator might return memory with junk data while the facil.io memory allocator returns memory that was zeroed out.
+
+#### `FIO_MEMORY_BLOCK_SIZE`
+
+```c
+#define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << FIO_MEMORY_BLOCK_SIZE_LOG)
+```
+
+The resulting memory block size, depends on `FIO_MEMORY_BLOCK_SIZE_LOG`.
 
 -------------------------------------------------------------------------------
 

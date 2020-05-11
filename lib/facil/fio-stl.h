@@ -1,5 +1,5 @@
 /* *****************************************************************************
-Copyright: Boaz Segev, 2019
+Copyright: Boaz Segev, 2019-2020
 License: ISC / MIT (choose your license)
 
 Feel free to copy, use and enjoy according to the license provided.
@@ -2556,6 +2556,10 @@ SFUNC void *FIO_ALIGN fio_realloc2(void *ptr,
   }
   fio___memcpy_16byte(mem, ptr, ((copy_len + 15) >> 4));
   fio___mem_block_free(b);
+  // zero out leftover bytes, if any.
+  while (copy_len & 15) {
+    ((uint8_t *)mem)[(copy_len++) & 15] = 0;
+  }
   return mem;
 
 big_realloc:
@@ -9948,7 +9952,6 @@ SFUNC struct tm fio_time2gm(time_t timer) {
     // day of epoch was a thursday. Add + 4 so sunday == 0...
     tm.tm_wday = (b + 4) % 7;
   } else {
-    // return *gmtime_r(&timer, &tm);
     // for seconds up to weekdays, we reduce the reminder every step.
     a = (ssize_t)timer;
     b = a / 60; // b == time in minutes
@@ -10349,8 +10352,8 @@ typedef struct {
   void (*on_finish)(void *, void *);
   /** Timer interval, in milliseconds. */
   uint32_t every;
-  /** The number of times the timer should repeat itself. 0 == infinity. */
-  int32_t repeat;
+  /** The number of times the timer should be performed. -1 == infinity. */
+  int32_t repetitions;
   /** Millisecond at which to start. If missing, filled automatically. */
   uint64_t start_at;
 } fio_timer_schedule_args_s;
@@ -10419,7 +10422,7 @@ struct fio___timer_event_s {
   void (*on_finish)(void *udata1, void *udata2);
   uint64_t due;
   uint32_t every;
-  int32_t repeat;
+  int32_t repetitions;
   struct fio___timer_event_s *next;
 };
 
@@ -10432,13 +10435,19 @@ struct fio___timer_event_s {
  * `fio_time_milli()`.
  */
 FIO_IFUNC uint64_t fio_timer_next_at(fio_timer_queue_s *tq) {
-  if (!tq || !tq->next)
-    return (uint64_t)-1;
   uint64_t v = (uint64_t)-1;
+  if (!tq)
+    goto missing_tq;
+  if (!tq || !tq->next)
+    return v;
   fio_lock(&tq->lock);
   if (tq->next)
     v = tq->next->due;
   fio_unlock(&tq->lock);
+  return v;
+
+missing_tq:
+  FIO_LOG_ERROR("`fio_timer_next_at` called with a NULL timer queue!");
   return v;
 }
 
@@ -10633,6 +10642,8 @@ fio___timer_event_new(fio_timer_schedule_args_s args) {
   t = (fio___timer_event_s *)FIO_MEM_CALLOC_(sizeof(*t), 1);
   if (!t)
     goto init_error;
+  if (!args.repetitions)
+    args.repetitions = 1;
   *t = (fio___timer_event_s){
       .fn = args.fn,
       .udata1 = args.udata1,
@@ -10640,7 +10651,7 @@ fio___timer_event_new(fio_timer_schedule_args_s args) {
       .on_finish = args.on_finish,
       .due = args.start_at + args.every,
       .every = args.every,
-      .repeat = args.repeat,
+      .repetitions = args.repetitions,
   };
   return t;
 init_error:
@@ -10651,7 +10662,7 @@ init_error:
 
 FIO_IFUNC void fio___timer_event_free(fio_timer_queue_s *tq,
                                       fio___timer_event_s *t) {
-  if (tq && (t->repeat <= 0 || fio_atomic_sub(&t->repeat, 1))) {
+  if (tq && (t->repetitions < 0 || fio_atomic_sub(&t->repetitions, 1))) {
     fio_lock(&tq->lock);
     fio___timer_insert(&tq->next, t);
     fio_unlock(&tq->lock);
@@ -10708,7 +10719,7 @@ SFUNC void fio_timer_schedule FIO_NOOP(fio_timer_queue_s *timer,
 no_timer_queue:
   if (args.on_finish)
     args.on_finish(args.udata1, args.udata2);
-  FIO_LOG_ERROR("fio_timer_schedule called with illigal arguments.");
+  FIO_LOG_ERROR("fio_timer_schedule called with illegal arguments.");
 }
 
 /**
@@ -11211,17 +11222,17 @@ print_help:
     switch ((size_t)type) {
     case FIO_CLI_STRING__TYPE_I:
       fprintf(stderr,
-              " \x1B[1m%.*s\x1B[0m\x1B[2m <>\x1B[0m\t%s\n",
+              " \x1B[1m%-10.*s\x1B[0m\x1B[2m\t\"\" \x1B[0m%s\n",
               first_len,
               p,
               p + tmp);
       break;
     case FIO_CLI_BOOL__TYPE_I:
-      fprintf(stderr, " \x1B[1m%.*s\x1B[0m   \t%s\n", first_len, p, p + tmp);
+      fprintf(stderr, " \x1B[1m%-10.*s\x1B[0m\t   %s\n", first_len, p, p + tmp);
       break;
     case FIO_CLI_INT__TYPE_I:
       fprintf(stderr,
-              " \x1B[1m%.*s\x1B[0m\x1B[2m ##\x1B[0m\t%s\n",
+              " \x1B[1m%-10.*s\x1B[0m\x1B[2m\t## \x1B[0m%s\n",
               first_len,
               p,
               p + tmp);
@@ -11243,7 +11254,7 @@ print_help:
       switch ((size_t)type) {
       case FIO_CLI_STRING__TYPE_I:
         fprintf(stderr,
-                " \x1B[1m%.*s\x1B[0m\x1B[2m <>\x1B[0m%*s\t\x1B[2msame as "
+                " \x1B[1m%-10.*s\x1B[0m\x1B[2m\t\"\" \x1B[0m%*s\x1B[2msame as "
                 "%.*s\x1B[0m\n",
                 (int)(tmp - start),
                 p + start,
@@ -11254,7 +11265,7 @@ print_help:
         break;
       case FIO_CLI_BOOL__TYPE_I:
         fprintf(stderr,
-                " \x1B[1m%.*s\x1B[0m   %*s\t\x1B[2msame as %.*s\x1B[0m\n",
+                " \x1B[1m%-10.*s\x1B[0m\t   %*s\x1B[2msame as %.*s\x1B[0m\n",
                 (int)(tmp - start),
                 p + start,
                 padding,
@@ -11264,7 +11275,7 @@ print_help:
         break;
       case FIO_CLI_INT__TYPE_I:
         fprintf(stderr,
-                " \x1B[1m%.*s\x1B[0m\x1B[2m ##\x1B[0m%*s\t\x1B[2msame as "
+                " \x1B[1m%-10.*s\x1B[0m\x1B[2m\t## \x1B[0m%*s\x1B[2msame as "
                 "%.*s\x1B[0m\n",
                 (int)(tmp - start),
                 p + start,
@@ -15700,8 +15711,8 @@ Time - test
 #define FIO_TIME
 #include __FILE__
 
-#define FIO___GMTIME_TEST_INTERVAL (53L * 60 * 24) /* a day minus 7 seconds */
-#define FIO___GMTIME_TEST_RANGE (4093L * 365)      /* test ~4 millenium  */
+#define FIO___GMTIME_TEST_INTERVAL ((60L * 60 * 24) - 7) /* 1day - 7seconds */
+#define FIO___GMTIME_TEST_RANGE (4093L * 365) /* test ~4 millenium  */
 
 TEST_FUNC void fio___dynamic_types_test___gmtime(void) {
   fprintf(stderr, "* Testing facil.io fio_time2gm vs gmtime_r\n");
@@ -15990,7 +16001,8 @@ TEST_FUNC void fio___dynamic_types_test___queue(void) {
     fio_timer_schedule(&tq,
                        .udata1 = &tester,
                        .on_finish = fio___queue_test_sample_task,
-                       .every = 100);
+                       .every = 100,
+                       .repetitions = -1);
     FIO_T_ASSERT(tester == 1,
                  "fio_timer_schedule should have called `on_finish`");
     tester = 0;
@@ -15998,7 +16010,8 @@ TEST_FUNC void fio___dynamic_types_test___queue(void) {
                        .fn = fio___queue_test_timer_task,
                        .udata1 = &tester,
                        .on_finish = fio___queue_test_sample_task,
-                       .every = 100);
+                       .every = 100,
+                       .repetitions = -1);
     FIO_T_ASSERT(tester == 1,
                  "fio_timer_schedule should have called `on_finish`");
     tester = 0;
@@ -16006,7 +16019,8 @@ TEST_FUNC void fio___dynamic_types_test___queue(void) {
                        .fn = fio___queue_test_timer_task,
                        .udata1 = &tester,
                        .on_finish = fio___queue_test_sample_task,
-                       .every = 0);
+                       .every = 0,
+                       .repetitions = -1);
     FIO_T_ASSERT(tester == 1,
                  "fio_timer_schedule should have called `on_finish`");
 
@@ -16017,6 +16031,7 @@ TEST_FUNC void fio___dynamic_types_test___queue(void) {
                        .udata1 = &tester,
                        .on_finish = fio___queue_test_sample_task,
                        .every = 1,
+                       .repetitions = -1,
                        .start_at = fio_time_milli() - 10);
     FIO_T_ASSERT(tester == 0,
                  "fio_timer_schedule should have scheduled the task.");
@@ -16042,7 +16057,7 @@ TEST_FUNC void fio___dynamic_types_test___queue(void) {
                        .udata1 = &tester,
                        .on_finish = fio___queue_test_sample_task,
                        .every = 100,
-                       .repeat = 1,
+                       .repetitions = 1,
                        .start_at = milli_now - 10);
     FIO_T_ASSERT(tester == 0,
                  "fio_timer_schedule should have scheduled the task.");
@@ -16051,7 +16066,7 @@ TEST_FUNC void fio___dynamic_types_test___queue(void) {
                        .udata1 = &tester,
                        .on_finish = fio___queue_test_sample_task,
                        .every = 1,
-                       .repeat = 1,
+                       // .repetitions = 1, // auto-value is 1
                        .start_at = milli_now - 10);
     FIO_T_ASSERT(tester == 0,
                  "fio_timer_schedule should have scheduled the task.");
