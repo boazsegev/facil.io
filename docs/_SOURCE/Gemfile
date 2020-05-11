@@ -3,5 +3,5 @@ source 'https://rubygems.org'
 gem 'iodine', ">=0.7.34"
 gem 'redcarpet'
 gem 'slim'
-gem 'sass'
+gem 'sassc'
 gem 'rouge'

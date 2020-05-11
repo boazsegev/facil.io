@@ -11,17 +11,18 @@
 #
 # ...even I'm not sure what it does or how. I just threw it together to have something that works.
 
-
-# Gems and stuff we use in this script
-require 'redcarpet'
+require 'date'
 require 'erb'
-require 'slim'
-require 'sass'
-require 'iodine'
 require 'fileutils'
 require 'yaml'
 require 'set'
 require 'json'
+
+# Gems and stuff we use in this script
+require 'redcarpet'
+require 'slim'
+require 'sassc'
+require 'iodine'
 require 'rouge'
 require 'rouge/plugins/redcarpet'
 
@@ -131,10 +132,11 @@ module APP
       if(@extensions[file_extension])
         # should be rendered - route to application rendering path
         begin
-          env = {PATH_INFO => pt[SOURCE_ROOT.length..(-1-file_extension.length)]}
+          url_path = pt[SOURCE_ROOT.length..(-1-file_extension.length)]
+          env = {PATH_INFO => url_path}
           APP.call(env) # will create the file (in production, file is onnly created if missing)
-          puts "INFO: pre-baked: #{env[PATH_INFO]}"
-          @sitemap << env[PATH_INFO]
+          puts "INFO: pre-baked: #{url_path}"
+          @sitemap << url_path
         rescue => e
           puts "WARN: couldn't pre-bake #{pt}: #{e.message}"
           raise e
@@ -170,30 +172,37 @@ if ENV['RACK_ENV'] == 'production'
     [200, {X_SENDFILE => "#{STATIC_ROOT}#{env[PATH_INFO]}"}, ["".freeze]]
   end
 else
-  # Live update and send with X-Sendfile
+  # Live update file on disk and send with X-Sendfile
   def self.call env
-    if (File.directory?( "#{STATIC_ROOT}#{env[PATH_INFO]}"))
-      if (env[PATH_INFO][-1] == '/')
+    original_path = env[PATH_INFO]
+    env[PATH_INFO] = File.join(SOURCE_ROOT, original_path).to_s
+    if (File.directory?(env[PATH_INFO]))
+      if (original_path[-1] == '/')
+        original_path << 'index.html'.freeze
         env[PATH_INFO] << 'index.html'.freeze
       else
+        original_path << '/index.html'.freeze
         env[PATH_INFO] << '/index.html'.freeze
       end
     end
-    env[PATH_INFO] << ".html" if(File.extname(env[PATH_INFO]) == "".freeze)
+    if(File.extname(original_path) == "".freeze)
+      original_path << ".html"
+      env[PATH_INFO] << ".html"
+    end
     data = render(env[PATH_INFO]) if(@bakers.include?(File.extname(env[PATH_INFO])))
-    # use iodine's X-Sendfile support
-    [200, {X_SENDFILE => "#{STATIC_ROOT}#{env[PATH_INFO]}"}, [data]]
+    # use iodine's X-Sendfile support to send file from disk
+    puts "SENDFILE: #{STATIC_ROOT}#{original_path}"
+    [200, {X_SENDFILE => "#{STATIC_ROOT}#{original_path}"}, [data]]
   end
 
 end
 
   # Render a template / resource
-  def self.render path
-    name = File.join(SOURCE_ROOT, path).to_s
-    base = name[0..(-1-(File.extname(path).length))]
+  def self.render name
+    base = name[0..(-1-(File.extname(name).length))]
     data = nil
     @extensions.keys.each { |k| data = try_name(name, k) || try_name(base, k); break if data }
-    save2static path, data if data
+    save2static name, data if data
   end
 
   # Attempt rendering for a specific extension
@@ -206,7 +215,7 @@ end
   # Save a (rendered) result
   def self.save2static path, data
     return unless data
-    path = "#{STATIC_ROOT}#{path}"
+    path = "#{STATIC_ROOT}/#{path.gsub /^#{SOURCE_ROOT}\//, ''}"
     FileUtils.mkpath File.dirname(path)
     IO.binwrite path, data
     data
@@ -223,15 +232,20 @@ end
   end
 
   # Common SASS options
-  SASS_OPTIONS = { cache_store: Sass::CacheStores::Memory.new, style: (ENV['SASS_STYLE'] || ((ENV['ENV'] || ENV['RACK_ENV']) == 'production' ? :compressed : :nested)) }.dup
+  SASS_OPTIONS = {load_paths: [SOURCE_ROOT], source_map_file: nil, filename: nil, style: (ENV['SASS_STYLE'] || ((ENV['ENV'] || ENV['RACK_ENV']) == 'production' ? :compressed : :nested)) }.dup
 
   # SASS rendering
   @extensions['.scss'] = @extensions['.sass'] = proc do |name|
-    eng = Sass::Engine.for_file(name, SASS_OPTIONS)
-    map_name = name.gsub /s[ac]ss$/, 'map'
-    map_name.gsub! /^#{SOURCE_ROOT}/, ''
-    css, map = eng.render_with_sourcemap(File.basename(map_name))
-    save2static map_name, map.to_json(css_uri: File.basename(name))
+    opt = SASS_OPTIONS.dup
+    opt[:filename] = name.gsub /^#{SOURCE_ROOT}\//, ''
+    opt[:load_paths] = opt[:load_paths].dup
+    opt[:load_paths] << File.dirname(name)
+    opt[:source_map_file] = opt[:filename].gsub(/s[ac]ss$/, 'map')
+    # opt[:source_map_file] = map_name.gsub /^#{SOURCE_ROOT}/, ''
+    eng = SassC::Engine.new(IO.binread(name), opt)
+    css = eng.render()
+    map = eng.source_map()
+    save2static name.gsub(/s[ac]ss$/, 'map'), map
     css
   end
 
@@ -267,7 +281,7 @@ end
   MD_RENDERER = ::Redcarpet::Markdown.new RedcarpetWithRouge.new(MD_EXTENSIONS.dup), MD_EXTENSIONS.dup
   MD_RENDERER_TOC = Redcarpet::Markdown.new Redcarpet::Render::HTML_TOC.new(MD_EXTENSIONS.dup), MD_EXTENSIONS.dup
   YAML_FRONT_MATTER_REGEXP = /\A(---\s*\n.*?\n?)^((---|\.\.\.)\s*$\n?)/m.freeze
-  SAFE_TYPES = [Symbol, Date, Time, Encoding, Struct, Regexp, Range, Set].freeze
+  SAFE_TYPES = [Symbol, ::Date, ::Time, ::DateTime, Encoding, Struct, Regexp, Range, Set].freeze
 
   @extensions['.md'] = proc do |name|
     # read file
