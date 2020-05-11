@@ -16,10 +16,10 @@ Than run:
 #include "fio.h"
 
 /* add the fio_str_s helpers */
-#define FIO_STRING_NAME fio_str
+#define FIO_STR_NAME fio_str
 #include "fio-stl.h"
 
-#define MAX_BYTES_RAPEL_PER_CYCLE 256
+#define MAX_BYTES_RAPEL_PER_CYCLE 2048
 #define MAX_BYTES_READ_PER_CYCLE 4096
 
 /* *****************************************************************************
@@ -43,18 +43,15 @@ static void repl_on_close(intptr_t uuid, fio_protocol_s *protocol) {
   (void)protocol; /* we ignore the protocol object, we don't use it */
 }
 
-static void repl_ping_never(intptr_t uuid, fio_protocol_s *protocol) {
-  fio_touch(uuid);
-  (void)protocol; /* we ignore the protocol object, we don't use it */
-}
-
 static fio_protocol_s repel_protocol = {
     .on_data = repl_on_data,
     .on_close = repl_on_close,
-    .ping = repl_ping_never,
+    .ping = FIO_PING_ETERNAL,
 };
 
 static void repl_attach(void) {
+  /* wait for new lines in REPL? uncomment to avoid waiting. */
+  // system("stty raw");
   /* Attach REPL */
   fio_set_non_block(fileno(stdin));
   fio_attach_fd(fileno(stdin), &repel_protocol);
@@ -91,9 +88,9 @@ static uint8_t on_shutdown(intptr_t uuid, fio_protocol_s *protocol) {
 /** Called when the connection was closed, but will not run concurrently */
 static void on_close(intptr_t uuid, fio_protocol_s *protocol) {
   FIO_LOG_INFO("Remote connection lost.\n");
-  kill(0, SIGINT); /* signal facil.io to stop */
-  (void)protocol;  /* we ignore the protocol object, we don't use it */
-  (void)uuid;      /* we ignore the uuid object, we don't use it */
+  fio_stop();     /* signal facil.io to stop */
+  (void)protocol; /* we ignore the protocol object, we don't use it */
+  (void)uuid;     /* we ignore the uuid object, we don't use it */
 }
 
 /** Timeout handling. To ignore timeouts, we constantly "touch" the socket */
@@ -116,6 +113,7 @@ static fio_protocol_s client_protocol = {
 /* Forward REPL messages to the socket - pub/sub callback */
 static void on_repl_message(fio_msg_s *msg) {
   fio_write(msg->uuid, msg->msg.buf, msg->msg.len);
+  fprintf(stderr, "SENT %d bytes\n", (int)msg->msg.len);
 }
 
 static void on_connect(intptr_t uuid, void *udata) {
@@ -126,7 +124,8 @@ static void on_connect(intptr_t uuid, void *udata) {
 
   /* subscribe to REPL, linking the subscription with the connection's UUID  */
   fio_subscribe(.channel = {.buf = "repl", .len = 4},
-                .on_message = on_repl_message, .uuid = uuid);
+                .on_message = on_repl_message,
+                .uuid = uuid);
 
   /* start REPL */
   // void *repl = fio_thread_new(repl_thread, (void *)uuid);
@@ -136,9 +135,9 @@ static void on_connect(intptr_t uuid, void *udata) {
 
 static void on_fail(intptr_t uuid, void *udata) {
   FIO_LOG_ERROR("Connection failed\n");
-  kill(0, SIGINT); /* signal facil.io to stop */
-  (void)uuid;      /* we ignore the uuid object, we don't use it */
-  (void)udata;     /* we ignore the udata object, we don't use it */
+  fio_stop();  /* signal facil.io to stop */
+  (void)uuid;  /* we ignore the uuid object, we don't use it */
+  (void)udata; /* we ignore the udata object, we don't use it */
 }
 
 /* *****************************************************************************
@@ -147,11 +146,15 @@ Main
 
 int main(int argc, char const *argv[]) {
   /* Setup CLI arguments */
-  fio_cli_start(argc, argv, 1, 2, "use:\n\tclient <args> hostname port\n",
+  fio_cli_start(argc,
+                argv,
+                1,
+                2,
+                "use:\n\tclient <args> hostname port\n",
                 FIO_CLI_BOOL("-tls use TLS to establish a secure connection."),
                 FIO_CLI_STRING("-tls-alpn set the ALPN extension for TLS."),
                 FIO_CLI_STRING("-trust comma separated list of PEM "
-                               "certification files for TLS verification."),
+                               "files for TLS verification."),
                 FIO_CLI_INT("-v -verbousity sets the verbosity level 0..5 (5 "
                             "== debug, 0 == quite)."));
 
@@ -170,7 +173,7 @@ int main(int argc, char const *argv[]) {
       const char *end = memchr(trust, ',', len);
       while (end) {
         /* copy partial string to attach NUL char at end of file name */
-        fio_str_s tmp = FIO_STRING_INIT;
+        fio_str_s tmp = FIO_STR_INIT;
         fio_str_info_s t = fio_str_write(&tmp, trust, end - trust);
         fio_tls_trust(tls, t.buf);
         fio_str_free(&tmp);
@@ -195,12 +198,15 @@ int main(int argc, char const *argv[]) {
                  fio_cli_unnamed(0));
   } else {
     FIO_LOG_INFO("Attempting to connect to TCP/IP socket at: %s:%s\n",
-                 fio_cli_unnamed(0), fio_cli_unnamed(1));
+                 fio_cli_unnamed(0),
+                 fio_cli_unnamed(1));
   }
 
-  intptr_t uuid =
-      fio_connect(.address = fio_cli_unnamed(0), .port = fio_cli_unnamed(1),
-                  .on_connect = on_connect, .on_fail = on_fail, .udata = tls);
+  intptr_t uuid = fio_connect(.address = fio_cli_unnamed(0),
+                              .port = fio_cli_unnamed(1),
+                              .on_connect = on_connect,
+                              .on_fail = on_fail,
+                              .udata = tls);
   if (uuid == -1 && fio_cli_get_bool("-v"))
     FIO_LOG_ERROR("Connection can't be established");
   else
