@@ -764,6 +764,12 @@ test/http1_parser: | create_tree
 	@$(CCL) -o $(BIN) $(TMP_ROOT)/http1_parser.o $(LINKER_FLAGS) $(OPTIMIZATION)
 	@$(BIN)
 
+.PHONY : test/hpack
+test/hpack: | create_tree
+	@$(CC) -c ./tests/hpack.c -o $(TMP_ROOT)/hpack.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@$(CCL) -o $(BIN) $(TMP_ROOT)/hpack.o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@$(BIN)
+
 endif
 
 #############################################################################
