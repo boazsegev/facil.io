@@ -80,14 +80,8 @@ static int http1_push_data(http_internal_s *h, void *, uintptr_t, FIOBJ);
 static int http1_http2websocket(http_internal_s *h, websocket_settings_s *arg);
 /** Push for files. */
 static int http1_push_file(http_internal_s *h, FIOBJ filename, FIOBJ mime_type);
-/** Pauses the request / response handling. */
-static void http1_on_pause(http_internal_s *, http_fio_protocol_s *);
-
-/** Resumes a request / response handling. */
-static void http1_on_resume(http_internal_s *, http_fio_protocol_s *);
 /** hijacks the socket aaway from the protocol. */
 static intptr_t http1_hijack(http_internal_s *h, fio_str_info_s *leftover);
-
 /** Upgrades an HTTP connection to an EventSource (SSE) connection. */
 static int http1_upgrade2sse(http_internal_s *h, http_sse_settings_s *sse);
 /** Writes data to an EventSource (SSE) connection. MUST free the FIOBJ. */
@@ -114,11 +108,6 @@ static struct http_vtable_s HTTP1_VTABLE = {
     .http2websocket = http1_http2websocket,
     /** Push for files. */
     .push_file = http1_push_file,
-    /** Pauses the request / response handling. */
-    .on_pause = http1_on_pause,
-
-    /** Resumes a request / response handling. */
-    .on_resume = http1_on_resume,
     /** hijacks the socket aaway from the protocol. */
     .hijack = http1_hijack,
 
@@ -162,7 +151,7 @@ fio_protocol_s *http1_new(uintptr_t uuid,
 /** Destroys the HTTP1 protocol object. */
 void http1_destroy(fio_protocol_s *pr) {
   http1pr_s *p = (http1pr_s *)pr;
-  http1proto2handle(p).public.status = 0;
+  HTTP2PUBLIC2(http1proto2handle(p)).status = 0;
   http_h_destroy(&http1proto2handle(p), 0);
   fio_free(p);
   // FIO_LOG_DEBUG("Deallocated HTTP/1.1 protocol at. %p", (void *)p);
@@ -207,14 +196,14 @@ void http1_set_connection_headers(http_internal_s *h) {
       goto mark_to_close;
     return;
   }
-  tmp = fiobj_hash_get2(h->public.headers, HTTP_HEADER_CONNECTION);
+  tmp = fiobj_hash_get2(HTTP2PUBLIC(h).headers, HTTP_HEADER_CONNECTION);
   if (tmp && FIOBJ_TYPE_IS(tmp, FIOBJ_T_STRING)) {
     fio_str_info_s t = fiobj_str2cstr(tmp);
     if (t.buf[0] == 'c' || t.buf[0] == 'C')
       goto add_close_header;
-  } else if (h->public.version &&
-             FIOBJ_TYPE_IS(h->public.version, FIOBJ_T_STRING)) {
-    fio_str_info_s t = fiobj_str2cstr(h->public.version);
+  } else if (HTTP2PUBLIC(h).version &&
+             FIOBJ_TYPE_IS(HTTP2PUBLIC(h).version, FIOBJ_T_STRING)) {
+    fio_str_info_s t = fiobj_str2cstr(HTTP2PUBLIC(h).version);
     if (t.len < 8 || t.buf[7] == '0')
       goto add_close_header;
   }
@@ -264,24 +253,24 @@ FIOBJ http1_format_headers(http_internal_s *h) {
   http1_set_connection_headers(h);
   if (!internal2http1(h)->is_client) {
     /* server mode - response */
-    fio_str_info_s status_str = http_status2str(h->public.status);
-    fiobj_str_join(w.dest, h->public.version);
+    fio_str_info_s status_str = http_status2str(HTTP2PUBLIC(h).status);
+    fiobj_str_join(w.dest, HTTP2PUBLIC(h).version);
     fiobj_str_write(w.dest, " ", 1);
-    fiobj_str_write_i(w.dest, h->public.status);
+    fiobj_str_write_i(w.dest, HTTP2PUBLIC(h).status);
     fiobj_str_write(w.dest, " ", 1);
     fiobj_str_write(w.dest, status_str.buf, status_str.len);
     fiobj_str_write(w.dest, "\r\n", 2);
   } else {
     /* client mode - request */
-    fiobj_str_join(w.dest, h->public.method);
+    fiobj_str_join(w.dest, HTTP2PUBLIC(h).method);
     fiobj_str_write(w.dest, " ", 1);
-    fiobj_str_join(w.dest, h->public.path);
-    if (h->public.query) {
+    fiobj_str_join(w.dest, HTTP2PUBLIC(h).path);
+    if (HTTP2PUBLIC(h).query) {
       fiobj_str_write(w.dest, "?", 1);
-      fiobj_str_join(w.dest, h->public.query);
+      fiobj_str_join(w.dest, HTTP2PUBLIC(h).query);
     }
     {
-      fio_str_info_s t = fiobj2cstr(h->public.version);
+      fio_str_info_s t = fiobj2cstr(HTTP2PUBLIC(h).version);
       if (t.len < 6 || t.buf[5] != '1')
         fiobj_str_write(w.dest, " HTTP/1.1\r\n", 10);
       else {
@@ -581,13 +570,13 @@ static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
 
   if (p->buf_len == HTTP1_READ_BUFFER) {
     /* no room to read... parser not consuming data */
-    if (p->request.public.method)
-      http_send_error(&p->request.public, 413);
+    if (HTTP2PUBLIC2(p->request).method)
+      http_send_error(&HTTP2PUBLIC2(p->request), 413);
     else {
       FIOBJ_STR_TEMP_VAR(tmp_method);
       fiobj_str_write(tmp_method, "GET", 3);
-      p->request.public.method = tmp_method;
-      http_send_error(&p->request.public, 413);
+      HTTP2PUBLIC2(p->request).method = tmp_method;
+      http_send_error(&HTTP2PUBLIC2(p->request), 413);
     }
   }
 
@@ -691,10 +680,10 @@ HTTP/1.1 Parser Callbacks
 /** called when a request was received. */
 static int http1_on_request(http1_parser_s *parser) {
   http1pr_s *p = parser2http(parser);
-  http_on_request_handler______internal(&http1proto2handle(p).public,
+  http_on_request_handler______internal(&HTTP2PUBLIC2(http1proto2handle(p)),
                                         p->p.settings);
-  if (p->request.public.method && !p->stop)
-    http_finish(&p->request.public);
+  if (HTTP2PUBLIC2(p->request).method && !p->stop)
+    http_finish(&HTTP2PUBLIC2(p->request));
   h1_reset(p);
   return fio_is_closed(p->p.uuid);
 }
@@ -702,17 +691,17 @@ static int http1_on_request(http1_parser_s *parser) {
 /** called when a response was received. */
 static int http1_on_response(http1_parser_s *parser) {
   http1pr_s *p = parser2http(parser);
-  http_on_response_handler______internal(&http1proto2handle(p).public,
+  http_on_response_handler______internal(&HTTP2PUBLIC2(http1proto2handle(p)),
                                          p->p.settings);
-  if (p->request.public.status_str && !p->stop)
-    http_finish(&p->request.public);
+  if (HTTP2PUBLIC2(p->request).status_str && !p->stop)
+    http_finish(&HTTP2PUBLIC2(p->request));
   h1_reset(p);
   return fio_is_closed(p->p.uuid);
 }
 
 /** called when a request method is parsed. */
 static int http1_on_method(http1_parser_s *parser, char *method, size_t len) {
-  http1proto2handle(parser2http(parser)).public.method =
+  HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).method =
       fiobj_str_new_cstr(method, len);
   parser2http(parser)->header_size += len;
   return 0;
@@ -724,16 +713,16 @@ static int http1_on_status(http1_parser_s *parser,
                            size_t status,
                            char *status_str,
                            size_t len) {
-  http1proto2handle(parser2http(parser)).public.status_str =
+  HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).status_str =
       fiobj_str_new_cstr(status_str, len);
-  http1proto2handle(parser2http(parser)).public.status = status;
+  HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).status = status;
   parser2http(parser)->header_size += len;
   return 0;
 }
 
 /** called when a request path (excluding query) is parsed. */
 static int http1_on_path(http1_parser_s *parser, char *path, size_t len) {
-  http1proto2handle(parser2http(parser)).public.path =
+  HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).path =
       fiobj_str_new_cstr(path, len);
   parser2http(parser)->header_size += len;
   return 0;
@@ -741,7 +730,7 @@ static int http1_on_path(http1_parser_s *parser, char *path, size_t len) {
 
 /** called when a request path (excluding query) is parsed. */
 static int http1_on_query(http1_parser_s *parser, char *query, size_t len) {
-  http1proto2handle(parser2http(parser)).public.query =
+  HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).query =
       fiobj_str_new_cstr(query, len);
   parser2http(parser)->header_size += len;
   return 0;
@@ -751,17 +740,20 @@ static int http1_on_query(http1_parser_s *parser, char *query, size_t len) {
 static int http1_on_version(http1_parser_s *parser, char *version, size_t len) {
 /* start counting - occurs on the first line of both requests and responses */
 #if FIO_HTTP_EXACT_LOGGING
-  clock_gettime(CLOCK_REALTIME,
-                &http1proto2handle(parser2http(parser)).public.received_at);
+  clock_gettime(
+      CLOCK_REALTIME,
+      &HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).received_at);
 #else
-  http1proto2handle(parser2http(parser)).public.received_at = fio_last_tick();
+  HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).received_at =
+      fio_last_tick();
 #endif
   /* initialize headers hash as well as version string */
-  http1proto2handle(parser2http(parser)).public.version =
+  HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).version =
       fiobj_str_new_cstr(version, len);
   parser2http(parser)->header_size += len;
-  fiobj_free(http1proto2handle(parser2http(parser)).public.headers);
-  http1proto2handle(parser2http(parser)).public.headers = fiobj_hash_new();
+  fiobj_free(HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).headers);
+  HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).headers =
+      fiobj_hash_new();
   return 0;
 }
 
@@ -773,8 +765,9 @@ static int http1_on_header(http1_parser_s *parser,
                            size_t data_len) {
   FIOBJ sym = FIOBJ_INVALID;
   FIOBJ obj = FIOBJ_INVALID;
-  if (!FIOBJ_TYPE_IS(http1proto2handle(parser2http(parser)).public.headers,
-                     FIOBJ_T_HASH)) {
+  if (!FIOBJ_TYPE_IS(
+          HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).headers,
+          FIOBJ_T_HASH)) {
     FIO_LOG_ERROR("(http1 parse ordering error) missing HashMap for header "
                   "%s: %s",
                   name,
@@ -786,18 +779,19 @@ static int http1_on_header(http1_parser_s *parser,
   parser2http(parser)->header_size += name_len + data_len;
   if (parser2http(parser)->header_size >=
           parser2http(parser)->max_header_size ||
-      fiobj_hash_count(http1proto2handle(parser2http(parser)).public.headers) >
+      fiobj_hash_count(
+          HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).headers) >
           HTTP_MAX_HEADER_COUNT) {
     if (parser2http(parser)->log) {
       FIO_LOG_WARNING("(HTTP) security alert - header flood detected.");
     }
-    http_send_error(&http1proto2handle(parser2http(parser)).public, 413);
+    http_send_error(&HTTP2PUBLIC2(http1proto2handle(parser2http(parser))), 413);
     return -1;
   }
   sym = fiobj_str_new_cstr(name, name_len);
   obj = fiobj_str_new_cstr(data, data_len);
   set_header_add(
-      http1proto2handle(parser2http(parser)).public.headers, sym, obj);
+      HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).headers, sym, obj);
   fiobj_free(sym);
   return 0;
 }
@@ -810,20 +804,22 @@ http1_on_body_chunk(http1_parser_s *parser, char *data, size_t data_len) {
       if (parser->state.content_length >
           (ssize_t)parser2http(parser)->p.settings->max_body_size)
         goto too_big;
-      http1proto2handle(parser2http(parser)).public.body =
+      HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).body =
           fiobj_io_new2(parser->state.content_length);
     } else {
-      http1proto2handle(parser2http(parser)).public.body = fiobj_io_new();
+      HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).body =
+          fiobj_io_new();
     }
   } else if (parser->state.read >
              (ssize_t)parser2http(parser)->p.settings->max_body_size)
     goto too_big; /* tested in case combined chuncked data is too long */
-  fiobj_io_write(
-      http1proto2handle(parser2http(parser)).public.body, data, data_len);
+  fiobj_io_write(HTTP2PUBLIC2(http1proto2handle(parser2http(parser))).body,
+                 data,
+                 data_len);
   return 0;
 
 too_big:
-  http_send_error(&http1proto2handle(parser2http(parser)).public, 413);
+  http_send_error(&HTTP2PUBLIC2(http1proto2handle(parser2http(parser))), 413);
   return -1;
 }
 

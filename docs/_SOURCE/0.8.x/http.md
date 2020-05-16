@@ -45,7 +45,7 @@ In addition to the `port` and `address` argument (explained in [`fio_listen`](fi
         // callback example:
         void on_request(http_s *request);
 
-* `on_request`:
+* `on_upgrade`:
 
     Callback for Upgrade and EventSource (SSE) requests.
 
@@ -53,13 +53,6 @@ In addition to the `port` and `address` argument (explained in [`fio_listen`](fi
 
         // callback example:
         void on_upgrade(http_s *request, char *requested_protocol, size_t len);
-
-* `on_request`:
-
-    This callback is ignored for HTTP server mode and is only called when a response (not a request) is received. On server connections, this would normally indicate a protocol error.
-
-        // callback example:
-        void on_response(http_s *response);
 
 * `on_finish`:
 
@@ -174,43 +167,7 @@ In addition to the `port` and `address` argument (explained in [`fio_listen`](fi
 
 Returns -1 on error and the socket's `uuid` on success.
 
-The `on_finish` callback is always called (even on errors).
- 
-
-## Connecting to HTTP as a Client
-
-#### `http_connect`
-
-```c
-intptr_t http_connect(const char *address, struct http_settings_s);
-#define http_connect(address, ...)                                             \
-  http_connect((address), (struct http_settings_s){__VA_ARGS__})
-```
-
-Connects to an HTTP server as a client.
-
-This function accepts the same arguments as the [`http_listen`](#http_listen) function (though some of hem will not be relevant for a client connection).
-
-Upon a successful connection, the `on_response` callback is called with an empty `http_s*` handler (status == 0).
-
-Use the HTTP Handler API to set it's content and send the request to the server. The second time the `on_response` function is called, the `http_s` handle will contain the actual response.
- 
-The `address` argument should contain a full URL style address for the server. i.e.:
- 
-          "http:/www.example.com:8080/"
-
-If an `address` includes a path or query data, they will be automatically attached (both of them) to the HTTP handle's `path` property. i.e.
- 
-         "http:/www.example.com:8080/my_path?foo=bar"
-         // will result in:
-         fiobj_obj2cstr(h->path).data; //=> "/my_path?foo=bar"
- 
-To open a WebSocket connection, it's possible to use the `ws` protocol signature. However, it would be better to use the [`websocket_connect`](#websocket_connect) function instead.
-
-Returns -1 on error and the socket's uuid on success.
-
-The `on_finish` callback is always called.
- 
+The `on_finish` callback is always called (even on errors). 
 
 ## The HTTP Data Handle (Request / Response)
 
@@ -572,6 +529,8 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
 
 Sends the response headers and the specified file (the response's body).
 
+The function uses the filename in order to detect and set the correct Mime-Type automatically.
+
 The `local` and `encoded` strings will be joined into a single string that represent the file name. Either or both of these strings can be empty.
 
 The `encoded` string will be URL decoded while the `local` string will used as is.
@@ -888,16 +847,39 @@ Similar to an `http_s` handle, it is only valid within the scope of the specific
 #### `websocket_connect`
 
 ```c
-int websocket_connect(const char *url, websocket_settings_s settings);
-#define websocket_connect(url, ...)                                        \
-  websocket_connect((address), (websocket_settings_s){__VA_ARGS__})
+int websocket_connect(const char *url,
+                      const fio_str_info_s *headers,
+                      websocket_settings_s settings);
+#define websocket_connect(url, headers, ...)                                        \
+  websocket_connect((url), (headers), (websocket_settings_s){__VA_ARGS__})
+
+#define WEBSOCKET_HEADER_LIST(...)                                             
+#define WEBSOCKET_HEADER(name, value)                                         
+#define WEBSOCKET_HEADER2(name, name_len, value, value_len)                    
+#define WEBSOCKET_HEADER_FIO(name, value) 
+#define WEBSOCKET_HEADER_FIOBJ(name, value)
 ```
 
-Connects to a WebSocket service according to the provided address.
+Connects to a WebSocket service according to the provided address. i.e.
 
-This is a somewhat naive connector object, it doesn't perform any authentication or other logical handling. However, it's quire easy to author a complext authentication logic using a combination of `http_connect` and `http_upgrade2ws`.
+```c
+FIOBJ header_name = fiobj_str_new_cstr("X-Foo", 6);
+FIOBJ header_value = fiobj_num_new(42);
 
-In addition to the `url` address, this function accepts the same named arguments as [`http_upgrade2ws`](#http_upgrade2ws).
+intptr_t uuid = websocket_connect("wss://websockets.com",
+                                  WEBSOCKET_HEADER_LIST(
+                                    WEBSOCKET_HEADER("set-cookie", "cookie1=value1"),
+                                    WEBSOCKET_HEADER2("set-cookie", 10, "cookie2=value2", 14),
+                                    WEBSOCKET_HEADER_FIOBJ(header_name, header_value)
+                                    ),
+                                  .on_open = my_on_open,
+                                  .on_message = my_on_message,
+                                  );
+```
+
+This is a somewhat naive connector object, it doesn't perform any authentication or other logical handling.
+
+In addition to the `url` address and the header list, this function accepts the same named arguments as [`http_upgrade2ws`](#http_upgrade2ws).
 
 Returns the `uuid` for the future WebSocket on success.
 

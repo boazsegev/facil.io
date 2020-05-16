@@ -39,7 +39,7 @@ static inline void add_content_type(http_internal_s *h) {
     fiobj_hash_set(h->headers_out,
                    hash,
                    HTTP_HEADER_CONTENT_TYPE,
-                   http_mimetype_find2(h->public.path),
+                   http_mimetype_find2(HTTP2PUBLIC(h).path),
                    NULL);
   }
 }
@@ -842,130 +842,6 @@ path_error:
  */
 
 /* *****************************************************************************
-HTTP evented API (pause / resume HTTp handling)
-***************************************************************************** */
-struct http_pause_handle_s {
-  uintptr_t uuid;
-  http_internal_s *h;
-  http_fio_protocol_s *pr;
-  void *udata;
-  void (*task)(http_s *);
-  void (*fallback)(void *);
-};
-// typedef struct http_pause_handle_s http_pause_handle_s; // placed in http.h
-
-/* perform the pause task outside of the connection's lock */
-static void http_pause_wrapper(void *h_, void *task_) {
-  void (*task)(void *h) = (void (*)(void *h))((uintptr_t)task_);
-  task(h_);
-}
-
-/* perform the resume task fallback */
-static void http_resume_fallback_wrapper(intptr_t uuid, void *arg) {
-  http_pause_handle_s *http = arg;
-  if (http->fallback)
-    http->fallback(http->udata);
-  fio_free(http);
-  (void)uuid;
-}
-
-/* perform the resume task within of the connection's lock */
-static void http_resume_wrapper(intptr_t uuid, fio_protocol_s *p_, void *arg) {
-  http_fio_protocol_s *p = (http_fio_protocol_s *)p_;
-  http_pause_handle_s *http = arg;
-  if (p != http->pr)
-    goto protocol_invalid;
-  http_internal_s *h = http->h;
-  h->public.udata = http->udata;
-  http_vtable_s *vtbl = h->vtbl;
-  if (http->task)
-    http->task(HTTP2PUBLIC(h));
-  vtbl->on_resume(h, p);
-  fio_free(http);
-  (void)uuid;
-  return;
-protocol_invalid:
-  http_resume_fallback_wrapper(uuid, arg);
-  return;
-}
-
-/**
- * Pauses the request / response handling and INVALIDATES the current `http_s`
- * handle (no `http` functions should be called).
- *
- * The `http_resume` function MUST be called (at some point) using the opaque
- * `http` pointer given to the callback `task`.
- *
- * The opaque `http` pointer is only valid for a single call to `http_resume`
- * and can't be used by any other `http` function (it's a different data type)
- * except the `http_paused_udata_get` and `http_paused_udata_set` functions.
- *
- * Note: the current `http_s` handle will become invalid once this function is
- *    called and it's data might be deallocated, invalidated or used by a
- * different thread.
- */
-void http_pause(http_s *h_, void (*task)(http_pause_handle_s *http)) {
-  http_internal_s *h = HTTP2PRIVATE(h_);
-  if (HTTP_S_INVALID(h_))
-    return;
-
-  http_fio_protocol_s *p = h->pr;
-  http_pause_handle_s *http = fio_malloc(sizeof(*http));
-  *http = (http_pause_handle_s){
-      .pr = h->pr,
-      .uuid = p->uuid,
-      .h = h,
-      .udata = h->public.udata,
-  };
-  h->vtbl->on_pause(h, p);
-  fio_defer(http_pause_wrapper, http, (void *)((uintptr_t)task));
-}
-
-/**
- * Resumes a request / response handling within a task and INVALIDATES the
- * current `http_s` handle.
- *
- * The `task` MUST call one of the `http_send_*`, `http_finish`, or
- * `http_pause`functions.
- *
- * The (optional) `fallback` will receive the opaque `udata` that was stored in
- * the HTTP handle and can be used for cleanup.
- *
- * Note: `http_resume` can only be called after calling `http_pause` and
- * entering it's task.
- *
- * Note: the current `http_s` handle will become invalid once this function is
- *    called and it's data might be deallocated, invalidated or used by a
- *    different thread.
- */
-void http_resume(http_pause_handle_s *http,
-                 void (*task)(http_s *h),
-                 void (*fallback)(void *udata)) {
-  if (!http)
-    return;
-  http->task = task;
-  http->fallback = fallback;
-  fio_defer_io_task(http->uuid,
-                    .udata = http,
-                    .type = FIO_PR_LOCK_TASK,
-                    .task = http_resume_wrapper,
-                    .fallback = http_resume_fallback_wrapper);
-}
-
-/** Returns the `udata` associated with the paused opaque handle */
-void *http_paused_udata_get(http_pause_handle_s *http) { return http->udata; }
-
-/**
- * Sets the `udata` associated with the paused opaque handle, returning the
- * old value.
- */
-void *http_paused_udata_set(http_pause_handle_s *http, void *udata) {
-  void *old = http->udata;
-  http->udata = udata;
-  return old;
-}
-
-/* *****************************************************************************
 HTTP Settings Management
 ***************************************************************************** */
 
@@ -1309,13 +1185,13 @@ intptr_t http_connect FIO_NOOP(const char *url,
   http_internal_s *h = fio_malloc(sizeof(*h));
   FIO_ASSERT(h, "HTTP Client handler allocation failed");
   *h = (http_internal_s)HTTP_H_INIT(http1_vtable(), NULL);
-  h->public.udata = arg_settings.udata;
-  h->public.status = 0;
-  h->public.path = path;
-  settings->udata = &h->public;
+  HTTP2PUBLIC(h).udata = arg_settings.udata;
+  HTTP2PUBLIC(h).status = 0;
+  HTTP2PUBLIC(h).path = path;
+  settings->udata = &HTTP2PUBLIC(h);
   settings->tls = arg_settings.tls;
   if (host)
-    http_set_header2(&h->public,
+    http_set_header2(&HTTP2PUBLIC(h),
                      (fio_str_info_s){.buf = (char *)"host", .len = 4},
                      (fio_str_info_s){.buf = host, .len = h_len});
   intptr_t ret;
@@ -2370,17 +2246,17 @@ FIOBJ http2str(http_s *h_) {
 
   struct header_writer_s w;
   w.dest = fiobj_str_new();
-  if (h->public.status_str == FIOBJ_INVALID) {
+  if (HTTP2PUBLIC(h).status_str == FIOBJ_INVALID) {
     /* request */
-    fiobj_str_join(w.dest, h->public.method);
+    fiobj_str_join(w.dest, HTTP2PUBLIC(h).method);
     fiobj_str_write(w.dest, " ", 1);
-    fiobj_str_join(w.dest, h->public.path);
-    if (h->public.query) {
+    fiobj_str_join(w.dest, HTTP2PUBLIC(h).path);
+    if (HTTP2PUBLIC(h).query) {
       fiobj_str_write(w.dest, "?", 1);
-      fiobj_str_join(w.dest, h->public.query);
+      fiobj_str_join(w.dest, HTTP2PUBLIC(h).query);
     }
     {
-      fio_str_info_s t = fiobj2cstr(h->public.version);
+      fio_str_info_s t = fiobj2cstr(HTTP2PUBLIC(h).version);
       if (t.len < 6 || t.buf[5] != '1')
         fiobj_str_write(w.dest, " HTTP/1.1\r\n", 10);
       else {
@@ -2391,18 +2267,18 @@ FIOBJ http2str(http_s *h_) {
     }
   } else {
     /* response */
-    fiobj_str_join(w.dest, h->public.version);
+    fiobj_str_join(w.dest, HTTP2PUBLIC(h).version);
     fiobj_str_write(w.dest, " ", 1);
-    fiobj_str_write_i(w.dest, h->public.status);
+    fiobj_str_write_i(w.dest, HTTP2PUBLIC(h).status);
     fiobj_str_write(w.dest, " ", 1);
-    fiobj_str_join(w.dest, h->public.status_str);
+    fiobj_str_join(w.dest, HTTP2PUBLIC(h).status_str);
     fiobj_str_write(w.dest, "\r\n", 2);
   }
 
-  fiobj_each1(h->public.headers, 0, http___write_header, &w);
+  fiobj_each1(HTTP2PUBLIC(h).headers, 0, http___write_header, &w);
   fiobj_str_write(w.dest, "\r\n", 2);
-  if (h->public.body) {
-    fio_str_info_s t = fiobj2cstr(h->public.body);
+  if (HTTP2PUBLIC(h).body) {
+    fio_str_info_s t = fiobj2cstr(HTTP2PUBLIC(h).body);
     fiobj_str_write(w.dest, t.buf, t.len);
   }
   return w.dest;
@@ -2416,14 +2292,13 @@ FIOBJ http2str(http_s *h_) {
 void http_write_log(http_s *h_) {
   if (HTTP_S_INVALID(h_))
     return;
-  char mem___[FIO_HTTP_LOG_LINE_TRUNCATION + 1];
+  char mem___[FIO_LOG_LENGTH_LIMIT + 1];
   http_internal_s *h = HTTP2PRIVATE(h_);
-  fio_str_info_s i = {
-      .buf = mem___, .len = 0, .capa = FIO_HTTP_LOG_LINE_TRUNCATION};
+  fio_str_info_s i = {.buf = mem___, .len = 0, .capa = FIO_LOG_LENGTH_LIMIT};
 
   struct timespec start, end;
   clock_gettime(CLOCK_REALTIME, &end);
-  start = h->public.received_at;
+  start = HTTP2PUBLIC(h).received_at;
 
 #define HTTP___WRITE_FIOBJ2LOG(o)                                              \
   do {                                                                         \
@@ -2459,14 +2334,14 @@ void http_write_log(http_s *h_) {
     // fiobj_free(date);
   }
   HTTP___WRITE_STATIC2LOG("] \"", 3);
-  HTTP___WRITE_FIOBJ2LOG(h->public.method);
+  HTTP___WRITE_FIOBJ2LOG(HTTP2PUBLIC(h).method);
   HTTP___WRITE_STATIC2LOG(" ", 1);
-  HTTP___WRITE_FIOBJ2LOG(h->public.path);
+  HTTP___WRITE_FIOBJ2LOG(HTTP2PUBLIC(h).path);
   HTTP___WRITE_STATIC2LOG(" ", 1);
-  HTTP___WRITE_FIOBJ2LOG(h->public.version);
+  HTTP___WRITE_FIOBJ2LOG(HTTP2PUBLIC(h).version);
   HTTP___WRITE_STATIC2LOG("\" ", 2);
-  if (h->public.status < 1000 && i.len + 3 < i.capa) {
-    i.len += fio_ltoa(i.buf + i.len, h->public.status, 10);
+  if (HTTP2PUBLIC(h).status < 1000 && i.len + 3 < i.capa) {
+    i.len += fio_ltoa(i.buf + i.len, HTTP2PUBLIC(h).status, 10);
   }
   if (h->bytes_sent > 0) {
     HTTP___WRITE_STATIC2LOG(" ", 1);

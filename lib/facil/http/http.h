@@ -42,11 +42,6 @@ Compile Time Settings
 #define HTTP_MAX_HEADER_LENGTH 8192
 #endif
 
-#ifndef FIO_HTTP_LOG_LINE_TRUNCATION
-/** the default maximum length for a single log line in bytes */
-#define FIO_HTTP_LOG_LINE_TRUNCATION 1023
-#endif
-
 #ifndef HTTP_MIME_REGISTRY_AUTO
 /**
  * When above zero, fills the mime-type registry with known values.
@@ -179,7 +174,7 @@ typedef struct {
 
 /**
  * Sets a response header, taking ownership of the value object, but NOT the
- * name object (so name objects could be reused in future responses).
+ * name object (header name objects can be reused in future responses).
  *
  * Returns -1 on error and 0 on success.
  */
@@ -307,57 +302,6 @@ int http_push_data(http_s *h, void *data, uintptr_t length, FIOBJ mime_type);
 int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type);
 
 /* *****************************************************************************
-HTTP evented API (pause / resume HTTp handling)
-***************************************************************************** */
-
-typedef struct http_pause_handle_s http_pause_handle_s;
-/**
- * Pauses the request / response handling and INVALIDATES the current `http_s`
- * handle (no `http` functions can be called).
- *
- * The `http_resume` function MUST be called (at some point) using the opaque
- * `http` pointer given to the callback `task`.
- *
- * The opaque `http` pointer is only valid for a single call to `http_resume`
- * and can't be used by any other `http` function (it's a different data type).
- *
- * Note: the current `http_s` handle will become invalid once this function is
- *    called and it's data might be deallocated, invalid or used by a different
- *    thread.
- */
-void http_pause(http_s *h, void (*task)(http_pause_handle_s *http));
-
-/**
- * Resumes a request / response handling within a task and INVALIDATES the
- * current `http_s` handle.
- *
- * The `task` MUST call one of the `http_send_*`, `http_finish`, or
- * `http_pause`functions.
- *
- * The (optional) `fallback` will receive the opaque `udata` that was stored in
- * the HTTP handle and can be used for cleanup.
- *
- * Note: `http_resume` can only be called after calling `http_pause` and
- * entering it's task.
- *
- * Note: the current `http_s` handle will become invalid once this function is
- *    called and it's data might be deallocated, invalidated or used by a
- *    different thread.
- */
-void http_resume(http_pause_handle_s *http,
-                 void (*task)(http_s *h),
-                 void (*fallback)(void *udata));
-
-/** Returns the `udata` associated with the paused opaque handle */
-void *http_paused_udata_get(http_pause_handle_s *http);
-
-/**
- * Sets the `udata` associated with the paused opaque handle, returning the
- * old value.
- */
-void *http_paused_udata_set(http_pause_handle_s *http, void *udata);
-
-/* *****************************************************************************
 HTTP Connections - Listening / Connecting / Hijacking
 ***************************************************************************** */
 
@@ -365,14 +309,13 @@ HTTP Connections - Listening / Connecting / Hijacking
 struct http_settings_s {
   /** Callback for normal HTTP requests. */
   void (*on_request)(http_s *request);
+  void (*on_response)(http_s *request);
   /**
    * Callback for Upgrade and EventSource (SSE) requests.
    *
    * SSE/EventSource requests set the `requested_protocol` string to `"sse"`.
    */
   void (*on_upgrade)(http_s *request, char *requested_protocol, size_t len);
-  /** CLIENT REQUIRED: a callback for the HTTP response. */
-  void (*on_response)(http_s *response);
   /** (optional) the callback to be performed when the HTTP service closes. */
   void (*on_finish)(http_settings_s *settings);
   /** Opaque user data. Facil.io will ignore this field, but you can use it. */
@@ -465,38 +408,6 @@ intptr_t http_listen(const char *port, const char *binding, http_settings_s);
 /** Listens to HTTP connections at the specified `port` and `binding`. */
 #define http_listen(port, binding, ...)                                        \
   http_listen((port), (binding), (http_settings_s){__VA_ARGS__})
-
-/**
- * Connects to an HTTP server as a client.
- *
- * Upon a successful connection, the `on_response` callback is called with an
- * empty `http_s*` handler (status == 0). Use the same API to set it's content
- * and send the request to the server. The next`on_response` will contain the
- * response.
- *
- * `address` should contain a full URL style address for the server. i.e.:
- *
- *           "http:/www.example.com:8080/"
- *
- * If an `address` includes a path or query data, they will be automatically
- * attached (both of them) to the HTTP handl'es `path` property. i.e.
- *
- *           "http:/www.example.com:8080/my_path?foo=bar"
- *           // will result in:
- *           fiobj_obj2cstr(h->path).data; //=> "/my_path?foo=bar"
- *
- * To open a Websocket connection, it's possible to use the `ws` protocol
- * signature. However, it would be better to use the `websocket_connect`
- * function instead.
- *
- * Returns -1 on error and the socket's uuid on success.
- *
- * The `on_finish` callback is always called.
- */
-intptr_t
-http_connect(const char *url, const char *unix_address, http_settings_s);
-#define http_connect(url, unix_address, ...)                                   \
-  http_connect((url), (unix_address), (http_settings_s){__VA_ARGS__})
 
 /**
  * Returns the settings used to setup the connection or NULL on error.
@@ -633,9 +544,29 @@ int http_upgrade2ws(http_s *http, websocket_settings_s);
  *
  * Returns -1 on error;
  */
-int websocket_connect(const char *url, websocket_settings_s settings);
-#define websocket_connect(url, ...)                                            \
-  websocket_connect((url), (websocket_settings_s){__VA_ARGS__})
+// int websocket_connect(const char *url,
+//                       const fio_str_info_s *headers,
+//                       websocket_settings_s settings);
+// #define websocket_connect(url, headers, ...) \
+//   websocket_connect((url), (headers), (websocket_settings_s){__VA_ARGS__})
+
+#define WEBSOCKET_HEADER_LIST(...)                                             \
+  ((const fio_str_info_s[]){__VA_ARGS__, (const fio_str_info_s){0}})
+#define WEBSOCKET_HEADER(name, value)                                          \
+  (const fio_str_info_s){.buf = name, .len = strlen(name)},                    \
+      (const fio_str_info_s) {                                                 \
+    .buf = value, .len = strlen(value)                                         \
+  }
+#define WEBSOCKET_HEADER2(name, name_len, value, value_len)                    \
+  (const fio_str_info_s){                                                      \
+      .buf = name,                                                             \
+      .len = name_len,                                                         \
+  },                                                                           \
+      (const fio_str_info_s) {                                                 \
+    .buf = value, .len = value_len,                                            \
+  }
+#define WEBSOCKET_HEADER_FIO(name, value) name, value
+#define WEBSOCKET_HEADER_FIOBJ(name, value) fiobj2cstr(name), fiobj2cstr(value)
 
 /** The WebSocket API is detailed in websockets.h */
 #include <websockets.h>
