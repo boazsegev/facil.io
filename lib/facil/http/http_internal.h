@@ -58,16 +58,17 @@ typedef struct {
   http_fio_protocol_s *pr;
   FIOBJ headers_out;
   size_t bytes_sent;
-  http_s public;
+  http_s public_;
 } http_internal_s;
 
 /** tests public handle validity */
-#define HTTP2PRIVATE(h_) FIO_PTR_FROM_FIELD(http_internal_s, public, h_)
-#define HTTP2PUBLIC(h_) (&h_->public)
+#define HTTP2PRIVATE(h_) FIO_PTR_FROM_FIELD(http_internal_s, public_, (h_))
+#define HTTP2PUBLIC(h_) ((h_)->public_)
+#define HTTP2PUBLIC2(h_) ((h_).public_)
 #define HTTP_H_INIT(vtbl_, owner_)                                             \
   {                                                                            \
     .vtbl = (vtbl_), .pr = (owner_), .headers_out = fiobj_hash_new(),          \
-    .public = {                                                                \
+    .public_ = {                                                               \
         .status = 200, /* .received_at = fio_last_tick(), */                   \
     },                                                                         \
   }
@@ -76,19 +77,19 @@ typedef struct {
   (!(h) || HTTP2PRIVATE(h)->headers_out == FIOBJ_INVALID)
 
 static inline void http_h_destroy(http_internal_s *h, uint8_t log) {
-  if (log && h->public.status && !h->public.status_str) {
-    http_write_log(HTTP2PUBLIC(h));
+  if (log && HTTP2PUBLIC(h).status && !HTTP2PUBLIC(h).status_str) {
+    http_write_log(&HTTP2PUBLIC(h));
   }
-  fiobj_free(h->public.method);
-  fiobj_free(h->public.status_str);
+  fiobj_free(HTTP2PUBLIC(h).method);
+  fiobj_free(HTTP2PUBLIC(h).status_str);
   fiobj_free(h->headers_out);
-  fiobj_free(h->public.headers);
-  fiobj_free(h->public.version);
-  fiobj_free(h->public.query);
-  fiobj_free(h->public.path);
-  fiobj_free(h->public.cookies);
-  fiobj_free(h->public.body);
-  fiobj_free(h->public.params);
+  fiobj_free(HTTP2PUBLIC(h).headers);
+  fiobj_free(HTTP2PUBLIC(h).version);
+  fiobj_free(HTTP2PUBLIC(h).query);
+  fiobj_free(HTTP2PUBLIC(h).path);
+  fiobj_free(HTTP2PUBLIC(h).cookies);
+  fiobj_free(HTTP2PUBLIC(h).body);
+  fiobj_free(HTTP2PUBLIC(h).params);
 
   *h = (http_internal_s){
       .vtbl = h->vtbl,
@@ -126,11 +127,6 @@ struct http_vtable_s {
   int (*const http2websocket)(http_internal_s *h, websocket_settings_s *arg);
   /** Push for files. MUST free the FIOBJ arguments. */
   int (*const push_file)(http_internal_s *h, FIOBJ filename, FIOBJ mime_type);
-  /** Pauses the request / response handling. */
-  void (*const on_pause)(http_internal_s *, http_fio_protocol_s *);
-
-  /** Resumes a request / response handling. */
-  void (*const on_resume)(http_internal_s *, http_fio_protocol_s *);
   /** hijacks the socket aaway from the protocol. */
   intptr_t (*hijack)(http_internal_s *h, fio_str_info_s *leftover);
 

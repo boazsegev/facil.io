@@ -95,7 +95,7 @@ int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
   http_internal_s *h = fio_malloc(sizeof(*h));
   FIO_ASSERT(pr, "Couldn't allocate response object for error report.")
   *h = (http_internal_s)HTTP_H_INIT(http1_vtable(), (http_fio_protocol_s *)pr);
-  int ret = http_send_error(&h->public, error);
+  int ret = http_send_error(&HTTP2PUBLIC(h), error);
   fio_close(uuid);
   return ret;
 }

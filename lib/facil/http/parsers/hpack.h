@@ -266,16 +266,20 @@ static MAYBE_UNUSED int hpack_string_pack(void *dest_,
     dest[pos] = 128;
     int comp_len = hpack_huffman_pack(NULL, 0, buf, len);
     encoded_int_len = hpack_int_pack(dest, limit, comp_len, 7);
-    if (encoded_int_len + comp_len > (int)limit)
+    if (encoded_int_len + comp_len > (int)limit) {
+      dest[0] = 0;
       return comp_len + encoded_int_len;
+    }
     comp_len = hpack_huffman_pack(
         dest + encoded_int_len, limit - encoded_int_len, buf, len);
     return encoded_int_len + comp_len;
   }
   dest[pos] = 0;
   encoded_int_len = hpack_int_pack(dest, limit, len, 7);
-  if (encoded_int_len + (int)len > (int)limit)
+  if (encoded_int_len + (int)len > (int)limit) {
+    dest[0] = 0;
     return len + encoded_int_len;
+  }
   memcpy(dest + encoded_int_len, buf, len);
   return len + encoded_int_len;
 }
@@ -633,6 +637,10 @@ void hpack_test(void) {
       uint32_t code = huffman_encode_table[i].code;
       uint8_t consumed = 32 - huffman_encode_table[i].bits;
       while (consumed < 32) {
+        if (!node->offset[(code >> 31) & 1]) {
+          fprintf(stderr, "ERROR unexpected hoffman code offset for %d\n", i);
+          exit(-1);
+        }
         node += node->offset[(code >> 31) & 1];
         code <<= 1;
         ++consumed;
@@ -653,72 +661,91 @@ void hpack_test(void) {
     const size_t results_limit = 1024;
     uint8_t results[1024];
     size_t pos = 0;
+    int tmp = 0;
     memset(results, 0, results_limit);
-    int tmp = hpack_huffman_unpack(
-        results,
-        results_limit,
-        "\x9d\x29\xad\x17\x18\x63\xc7\x8f\x0b\x97\xc8\xe9\xae\x82"
-        "\xae\x43\xd3",
-        17,
-        &pos);
-    if (tmp == -1) {
-      fprintf(stderr, "* HPACK HUFFMAN TEST FAILED unpacking error (1).\n");
-      exit(-1);
-    } else if ((size_t)tmp > (limit - buf_pos)) {
-      fprintf(stderr, "* HPACK HUFFMAN TEST buffer full error (1).\n");
-    } else if (memcmp(results, "https://www.example.com", 23) || tmp != 23) {
-      fprintf(stderr,
-              "* HPACK HUFFMAN TEST FAILED result error (1).\n(%d) %.*s\n",
-              tmp,
-              tmp,
-              results);
-      exit(-1);
-    }
-    memset(results, 0, results_limit);
-    pos = 0;
-    tmp =
-        hpack_huffman_unpack(results,
-                             results_limit,
-                             "\xf1\xe3\xc2\xe5\xf2\x3a\x6b\xa0\xab\x90\xf4\xff",
-                             12,
-                             &pos);
-    if (tmp == -1) {
-      fprintf(stderr, "* HPACK HUFFMAN TEST FAILED unpacking error (2).\n");
-      exit(-1);
-    } else if ((size_t)tmp > results_limit) {
-      fprintf(stderr, "* HPACK HUFFMAN TEST buffer full error (2).\n");
-    } else if (memcmp(results, "www.example.com", 15) || tmp != 15) {
-      fprintf(stderr, "* HPACK HUFFMAN TEST FAILED result error (2).\n");
-      exit(-1);
-    }
-
-    memset(results, 0, results_limit);
-    tmp = hpack_huffman_pack(
-        results, results_limit, "https://www.example.com", 23);
-    if (tmp == -1) {
-      fprintf(stderr, "* HPACK HUFFMAN TEST FAILED packing error!.\n");
-      exit(-1);
-    } else if ((size_t)tmp > limit - buf_pos) {
-      fprintf(stderr, "* HPACK HUFFMAN TEST packing buffer full!\n");
-    } else if (tmp != 17 || memcmp("\x9d\x29\xad\x17\x18\x63\xc7\x8f\x0b\x97"
-                                   "\xc8\xe9\xae\x82\xae\x43\xd3",
-                                   results,
-                                   17)) {
-      fprintf(stderr,
-              "* HPACK HUFFMAN TEST FAILED packing result error!\n(%d) ",
-              tmp);
-      for (int i = 0; i < tmp; ++i) {
-        fprintf(stderr, "\\x%.2X", results[i]);
+    struct {
+      const char *enc;
+      const size_t enc_len;
+      const char *dec;
+      const size_t dec_len;
+    } hpack_test_data[] = {
+        {
+            .enc = "\x9d\x29\xad\x17\x18\x63\xc7\x8f\x0b\x97\xc8\xe9\xae\x82"
+                   "\xae\x43\xd3",
+            .enc_len = 17,
+            .dec = "https://www.example.com",
+            .dec_len = 23,
+        },
+        {
+            .enc = "\xf1\xe3\xc2\xe5\xf2\x3a\x6b\xa0\xab\x90\xf4\xff",
+            .enc_len = 12,
+            .dec = "www.example.com",
+            .dec_len = 15,
+        },
+        {
+            .enc = NULL,
+            .enc_len = 0,
+            .dec = NULL,
+            .dec_len = 0,
+        },
+    };
+    for (int i = 0; hpack_test_data[i].enc; ++i) {
+      /* test each roundtrip in hpack_test_data */
+      tmp = hpack_huffman_unpack((void *)results,
+                                 results_limit,
+                                 (void *)hpack_test_data[i].enc,
+                                 hpack_test_data[i].enc_len,
+                                 &pos);
+      if (tmp == -1) {
+        fprintf(
+            stderr, "* HPACK HUFFMAN TEST[%d] FAILED unpacking error.\n", i);
+        exit(-1);
+      } else if ((size_t)tmp > (limit - buf_pos)) {
+        fprintf(stderr, "* HPACK HUFFMAN TEST[%d] buffer full error.\n", i);
+      } else if ((size_t)tmp != hpack_test_data[i].dec_len ||
+                 memcmp(results,
+                        hpack_test_data[i].dec,
+                        hpack_test_data[i].dec_len)) {
+        fprintf(stderr,
+                "* HPACK HUFFMAN TEST[%d] FAILED result error.\n(%d) %.*s\n",
+                i,
+                tmp,
+                tmp,
+                results);
+        exit(-1);
       }
-      fprintf(stderr, "\n");
-      exit(-1);
+      memset(results, 0, results_limit);
+      tmp = hpack_huffman_pack((void *)results,
+                               results_limit,
+                               (void *)hpack_test_data[i].dec,
+                               hpack_test_data[i].dec_len);
+      if (tmp == -1) {
+        fprintf(stderr, "* HPACK HUFFMAN TEST[%d] FAILED packing error!.\n", i);
+        exit(-1);
+      } else if ((size_t)tmp > limit - buf_pos) {
+        fprintf(stderr, "* HPACK HUFFMAN TEST[%d] packing buffer full!\n", i);
+      } else if ((size_t)tmp != hpack_test_data[i].enc_len ||
+                 memcmp(hpack_test_data[i].enc,
+                        results,
+                        hpack_test_data[i].enc_len)) {
+        fprintf(stderr,
+                "* HPACK HUFFMAN TEST[%d] FAILED packing result error!\n(%d) ",
+                i,
+                tmp);
+        for (int j = 0; j < tmp; ++j) {
+          fprintf(stderr, "\\x%.2X", results[j]);
+        }
+        fprintf(stderr, "\n");
+        exit(-1);
+      }
+      memset(results, 0, results_limit);
+      memset(buffer, 0, 128);
+      pos = 0;
     }
-    memset(results, 0, results_limit);
-    memset(buffer, 0, 128);
     tmp = hpack_huffman_pack(
-        buffer,
+        (void *)buffer,
         limit,
-        "I want to go home... but I have to write tests... woohoo!",
+        (void *)"I want to go home... but I have to write tests... woohoo!",
         57);
     if (tmp == -1) {
       fprintf(stderr, "* HPACK HUFFMAN TEST FAILED packing error (3).\n");
@@ -728,7 +755,8 @@ void hpack_test(void) {
     } else {
       int old_tmp = tmp;
       pos = 0;
-      tmp = hpack_huffman_unpack(results, results_limit, buffer, tmp, &pos);
+      tmp = hpack_huffman_unpack(
+          (void *)results, results_limit, (void *)buffer, tmp, &pos);
       if (tmp == -1) {
         fprintf(
             stderr,
@@ -758,7 +786,7 @@ void hpack_test(void) {
   buf_pos = 0;
   memset(buffer, 0, 128);
   if (1) {
-    /* test string packing */
+    /* test string packing and unpacking */
     size_t pos = 0;
     int tmp =
         hpack_string_unpack(buffer,
@@ -781,7 +809,7 @@ void hpack_test(void) {
         fprintf(stderr,
                 "* HPACK STRING UNPACKING ERROR example len %d != 10.\n",
                 tmp);
-      if (memcmp(buffer, "\x63\x75\x73\x74\x6f\x6d\x2d\x6b\x65\x79", 10))
+      if (memcmp(buffer, "custom-key", 10))
         fprintf(stderr,
                 "* HPACK STRING UNPACKING ERROR example returned: %.*s\n",
                 (int)tmp,
@@ -836,27 +864,30 @@ void hpack_test(void) {
             buffer + buf_pos, limit - buf_pos, str1, 56, (i & 1) == 1);
         if (tmp == -1)
           fprintf(stderr, "* HPACK STRING PACKING FAIL AT %zu\n", i);
-        else if ((size_t)tmp > limit - buf_pos)
+        else if ((size_t)tmp >= limit - buf_pos)
           break;
         buf_pos += tmp;
       }
       int count = i;
+      fprintf(stderr,
+              "* String packing test filled the buffer at %zu strings\n",
+              i);
       buf_pos = 0;
-      while (i) {
+      while (i--) {
         char result[56];
         memset(result, 0, 56);
-        --i;
         tmp = hpack_string_unpack(result, 56, buffer, limit, &buf_pos);
+
         if (tmp == -1) {
           fprintf(stderr,
                   "* HPACK STRING UNPACKING FAIL AT %zu\n",
-                  (repeats - 1) - i);
+                  (count - 1) - i);
           exit(-1);
         } else if (tmp != 56) {
           fprintf(stderr,
                   "* HPACK STRING UNPACKING ERROR AT %zu - got string "
                   "length %d instead of 56: %.*s\n",
-                  (repeats - 1) - i,
+                  count - i,
                   tmp,
                   56,
                   result);
@@ -865,7 +896,7 @@ void hpack_test(void) {
         if (memcmp(str1, result, 56)) {
           fprintf(stderr,
                   "* HPACK STRING UNPACKING ERROR AT %zu. Got (%d) %.*s\n",
-                  (repeats - 1) - i,
+                  count - i,
                   tmp,
                   tmp,
                   result);
@@ -925,15 +956,15 @@ typedef struct {
 
 /** used to print the binary reverse testing */
 static MAYBE_UNUSED void huffman__print_bin_num(uint32_t num, uint8_t bits) {
-  fprintf(stderr, "0b");
+  char buf[35] = {'0', 'b'}; /* initializes all remaining data with zeros */
+  char *pos = buf + 2;
   if (((32 - bits) & 31))
     num <<= ((32 - bits) & 31);
   for (size_t i = 0; i < bits; i++) {
-    if (num & (1 << (31 - i)))
-      fprintf(stderr, "1");
-    else
-      fprintf(stderr, "0");
+    *(pos++) = '0' + ((num >> (31 - i)) & 1);
   }
+  *pos = 0;
+  fwrite(buf, bits + 2, 1, stderr);
 }
 
 static void huffman__print_unit(huffman_decode_nc_s d,
