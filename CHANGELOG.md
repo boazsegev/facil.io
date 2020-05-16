@@ -46,6 +46,13 @@ I though about it as a small standard-library extension with a minimal STL, much
 
 - The old HTTP client API was deprecated in favor of a future (smarter) HTTP client approach that allows for persistent connections, as suggested by @stephenkgu in [issue #87](https://github.com/boazsegev/facil.io/issues/87).
 
+**Security**: a request smuggling attack vector and Transfer Encoding attack vectors in the HTTP/1.1 parser were exposed by Sam Sanoop from [the Snyk Security team (snyk.io)](https://snyk.io). They were fixed in the 0.8.0 HTTP/1.1 version.
+
+### v. 0.7.4 - 2020-05-16
+
+**Security**: a request smuggling attack vector and Transfer Encoding attack vectors in the HTTP/1.1 parser were exposed by Sam Sanoop from [the Snyk Security team (snyk.io)](https://snyk.io). They were fixed in the 0.8.0 HTTP/1.1 version and backported to the 0.7.x repo.
+
+
 ### v. 0.7.3 - 2019-10-04
 
 **Fix**: (`http`) fixes a security issue in the static file name resolution logic, where a maliciously encoded request could invoke an arbitrary response.
