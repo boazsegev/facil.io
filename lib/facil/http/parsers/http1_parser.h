@@ -175,7 +175,7 @@ static int http1_on_error(http1_parser_s *parser);
 #define HTTP1_P_FLAG_COMPLETE 4
 #define HTTP1_P_FLAG_CLENGTH 8
 #define HTTP1_PARSER_BIT_16 16
-#define HTTP1_P_FLAG_TRAILER 32
+#define HTTP1_PARSER_BIT_32 32
 #define HTTP1_P_FLAG_CHUNKED 64
 #define HTTP1_P_FLAG_RESPONSE 128
 
@@ -432,21 +432,129 @@ start_version:
   return 0;
 }
 
-inline static int
-http1_consume_header(http1_parser_s *parser, uint8_t *start, uint8_t *end) {
-  uint8_t *end_name = start;
-  /* divide header name from data */
-  if (!seek2ch(&end_name, end, ':'))
-    return -1;
-#if HTTP_HEADERS_LOWERCASE
-  for (uint8_t *t = start; t < end_name; t++) {
-    *t = http_tolower(*t);
-  }
+#ifndef HTTP1_ALLOW_CHUNKED_IN_MIDDLE_OF_HEADER
+inline /* inline the function of it's short enough */
 #endif
-  uint8_t *start_value = end_name + 1;
-  if (start_value[0] == ' ') {
-    start_value++;
-  };
+    static int
+    http1_consume_header_transfer_encoding(http1_parser_s *parser,
+                                           uint8_t *start,
+                                           uint8_t *end_name,
+                                           uint8_t *start_value,
+                                           uint8_t *end) {
+  /* this removes the `chunked` marker and prepares to "unchunk" the data */
+  while (start_value < end && (end[-1] == ',' || end[-1] == ' '))
+    --end;
+  if ((end - start_value) == 7 &&
+#if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED
+      (((uint32_t *)(start_value))[0] | 0x20202020) ==
+          ((uint32_t *)"chun")[0] &&
+      (((uint32_t *)(start_value + 3))[0] | 0x20202020) ==
+          ((uint32_t *)"nked")[0]
+#else
+      ((start_value[0] | 32) == 'c' && (start_value[1] | 32) == 'h' &&
+       (start_value[2] | 32) == 'u' && (start_value[3] | 32) == 'n' &&
+       (start_value[4] | 32) == 'k' && (start_value[5] | 32) == 'e' &&
+       (start_value[6] | 32) == 'd')
+#endif
+  ) {
+    /* simple case,only `chunked` as a value */
+    parser->state.reserved |= HTTP1_P_FLAG_CHUNKED;
+    parser->state.content_length = 0;
+    start_value += 7;
+    while (start_value < end && (*start_value == ',' || *start_value == ' '))
+      ++start_value;
+    if (!(end - start_value))
+      return 0;
+  } else if ((end - start_value) > 7 &&
+             ((end[(-7 + 0)] | 32) == 'c' && (end[(-7 + 1)] | 32) == 'h' &&
+              (end[(-7 + 2)] | 32) == 'u' && (end[(-7 + 3)] | 32) == 'n' &&
+              (end[(-7 + 4)] | 32) == 'k' && (end[(-7 + 5)] | 32) == 'e' &&
+              (end[(-7 + 6)] | 32) == 'd')) {
+    /* simple case,`chunked` at the end of list (RFC required) */
+    parser->state.reserved |= HTTP1_P_FLAG_CHUNKED;
+    parser->state.content_length = 0;
+    end -= 7;
+    while (start_value < end && (end[-1] == ',' || end[-1] == ' '))
+      --end;
+    if (!(end - start_value))
+      return 0;
+  }
+#ifdef HTTP1_ALLOW_CHUNKED_IN_MIDDLE_OF_HEADER /* RFC diisallows this */
+  else if ((end - start_value) > 7 && (end - start_value) < 256) {
+    /* complex case, `the, chunked, marker, is in the middle of list */
+    uint8_t val[256];
+    size_t val_len = 0;
+    while (start_value < end && val_len < 256) {
+      if ((end - start_value) >= 7) {
+        if (
+#if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED
+            (((uint32_t *)(start_value))[0] | 0x20202020) ==
+                ((uint32_t *)"chun")[0] &&
+            (((uint32_t *)(start_value + 3))[0] | 0x20202020) ==
+                ((uint32_t *)"nked")[0]
+#else
+            ((start_value[0] | 32) == 'c' && (start_value[1] | 32) == 'h' &&
+             (start_value[2] | 32) == 'u' && (start_value[3] | 32) == 'n' &&
+             (start_value[4] | 32) == 'k' && (start_value[5] | 32) == 'e' &&
+             (start_value[6] | 32) == 'd')
+#endif
+
+        ) {
+          parser->state.reserved |= HTTP1_P_FLAG_CHUNKED;
+          parser->state.content_length = 0;
+          start_value += 7;
+          /* skip comma / white space */
+          while (start_value < end &&
+                 (*start_value == ',' || *start_value == ' '))
+            ++start_value;
+          continue;
+        }
+      }
+      /* copy value */
+      while (start_value < end && val_len < 256 && start_value[0] != ',') {
+        val[val_len++] = *start_value;
+        ++start_value;
+      }
+      /* copy comma */
+      if (start_value[0] == ',' && val_len < 256) {
+        val[val_len++] = *start_value;
+        ++start_value;
+      }
+      /* skip spaces */
+      while (start_value < end && start_value[0] == ' ') {
+        ++start_value;
+      }
+    }
+    if (val_len < 256) {
+      while (start_value < end && val_len < 256) {
+        val[val_len++] = *start_value;
+        ++start_value;
+      }
+      val[val_len] = 0;
+    }
+    /* perform callback with `val` or indicate error */
+    if (val_len == 256 ||
+        (val_len &&
+         http1_on_header(
+             parser, (char *)start, (end_name - start), (char *)val, val_len)))
+      return -1;
+    return 0;
+  }
+#endif /* HTTP1_ALLOW_CHUNKED_IN_MIDDLE_OF_HEADER */
+  /* perform callback */
+  if (http1_on_header(parser,
+                      (char *)start,
+                      (end_name - start),
+                      (char *)start_value,
+                      end - start_value))
+    return -1;
+  return 0;
+}
+inline static int http1_consume_header_top(http1_parser_s *parser,
+                                           uint8_t *start,
+                                           uint8_t *end_name,
+                                           uint8_t *start_value,
+                                           uint8_t *end) {
   if ((end_name - start) == 14 &&
 #if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED && HTTP_HEADERS_LOWERCASE
       *((uint64_t *)start) == *((uint64_t *)"content-") &&
@@ -462,6 +570,7 @@ http1_consume_header(http1_parser_s *parser, uint8_t *start, uint8_t *end) {
     parser->state.content_length = http1_atol(start_value, NULL);
     if ((parser->state.reserved & HTTP1_P_FLAG_CLENGTH) &&
         old_clen != parser->state.content_length) {
+      /* content-length header repeated with conflict */
       return -1;
     }
     parser->state.reserved |= HTTP1_P_FLAG_CLENGTH;
@@ -475,137 +584,8 @@ http1_consume_header(http1_parser_s *parser, uint8_t *start, uint8_t *end) {
 #endif
   ) {
     /* handle the special `transfer-encoding: chunked` header */
-    /* this removes the `chunked` marker and "unchunks" the data */
-    while (start_value < end && (end[-1] == ',' || end[-1] == ' '))
-      --end;
-    if ((end - start_value) == 7 &&
-#if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED
-        (((uint32_t *)(start_value))[0] | 0x20202020) ==
-            ((uint32_t *)"chun")[0] &&
-        (((uint32_t *)(start_value + 3))[0] | 0x20202020) ==
-            ((uint32_t *)"nked")[0]
-#else
-        ((start_value[0] | 32) == 'c' && (start_value[1] | 32) == 'h' &&
-         (start_value[2] | 32) == 'u' && (start_value[3] | 32) == 'n' &&
-         (start_value[4] | 32) == 'k' && (start_value[5] | 32) == 'e' &&
-         (start_value[6] | 32) == 'd')
-#endif
-    ) {
-      /* simple case,only `chunked` as a value */
-      parser->state.reserved |= HTTP1_P_FLAG_CHUNKED;
-      parser->state.content_length = 0;
-      start_value += 7;
-      while (start_value < end && (*start_value == ',' || *start_value == ' '))
-        ++start_value;
-      if (!(end - start_value))
-        return 0;
-    } else if ((end - start_value) > 7 &&
-               ((end[(-7 + 0)] | 32) == 'c' && (end[(-7 + 1)] | 32) == 'h' &&
-                (end[(-7 + 2)] | 32) == 'u' && (end[(-7 + 3)] | 32) == 'n' &&
-                (end[(-7 + 4)] | 32) == 'k' && (end[(-7 + 5)] | 32) == 'e' &&
-                (end[(-7 + 6)] | 32) == 'd')) {
-      /* simple case,`chunked` at the end of list (RFC required) */
-      parser->state.reserved |= HTTP1_P_FLAG_CHUNKED;
-      parser->state.content_length = 0;
-      end -= 7;
-      while (start_value < end && (end[-1] == ',' || end[-1] == ' '))
-        --end;
-      if (!(end - start_value))
-        return 0;
-    } else if ((end - start_value) > 7 && (end - start_value) < 256) {
-      /* complex case, `the, chunked, marker, is in the middle of list */
-      uint8_t val[256];
-      size_t val_len = 0;
-      while (start_value < end && val_len < 256) {
-        if ((end - start_value) >= 7) {
-          if (
-#if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED && HTTP_HEADERS_LOWERCASE
-              ((*(uint32_t *)(start_value)) | (uint32_t)0x20202020) ==
-                  ((uint32_t *)"trai")[0] &&
-              ((*(uint32_t *)(start_value + 3)) | (uint32_t)0x20202020) ==
-                  ((uint32_t *)"iler")[0]
-#else
-              HEADER_NAME_IS_EQ((char *)start_value, "trailer", 7)
-#endif
-          ) {
-            /* set trailer flag */
-            parser->state.reserved |= HTTP1_P_FLAG_TRAILER;
-            start_value += 7;
-            /* skip comma / white space */
-            while (start_value < end &&
-                   (*start_value == ',' || *start_value == ' '))
-              ++start_value;
-            continue;
-          } else if (
-#if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED
-              (((uint32_t *)(start_value))[0] | 0x20202020) ==
-                  ((uint32_t *)"chun")[0] &&
-              (((uint32_t *)(start_value + 3))[0] | 0x20202020) ==
-                  ((uint32_t *)"nked")[0]
-#else
-              ((start_value[0] | 32) == 'c' && (start_value[1] | 32) == 'h' &&
-               (start_value[2] | 32) == 'u' && (start_value[3] | 32) == 'n' &&
-               (start_value[4] | 32) == 'k' && (start_value[5] | 32) == 'e' &&
-               (start_value[6] | 32) == 'd')
-#endif
-
-          ) {
-            parser->state.reserved |= HTTP1_P_FLAG_CHUNKED;
-            parser->state.content_length = 0;
-            start_value += 7;
-            /* skip comma / white space */
-            while (start_value < end &&
-                   (*start_value == ',' || *start_value == ' '))
-              ++start_value;
-            continue;
-          }
-        }
-        /* copy value */
-        while (start_value < end && val_len < 256 && start_value[0] != ',') {
-          val[val_len++] = *start_value;
-          ++start_value;
-        }
-        /* copy comma */
-        if (start_value[0] == ',' && val_len < 256) {
-          val[val_len++] = *start_value;
-          ++start_value;
-        }
-        /* skip spaces */
-        while (start_value < end && start_value[0] == ' ') {
-          ++start_value;
-        }
-      }
-      if (val_len < 256) {
-        while (start_value < end && val_len < 256) {
-          val[val_len++] = *start_value;
-          ++start_value;
-        }
-        val[val_len] = 0;
-      }
-      /* perform callback with `val` or indicate error */
-      if (val_len == 256 || (val_len && http1_on_header(parser,
-                                                        (char *)start,
-                                                        (end_name - start),
-                                                        (char *)val,
-                                                        val_len)))
-        return -1;
-      return 0;
-    }
-  } else if ((end_name - start) == 7 &&
-             !(parser->state.reserved & HTTP1_P_FLAG_CLENGTH) &&
-#if HTTP1_UNALIGNED_MEMORY_ACCESS_ENABLED && HTTP_HEADERS_LOWERCASE
-             ((*(uint32_t *)(start_value)) | (uint32_t)0x20202020) ==
-                 ((uint32_t *)"trai")[0] &&
-             ((*(uint32_t *)(start_value + 3)) | (uint32_t)0x20202020) ==
-                 ((uint32_t *)"iler")[0]
-#else
-             HEADER_NAME_IS_EQ((char *)start, "trailer", 7)
-#endif
-  ) {
-    /* chunked data with trailer... */
-    parser->state.reserved |= HTTP1_P_FLAG_CHUNKED;
-    parser->state.reserved |= HTTP1_P_FLAG_TRAILER;
-    // return 0; /* hide Trailer header, since we process the headers? */
+    return http1_consume_header_transfer_encoding(
+        parser, start, end_name, start_value, end);
   }
   /* perform callback */
   if (http1_on_header(parser,
@@ -615,6 +595,69 @@ http1_consume_header(http1_parser_s *parser, uint8_t *start, uint8_t *end) {
                       end - start_value))
     return -1;
   return 0;
+}
+
+inline static int http1_consume_header_trailer(http1_parser_s *parser,
+                                               uint8_t *start,
+                                               uint8_t *end_name,
+                                               uint8_t *start_value,
+                                               uint8_t *end) {
+  if ((end_name - start) > 1 && start[0] == 'x') {
+    /* X- headers are allowed */
+    goto white_listed;
+  }
+
+  /* white listed trailer names */
+  const struct {
+    char *name;
+    long len;
+  } http1_trailer_white_list[] = {
+      {"server-timing", 13}, /* specific for client data... */
+      {NULL, 0},             /* end of list marker */
+  };
+  for (size_t i = 0; http1_trailer_white_list[i].name; ++i) {
+    if ((long)(end_name - start) == http1_trailer_white_list[i].len &&
+        HEADER_NAME_IS_EQ((char *)start,
+                          http1_trailer_white_list[i].name,
+                          http1_trailer_white_list[i].len)) {
+      /* header disallowed here */
+      goto white_listed;
+    }
+  }
+  return 0;
+white_listed:
+  /* perform callback */
+  if (http1_on_header(parser,
+                      (char *)start,
+                      (end_name - start),
+                      (char *)start_value,
+                      end - start_value))
+    return -1;
+  return 0;
+}
+
+inline static int
+http1_consume_header(http1_parser_s *parser, uint8_t *start, uint8_t *end) {
+  uint8_t *end_name = start;
+  /* divide header name from data */
+  if (!seek2ch(&end_name, end, ':'))
+    return -1;
+  if (end_name[-1] == ' ' || end_name[-1] == '\t')
+    return -1;
+#if HTTP_HEADERS_LOWERCASE
+  for (uint8_t *t = start; t < end_name; t++) {
+    *t = http_tolower(*t);
+  }
+#endif
+  uint8_t *start_value = end_name + 1;
+  // clear away leading white space from value.
+  while (start_value < end &&
+         (start_value[0] == ' ' || start_value[0] == '\t')) {
+    start_value++;
+  };
+  return (parser->state.read ? http1_consume_header_trailer
+                             : http1_consume_header_top)(
+      parser, start, end_name, start_value, end);
 }
 
 /* *****************************************************************************
@@ -685,8 +728,9 @@ inline static int http1_consume_body_chunked(http1_parser_s *parser,
                               "content-length",
                               14,
                               (char *)buf + buf_len,
-                              511 - buf_len))
+                              511 - buf_len)) {
             return -1;
+          }
         }
 #endif
         /* FIXME: consume trailing EOL */
@@ -1125,7 +1169,7 @@ static struct {
     {
         .test_name = "chunked body (end of list)",
         .request = {"POST / HTTP/1.1\r\nHost:with body\r\n"
-                    "Transfer-Encoding: gzip, chunked\r\n"
+                    "Transfer-Encoding: gzip, foo, chunked\r\n"
                     "\r\n"
                     "5\r\n"
                     "Hello"
@@ -1149,8 +1193,8 @@ static struct {
                         {
                             .name = "transfer-encoding",
                             .name_len = 17,
-                            .val = "gzip",
-                            .val_len = 4,
+                            .val = "gzip, foo",
+                            .val_len = 9,
                         },
 #ifdef HTTP_ADD_CONTENT_LENGTH_HEADER_IF_MISSING
                         {
@@ -1163,10 +1207,11 @@ static struct {
                     },
             },
     },
+#ifdef HTTP1_ALLOW_CHUNKED_IN_MIDDLE_OF_HEADER
     {
         .test_name = "chunked body (middle of list)",
         .request = {"POST / HTTP/1.1\r\nHost:with body\r\n"
-                    "Transfer-Encoding: gzip, chunked, trailer, foo\r\n"
+                    "Transfer-Encoding: gzip, chunked, foo\r\n"
                     "\r\n",
                     "5\r\n"
                     "Hello"
@@ -1204,6 +1249,7 @@ static struct {
                     },
             },
     },
+#endif /* HTTP1_ALLOW_CHUNKED_IN_MIDDLE_OF_HEADER */
     {
         .test_name = "chunked body (fragmented)",
         .request =
@@ -1326,7 +1372,7 @@ static struct {
             },
     },
     {
-        .test_name = "chunked body (...longer + trailer...)",
+        .test_name = "chunked body (...longer + trailer + empty value...)",
         .request =
             {
                 "POST / HTTP/1.1\r\nHost:with body\r\n",
@@ -1342,6 +1388,7 @@ static struct {
                 "chunks.\r\n",
                 "0\r\n",
                 "X-Foo: trailer\r\n",
+                "sErvEr-tiMing:   \r\n",
                 "\r\n",
             },
         .expect =
@@ -1373,6 +1420,12 @@ static struct {
                             .name_len = 5,
                             .val = "trailer",
                             .val_len = 7,
+                        },
+                        {
+                            .name = "server-timing",
+                            .name_len = 13,
+                            .val = "",
+                            .val_len = 0,
                         },
                     },
             },
