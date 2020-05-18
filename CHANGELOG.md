@@ -2,7 +2,7 @@
 
 ### v. 0.7.5 (2020-05-18)
 
-**Security**: backport the 0.8.x HTTP/1.1 parser and it's security updates to the 0.7.x version branch.
+**Security**: backport the 0.8.x HTTP/1.1 parser and it's security updates to the 0.7.x version branch. This fixes a request smuggling attack vector and Transfer Encoding attack vector that were exposed by Sam Sanoop from [the Snyk Security team (snyk.io)](https://snyk.io). The parser was updated to deal with these potential issues.
 
 **Fix**: (`http`) fixes an issue with date calculation by backporting code from the 0.8.x branch.
 
