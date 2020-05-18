@@ -95,7 +95,7 @@
 <p>By loading the data from a file, or by providing a file name when loading the template from memory, partial templates are automatically resolved, loaded and parsed.</p>
 
 <h4 id="fiobj_mustache_load"><code>fiobj_mustache_load</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">mustache_s</span> <span class="o">*</span><span class="n">fiobj_mustache_load</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">filename</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">mustache_s</span> <span class="o">*</span><span class="nf">fiobj_mustache_load</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">filename</span><span class="p">);</span>
 </code></pre></div>
 <p>Loads a mustache template from a file, converting it into an opaque instruction array.</p>
 
@@ -109,7 +109,7 @@
 <p>Remember to call <code>fiobj_mustache_free</code> when done with the template.</p>
 
 <h4 id="fiobj_mustache_new"><code>fiobj_mustache_new</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">mustache_s</span> <span class="o">*</span><span class="n">fiobj_mustache_new</span><span class="p">(</span><span class="n">mustache_load_args_s</span> <span class="n">args</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">mustache_s</span> <span class="o">*</span><span class="nf">fiobj_mustache_new</span><span class="p">(</span><span class="n">mustache_load_args_s</span> <span class="n">args</span><span class="p">);</span>
 <span class="cp">#define fiobj_mustache_new(...)                                                \
   fiobj_mustache_new((mustache_load_args_s){__VA_ARGS__})
 </span></code></pre></div>
@@ -164,14 +164,14 @@
 <span class="p">}</span> <span class="n">mustache_error_en</span><span class="p">;</span>
 </code></pre></div>
 <h4 id="fiobj_mustache_free"><code>fiobj_mustache_free</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_mustache_free</span><span class="p">(</span><span class="n">mustache_s</span> <span class="o">*</span><span class="n">mustache</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fiobj_mustache_free</span><span class="p">(</span><span class="n">mustache_s</span> <span class="o">*</span><span class="n">mustache</span><span class="p">);</span>
 </code></pre></div>
 <p>Frees the mustache template pointer immediately (careful when using the template concurrently).</p>
 
 <h3 id="mustache-template-rendering-api">Mustache Template Rendering API</h3>
 
 <h4 id="fiobj_mustache_build"><code>fiobj_mustache_build</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_mustache_build</span><span class="p">(</span><span class="n">mustache_s</span> <span class="o">*</span><span class="n">mustache</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">data</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_mustache_build</span><span class="p">(</span><span class="n">mustache_s</span> <span class="o">*</span><span class="n">mustache</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">data</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a FIOBJ String containing the rendered template using the information in the FIOBJ <code>data</code> object (which should be a <code>FIOBJ_T_HASH</code> or data access might fail).</p>
 
@@ -182,7 +182,7 @@
 <p><strong>Note</strong>: The <code>mustache_s *</code> object can be used to render the same template multiple times concurrently.</p>
 
 <h4 id="fiobj_mustache_build2"><code>fiobj_mustache_build2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_mustache_build2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="n">mustache_s</span> <span class="o">*</span><span class="n">mustache</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">data</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_mustache_build2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="n">mustache_s</span> <span class="o">*</span><span class="n">mustache</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">data</span><span class="p">);</span>
 </code></pre></div>
 <p>Renders a template into an existing FIOBJ String (<code>dest</code>&#39;s end), using the information in the <code>data</code> object.</p>
 

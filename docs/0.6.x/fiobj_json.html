@@ -181,14 +181,14 @@
 <h2 id="functions">Functions</h2>
 
 <h3 id="fiobj_json2obj"><code>fiobj_json2obj</code></h3>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_json2obj</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="o">*</span><span class="n">pobj</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fiobj_json2obj</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="o">*</span><span class="n">pobj</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div>
 <p>Parses JSON, setting <code>pobj</code> to point to the new Object.</p>
 
 <p>Returns the number of bytes consumed. On Error, 0 is returned and no data is consumed.</p>
 
 <h3 id="fiobj_obj2json"><code>fiobj_obj2json</code></h3>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_obj2json</span><span class="p">(</span><span class="n">FIOBJ</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">pretty</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_obj2json</span><span class="p">(</span><span class="n">FIOBJ</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">pretty</span><span class="p">);</span>
 </code></pre></div>
 <p>Stringify an object into a JSON string. Remember to <code>fiobj_free</code>.</p>
 
@@ -197,7 +197,7 @@
 <p>Some objects (such as the POSIX specific IO type) are unsupported and may be formatted incorrectly.</p>
 
 <h3 id="fiobj_obj2json2"><code>fiobj_obj2json2</code></h3>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_obj2json2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">object</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">pretty</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_obj2json2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">object</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">pretty</span><span class="p">);</span>
 </code></pre></div>
 <p>Formats an object into a JSON string, appending the JSON string to an existing String. Remember to <code>fiobj_free</code> as usual.</p>
 

@@ -128,7 +128,7 @@
 <h3 id="fiobj-memory-management">FIOBJ Memory Management</h3>
 
 <h4 id="fiobj_dup"><code>fiobj_dup</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_dup</span><span class="p">(</span><span class="n">FIOBJ</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_dup</span><span class="p">(</span><span class="n">FIOBJ</span><span class="p">);</span>
 </code></pre></div>
 <p>Heuristic copy with a preference for copy by reference(!), to minimize allocations.</p>
 
@@ -137,7 +137,7 @@
 <p>Always returns the value passed along.</p>
 
 <h4 id="fiobj_free"><code>fiobj_free</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_free</span><span class="p">(</span><span class="n">FIOBJ</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fiobj_free</span><span class="p">(</span><span class="n">FIOBJ</span><span class="p">);</span>
 </code></pre></div>
 <p>Frees the object and any of it&#39;s &quot;children&quot;.</p>
 
@@ -148,7 +148,7 @@
 <h3 id="fiobj-soft-type-recognition">FIOBJ Soft Type Recognition</h3>
 
 <h4 id="fiobj_type"><code>fiobj_type</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fiobj_type_enum</span> <span class="n">fiobj_type</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">o</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fiobj_type_enum</span> <span class="nf">fiobj_type</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">o</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the object&#39;s type.</p>
 
@@ -170,21 +170,21 @@
 <p>This is faster than getting the type, since parts of the switch statement are optimized away (they are calculated during compile time).</p>
 
 <h4 id="fiobj_type_name"><code>fiobj_type_name</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">fiobj_type_name</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="nf">fiobj_type_name</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a C string naming the objects dynamic type.</p>
 
 <h3 id="object-equality-truthfulness">Object Equality / Truthfulness</h3>
 
 <h4 id="fiobj_is_true"><code>fiobj_is_true</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fiobj_is_true</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fiobj_is_true</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span><span class="p">);</span>
 </code></pre></div>
 <p>Tests if an object evaluates as TRUE.</p>
 
 <p>This is object type specific. For example, empty strings might evaluate as FALSE, even though they aren&#39;t a boolean type.</p>
 
 <h4 id="fiobj_iseq"><code>fiobj_iseq</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fiobj_iseq</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">obj1</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">obj2</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fiobj_iseq</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">obj1</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">obj2</span><span class="p">);</span>
 </code></pre></div>
 <p>Deeply compares two objects. No hashing or recursive function calls are
 involved.</p>
@@ -198,7 +198,7 @@ involved.</p>
 <h3 id="object-conversion">Object Conversion</h3>
 
 <h4 id="fiobj_obj2num"><code>fiobj_obj2num</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">fiobj_obj2num</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">fiobj_obj2num</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns an Object&#39;s numerical value.</p>
 
@@ -212,7 +212,7 @@ numerical data.</p>
 <p>A type error results in 0.</p>
 
 <h4 id="fiobj_obj2float"><code>fiobj_obj2float</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">double</span> <span class="n">fiobj_obj2float</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">double</span> <span class="nf">fiobj_obj2float</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a Float&#39;s value.</p>
 
@@ -222,7 +222,7 @@ numerical data.</p>
 <p>A type error results in 0.</p>
 
 <h4 id="fiobj_obj2cstr"><code>fiobj_obj2cstr</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cstr_s</span> <span class="n">fiobj_obj2cstr</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cstr_s</span> <span class="nf">fiobj_obj2cstr</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a C String (NUL terminated) using the <code>fio_cstr_s</code> data type.</p>
 
@@ -237,7 +237,7 @@ will be parsed as a <em>temporary</em>, thread-safe, String.</p>
 <p>A type error results in NULL (i.e. object can&#39;t be represented automatically as a String).</p>
 
 <h4 id="fiobj_obj2hash"><code>fiobj_obj2hash</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">uint64_t</span> <span class="n">fiobj_obj2hash</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">o</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uint64_t</span> <span class="nf">fiobj_obj2hash</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">o</span><span class="p">);</span>
 </code></pre></div>
 <p>Calculates an Objects&#39;s SipHash value for possible use as a HashMap key.</p>
 
@@ -246,7 +246,7 @@ will be parsed as a <em>temporary</em>, thread-safe, String.</p>
 <h3 id="iteration">Iteration</h3>
 
 <h4 id="fiobj_each1"><code>fiobj_each1</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_each1</span><span class="p">(</span><span class="n">FIOBJ</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">start_at</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fiobj_each1</span><span class="p">(</span><span class="n">FIOBJ</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">start_at</span><span class="p">,</span>
                   <span class="kt">int</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">),</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
 
 </code></pre></div>
@@ -266,7 +266,7 @@ processed. The container itself (the Array or the Hash) is <strong>not</strong> 
 starting point.</p>
 
 <h4 id="fiobj_each2"><code>fiobj_each2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_each2</span><span class="p">(</span><span class="n">FIOBJ</span><span class="p">,</span> <span class="kt">int</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">),</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fiobj_each2</span><span class="p">(</span><span class="n">FIOBJ</span><span class="p">,</span> <span class="kt">int</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">),</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
 </code></pre></div>
 <p>Deep iteration using a callback for each fio object, including the parent.</p>
 
@@ -287,7 +287,7 @@ nested Hash&#39;s children and then followed by the rest of it&#39;s siblings.</
 <p>If the callback returns -1, the loop is broken. Any other value is ignored.</p>
 
 <h4 id="fiobj_hash_key_in_loop"><code>fiobj_hash_key_in_loop</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_hash_key_in_loop</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_hash_key_in_loop</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the key for the object in the current <code>fiobj_each</code> loop (if any).</p>
 </div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {

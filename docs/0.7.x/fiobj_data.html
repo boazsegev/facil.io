@@ -130,12 +130,12 @@
 <h3 id="creating-the-data-stream-object">Creating the Data Stream object</h3>
 
 <h4 id="fiobj_data_newstr"><code>fiobj_data_newstr</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_data_newstr</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_data_newstr</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a new local in-memory Data Stream object.</p>
 
 <h4 id="fiobj_data_newstr2"><code>fiobj_data_newstr2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_data_newstr2</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_data_newstr2</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">,</span>
                          <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">dealloc</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">));</span>
 </code></pre></div>
 <p>Creates a Data object from an existing buffer.</p>
@@ -145,31 +145,31 @@
 <p>Use a NULL <code>dealloc</code> function pointer if the buffer is static and shouldn&#39;t be freed.</p>
 
 <h4 id="fiobj_data_newtmpfile"><code>fiobj_data_newtmpfile</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_data_newtmpfile</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_data_newtmpfile</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a new local tempfile Data Stream object.</p>
 
 <h4 id="fiobj_data_newfd"><code>fiobj_data_newfd</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_data_newfd</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_data_newfd</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a new local file Data Stream object.</p>
 
 <h4 id="fiobj_data_slice"><code>fiobj_data_slice</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_data_slice</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">parent</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">offset</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_data_slice</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">parent</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">offset</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a slice from an existing Data Stream object.</p>
 
 <h3 id="saving-the-data-stream-object">Saving the Data Stream object</h3>
 
 <h4 id="fiobj_data_save"><code>fiobj_data_save</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fiobj_data_save</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">filename</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fiobj_data_save</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">filename</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a new local file Data Stream object.</p>
 
 <h3 id="reading-data-from-the-stream">Reading Data From The Stream</h3>
 
 <h4 id="fiobj_data_read"><code>fiobj_data_read</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">fiobj_data_read</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">length</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="nf">fiobj_data_read</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">length</span><span class="p">);</span>
 </code></pre></div>
 <p>Reads up to <code>length</code> bytes and returns a temporary(!) buffer object (not NUL terminated).</p>
 
@@ -178,7 +178,7 @@
 <p>The C string object will be invalidate the next time a function call to the Data Stream object is made.</p>
 
 <h4 id="fiobj_data_read2ch"><code>fiobj_data_read2ch</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">fiobj_data_read2ch</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">token</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="nf">fiobj_data_read2ch</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">token</span><span class="p">);</span>
 </code></pre></div>
 <p>Reads until the <code>token</code> byte is encountered or until the end of the stream.</p>
 
@@ -200,22 +200,22 @@
 <p>The C string object will be invalidate the next time a function call to the Data Stream object is made.</p>
 
 <h4 id="fiobj_data_pos"><code>fiobj_data_pos</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">fiobj_data_pos</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">fiobj_data_pos</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the current reading position. Returns -1 on error.</p>
 
 <h4 id="fiobj_data_len"><code>fiobj_data_len</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">fiobj_data_len</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">fiobj_data_len</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the length of the stream.</p>
 
 <h4 id="fiobj_data_seek"><code>fiobj_data_seek</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_data_seek</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">position</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fiobj_data_seek</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">position</span><span class="p">);</span>
 </code></pre></div>
 <p>Moves the reading position to the requested position.</p>
 
 <h4 id="fiobj_data_pread"><code>fiobj_data_pread</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">fiobj_data_pread</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">start_at</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="nf">fiobj_data_pread</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">start_at</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">);</span>
 </code></pre></div>
 <p>Reads up to <code>length</code> bytes starting at <code>start_at</code> position and returns a temporary(!) buffer object (not NUL terminated) string object. The reading position is ignored and unchanged.</p>
 
@@ -224,21 +224,21 @@
 <h3 id="writing-to-the-data-stream">Writing To The Data Stream</h3>
 
 <h4 id="fiobj_data_write"><code>fiobj_data_write</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">fiobj_data_write</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">fiobj_data_write</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes <code>length</code> bytes at the end of the Data Stream stream, ignoring the reading position.</p>
 
 <p>Behaves and returns the same value as the system call <code>write</code>.</p>
 
 <h4 id="fiobj_data_puts"><code>fiobj_data_puts</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">fiobj_data_puts</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">fiobj_data_puts</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes <code>length</code> bytes at the end of the Data Stream stream, ignoring the reading position, adding an EOL marker (&quot;\r\n&quot;) to the end of the stream.</p>
 
 <p>Behaves and returns the same value as the system call <code>write</code>.</p>
 
 <h4 id="fiobj_data_assert_dynamic"><code>fiobj_data_assert_dynamic</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_data_assert_dynamic</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fiobj_data_assert_dynamic</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">io</span><span class="p">);</span>
 </code></pre></div>
 <p>Makes sure the Data Stream object isn&#39;t attached to a static or external string.</p>
 

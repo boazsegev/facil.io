@@ -119,7 +119,7 @@
 <h3 id="tls-certificates-and-settings">TLS Certificates and Settings</h3>
 
 <h4 id="fio_tls_new"><code>fio_tls_new</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">fio_tls_new</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">server_name</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_tls_s</span> <span class="o">*</span><span class="nf">fio_tls_new</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">server_name</span><span class="p">,</span>
                        <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">public_certificate_file</span><span class="p">,</span>
                        <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">private_key_file</span><span class="p">,</span>
                        <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">private_key_password</span><span class="p">);</span>
@@ -142,19 +142,19 @@
 <p>Remember to call <code>fio_tls_destroy</code> once the <code>fio_tls_s</code> object is no longer in use.</p>
 
 <h4 id="fio_tls_dup"><code>fio_tls_dup</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_tls_dup</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_tls_dup</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">);</span>
 </code></pre></div>
 <p>Increase the reference count for the TLS object.</p>
 
 <p>Decrease / free with <code>fio_tls_destroy</code>.</p>
 
 <h4 id="fio_tls_destroy"><code>fio_tls_destroy</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_tls_destroy</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_tls_destroy</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">);</span>
 </code></pre></div>
 <p>Destroys the SSL/TLS context / settings object and frees any related resources / memory.</p>
 
 <h4 id="fio_tls_cert_add"><code>fio_tls_cert_add</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_tls_cert_add</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">server_name</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_tls_cert_add</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">server_name</span><span class="p">,</span>
                       <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">public_cert_file</span><span class="p">,</span>
                       <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">private_key_file</span><span class="p">,</span>
                       <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">private_key_password</span><span class="p">);</span>
@@ -168,7 +168,7 @@
                       <span class="nb">NULL</span><span class="p">);</span>
 </code></pre></div>
 <h4 id="fio_tls_trust"><code>fio_tls_trust</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_tls_trust</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">public_cert_file</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_tls_trust</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">public_cert_file</span><span class="p">);</span>
 </code></pre></div>
 <p>Adds a certificate to the &quot;trust&quot; list, which automatically adds a peer verification requirement.</p>
 
@@ -176,7 +176,7 @@
 <div class="highlight"><pre class="highlight c"><code><span class="n">fio_tls_trust</span><span class="p">(</span><span class="n">tls</span><span class="p">,</span> <span class="s">"google-ca.pem"</span> <span class="p">);</span>
 </code></pre></div>
 <h4 id="fio_tls_alpn_add"><code>fio_tls_alpn_add</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_tls_alpn_add</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_tls_alpn_add</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">,</span>
                        <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">protocol_name</span><span class="p">,</span>
                        <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">on_selected</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span>
                                         <span class="kt">void</span> <span class="o">*</span><span class="n">udata_connection</span><span class="p">,</span>
@@ -195,7 +195,7 @@
 <p>Except for the <code>tls</code> and <code>protocol_name</code> arguments, all arguments can be NULL.</p>
 
 <h4 id="fio_tls_alpn_count"><code>fio_tls_alpn_count</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">uintptr_t</span> <span class="n">fio_tls_alpn_count</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uintptr_t</span> <span class="nf">fio_tls_alpn_count</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the number of registered ALPN protocol names.</p>
 
@@ -206,7 +206,7 @@
 <h3 id="tls-connection-establishment">TLS Connection Establishment</h3>
 
 <h4 id="fio_tls_accept"><code>fio_tls_accept</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_tls_accept</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_tls_accept</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div>
 <p>Establishes an SSL/TLS connection as an SSL/TLS Server, using the specified context / settings object.</p>
 
@@ -215,7 +215,7 @@
 <p>The <code>udata</code> is an opaque user data pointer that is passed along to the protocol selected (if any protocols were added using <code>fio_tls_alpn_add</code>).</p>
 
 <h4 id="fio_tls_connect"><code>fio_tls_connect</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_tls_connect</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_tls_connect</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div>
 <p>Establishes an SSL/TLS connection as an SSL/TLS Client, using the specified context / settings object.</p>
 

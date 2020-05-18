@@ -201,7 +201,7 @@
 <h3 id="initialization-destruction">Initialization / Destruction</h3>
 
 <h4 id="fio_cli_start"><code>fio_cli_start</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_cli_start</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">argv</span><span class="p">[],</span> <span class="kt">int</span> <span class="n">unnamed_min</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_cli_start</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">argv</span><span class="p">[],</span> <span class="kt">int</span> <span class="n">unnamed_min</span><span class="p">,</span>
                    <span class="kt">int</span> <span class="n">unnamed_max</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">description</span><span class="p">,</span>
                    <span class="kt">char</span> <span class="k">const</span> <span class="o">**</span><span class="n">names</span><span class="p">);</span>
 <span class="cm">/* Automatically appends a NULL marker at the end of the `names` array. */</span>
@@ -253,19 +253,19 @@ unless overridden.</p>
 <div class="highlight"><pre class="highlight shell"><code>app <span class="nt">-t</span><span class="o">=</span>1 <span class="nt">-p3000</span> <span class="nt">-a</span> localhost
 </code></pre></div>
 <h4 id="fio_cli_end"><code>fio_cli_end</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_cli_end</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_cli_end</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Clears the memory used by the CLI dictionary, removing all parsed data.</p>
 
 <h3 id="access-cli-arguments">Access CLI arguments</h3>
 
 <h4 id="fio_cli_get"><code>fio_cli_get</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">fio_cli_get</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="nf">fio_cli_get</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the argument&#39;s value as a NUL terminated C String.</p>
 
 <h4 id="fio_cli_get_i"><code>fio_cli_get_i</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_cli_get_i</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_cli_get_i</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the argument&#39;s value as an integer.</p>
 
@@ -275,14 +275,14 @@ unless overridden.</p>
 <p>This MACRO returns the argument&#39;s value as a boolean.</p>
 
 <h4 id="fio_cli_unnamed_count"><code>fio_cli_unnamed_count</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">fio_cli_unnamed_count</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">unsigned</span> <span class="kt">int</span> <span class="nf">fio_cli_unnamed_count</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the number of unnamed arguments.</p>
 
 <p>Unnamed arguments are only relevant if the <code>unnamed_min</code> argument in <code>fio_cli_start</code> was greater than 0.</p>
 
 <h4 id="fio_cli_unnamed"><code>fio_cli_unnamed</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">fio_cli_unnamed</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">index</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="nf">fio_cli_unnamed</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">index</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the unnamed arguments using a 0 (zero) based <code>index</code>.</p>
 
@@ -291,7 +291,7 @@ unless overridden.</p>
 <h3 id="set-cli-argument-data">Set CLI argument data</h3>
 
 <h4 id="fio_cli_set"><code>fio_cli_set</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_cli_set</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">value</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_cli_set</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">value</span><span class="p">);</span>
 </code></pre></div>
 <p>Sets the argument&#39;s value as a NUL terminated C String (no copy!).</p>
 
