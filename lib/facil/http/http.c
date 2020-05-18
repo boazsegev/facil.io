@@ -2089,111 +2089,94 @@ See the libc `gmtime_r` documentation for details.
 
 Falls back to `gmtime_r` for dates before epoch.
 */
-struct tm *http_gmtime(time_t timer, struct tm *tmbuf) {
-  // static char* DAYS[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri",
-  // "Sat"}; static char * Months = {  "Jan", "Feb", "Mar", "Apr", "May",
-  // "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
-  static const uint8_t month_len[] = {
-      31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31, // nonleap year
-      31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31  // leap year
-  };
-  if (timer < 0)
-    return gmtime_r(&timer, tmbuf);
+struct tm *http_gmtime(time_t timer, struct tm *tm) {
   ssize_t a, b;
-#if HAVE_TM_TM_ZONE
-  *tmbuf = (struct tm){
+#if HAVE_TM_TM_ZONE || defined(BSD)
+  *tm = (struct tm){
       .tm_isdst = 0,
-      .tm_year = 70, // tm_year == The number of years since 1900
-      .tm_mon = 0,
-      .tm_zone = "UTC",
+      .tm_zone = (char *)"UTC",
   };
 #else
-  *tmbuf = (struct tm){
+  *tm = (struct tm){
       .tm_isdst = 0,
-      .tm_year = 70, // tm_year == The number of years since 1900
-      .tm_mon = 0,
   };
 #endif
-  // for seconds up to weekdays, we build up, as small values clean up
-  // larger values.
-  a = (ssize_t)timer;
-  b = a / 60;
-  tmbuf->tm_sec = a - (b * 60);
-  a = b / 60;
-  tmbuf->tm_min = b - (a * 60);
-  b = a / 24;
-  tmbuf->tm_hour = a - (b * 24);
-  // day of epoch was a thursday. Add + 4 so sunday == 0...
-  tmbuf->tm_wday = (b + 4) % 7;
-// tmp == number of days since epoch
-#define DAYS_PER_400_YEARS ((400 * 365) + 97)
-  while (b >= DAYS_PER_400_YEARS) {
-    tmbuf->tm_year += 400;
-    b -= DAYS_PER_400_YEARS;
-  }
-#undef DAYS_PER_400_YEARS
-#define DAYS_PER_100_YEARS ((100 * 365) + 24)
-  while (b >= DAYS_PER_100_YEARS) {
-    tmbuf->tm_year += 100;
-    b -= DAYS_PER_100_YEARS;
-    if (((tmbuf->tm_year / 100) & 3) ==
-        0) // leap century divisable by 400 => add leap
-      --b;
-  }
-#undef DAYS_PER_100_YEARS
-#define DAYS_PER_32_YEARS ((32 * 365) + 8)
-  while (b >= DAYS_PER_32_YEARS) {
-    tmbuf->tm_year += 32;
-    b -= DAYS_PER_32_YEARS;
-  }
-#undef DAYS_PER_32_YEARS
-#define DAYS_PER_8_YEARS ((8 * 365) + 2)
-  while (b >= DAYS_PER_8_YEARS) {
-    tmbuf->tm_year += 8;
-    b -= DAYS_PER_8_YEARS;
-  }
-#undef DAYS_PER_8_YEARS
-#define DAYS_PER_4_YEARS ((4 * 365) + 1)
-  while (b >= DAYS_PER_4_YEARS) {
-    tmbuf->tm_year += 4;
-    b -= DAYS_PER_4_YEARS;
-  }
-#undef DAYS_PER_4_YEARS
-  while (b >= 365) {
-    tmbuf->tm_year += 1;
-    b -= 365;
-    if ((tmbuf->tm_year & 3) == 0) { // leap year
-      if (b > 0) {
-        --b;
-        continue;
-      } else {
-        b += 365;
-        --tmbuf->tm_year;
-        break;
-      }
-    }
-  }
-  b++; /* day 1 of the year is 1, not 0. */
-  tmbuf->tm_yday = b;
-  if ((tmbuf->tm_year & 3) == 1) {
-    // regular year
-    for (size_t i = 0; i < 12; i++) {
-      if (b <= month_len[i])
-        break;
-      b -= month_len[i];
-      ++tmbuf->tm_mon;
-    }
+
+  // convert seconds from epoch to days from epoch + extract data
+  if (timer >= 0) {
+    // for seconds up to weekdays, we reduce the reminder every step.
+    a = (ssize_t)timer;
+    b = a / 60; // b == time in minutes
+    tm->tm_sec = a - (b * 60);
+    a = b / 60; // b == time in hours
+    tm->tm_min = b - (a * 60);
+    b = a / 24; // b == time in days since epoch
+    tm->tm_hour = a - (b * 24);
+    // b == number of days since epoch
+    // day of epoch was a thursday. Add + 4 so sunday == 0...
+    tm->tm_wday = (b + 4) % 7;
   } else {
-    // leap year
-    for (size_t i = 12; i < 24; i++) {
-      if (b <= month_len[i])
-        break;
-      b -= month_len[i];
-      ++tmbuf->tm_mon;
+    // for seconds up to weekdays, we reduce the reminder every step.
+    a = (ssize_t)timer;
+    b = a / 60; // b == time in minutes
+    if (b * 60 != a) {
+      /* seconds passed */
+      tm->tm_sec = (a - (b * 60)) + 60;
+      --b;
+    } else {
+      /* no seconds */
+      tm->tm_sec = 0;
     }
+    a = b / 60; // b == time in hours
+    if (a * 60 != b) {
+      /* minutes passed */
+      tm->tm_min = (b - (a * 60)) + 60;
+      --a;
+    } else {
+      /* no minutes */
+      tm->tm_min = 0;
+    }
+    b = a / 24; // b == time in days since epoch?
+    if (b * 24 != a) {
+      /* hours passed */
+      tm->tm_hour = (a - (b * 24)) + 24;
+      --b;
+    } else {
+      /* no hours */
+      tm->tm_hour = 0;
+    }
+    // day of epoch was a thursday. Add + 4 so sunday == 0...
+    tm->tm_wday = ((b - 3) % 7);
+    if (tm->tm_wday)
+      tm->tm_wday += 7;
+    /* b == days from epoch */
   }
-  tmbuf->tm_mday = b;
-  return tmbuf;
+
+  // at this point we can apply the algorithm described here:
+  // http://howardhinnant.github.io/date_algorithms.html#civil_from_days
+  // Credit to Howard Hinnant.
+  {
+    b += 719468L; // adjust to March 1st, 2000 (post leap of 400 year era)
+    // 146,097 = days in era (400 years)
+    const size_t era = (b >= 0 ? b : b - 146096) / 146097;
+    const uint32_t doe = (b - (era * 146097)); // day of era
+    const uint16_t yoe =
+        (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // year of era
+    a = yoe;
+    a += era * 400; // a == year number, assuming year starts on March 1st...
+    const uint16_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const uint16_t mp = (5U * doy + 2) / 153;
+    const uint16_t d = doy - (153U * mp + 2) / 5 + 1;
+    const uint8_t m = mp + (mp < 10 ? 2 : -10);
+    a += (m <= 1);
+    tm->tm_year = a - 1900; // tm_year == years since 1900
+    tm->tm_mon = m;
+    tm->tm_mday = d;
+    const uint8_t is_leap = (a % 4 == 0 && (a % 100 != 0 || a % 400 == 0));
+    tm->tm_yday = (doy + (is_leap) + 28 + 31) % (365 + is_leap);
+  }
+
+  return tm;
 }
 
 static const char *DAY_NAMES[] = {"Sun", "Mon", "Tue", "Wed",
