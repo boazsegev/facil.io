@@ -17009,8 +17009,8 @@ TEST_FUNC void fio_test_dynamic_types(void) {
       "facil.io core: version \x1B[1m" FIO_VERSION_STRING "\x1B[0m\n"
       "The facil.io library was originally coded by \x1B[1mBoaz Segev\x1B[0m.\n"
       "Please give credit where credit is due.\n"
-      "\x1B[1mYour support for is only fair\x1B[0m "
-      "(code contributions / donations).\n");
+      "\x1B[1mYour support is only fair\x1B[0m - give value for value.\n"
+      "(code contributions / donations)\n\n");
   fprintf(stderr, "===============\n");
   FIO_LOG_DEBUG("example FIO_LOG_DEBUG message.");
   FIO_LOG_DEBUG2("example FIO_LOG_DEBUG2 message.");
@@ -17053,15 +17053,23 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___risky();
   fprintf(stderr, "===============\n");
+  {
+    char timebuf[64];
+    fio_time2rfc7231(timebuf, fio_time_real().tv_sec);
+    fprintf(stderr,
+            "On %s\n"
+            "Testing \x1B[1mPASSED\x1B[0m "
+            "for facil.io core version: "
+            "\x1B[1m" FIO_VERSION_STRING "\x1B[0m"
+            "\n",
+            timebuf);
+  }
   fprintf(stderr,
-          "\x1B[1mPASSED\x1B[0m testing for facil.io core: version "
-          "\x1B[1m" FIO_VERSION_STRING "\x1B[0m\n");
-  fprintf(
-      stderr,
-      "The facil.io library was originally coded by \x1B[1mBoaz Segev\x1B[0m.\n"
-      "Please give credit where credit is due.\n"
-      "\x1B[1mYour support for is only fair\x1B[0m "
-      "(code contributions / donations).\n\n");
+          "\nThe facil.io library was originally coded by \x1B[1mBoaz "
+          "Segev\x1B[0m.\n"
+          "Please give credit where credit is due.\n"
+          "\x1B[1mYour support is only fair\x1B[0m - give value for value.\n"
+          "(code contributions / donations)\n\n");
 #if !defined(FIO_NO_COOKIE)
   fio___();
 #endif
