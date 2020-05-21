@@ -120,9 +120,9 @@ Compilation Macros
 #define FIO_TLS_PRINT_SECRET 0
 #endif
 
-#ifndef FIO_TLS_SKIP
-/* If true, the weak-function TLS (missing) implementation will be skipped. */
-#define FIO_TLS_SKIP 0
+#ifndef FIO_WEAK_TLS
+/* If true, the weak-function TLS implementation will always be compiled. */
+#define FIO_WEAK_TLS 0
 #endif
 
 #ifndef FIO_TLS_IGNORE_MISSING_ERROR
@@ -152,6 +152,7 @@ Import STL
 
 /* let it run once without side-effects, to prevent self-inclusion CLI errors */
 #define FIO_LOG
+#define FIO_EXTERN
 #include "fio-stl.h"
 
 #define FIO_RISKY_HASH 1

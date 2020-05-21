@@ -2772,8 +2772,8 @@ test_errno:
     fio_force_close(uuid);
     return -1;
   }
-  // fprintf(stderr, "UUID error: %p (%d)\n", (void *)uuid, errno);
-  // perror("No errno handler");
+  FIO_LOG_DEBUG(
+      "UUID %p error (%d): %s\n", (void *)uuid, errno, strerror(errno));
   return 0;
 
 invalid:
@@ -8322,9 +8322,6 @@ Run all tests
 
 void fio_test(void) {
   FIO_VERSION_VALIDATE();
-  fio_siphash_test();
-  fio_sha1_test();
-  fio_sha2_test();
   FIO_ASSERT(fio_capa(), "facil.io initialization error!");
   fio_state_callback_test();
   fio_defer_test();
@@ -8333,6 +8330,9 @@ void fio_test(void) {
   fio_uuid_env_test();
   fio_cycle_test();
   fio_pubsub_test();
+  fio_siphash_test();
+  fio_sha1_test();
+  fio_sha2_test();
   (void)fio_sentinel_task;
   (void)deferred_on_shutdown;
   (void)fio_poll;
