@@ -714,12 +714,6 @@ test/c99:| c99.___clean
 test/ci:| ci.___clean cmake test/set_debug_flags test/ci.___clean ci.test_build test/ci.run
 	@echo "* testing complete."
 
-.PHONY : test/poll
-test/poll:| poll.___clean
-	@echo "* Starting FIO_FORCE_POLL test (testing poll engine)."
-	@DEBUG=1 FIO_POLL=1 $(MAKE) test
-	@echo "* FIO_FORCE_POLL testing complete."
-
 .PHONY : test/stl
 test/stl: | stl.___clean
 	@echo "* Compiling facil.io STL test"
@@ -727,6 +721,20 @@ test/stl: | stl.___clean
 	@echo "* Linking STL test"
 	@$(CC) -o $(BIN) $(TMP_ROOT)/stl_test.o $(LINKER_FLAGS) $(OPTIMIZATION)
 	@$(BIN)
+
+.PHONY : test/core
+test/core: | core.___clean
+	@echo "* Compiling facil.io Core IO Library test"
+	@time $(CC) -c ./tests/core_test.c -o $(TMP_ROOT)/core_test.o $(CFLAGS_DEPENDENCY) -DFIO_WEAK_TLS $(CFLAGS) $(OPTIMIZATION)
+	@echo "* Linking Core IO Library test"
+	@$(CC) -o $(BIN) $(TMP_ROOT)/core_test.o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@$(BIN)
+
+.PHONY : test/poll
+test/poll:| poll.___clean
+	@echo "* Starting FIO_FORCE_POLL test (testing poll engine)."
+	@DEBUG=1 FIO_POLL=1 $(MAKE) test/core
+	@echo "* FIO_FORCE_POLL testing complete."
 
 .PHONY : test/cpp
 test/cpp: | cpp.___clean
