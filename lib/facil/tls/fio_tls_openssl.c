@@ -201,8 +201,10 @@ typedef struct {
 
 FIO_IFUNC void fio___tls_alpn_select___task(void *t_, void *ignr_) {
   alpn_task_s *t = t_;
-  if (fio_is_valid(t->uuid))
+  if (fio_is_valid(t->uuid)) {
+    fio_timeout_set(t->uuid, 0); // remove TLS timeout
     t->alpn.on_selected(t->uuid, t->udata_connection, t->alpn.udata_tls);
+  }
   fio_free(t);
   (void)ignr_;
 }
@@ -757,11 +759,12 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata) {
         alpn = fio___tls_alpn_default(c->tls);
         FIO_LOG_DEBUG("ALPN missing for TLS client %p", (void *)uuid);
       }
-      if (alpn)
+      if (alpn) {
         FIO_LOG_DEBUG("setting ALPN %s for TLS client %p",
                       fio_str2ptr(&alpn->name),
                       (void *)uuid);
-      fio___tls_alpn_select(alpn, c->uuid, c->alpn_arg);
+        fio___tls_alpn_select(alpn, c->uuid, c->alpn_arg);
+      }
     }
   }
   if (fio_rw_hook_replace_unsafe(uuid, &FIO_TLS_HOOKS, udata) == 0) {
@@ -1000,6 +1003,7 @@ file_missing:
  */
 void FIO_TLS_WEAK fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata) {
   REQUIRE_TLS_LIBRARY();
+  fio_timeout_set(uuid, FIO_TLS_TIMEOUT);
   fio_tls_attach2uuid(uuid, tls, udata, 1);
 }
 

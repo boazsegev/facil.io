@@ -130,6 +130,11 @@ Compilation Macros
 #define FIO_TLS_IGNORE_MISSING_ERROR 0
 #endif
 
+#ifndef FIO_TLS_TIMEOUT
+/* The default timeout for TLS connections (protocol assignment deferred) */
+#define FIO_TLS_TIMEOUT 4
+#endif
+
 /* *****************************************************************************
 Import STL
 ***************************************************************************** */
