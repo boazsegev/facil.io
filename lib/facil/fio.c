@@ -382,6 +382,10 @@ inline static void protocol_unlock(fio_protocol_s *pr,
    ((uint32_t)fio_uuid2fd((uuid))) < fio_data->capa &&                         \
    ((uintptr_t)(uuid)&0xFF) == uuid_data((uuid)).counter)
 
+/** tests UUID after a previous `uuid_is_valid` evaluated to 1 to the uuid . */
+#define uuid_is_still_valid(uuid)                                              \
+  (((uintptr_t)(uuid)&0xFF) == uuid_data((uuid)).counter)
+
 /* public API. */
 fio_protocol_s *fio_protocol_try_lock(intptr_t uuid,
                                       enum fio_protocol_lock_e type) {
@@ -509,7 +513,7 @@ void fio_uuid_env_set FIO_NOOP(intptr_t uuid, fio_uuid_env_args_s args) {
       fio_str_init_copy(&n, args.name.buf, args.name.len);
   }
   fio_lock(&uuid_data(uuid).sock_lock);
-  if (!uuid_is_valid(uuid))
+  if (!uuid_is_still_valid(uuid))
     goto locked_invalid;
   fio___uuid_env_set(
       &uuid_data(uuid).env,
@@ -539,7 +543,7 @@ void fio_uuid_env_remove FIO_NOOP(intptr_t uuid,
   if (!uuid_is_valid(uuid))
     goto invalid;
   fio_lock(&uuid_data(uuid).sock_lock);
-  if (!uuid_is_valid(uuid))
+  if (!uuid_is_still_valid(uuid))
     goto locked_invalid;
   fio___uuid_env_remove(
       &uuid_data(uuid).env, fio_str_hash(&n, args.type), n, &i);
@@ -566,7 +570,7 @@ void *fio_uuid_env_get FIO_NOOP(intptr_t uuid, fio_uuid_env_unset_args_s args) {
   if (!uuid_is_valid(uuid))
     goto invalid;
   fio_lock(&uuid_data(uuid).sock_lock);
-  if (!uuid_is_valid(uuid))
+  if (!uuid_is_still_valid(uuid))
     goto locked_invalid;
   i = fio___uuid_env_get(&uuid_data(uuid).env,
                          fio_str_hash(&n, args.type), n);
@@ -591,7 +595,7 @@ FIO_NOOP(intptr_t uuid, fio_uuid_env_unset_args_s args) {
   if (!uuid_is_valid(uuid))
     goto invalid;
   fio_lock(&uuid_data(uuid).sock_lock);
-  if (!uuid_is_valid(uuid))
+  if (!uuid_is_still_valid(uuid))
     goto locked_invalid;
   fio_uuid_env_obj_s i = {.data = NULL};
   /* default object comparison is always true */
@@ -2538,7 +2542,7 @@ ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s options) {
   /* add packet to outgoing list */
   uint8_t was_empty = 1;
   fio_lock(&uuid_data(uuid).sock_lock);
-  if (!uuid_is_valid(uuid)) {
+  if (!uuid_is_still_valid(uuid)) {
     goto locked_error;
   }
   if (uuid_data(uuid).packet)
@@ -2872,9 +2876,9 @@ int fio_rw_hook_replace_unsafe(intptr_t uuid,
 
 /** Sets a socket hook state (a pointer to the struct). */
 int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata) {
-  if (fio_is_closed(uuid))
-    goto invalid_uuid;
   intptr_t fd = fio_uuid2fd(uuid);
+  if (!uuid_is_valid(uuid) || !uuid_data(uuid).open)
+    goto invalid_uuid;
   fio_rw_hook_validate(rw_hooks);
   fio_rw_hook_s *old_rw_hooks;
   void *old_udata;
@@ -2956,7 +2960,7 @@ static int fio_attach__internal(void *uuid_, void *protocol_) {
   if (!uuid_is_valid(uuid))
     goto invalid_uuid_unlocked;
   fio_lock(&uuid_data(uuid).protocol_lock);
-  if (!uuid_is_valid(uuid)) {
+  if (!uuid_is_still_valid(uuid)) {
     goto invalid_uuid;
   }
   fio_protocol_s *old_pr = uuid_data(uuid).protocol;
@@ -3007,7 +3011,7 @@ void fio_attach_fd(int fd, fio_protocol_s *protocol) {
 
 /** Sets a timeout for a specific connection (only when running and valid). */
 void fio_timeout_set(intptr_t uuid, uint8_t timeout) {
-  if (uuid_is_valid(uuid)) {
+  if (uuid_is_valid(uuid) && !uuid_data(uuid).close) {
     touchfd(fio_uuid2fd(uuid));
     uuid_data(uuid).timeout = timeout;
   } else {
