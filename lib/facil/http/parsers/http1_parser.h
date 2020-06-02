@@ -725,7 +725,7 @@ inline static int http1_consume_body_chunked(http1_parser_s *parser,
           }
           if (!(parser->state.reserved & HTTP1_P_FLAG_CLENGTH) &&
               http1_on_header(parser,
-                              "content-length",
+                              (char *)"content-length",
                               14,
                               (char *)buf + buf_len,
                               511 - buf_len)) {
@@ -733,7 +733,7 @@ inline static int http1_consume_body_chunked(http1_parser_s *parser,
           }
         }
 #endif
-        /* FIXME: consume trailing EOL */
+        /* consume trailing EOL */
         if (*start + 2 <= stop && (start[0][0] == '\r' || start[0][0] == '\n'))
           *start += 1 + (start[0][1] == '\r' || start[0][1] == '\n');
         else {
