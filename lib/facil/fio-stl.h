@@ -15876,6 +15876,9 @@ TEST_FUNC void fio___dynamic_types_test___queue(void) {
   fprintf(stderr,
           "\t- size of queue ring buffer (per allocation): %zu\n",
           sizeof(q->mem));
+  fprintf(stderr,
+          "\t- event slots per queue allocation: %zu\n",
+          (size_t)FIO_QUEUE_TASKS_PER_ALLOC);
 
   const size_t max_threads = 12; // assumption / pure conjuncture...
   uintptr_t i_count;
