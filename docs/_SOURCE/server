@@ -31,10 +31,15 @@ SOURCE_ROOT = File.dirname(__FILE__)
 # The output folder for the static site
 STATIC_ROOT = File.join(File.dirname(__FILE__), "..")
 # File / folder names to be excluded from the script
-EXCLUDE = [File.basename(__FILE__), "layout.html.slim", "Gemfile", "layouts"]
+EXCLUDE = [File.basename(__FILE__), "layout.html.slim", "layout.erb", "Gemfile", "layouts"]
 # Constants for Rack and HTTP headers for Iodine's X-Sendfile support
 PATH_INFO = 'PATH_INFO'.freeze
 X_SENDFILE = 'X-Sendfile'.freeze
+# Default Layout for pages
+DEFAULT_LAYOUT = "layouts/layout.html.slim"
+DEFAULT_SIDEBAR = "_versions.md"
+# By default, produce Table Oof Contents?
+TOC_IS_DEFAULT = false
 
 # # We don't need this, but we might
 # unless File.directory?(STATIC_ROOT)
@@ -249,22 +254,42 @@ end
     css
   end
 
-  # erb rendering (support variables and code blocks)
-  @extensions['.erb'] = proc do |name, vars, block|
-    vars ||= {}
-    engine = ::ERB.new(IO.binread(name).force_encoding(::Encoding::UTF_8))
-    if(block)
-      engine.result(vars.binding(&block), &block)
-    else
-      engine.result
-    end
-  end
-
   # mustache rendering (supports variables and a single code blocks - but no embedded code)
   @extensions['.mustache'] = proc do |name, vars, block|
     vars ||= {}
     vars[:yield] = block if(block)
     Iodine::Mustache.render(name, vars)
+  end
+
+  # supports bindings in erb rendering (support variables and code blocks)
+  class Wrapper
+    attr_accessor :page, :block
+    def initialize vars, &block
+      @page = OpenStruct.new(vars)
+      @block = block
+    end
+    def binding &block
+      @block = block
+      super
+    end
+    def yield
+      if(@block)
+        @block.call
+      else
+        warn "WARNING: yield called without a block"
+      end
+    end
+  end
+
+  # erb rendering (support variables and code blocks)
+  @extensions['.erb'] = proc do |name, vars, block|
+    ctx = Wrapper.new(vars, &block)
+    engine = ::ERB.new(IO.binread(name).force_encoding(::Encoding::UTF_8))
+    if(block)
+      engine.result(ctx.binding(&block), &block)
+    else
+      engine.result
+    end
   end
 
   # The rest of the code in this module is the Markdown rendering code,
@@ -297,9 +322,9 @@ end
 
     # some sane defaults, even if there's no front matter
     unless File.basename(name).start_with?('_')
-      vars['layout'] ||= "layouts/layout.html.slim"
-      vars['sidebar'] ||= "_versions.md"
-      vars['toc'] = true unless vars.has_key?('toc')
+      vars['layout'] ||= DEFAULT_LAYOUT
+      vars['sidebar'] ||= DEFAULT_SIDEBAR
+      vars['toc'] = TOC_IS_DEFAULT if vars['toc'].nil?
     end
 
     # try mustache template rendering before rendering the Markdown
@@ -336,6 +361,7 @@ end
       data
     end
   end
+
 
 end
 
