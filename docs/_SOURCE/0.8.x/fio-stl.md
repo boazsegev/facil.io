@@ -2965,6 +2965,8 @@ Since delayed processing is a common task, this queue is provides an easy way to
 
 In addition, a Timer type allows timed events to be scheduled and moved (according to their "due date") to an existing Task Queue.
 
+By `FIO_QUEUE`, the following task and timer related helpers are defined:
+
 ### Queue Related Types
 
 #### `fio_queue_task_s`
