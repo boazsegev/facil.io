@@ -4,7 +4,6 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-
 #ifndef H_FACIL_IO_H
 /**
 "facil.h" is the main header for the facil.io server platform.
@@ -535,7 +534,7 @@ connections to be established.
 struct fio_connect_args {
   /** The address of the server we are connecting to. */
   const char *address;
-  /** The port on the server we are connecting to. */
+  /** The port on the server we are connecting to (NULL = Unix Socket). */
   const char *port;
   /**
    * The `on_connect` callback either call `fio_attach` or close the connection.
