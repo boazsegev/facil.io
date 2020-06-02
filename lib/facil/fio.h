@@ -1417,7 +1417,7 @@ void fio_state_callback_force(callback_type_e);
 void fio_state_callback_clear(callback_type_e);
 
 /* *****************************************************************************
-TLS Support (weak functions, to bea overriden by library wrapper)
+TLS Support (weak functions, to be overriden by library wrapper)
 ***************************************************************************** */
 
 /**
@@ -1426,6 +1426,9 @@ TLS Support (weak functions, to bea overriden by library wrapper)
  *
  * If no server name is provided and no private key and public certificate are
  * provided, an empty TLS object will be created, (maybe okay for clients).
+ *
+ * If a server name is provided, but no certificate is attached, an anonymous
+ * (self-signed) certificate will be initialized.
  *
  *      fio_tls_s * tls = fio_tls_new("www.example.com",
  *                                    "public_key.pem",
@@ -1437,7 +1440,12 @@ fio_tls_s *fio_tls_new(const char *server_name,
                        const char *pk_password);
 
 /**
- * Adds a certificate a new SSL/TLS context / settings object (SNI support).
+ * Adds a certificate to the SSL/TLS context / settings object.
+ *
+ * SNI support is implementation / library specific, but SHOULD be provided.
+ *
+ * If a server name is provided, but no certificate is attached, an anonymous
+ * (self-signed) certificate will be initialized.
  *
  *      fio_tls_cert_add(tls, "www.example.com",
  *                            "public_key.pem",
@@ -1475,16 +1483,6 @@ void fio_tls_alpn_add(fio_tls_s *tls,
                       void (*on_cleanup)(void *udata_tls));
 
 /**
- * Returns the number of registered ALPN protocol names.
- *
- * This could be used when deciding if protocol selection should be delegated to
- * the ALPN mechanism, or whether a protocol should be immediately assigned.
- *
- * If no ALPN protocols are registered, zero (0) is returned.
- */
-uintptr_t fio_tls_alpn_count(fio_tls_s *tls);
-
-/**
  * Adds a certificate to the "trust" list, which automatically adds a peer
  * verification requirement.
  *
@@ -1494,6 +1492,20 @@ uintptr_t fio_tls_alpn_count(fio_tls_s *tls);
  *      fio_tls_trust(tls, "google-ca.pem" );
  */
 void fio_tls_trust(fio_tls_s *, const char *public_cert_file);
+
+/* *****************************************************************************
+TLS Support - non-user functions (called by the facil.io library)
+***************************************************************************** */
+
+/**
+ * Returns the number of registered ALPN protocol names.
+ *
+ * This could be used when deciding if protocol selection should be delegated to
+ * the ALPN mechanism, or whether a protocol should be immediately assigned.
+ *
+ * If no ALPN protocols are registered, zero (0) is returned.
+ */
+uintptr_t fio_tls_alpn_count(fio_tls_s *tls);
 
 /**
  * Establishes an SSL/TLS connection as an SSL/TLS Server, using the specified
