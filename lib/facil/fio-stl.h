@@ -6696,7 +6696,6 @@ Hash Map / Set - Internal API (Helpers) - Rehashing
 
 /** Internal: rehashes the map. */
 FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, __rehash_no_holes)(FIO_MAP_S *m) {
-  /* TODO / FIXME */
   FIO_MAP_SIZE_TYPE pos = 0;
   FIO_MAP_SIZE_TYPE *imap = FIO_NAME(FIO_MAP_NAME, __imap)(m);
   FIO_NAME(FIO_MAP_NAME, each_s) *map = m->map;
@@ -6720,7 +6719,6 @@ FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, __rehash_no_holes)(FIO_MAP_S *m) {
   return 0;
 }
 FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, __rehash_has_holes)(FIO_MAP_S *m) {
-  /* TODO / FIXME */
   FIO_NAME(FIO_MAP_NAME, __compact_forced)(m, 1);
   return FIO_NAME(FIO_MAP_NAME, __rehash_no_holes)(m);
   (void)m;
@@ -13235,7 +13233,7 @@ FIO_IFUNC uint64_t FIO_NAME2(fiobj, hash)(FIOBJ target_hash, FIOBJ o) {
     return h;
   }
   case FIOBJ_T_OTHER: {
-    /* FIXME? */
+    /* TODO: can we avoid "stringifying" the object? */
     fio_str_info_s tmp = (*fiobj_object_metadata(o))->to_s(o);
     return fio_risky_hash(tmp.buf, tmp.len, (uint64_t)target_hash);
   }
@@ -13434,7 +13432,7 @@ FIO_SFUNC int fiobj____each2_wrapper_task(FIOBJ child, void *arg) {
 FIOBJ_FUNC uint32_t fiobj_each2(FIOBJ o,
                                 int (*task)(FIOBJ child, void *arg),
                                 void *arg) {
-  /* FIXME - move to recursion with nesting limiter? */
+  /* TODO - move to recursion with nesting limiter? */
   fiobj_____each2_data_s d = {
       .task = task,
       .arg = arg,
