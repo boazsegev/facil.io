@@ -861,27 +861,35 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
   do {                                                                         \
     dest = __atomic_load_n((p_obj), __ATOMIC_SEQ_CST);                         \
   } while (0)
+
+// clang-format off
+
 /** An atomic exchange operation, returns previous value */
-#define fio_atomic_exchange(p_obj, value)                                      \
-  __atomic_exchange_n((p_obj), (value), __ATOMIC_SEQ_CST)
+#define fio_atomic_exchange(p_obj, value) __atomic_exchange_n((p_obj), (value), __ATOMIC_SEQ_CST)
+/** An atomic addition operation, returns previous value */
+#define fio_atomic_add(p_obj, value) __atomic_fetch_add((p_obj), (value), __ATOMIC_SEQ_CST)
+/** An atomic subtraction operation, returns previous value */
+#define fio_atomic_sub(p_obj, value) __atomic_fetch_sub((p_obj), (value), __ATOMIC_SEQ_CST)
+/** An atomic AND (&) operation, returns previous value */
+#define fio_atomic_and(p_obj, value) __atomic_fetch_and((p_obj), (value), __ATOMIC_SEQ_CST)
+/** An atomic XOR (^) operation, returns previous value */
+#define fio_atomic_xor(p_obj, value) __atomic_fetch_xor((p_obj), (value), __ATOMIC_SEQ_CST)
+/** An atomic OR (|) operation, returns previous value */
+#define fio_atomic_or(p_obj, value) __atomic_fetch_or((p_obj), (value), __ATOMIC_SEQ_CST)
+/** An atomic NOT AND ((~)&) operation, returns previous value */
+#define fio_atomic_nand(p_obj, value) __atomic_fetch_nand((p_obj), (value), __ATOMIC_SEQ_CST)
 /** An atomic addition operation, returns new value */
-#define fio_atomic_add(p_obj, value)                                           \
-  __atomic_add_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+#define fio_atomic_add_fetch(p_obj, value) __atomic_add_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
 /** An atomic subtraction operation, returns new value */
-#define fio_atomic_sub(p_obj, value)                                           \
-  __atomic_sub_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+#define fio_atomic_sub_fetch(p_obj, value) __atomic_sub_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
 /** An atomic AND (&) operation, returns new value */
-#define fio_atomic_and(p_obj, value)                                           \
-  __atomic_and_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+#define fio_atomic_and_fetch(p_obj, value) __atomic_and_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
 /** An atomic XOR (^) operation, returns new value */
-#define fio_atomic_xor(p_obj, value)                                           \
-  __atomic_xor_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+#define fio_atomic_xor_fetch(p_obj, value) __atomic_xor_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
 /** An atomic OR (|) operation, returns new value */
-#define fio_atomic_or(p_obj, value)                                            \
-  __atomic_or_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+#define fio_atomic_or_fetch(p_obj, value) __atomic_or_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
 /** An atomic NOT AND ((~)&) operation, returns new value */
-#define fio_atomic_nand(p_obj, value)                                          \
-  __atomic_nand_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+#define fio_atomic_nand_fetch(p_obj, value) __atomic_nand_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
 /* note: __ATOMIC_SEQ_CST may be safer and __ATOMIC_ACQ_REL may be faster */
 
 /* Select the correct compiler builtin method. */
@@ -895,17 +903,31 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 #define fio_atomic_exchange(p_obj, value)                                      \
   __sync_val_compare_and_swap((p_obj), *(p_obj), (value))
 /** An atomic addition operation, returns new value */
-#define fio_atomic_add(p_obj, value) __sync_add_and_fetch((p_obj), (value))
+#define fio_atomic_add(p_obj, value) __sync_fetch_and_add((p_obj), (value))
 /** An atomic subtraction operation, returns new value */
-#define fio_atomic_sub(p_obj, value) __sync_sub_and_fetch((p_obj), (value))
+#define fio_atomic_sub(p_obj, value) __sync_fetch_and_sub((p_obj), (value))
 /** An atomic AND (&) operation, returns new value */
-#define fio_atomic_and(p_obj, value) __sync_and_and_fetch((p_obj), (value))
+#define fio_atomic_and(p_obj, value) __sync_fetch_and_and((p_obj), (value))
 /** An atomic XOR (^) operation, returns new value */
-#define fio_atomic_xor(p_obj, value) __sync_xor_and_fetch((p_obj), (value))
+#define fio_atomic_xor(p_obj, value) __sync_fetch_and_xor((p_obj), (value))
 /** An atomic OR (|) operation, returns new value */
-#define fio_atomic_or(p_obj, value) __sync_or_and_fetch((p_obj), (value))
+#define fio_atomic_or(p_obj, value) __sync_fetch_and_or((p_obj), (value))
 /** An atomic NOT AND ((~)&) operation, returns new value */
-#define fio_atomic_nand(p_obj, value) __sync_nand_and_fetch((p_obj), (value))
+#define fio_atomic_nand(p_obj, value) __sync_fetch_and_nand((p_obj), (value))
+/** An atomic addition operation, returns previous value */
+#define fio_atomic_add_fetch(p_obj, value) __sync_add_and_fetch((p_obj), (value))
+/** An atomic subtraction operation, returns previous value */
+#define fio_atomic_sub_fetch(p_obj, value) __sync_sub_and_fetch((p_obj), (value))
+/** An atomic AND (&) operation, returns previous value */
+#define fio_atomic_and_fetch(p_obj, value) __sync_and_and_fetch((p_obj), (value))
+/** An atomic XOR (^) operation, returns previous value */
+#define fio_atomic_xor_fetch(p_obj, value) __sync_xor_and_fetch((p_obj), (value))
+/** An atomic OR (|) operation, returns previous value */
+#define fio_atomic_or_fetch(p_obj, value) __sync_or_and_fetch((p_obj), (value))
+/** An atomic NOT AND ((~)&) operation, returns previous value */
+#define fio_atomic_nand_fetch(p_obj, value) __sync_nand_and_fetch((p_obj), (value))
+
+// clang-format on
 
 #else
 #error Required builtin "__sync_add_and_fetch" not found.
@@ -914,10 +936,29 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 #define FIO_LOCK_INIT 0
 typedef volatile unsigned char fio_lock_i;
 
-/** Returns 0 on success and 1 on failure. */
-FIO_IFUNC uint8_t fio_trylock(fio_lock_i *lock) {
+/** Trys to lock a sublock Returns 0 on success and 1 on failure. */
+FIO_IFUNC uint8_t fio_trylock_sublock(fio_lock_i *lock, uint8_t sub) {
   __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
-  return fio_atomic_exchange(lock, 1);
+  sub = 1U << (sub & 7);
+  return fio_atomic_or(lock, sub) & sub;
+}
+
+/** Busy waits for a sub lock to become available - not recommended. */
+FIO_IFUNC void fio_lock_sublock(fio_lock_i *lock, uint8_t sub) {
+  while (fio_trylock_sublock(lock, sub)) {
+    FIO_THREAD_RESCHEDULE();
+  }
+}
+
+/** Unlocks the sub lock, no matter which thread owns the lock. */
+FIO_IFUNC void fio_unlock_sublock(fio_lock_i *lock, uint8_t sub) {
+  sub = 1U << (sub & 7);
+  fio_atomic_and(lock, (~(fio_lock_i)sub));
+}
+
+/** Trys to acquire a lock. Returns 0 on success and 1 on failure. */
+FIO_IFUNC uint8_t fio_trylock(fio_lock_i *lock) {
+  return fio_trylock_sublock(lock, 0);
 }
 
 /** Busy waits for a lock to become available - not recommended. */
@@ -928,10 +969,18 @@ FIO_IFUNC void fio_lock(fio_lock_i *lock) {
 }
 
 /** Unlocks the lock, no matter which thread owns the lock. */
-FIO_IFUNC void fio_unlock(fio_lock_i *lock) { fio_atomic_exchange(lock, 0); }
+FIO_IFUNC void fio_unlock(fio_lock_i *lock) { fio_unlock_sublock(lock, 0); }
 
 /** Returns 1 if the lock is locked, 0 otherwise. */
-FIO_IFUNC uint8_t FIO_NAME_BL(fio, locked)(fio_lock_i *lock) { return *lock; }
+FIO_IFUNC uint8_t FIO_NAME_BL(fio, locked)(fio_lock_i *lock) {
+  return *lock & 1;
+}
+
+/** Returns 1 if the lock is locked, 0 otherwise. */
+FIO_IFUNC uint8_t FIO_NAME_BL(fio, sublocked)(fio_lock_i *lock, uint8_t sub) {
+  uint8_t bit = 1U << (sub & 7);
+  return (((*lock) & bit) >> (sub & 7));
+}
 
 #endif /* FIO_ATOMIC */
 #undef FIO_ATOMIC
@@ -2294,7 +2343,7 @@ static size_t fio___mem_block_count;
   } while (0)
 #define FIO_MEMORY_ON_BLOCK_FREE()                                             \
   do {                                                                         \
-    fio_atomic_sub(&fio___mem_block_count, 1);                                 \
+    fio_atomic_sub_fetch(&fio___mem_block_count, 1);                           \
   } while (0)
 #ifdef FIO_LOG_INFO
 #define FIO_MEMORY_PRINT_BLOCK_STAT()                                          \
@@ -2362,7 +2411,7 @@ FIO_SFUNC fio___mem_block_s *fio___mem_block_alloc(void) {
 
 FIO_SFUNC void fio___mem_block_free(fio___mem_block_s *b) {
   b = FIO_PTR_MATH_RMASK(fio___mem_block_s, b, FIO_MEMORY_BLOCK_SIZE_LOG);
-  if (!b || fio_atomic_sub(&b->ref, 1)) {
+  if (!b || fio_atomic_sub_fetch(&b->ref, 1)) {
     /* block slice still in use */
     return;
   }
@@ -2371,7 +2420,7 @@ FIO_SFUNC void fio___mem_block_free(fio___mem_block_s *b) {
   fio___mem_available_blocks_push(&fio___mem_state->available,
                                   (fio___mem_block_node_s *)b);
   b = fio___mem_block_root(b);
-  if (fio_atomic_sub(&b->root_ref, 1)) {
+  if (fio_atomic_sub_fetch(&b->root_ref, 1)) {
     /* block still has at least one used slice */
     fio_unlock(&fio___mem_state->lock);
     return;
@@ -10660,7 +10709,7 @@ init_error:
 
 FIO_IFUNC void fio___timer_event_free(fio_timer_queue_s *tq,
                                       fio___timer_event_s *t) {
-  if (tq && (t->repetitions < 0 || fio_atomic_sub(&t->repetitions, 1))) {
+  if (tq && (t->repetitions < 0 || fio_atomic_sub_fetch(&t->repetitions, 1))) {
     fio_lock(&tq->lock);
     fio___timer_insert(&tq->next, t);
     fio_unlock(&tq->lock);
@@ -11578,7 +11627,7 @@ IFUNC int FIO_NAME(FIO_REF_NAME,
       FIO_PTR_FROM_FIELD(FIO_NAME(FIO_REF_NAME, _wrapper_s), wrapped, wrapped);
   if (!o)
     return -1;
-  if (fio_atomic_sub(&o->ref, 1))
+  if (fio_atomic_sub_fetch(&o->ref, 1))
     return 0;
   FIO_REF_DESTROY(o->wrapped);
   FIO_REF_METADATA_DESTROY((o->metadata));
@@ -14644,64 +14693,82 @@ Atomic operations - test
 
 TEST_FUNC void fio___dynamic_types_test___atomic(void) {
   fprintf(stderr, "* Testing atomic operation macros.\n");
-  struct fio___atomic_test_s { /* force padding / misalignment */
-    unsigned char c;
-    unsigned short s;
-    unsigned long l;
+  struct fio___atomic_test_s {
     size_t w;
-  } s = {.c = 0}, *p;
-  uint64_t val = 1;
+    unsigned long l;
+    unsigned short s;
+    unsigned char c;
+  } s = {0}, r1 = {0}, r2 = {0};
   fio_lock_i lock = FIO_LOCK_INIT;
-  p = (struct fio___atomic_test_s *)FIO_MEM_CALLOC(sizeof(*p), 1);
-  s.c = fio_atomic_add(&p->c, 1);
-  s.s = fio_atomic_add(&p->s, 1);
-  s.l = fio_atomic_add(&p->l, 1);
-  s.w = fio_atomic_add(&p->w, 1);
-  FIO_T_ASSERT(s.c == 1 && p->c == 1, "fio_atomic_add failed for c");
-  FIO_T_ASSERT(s.s == 1 && p->s == 1, "fio_atomic_add failed for s");
-  FIO_T_ASSERT(s.l == 1 && p->l == 1, "fio_atomic_add failed for l");
-  FIO_T_ASSERT(s.w == 1 && p->w == 1, "fio_atomic_add failed for w");
-  s.c = fio_atomic_sub(&p->c, 1);
-  s.s = fio_atomic_sub(&p->s, 1);
-  s.l = fio_atomic_sub(&p->l, 1);
-  s.w = fio_atomic_sub(&p->w, 1);
-  FIO_T_ASSERT(s.c == 0 && p->c == 0, "fio_atomic_sub failed for c");
-  FIO_T_ASSERT(s.s == 0 && p->s == 0, "fio_atomic_sub failed for s");
-  FIO_T_ASSERT(s.l == 0 && p->l == 0, "fio_atomic_sub failed for l");
-  FIO_T_ASSERT(s.w == 0 && p->w == 0, "fio_atomic_sub failed for w");
-  fio_atomic_add(&p->c, 1);
-  fio_atomic_add(&p->s, 1);
-  fio_atomic_add(&p->l, 1);
-  fio_atomic_add(&p->w, 1);
-  s.c = fio_atomic_exchange(&p->c, 99);
-  s.s = fio_atomic_exchange(&p->s, 99);
-  s.l = fio_atomic_exchange(&p->l, 99);
-  s.w = fio_atomic_exchange(&p->w, 99);
-  FIO_T_ASSERT(s.c == 1 && p->c == 99, "fio_atomic_exchange failed for c");
-  FIO_T_ASSERT(s.s == 1 && p->s == 99, "fio_atomic_exchange failed for s");
-  FIO_T_ASSERT(s.l == 1 && p->l == 99, "fio_atomic_exchange failed for l");
-  FIO_T_ASSERT(s.w == 1 && p->w == 99, "fio_atomic_exchange failed for w");
-  FIO_MEM_FREE(p, sizeof(*p));
-  FIO_T_ASSERT(fio_atomic_exchange(&val, 2) == 1,
-               "fio_atomic_exchange should return old value");
-  FIO_T_ASSERT(fio_atomic_add(&val, 2) == 4,
-               "fio_atomic_add should return new value");
-  FIO_T_ASSERT(val == 4, "fio_atomic_add should update value");
-  FIO_T_ASSERT(fio_atomic_sub(&val, 2) == 2,
-               "fio_atomic_sub should return new value");
-  FIO_T_ASSERT(val == 2, "fio_atomic_sub should update value");
-  FIO_T_ASSERT(fio_atomic_and(&val, 1) == 0,
-               "fio_atomic_and should return new value");
+
+  r1.c = fio_atomic_add(&s.c, 1);
+  r1.s = fio_atomic_add(&s.s, 1);
+  r1.l = fio_atomic_add(&s.l, 1);
+  r1.w = fio_atomic_add(&s.w, 1);
+  FIO_T_ASSERT(r1.c == 0 && s.c == 1, "fio_atomic_add failed for c");
+  FIO_T_ASSERT(r1.s == 0 && s.s == 1, "fio_atomic_add failed for s");
+  FIO_T_ASSERT(r1.l == 0 && s.l == 1, "fio_atomic_add failed for l");
+  FIO_T_ASSERT(r1.w == 0 && s.w == 1, "fio_atomic_add failed for w");
+  r2.c = fio_atomic_add_fetch(&s.c, 1);
+  r2.s = fio_atomic_add_fetch(&s.s, 1);
+  r2.l = fio_atomic_add_fetch(&s.l, 1);
+  r2.w = fio_atomic_add_fetch(&s.w, 1);
+  FIO_T_ASSERT(r2.c == 2 && s.c == 2, "fio_atomic_add_fetch failed for c");
+  FIO_T_ASSERT(r2.s == 2 && s.s == 2, "fio_atomic_add_fetch failed for s");
+  FIO_T_ASSERT(r2.l == 2 && s.l == 2, "fio_atomic_add_fetch failed for l");
+  FIO_T_ASSERT(r2.w == 2 && s.w == 2, "fio_atomic_add_fetch failed for w");
+  r1.c = fio_atomic_sub(&s.c, 1);
+  r1.s = fio_atomic_sub(&s.s, 1);
+  r1.l = fio_atomic_sub(&s.l, 1);
+  r1.w = fio_atomic_sub(&s.w, 1);
+  FIO_T_ASSERT(r1.c == 2 && s.c == 1, "fio_atomic_sub failed for c");
+  FIO_T_ASSERT(r1.s == 2 && s.s == 1, "fio_atomic_sub failed for s");
+  FIO_T_ASSERT(r1.l == 2 && s.l == 1, "fio_atomic_sub failed for l");
+  FIO_T_ASSERT(r1.w == 2 && s.w == 1, "fio_atomic_sub failed for w");
+  r2.c = fio_atomic_sub_fetch(&s.c, 1);
+  r2.s = fio_atomic_sub_fetch(&s.s, 1);
+  r2.l = fio_atomic_sub_fetch(&s.l, 1);
+  r2.w = fio_atomic_sub_fetch(&s.w, 1);
+  FIO_T_ASSERT(r2.c == 0 && s.c == 0, "fio_atomic_sub_fetch failed for c");
+  FIO_T_ASSERT(r2.s == 0 && s.s == 0, "fio_atomic_sub_fetch failed for s");
+  FIO_T_ASSERT(r2.l == 0 && s.l == 0, "fio_atomic_sub_fetch failed for l");
+  FIO_T_ASSERT(r2.w == 0 && s.w == 0, "fio_atomic_sub_fetch failed for w");
+  fio_atomic_add(&s.c, 1);
+  fio_atomic_add(&s.s, 1);
+  fio_atomic_add(&s.l, 1);
+  fio_atomic_add(&s.w, 1);
+  r1.c = fio_atomic_exchange(&s.c, 99);
+  r1.s = fio_atomic_exchange(&s.s, 99);
+  r1.l = fio_atomic_exchange(&s.l, 99);
+  r1.w = fio_atomic_exchange(&s.w, 99);
+  FIO_T_ASSERT(r1.c == 1 && s.c == 99, "fio_atomic_exchange failed for c");
+  FIO_T_ASSERT(r1.s == 1 && s.s == 99, "fio_atomic_exchange failed for s");
+  FIO_T_ASSERT(r1.l == 1 && s.l == 99, "fio_atomic_exchange failed for l");
+  FIO_T_ASSERT(r1.w == 1 && s.w == 99, "fio_atomic_exchange failed for w");
+
+  uint64_t val = 1;
+  FIO_T_ASSERT(fio_atomic_and(&val, 2) == 1,
+               "fio_atomic_and should return old value");
   FIO_T_ASSERT(val == 0, "fio_atomic_and should update value");
-  FIO_T_ASSERT(fio_atomic_xor(&val, 1) == 1,
-               "fio_atomic_xor should return new value");
-  FIO_T_ASSERT(val == 1, "fio_atomic_xor should update value");
-  FIO_T_ASSERT(fio_atomic_or(&val, 2) == 3,
-               "fio_atomic_or should return new value");
-  FIO_T_ASSERT(val == 3, "fio_atomic_or should update value");
-  FIO_T_ASSERT(fio_atomic_nand(&val, 4) == ~0ULL,
-               "fio_atomic_nand should return new value");
-  FIO_T_ASSERT(val == ~0ULL, "fio_atomic_nand should update value");
+  FIO_T_ASSERT(fio_atomic_xor(&val, 1) == 0,
+               "fio_atomic_xor should return old value");
+  FIO_T_ASSERT(val == 1, "fio_atomic_xor_fetch should update value");
+  FIO_T_ASSERT(fio_atomic_xor_fetch(&val, 1) == 0,
+               "fio_atomic_xor_fetch should return new value");
+  FIO_T_ASSERT(val == 0, "fio_atomic_xor should update value");
+  FIO_T_ASSERT(fio_atomic_or(&val, 2) == 0,
+               "fio_atomic_or should return old value");
+  FIO_T_ASSERT(val == 2, "fio_atomic_or should update value");
+  FIO_T_ASSERT(fio_atomic_or_fetch(&val, 1) == 3,
+               "fio_atomic_or_fetch should return new value");
+  FIO_T_ASSERT(val == 3, "fio_atomic_or_fetch should update value");
+  FIO_T_ASSERT(fio_atomic_nand_fetch(&val, 4) == ~0ULL,
+               "fio_atomic_nand_fetch should return new value");
+  FIO_T_ASSERT(val == ~0ULL, "fio_atomic_nand_fetch should update value");
+  val = 3ULL;
+  FIO_T_ASSERT(fio_atomic_nand(&val, 4) == 3ULL,
+               "fio_atomic_nand should return old value");
+  FIO_T_ASSERT(val == ~0ULL, "fio_atomic_nand_fetch should update value");
 
   FIO_T_ASSERT(!fio_is_locked(&lock),
                "lock should be initialized in unlocked state");
@@ -14712,8 +14779,29 @@ TEST_FUNC void fio___dynamic_types_test___atomic(void) {
   FIO_T_ASSERT(!fio_is_locked(&lock), "lock should be released");
   fio_lock(&lock);
   FIO_T_ASSERT(fio_is_locked(&lock), "lock should be engaged (fio_lock)");
+  for (uint8_t i = 1; i < 8; ++i) {
+    FIO_T_ASSERT(!fio_is_sublocked(&lock, i),
+                 "sublock flagged, but wasn't engaged (%u - %p)",
+                 (unsigned int)i,
+                 (void *)(uintptr_t)lock);
+  }
   fio_unlock(&lock);
   FIO_T_ASSERT(!fio_is_locked(&lock), "lock should be released");
+  lock = FIO_LOCK_INIT;
+  for (size_t i = 0; i < 8; ++i) {
+    FIO_T_ASSERT(!fio_is_sublocked(&lock, i),
+                 "sublock should be initialized in unlocked state");
+    FIO_T_ASSERT(!fio_trylock_sublock(&lock, i),
+                 "fio_trylock_sublock should succeed");
+    FIO_T_ASSERT(fio_trylock_sublock(&lock, i), "fio_trylock should fail");
+    FIO_T_ASSERT(fio_is_sublocked(&lock, i), "lock should be engaged");
+    for (uint8_t j = 1; j < 8; ++j) {
+      FIO_T_ASSERT(i == j || !fio_is_sublocked(&lock, j),
+                   "another sublock was flagged, though it wasn't engaged");
+    }
+    fio_unlock_sublock(&lock, i);
+    FIO_T_ASSERT(!fio_is_sublocked(&lock, i), "sublock should be released");
+  }
 }
 
 /* *****************************************************************************

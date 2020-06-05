@@ -2099,7 +2099,9 @@ In addition, a `SIGINT` will be sent to the process and any of it's children bef
 
 ## Atomic operations:
 
-If the `FIO_ATOMIC` macro is defined than the following macros will be defined:
+If the `FIO_ATOMIC` macro is defined than the following macros will be defined.
+
+In general, when a function returns a value, it is always the previous value - unless the function name ends with `fetch` or `load`.
 
 #### `fio_atomic_load(p_obj)`
 
@@ -2114,33 +2116,69 @@ previous value.
 
 A MACRO / function that performs `add` atomically.
 
-Returns the new value.
+Returns the previous value.
 
 #### `fio_atomic_sub(p_obj, value)`
 
 A MACRO / function that performs `sub` atomically.
 
-Returns the new value.
+Returns the previous value.
 
 #### `fio_atomic_and(p_obj, value)`
 
 A MACRO / function that performs `and` atomically.
 
-Returns the new value.
+Returns the previous value.
 
 #### `fio_atomic_xor(p_obj, value)`
 
 A MACRO / function that performs `xor` atomically.
 
-Returns the new value.
+Returns the previous value.
 
 #### `fio_atomic_or(p_obj, value)`
 
 A MACRO / function that performs `or` atomically.
 
-Returns the new value.
+Returns the previous value.
 
 #### `fio_atomic_nand(p_obj, value)`
+
+A MACRO / function that performs `nand` atomically.
+
+Returns the previous value.
+
+#### `fio_atomic_add_fetch(p_obj, value)`
+
+A MACRO / function that performs `add` atomically.
+
+Returns the new value.
+
+#### `fio_atomic_sub_fetch(p_obj, value)`
+
+A MACRO / function that performs `sub` atomically.
+
+Returns the new value.
+
+#### `fio_atomic_and_fetch(p_obj, value)`
+
+A MACRO / function that performs `and` atomically.
+
+Returns the new value.
+
+#### `fio_atomic_xor_fetch(p_obj, value)`
+
+A MACRO / function that performs `xor` atomically.
+
+Returns the new value.
+
+#### `fio_atomic_or_fetch(p_obj, value)`
+
+A MACRO / function that performs `or` atomically.
+
+Returns the new value.
+
+#### `fio_atomic_nand_fetch(p_obj, value)`
 
 A MACRO / function that performs `nand` atomically.
 
@@ -2150,17 +2188,40 @@ Returns the new value.
 
 A spinlock type based on a volatile unsigned char.
 
+**Note**: the spinlock contains one main lock (`sub == 0`) and 7 sub-locks (`sub >= 1 && sub <= 7`), which could be managed separately using the `fio_lock_sublock`, `fio_trylock_sublock` and `fio_unlock_sublock` functions.
+
+
 #### `fio_lock(fio_lock_i *)`
 
 Busy waits for a lock to become available.
 
 #### `fio_trylock(fio_lock_i *)`
 
-Returns 0 on success and 1 on failure.
+Attempts to acquire the lock. Returns 0 on success and 1 on failure.
 
 #### `fio_unlock(fio_lock_i *)`
 
 Unlocks the lock, no matter which thread owns the lock.
+
+#### `fio_is_locked(fio_lock_i *)`
+
+Returns 1 if the (main) lock is engaged. Otherwise returns 0.
+
+#### `fio_lock_sublock(fio_lock_i *, uint8_t sub)`
+
+Busy waits for a sub-lock to become available.
+
+#### `fio_trylock_sublock(fio_lock_i *, uint8_t sub)`
+
+Attempts to acquire the sub-lock. Returns 0 on success and 1 on failure.
+
+#### `fio_unlock_sublock(fio_lock_i *, uint8_t sub)`
+
+Unlocks the sub-lock, no matter which thread owns the lock.
+
+#### `fio_is_sublocked(fio_lock_i *, uint8_t sub)`
+
+Returns 1 if the specified sub-lock is engaged. Otherwise returns 0.
 
 -------------------------------------------------------------------------------
 
