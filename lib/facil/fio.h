@@ -310,8 +310,8 @@ struct fio_protocol_s {
   void (*on_close)(intptr_t uuid, fio_protocol_s *protocol);
   /** called when a connection's timeout was reached */
   void (*ping)(intptr_t uuid, fio_protocol_s *protocol);
-  /** private metadata used by facil. */
-  size_t rsv;
+  /** reserved data - used by facil.io internally */
+  uintptr_t rsv;
 };
 
 /**
@@ -1268,59 +1268,6 @@ void fio_thread_free(void *p_thr);
 int fio_thread_join(void *p_thr);
 
 /* *****************************************************************************
-Connection Task scheduling
-***************************************************************************** */
-
-/**
- * This is used to lock the protocol againste concurrency collisions and
- * concurrent memory deallocation.
- *
- * However, there are three levels of protection that allow non-coliding tasks
- * to protect the protocol object from being deallocated while in use:
- *
- * * `FIO_PR_LOCK_TASK` - a task lock locks might change data owned by the
- *    protocol object. This task is used for tasks such as `on_data`.
- *
- * * `FIO_PR_LOCK_WRITE` - a lock that promises only to use static data (data
- *    that tasks never changes) in order to write to the underlying socket.
- *    This lock is used for tasks such as `on_ready` and `ping`
- *
- * * `FIO_PR_LOCK_STATE` - a lock that promises only to retrieve static data
- *    (data that tasks never changes), performing no actions. This usually
- *    isn't used for client side code (used internally by facil) and is only
- *     meant for very short locks.
- */
-enum fio_protocol_lock_e {
-  FIO_PR_LOCK_TASK = 0,
-  FIO_PR_LOCK_WRITE = 1,
-  FIO_PR_LOCK_STATE = 2
-};
-
-/** Named arguments for the `fio_defer` function. */
-typedef struct {
-  /** The type of task to be performed. Defaults to `FIO_PR_LOCK_TASK` but could
-   * also be seto to `FIO_PR_LOCK_WRITE`. */
-  enum fio_protocol_lock_e type;
-  /** The task (function) to be performed. This is required. */
-  void (*task)(intptr_t uuid, fio_protocol_s *, void *udata);
-  /** An opaque user data that will be passed along to the task. */
-  void *udata;
-  /** A fallback task, in case the connection was lost. Good for cleanup. */
-  void (*fallback)(intptr_t uuid, void *udata);
-} fio_defer_iotask_args_s;
-
-/**
- * Schedules a protected connection task. The task will run within the
- * connection's lock.
- *
- * If an error ocuurs or the connection is closed before the task can run, the
- * `fallback` task wil be called instead, allowing for resource cleanup.
- */
-void fio_defer_io_task(intptr_t uuid, fio_defer_iotask_args_s args);
-#define fio_defer_io_task(uuid, ...)                                           \
-  fio_defer_io_task((uuid), (fio_defer_iotask_args_s){__VA_ARGS__})
-
-/* *****************************************************************************
 Event / Task scheduling
 ***************************************************************************** */
 
@@ -1334,6 +1281,19 @@ Event / Task scheduling
  * Returns -1 or error, 0 on success.
  */
 int fio_defer(void (*task)(void *, void *), void *udata1, void *udata2);
+
+/**
+ * Schedules a protected connection task. The task will run within the
+ * connection's lock.
+ *
+ * If an error ocuurs or the connection is closed before the task can run, the
+ * task wil be called with a NULL protocol pointer, for resource cleanup.
+ */
+int fio_defer_io_task(intptr_t uuid,
+                      void (*task)(intptr_t uuid,
+                                   fio_protocol_s *,
+                                   void *udata),
+                      void *udata);
 
 /**
  * Creates a timer to run a task at the specified interval.
@@ -1405,10 +1365,14 @@ int fio_state_callback_remove(callback_type_e, void (*func)(void *), void *arg);
 /**
  * Forces all the existing callbacks to run, as if the event occurred.
  *
- * Callbacks are called from last to first (last callback executes first).
+ * Callbacks for all initialization / idling tasks are called in order of
+ * creation (where callback_type_e <= FIO_CALL_ON_IDLE).
+ *
+ * Callbacks for all cleanup oriented tasks are called in reverse order of
+ * creation (where callback_type_e >= FIO_CALL_ON_SHUTDOWN).
  *
  * During an event, changes to the callback list are ignored (callbacks can't
- * remove other callbacks for the same event).
+ * add or remove other callbacks for the same event).
  */
 void fio_state_callback_force(callback_type_e);
 
@@ -1528,7 +1492,10 @@ void fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata);
  * The `udata` is an opaque user data pointer that is passed along to the
  * protocol selected (if any protocols were added using `fio_tls_alpn_add`).
  */
-void fio_tls_connect(intptr_t uuid, fio_tls_s *tls, void *udata);
+void fio_tls_connect(intptr_t uuid,
+                     fio_tls_s *tls,
+                     const char *server_sni,
+                     void *udata);
 
 /**
  * Increase the reference count for the TLS object.
@@ -1556,29 +1523,13 @@ Lower Level API - for special circumstances, use with care.
  * protocol object from outside a running connection task, you might need to
  * lock the protocol to prevent it from being closed / freed in the background.
  *
- * facil.io uses three different locks:
- *
- * * FIO_PR_LOCK_TASK locks the protocol for normal tasks (i.e. `on_data`,
- * `fio_defer`, `fio_every`).
- *
- * * FIO_PR_LOCK_WRITE locks the protocol for high priority `fio_write`
- * oriented tasks (i.e. `ping`, `on_ready`).
- *
- * * FIO_PR_LOCK_STATE locks the protocol for quick operations that need to copy
- * data from the protocol's data structure.
- *
- * IMPORTANT: Remember to call `fio_protocol_unlock` using the same lock type.
- *
- * Returns NULL on error (lock busy == EWOULDBLOCK, connection invalid == EBADF)
- * and a pointer to a protocol object on success.
- *
- * On error, consider calling `fio_defer` or `defer` instead of busy waiting.
- * Busy waiting SHOULD be avoided whenever possible.
+ * On error, consider calling `fio_defer` or `fio_defer_io_task` instead of busy
+ * waiting. Busy waiting SHOULD be avoided whenever possible.
  */
-fio_protocol_s *fio_protocol_try_lock(intptr_t uuid, enum fio_protocol_lock_e);
+fio_protocol_s *fio_protocol_try_lock(intptr_t uuid);
 /** Don't unlock what you don't own... see `fio_protocol_try_lock` for
  * details. */
-void fio_protocol_unlock(fio_protocol_s *pr, enum fio_protocol_lock_e);
+void fio_protocol_unlock(fio_protocol_s *pr);
 
 /* *****************************************************************************
  * Pub/Sub / Cluster Messages API
