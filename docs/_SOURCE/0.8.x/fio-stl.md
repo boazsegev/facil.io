@@ -2390,7 +2390,7 @@ Don't use the same nonce-secret combination for other data.
 
 This is **not** a cryptographically secure encryption. Even **if** the algorithm was secure, it would provide no more then a 32 bit level encryption, which isn't strong enough for any cryptographic use-case.
 
-However, this could be used to mitigate memory probing attacks. Secrets stored in the memory might remain accessible after the program exists or through core dump information. By storing "secret" information masked in this way, it mitigates the risk of secret information being recognized or deciphered.
+However, this could be used to mitigate memory probing attacks. Secrets stored in the memory might remain accessible after the program exists or through core dump information. By storing "secret" information masked in this way, it mitigates the risk of secret information being easily recognized.
 
 
 -------------------------------------------------------------------------------
@@ -2481,6 +2481,8 @@ double fio_atof(char **pstr);
 
 A helper function that converts between String data to a signed double.
 
+Currently wraps `strtod` with some special case handling.
+
 #### `fio_ltoa`
 
 ```c
@@ -2506,6 +2508,8 @@ size_t fio_ftoa(char *dest, double num, uint8_t base);
 ```
 
 A helper function that converts between a double to a string.
+
+Currently wraps `sprintf` with some special case handling.
 
 No overflow guard is provided, make sure there's at least 130 bytes available
 (for base 2).
