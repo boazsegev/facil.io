@@ -56,7 +56,7 @@ In addition, the core Simple Template Library (STL) includes helpers for common 
 
 * [Pseudo Random Generation](#pseudo-random-generation) - defined by `FIO_RAND`
 
-* [String / Number conversion](#string-number-conversion) - defined by `FIO_ATOL`
+* [String / Number conversion](#string--number-conversion) - defined by `FIO_ATOL`
 
 * [Basic Socket / IO Helpers](#basic-socket-io-helpers) - defined by `FIO_SOCK`
 
