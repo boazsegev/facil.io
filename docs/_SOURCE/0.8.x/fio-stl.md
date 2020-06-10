@@ -74,6 +74,48 @@ In addition, the core Simple Template Library (STL) includes helpers for common 
 
 To test the library, define the `FIO_TEST_CSTL` macro and include the header. A testing function called `fio_test_dynamic_types` will be defined. Call that function in your code to test the library.
 
+## Compilation Modes
+
+The Simple Template Library types and functions could be compiled as either static or extern ("global"), either limiting their scope to a single C file (compilation unit) or exposing them throughout the program.
+
+#### Static Functions by Default
+
+By default, the Simple Template Library will generate static functions where possible.
+
+To change this behavior, `FIO_EXTERN` and `FIO_EXTERN_COMPLETE` could be used to generate externally visible code.
+
+#### `FIO_EXTERN`
+
+If defined, the the Simple Template Library will generate non-static code.
+
+If `FIO_EXTERN` is defined alone, only function declarations and inline functions will be generated.
+
+If `FIO_EXTERN_COMPLETE` is defined, the function definition (the implementation code) will also be generated.
+
+**Note**: the `FIO_EXTERN` will be **automatically undefined** each time the Simple Template Library header is included.
+
+For example, in the header (i.e., `mymem.h`), use:
+
+```c
+#define FIO_EXTERN
+#define FIO_MALLOC
+#include "fio-stl.h"
+```
+
+Later, in the implementation file, use:
+
+```c
+#define FIO_EXTERN_COMPLETE 1
+#include "mymem.h"
+#undef FIO_EXTERN_COMPLETE
+```
+
+#### `FIO_EXTERN_COMPLETE`
+
+When defined, this macro will force full code generation.
+
+If `FIO_EXTERN_COMPLETE` is set to the value `2`, it will automatically self-destruct (it will undefine itself once used).
+
 -------------------------------------------------------------------------------
 
 ## Version and Common Helper Macros
