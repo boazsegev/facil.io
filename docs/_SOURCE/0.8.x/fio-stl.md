@@ -4,7 +4,7 @@ sidebar: 0.8.x/_sidebar.md
 ---
 # {{{title}}}
 
-At the core of the facil.io library it's powerful Simple Template Library for C and C++.
+At the core of the [facil.io library](https://facil.io) is its powerful Simple Template Library for C (and C++).
 
 The Simple Template Library is a "swiss-army-knife" library, that uses MACROS to generate code for different common types, such as Hash Maps, Arrays, Linked Lists, Binary-Safe Strings, etc'.
 
@@ -2926,7 +2926,7 @@ struct timespec fio_time_real();
 
 Returns human (watch) time... this value isn't as safe for measurements.
 
-#### `timespec`
+#### `fio_time_mono`
 
 ```c
 struct timespec fio_time_mono();
