@@ -17087,10 +17087,20 @@ TEST_FUNC void fio___dynamic_types_test___print_sizes(void) {
 Testing functiun
 ***************************************************************************** */
 
+TEST_FUNC void fio____test_dynamic_types__stack_poisoner(void) {
+  const size_t len = 1UL << 16;
+  uint8_t buf[len];
+  __asm__ __volatile__("" ::: "memory");
+  memset(buf, (int)(~0U), len);
+  __asm__ __volatile__("" ::: "memory");
+  fio_trylock(buf);
+}
+
 TEST_FUNC void fio_test_dynamic_types(void) {
   char *filename = (char *)FIO__FILE__;
   while (filename[0] == '.' && filename[1] == '/')
     filename += 2;
+  fio____test_dynamic_types__stack_poisoner();
   fprintf(stderr, "===============\n");
   fprintf(stderr, "Testing Dynamic Types (%s)\n", filename);
   fprintf(
