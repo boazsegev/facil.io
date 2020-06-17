@@ -778,6 +778,12 @@ test/hpack: | create_tree
 	@$(CCL) -o $(BIN) $(TMP_ROOT)/hpack.o $(LINKER_FLAGS) $(OPTIMIZATION)
 	@$(BIN)
 
+.PHONY : test/json
+test/json: | create_tree
+	@$(CC) -c ./tests/json_roundtrip.c -o $(TMP_ROOT)/json.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@$(CCL) -o $(BIN) $(TMP_ROOT)/json.o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@$(BIN)
+
 endif
 
 #############################################################################
