@@ -31,8 +31,9 @@ int main(int argc, char const *argv[]) {
       FIO_CLI_STRING("--file -f a file to load for JSON roundtrip testing."),
       FIO_CLI_BOOL("--pretty -p -b test Beautify / Prettify roundtrip."),
       FIO_CLI_BOOL("--verbose -v enable debugging mode logging."));
-  if (fio_cli_get_bool("-d"))
+  if (fio_cli_get_bool("-v")) {
     FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
+  }
   if (fio_cli_unnamed_count()) {
     fiobj_str_destroy(json);
     fiobj_str_write(json, fio_cli_unnamed(0), strlen(fio_cli_unnamed(0)));
@@ -69,10 +70,22 @@ int main(int argc, char const *argv[]) {
              fiobj2cstr(obj1).buf,
              fiobj2cstr(obj2).buf);
 
+  if (FIOBJ_TYPE(obj2) == FIOBJ_T_HASH &&
+      fiobj_hash_get3(obj2, "___sanity_test____ ____ ____ ", 29) !=
+          fiobj_true()) {
+    /* sanity test */
+    fiobj_hash_set3(obj2, "___sanity_test____ ____ ____ ", 29, fiobj_true());
+    FIO_ASSERT(
+        !fiobj_is_eq(obj1, obj2),
+        "Sanity test failed - objects shouldn't be equal after being updated");
+  }
+
   // Formatting the JSON back to a String object and printing it up
-  FIO_LOG_INFO("JSON input was %zu bytes\nJSON output is %zu bytes.\n",
-               consumed,
-               (size_t)fiobj_str_len(json2));
+  fprintf(
+      stderr,
+      "-----PASSED-----\nJSON input was %zu bytes\nJSON output is %zu bytes.\n",
+      consumed,
+      (size_t)fiobj_str_len(json2));
   // cleanup
   FIOBJ_STR_TEMP_DESTROY(json);
   fiobj_free(obj1);
