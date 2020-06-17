@@ -6504,7 +6504,6 @@ FIO_IFUNC FIO_MAP_SIZE_TYPE FIO_NAME(FIO_MAP_NAME,
   FIO_MAP_S *const m = (FIO_MAP_S *)FIO_PTR_UNTAG(m_);
   if (!m || !m_)
     return 0;
-  /* TODO */
   uint8_t bits = 2;
   if (capa == (FIO_MAP_SIZE_TYPE)-1)
     return FIO_MAP_INDEX_INVALID;
@@ -6521,7 +6520,6 @@ FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, rehash)(FIO_MAP_PTR m_) {
   FIO_MAP_S *const m = (FIO_MAP_S *)FIO_PTR_UNTAG(m_);
   if (!m || !m_ || !m->map || !m->bits)
     return 0;
-  /* TODO */
   return FIO_NAME(FIO_MAP_NAME, __rehash_router)(m);
 }
 
@@ -8696,7 +8694,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
   /* is escaping required? - simple memcpy if we don't need to escape */
   if (set_at) {
     memcpy(dest.buf, src, len);
-    dest.buf -= org_len;
+    dest.buf -= dest.len;
     dest.len += len;
     return dest;
   }
@@ -13537,7 +13535,7 @@ FIOBJ_FUNC unsigned char fiobj___test_eq_nested(FIOBJ restrict a,
   case FIOBJ_T_FLOAT:  /* fallthrough */
   case FIOBJ_T_STRING: /* fallthrough */
     /* should never happen... this function is for enumerable objects */
-    return 0;
+    return a == b;
   case FIOBJ_T_ARRAY:
     /* test each array member with matching index */
     {
@@ -13551,11 +13549,14 @@ FIOBJ_FUNC unsigned char fiobj___test_eq_nested(FIOBJ restrict a,
     }
     goto equal;
   case FIOBJ_T_HASH:
-    /* TODO */
-    goto unequal;
+    FIO_MAP_EACH2(FIO_NAME(fiobj, FIOBJ___NAME_HASH), a, pos) {
+      FIOBJ val = fiobj_hash_get2(b, pos->obj.key);
+      if (!FIO_NAME_BL(fiobj, eq)(val, pos->obj.value))
+        goto equal;
+    }
+    goto equal;
   case FIOBJ_T_OTHER:
-    /* TODO */
-    goto unequal;
+    return (*fiobj_object_metadata(a))->is_eq(a, b);
   }
 equal:
   --fiobj___test_eq_nested_level;
