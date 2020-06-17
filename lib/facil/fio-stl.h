@@ -8637,6 +8637,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
   const uint8_t *src = (const uint8_t *)src_;
   size_t extra_len = 0;
   size_t at = 0;
+  uint8_t set_at = 1;
 
   /* collect escaping requiremnents */
   for (size_t i = 0; i < len; ++i) {
@@ -8664,7 +8665,8 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
       continue;
     }
     /* store first instance of character that needs escaping */
-    at = FIO_STR_WRITE_ESCAPED_CT_OR(at, at, i);
+    at = FIO_STR_WRITE_ESCAPED_CT_OR(set_at, i, at);
+    set_at = 0;
 
     /* count extra bytes */
     switch (src[i]) {
@@ -8673,7 +8675,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
     case '\n': /* fallthrough */
     case '\r': /* fallthrough */
     case '\t': /* fallthrough */
-    case '\"': /* fallthrough */
+    case '"':  /* fallthrough */
     case '\\': /* fallthrough */
     case '/':  /* fallthrough */
       ++extra_len;
@@ -8683,10 +8685,6 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
       extra_len += 5;
     }
   }
-  /* is escaping required? */
-  if (!extra_len) {
-    return FIO_NAME(FIO_STR_NAME, write)(s, src, len);
-  }
   /* reserve space and copy any valid "head" */
   fio_str_info_s dest;
   {
@@ -8695,6 +8693,13 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
     dest.len = org_len;
   }
   dest.buf += dest.len;
+  /* is escaping required? - simple memcpy if we don't need to escape */
+  if (set_at) {
+    memcpy(dest.buf, src, len);
+    dest.buf -= org_len;
+    dest.len += len;
+    return dest;
+  }
   /* simple memcpy until first char that needs escaping */
   if (at >= 8) {
     memcpy(dest.buf, src, at);
@@ -8727,11 +8732,9 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
       }
       switch (fio__str_utf8_map[src[i] >> 3]) {
       case 4:
-        dest.buf[at++] = src[i++];
-      /* fallthrough */
+        dest.buf[at++] = src[i++]; /* fallthrough */
       case 3:
-        dest.buf[at++] = src[i++];
-      /* fallthrough */
+        dest.buf[at++] = src[i++]; /* fallthrough */
       case 2:
         dest.buf[at++] = src[i++];
         dest.buf[at++] = src[i];
@@ -8739,44 +8742,36 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
       continue;
     }
 
-    /* count extra bytes */
+    /* write escape sequence */
+    dest.buf[at++] = '\\';
     switch (src[i]) {
     case '\b':
-      dest.buf[at++] = '\\';
       dest.buf[at++] = 'b';
       break;
     case '\f':
-      dest.buf[at++] = '\\';
       dest.buf[at++] = 'f';
       break;
     case '\n':
-      dest.buf[at++] = '\\';
       dest.buf[at++] = 'n';
       break;
     case '\r':
-      dest.buf[at++] = '\\';
       dest.buf[at++] = 'r';
       break;
     case '\t':
-      dest.buf[at++] = '\\';
       dest.buf[at++] = 't';
       break;
     case '"':
-      dest.buf[at++] = '\\';
       dest.buf[at++] = '"';
       break;
     case '\\':
       dest.buf[at++] = '\\';
-      dest.buf[at++] = '\\';
       break;
     case '/':
-      dest.buf[at++] = '\\';
       dest.buf[at++] = '/';
       break;
     default:
       /* escaping all control charactes and non-UTF-8 characters */
       if (src[i] < 127) {
-        dest.buf[at++] = '\\';
         dest.buf[at++] = 'u';
         dest.buf[at++] = '0';
         dest.buf[at++] = '0';
@@ -8784,7 +8779,6 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
         dest.buf[at++] = escape_hex_chars[src[i] & 15];
       } else {
         /* non UTF-8 data... encode as...? */
-        dest.buf[at++] = '\\';
         dest.buf[at++] = 'x';
         dest.buf[at++] = escape_hex_chars[src[i] >> 4];
         dest.buf[at++] = escape_hex_chars[src[i] & 15];
@@ -13934,13 +13928,13 @@ FIOBJ_FUNC FIOBJ fiobj_json_parse(fio_str_info_s str, size_t *consumed_p) {
     if (p.top) {
       FIO_LOG_DEBUG("WARNING - JSON failed secondary validation, no on_error");
     }
-    fiobj_free(p.stack[0]);
 #if DEBUG
     FIOBJ s = FIO_NAME2(fiobj, json)(FIOBJ_INVALID, p.top, 0);
     FIO_LOG_DEBUG("JSON data being deleted:\n%s",
                   FIO_NAME2(fiobj, cstr)(s).buf);
     fiobj_free(s);
 #endif
+    fiobj_free(p.stack[0]);
     p.top = FIOBJ_INVALID;
   }
   fiobj_free(p.key);
