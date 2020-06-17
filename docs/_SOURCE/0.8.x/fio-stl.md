@@ -4115,6 +4115,17 @@ fio_str_info_s fiobj_str2cstr(FIOBJ s);
 
 Returns information about the string. Same as [`fiobj_str_info()`](#str_info).
 
+#### `FIOBJ_STR_TEMP_DESTROY(name)`
+
+```c
+#define FIOBJ_STR_TEMP_DESTROY(str_name)  \
+  FIO_NAME(fiobj_str, destroy)(str_name);
+```
+
+Resets a temporary `FIOBJ` String, freeing and any resources allocated.
+
+See the following `FIOBJ_STR_TEMP_XXX` macros for creating temporary FIOBJ strings on the Stack.
+
 #### `FIOBJ_STR_TEMP_VAR(name)`
 
 ```c
@@ -4134,14 +4145,51 @@ Creates a temporary `FIOBJ` String object on the stack.
 
 String data might be allocated dynamically, requiring the use of `FIOBJ_STR_TEMP_DESTROY`.
 
-#### `FIOBJ_STR_TEMP_DESTROY(name)`
+#### `FIOBJ_STR_TEMP_VAR_STATIC(str_name, buf, len)`
 
 ```c
-#define FIOBJ_STR_TEMP_DESTROY(str_name)  \
-  FIO_NAME(fiobj_str, destroy)(str_name);
+#define FIOBJ_STR_TEMP_VAR_STATIC(str_name, buf_, len_)                        \
+  struct {                                                                     \
+    uint64_t i1;                                                               \
+    uint64_t i2;                                                               \
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), s) s;                       \
+  } FIO_NAME(str_name,                                                         \
+             __auto_mem_tmp) = {0x7f7f7f7f7f7f7f7fULL,                         \
+                                0x7f7f7f7f7f7f7f7fULL,                         \
+                                FIO_STR_INIT_STATIC2((buf_), (len_))};         \
+  FIOBJ str_name =                                                             \
+      (FIOBJ)(((uintptr_t) & (FIO_NAME(str_name, __auto_mem_tmp).s)) |         \
+              FIOBJ_T_STRING);
 ```
 
-Resets a temporary `FIOBJ` String, freeing and any resources allocated.
+Creates a temporary FIOBJ String object on the stack, initialized with a static string.
+
+Editing the String data **will** cause dynamic memory allocation, use `FIOBJ_STR_TEMP_DESTROY` once done.
+
+This variation will cause memory allocation immediately upon editing the String. The buffer _MAY_ be read only.
+
+#### `FIOBJ_STR_TEMP_VAR_EXISTING(str_name, buf, len, capa)`
+
+```c
+#define FIOBJ_STR_TEMP_VAR_EXISTING(str_name, buf_, len_, capa_)               \
+  struct {                                                                     \
+    uint64_t i1;                                                               \
+    uint64_t i2;                                                               \
+    FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), s) s;                       \
+  } FIO_NAME(str_name, __auto_mem_tmp) = {                                     \
+      0x7f7f7f7f7f7f7f7fULL,                                                   \
+      0x7f7f7f7f7f7f7f7fULL,                                                   \
+      FIO_STR_INIT_EXISTING((buf_), (len_), (capa_))};                         \
+  FIOBJ str_name =                                                             \
+      (FIOBJ)(((uintptr_t) & (FIO_NAME(str_name, __auto_mem_tmp).s)) |         \
+              FIOBJ_T_STRING);
+```
+
+Creates a temporary FIOBJ String object on the stack for a read/write buffer with the specified capacity.
+
+Editing the String data might cause dynamic memory allocation, use `FIOBJ_STR_TEMP_DESTROY` once done.
+
+Remember to manage the buffer's memory once it was de-linked from the temporary string (as the FIOBJ object does **not** take ownership of the memory).
 
 #### `FIOBJ` Strings - Core Type Functions
 
@@ -4363,6 +4411,19 @@ FIOBJ fiobj2json(FIOBJ dest, FIOBJ o, uint8_t beautify);
 Returns a JSON valid FIOBJ String, representing the object.
 
 If `dest` is an existing String, the formatted JSON data will be appended to the existing string.
+
+```c
+FIOBJ result = fiobj_json_parse2("{\"name\":\"John\",\"surname\":\"Smith\",\"ID\":1}",40, NULL);
+FIO_ASSERT( fiobj2cstr(fiobj_hash_get3(result, "name", 4)).len == 4 &&
+            !memcmp(fiobj2cstr(fiobj_hash_get3(result, "name", 4)).buf, "John", 4), "result error");
+
+FIOBJ_STR_TEMP_VAR(json_str); /* places string on the stack */
+fiobj2json(json_str, result, 1);
+FIO_LOG_INFO("updated JSON data to look nicer:\n%s", fiobj2cstr(json_str).buf);
+fiobj_free(result);
+FIOBJ_STR_TEMP_DESTROY(json_str);
+```
+
 
 #### `fiobj_hash_update_json`
 

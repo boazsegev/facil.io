@@ -13081,7 +13081,6 @@ FIOBJ Integers
 
 #define FIO_REF_NAME fiobj___bignum
 #define FIO_REF_TYPE intptr_t
-#define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_METADATA const FIOBJ_class_vtable_s *
 #define FIO_REF_METADATA_INIT(m)                                               \
   do {                                                                         \
@@ -13109,7 +13108,7 @@ FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER),
   FIOBJ o = (FIOBJ)FIO_NUMBER_ENCODE(i);
   if (FIO_NUMBER_REVESE(o) == i)
     return o;
-  o = fiobj___bignum_new();
+  o = fiobj___bignum_new2();
   FIO_PTR_MATH_RMASK(intptr_t, o, 3)[0] = i;
   return o;
 }
@@ -13130,7 +13129,7 @@ FIO_IFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), f)(FIOBJ i) {
 FIO_IFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_NUMBER), free)(FIOBJ i) {
   if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_NUMBER)
     return;
-  fiobj___bignum_free(i);
+  fiobj___bignum_free2(i);
   return;
 }
 #undef FIO_NUMBER_ENCODE
@@ -13143,7 +13142,6 @@ FIOBJ Floats
 #define FIO_REF_NAME fiobj___bigfloat
 #define FIO_REF_TYPE double
 #define FIO_REF_METADATA const FIOBJ_class_vtable_s *
-#define FIO_REF_CONSTRUCTOR_ONLY 1
 #define FIO_REF_METADATA_INIT(m)                                               \
   do {                                                                         \
     m = &FIOBJ___FLOAT_CLASS_VTBL;                                             \
@@ -13172,7 +13170,7 @@ FIO_IFUNC FIOBJ FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), new)(double i) {
       return (FIOBJ)(punned.i | FIOBJ_T_FLOAT);
     }
   }
-  ui = fiobj___bigfloat_new();
+  ui = fiobj___bigfloat_new2();
   FIO_PTR_MATH_RMASK(double, ui, 3)[0] = i;
   return ui;
 }
@@ -13201,7 +13199,7 @@ FIO_IFUNC double FIO_NAME2(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), f)(FIOBJ i) {
 FIO_IFUNC void FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_FLOAT), free)(FIOBJ i) {
   if (FIOBJ_TYPE_CLASS(i) == FIOBJ_T_FLOAT)
     return;
-  fiobj___bignum_free(i);
+  fiobj___bigfloat_free2(i);
   return;
 }
 
@@ -13622,7 +13620,7 @@ FIOBJ_EXTERN_OBJ_IMP const FIOBJ_class_vtable_s FIOBJ___NUMBER_CLASS_VTBL = {
     /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
     .each1 = NULL,
     /** Deallocates the element (but NOT any of it's exposed elements). */
-    .free2 = fiobj___bignum_free,
+    .free2 = fiobj___bignum_free2,
 };
 
 /* *****************************************************************************
@@ -13664,7 +13662,7 @@ FIOBJ_EXTERN_OBJ_IMP const FIOBJ_class_vtable_s FIOBJ___FLOAT_CLASS_VTBL = {
     /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
     .each1 = NULL,
     /** Deallocates the element (but NOT any of it's exposed elements). */
-    .free2 = fiobj___bigfloat_free,
+    .free2 = fiobj___bigfloat_free2,
 };
 
 /* *****************************************************************************
