@@ -3605,7 +3605,7 @@ The JSON parser requires the following callbacks to be defined as static functio
 static void fio_json_on_null(fio_json_parser_s *p);
 ```
 
-A NULL object was detected
+A `null` object was detected
 
 #### `fio_json_on_true`
 
@@ -3613,7 +3613,7 @@ A NULL object was detected
 static void fio_json_on_true(fio_json_parser_s *p);
 ```
 
-A TRUE object was detected
+A `true` object was detected
 
 #### `fio_json_on_false`
 
@@ -3621,7 +3621,7 @@ A TRUE object was detected
 static void fio_json_on_false(fio_json_parser_s *p);
 ```
 
-A FALSE object was detected
+A `false` object was detected
 
 #### `fio_json_on_number`
 
@@ -4401,6 +4401,14 @@ In addition, all the functions documented above as `MAP_x`, are defined as `fiob
 * [`fiobj_hash_each_get_key`](#map_each_get_key)
 
 ### `FIOBJ` JSON Helpers
+
+Parsing, editing and outputting JSON in C can be easily accomplished using `FIOBJ` types.
+
+There are [faster alternatives as well as slower alternatives out there](json_performance.html) (i.e., the [Qajson4c library](https://github.com/DeHecht/qajson4c) is a wonderful alternative for embedded systems).
+
+However, `facil.io` offers the added benefit of complete parsing from JSON to object. This allows the result to be manipulated, updated, sliced or merged with ease. This is in contrast to some parsers that offer a mid-way structure or lazy (delayed) parsing for types such as `true`, `false` and Numbers.
+
+`facil.io` also offers the added benefit of complete formatting from a framework wide object type (`FIOBJ`) to JSON, allowing the same soft type system to be used throughout the project (rather than having a JSON dedicated type system).
 
 #### `fiobj2json`
 

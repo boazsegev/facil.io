@@ -8633,7 +8633,7 @@ IFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, write_escape)(FIO_STR_PTR s,
                                    '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
   // clang-format on
   const uint8_t *src = (const uint8_t *)src_;
-  size_t extra_len = 0;
+  size_t extra_len = 4; /* often, after `write_escape` come quotes */
   size_t at = 0;
   uint8_t set_at = 1;
 
