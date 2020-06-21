@@ -279,13 +279,13 @@ else ifdef FIO_FORCE_KQUEUE
 	FLAGS+=FIO_ENGINE_KQUEUE HAVE_KQUEUE
 else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_EPOLL), $(EMPTY)), 0)
   $(info * Detected `epoll`)
-	FLAGS+=FIO_ENGINE_EPOLL HAVE_EPOLL
+	FLAGS+=HAVE_EPOLL
 else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_KQUEUE), $(EMPTY)), 0)
   $(info * Detected `kqueue`)
-	FLAGS+=FIO_ENGINE_KQUEUE HAVE_KQUEUE
+	FLAGS+=HAVE_KQUEUE
 else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_POLL), $(EMPTY)), 0)
   $(info * Detected `poll` - this is suboptimal fallback!)
-	FLAGS+=FIO_ENGINE_POLL HAVE_POLL
+	FLAGS+=HAVE_POLL
 else
 	$(warning No supported polling engine! won't be able to compile facil.io)
 endif
@@ -783,6 +783,30 @@ test/json: | create_tree
 	@$(CC) -c ./tests/json_roundtrip.c -o $(TMP_ROOT)/json.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
 	@$(CCL) -o $(BIN) $(TMP_ROOT)/json.o $(LINKER_FLAGS) $(OPTIMIZATION)
 	@$(BIN)
+
+.PHONY : test/memchr
+test/memchr: | create_tree
+	@$(CC) -c ./tests/memchr_speed.c -o $(TMP_ROOT)/memchr.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@$(CCL) -o $(BIN) $(TMP_ROOT)/memchr.o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@$(BIN)
+
+.PHONY : test/random
+test/random: | create_tree
+	@$(CC) -c ./tests/random.c -o $(TMP_ROOT)/random.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@$(CCL) -o $(BIN) $(TMP_ROOT)/random.o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@$(BIN)
+
+.PHONY : test/url
+test/url: | create_tree
+	@$(CC) -c ./tests/parse_url.c -o $(TMP_ROOT)/url.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@$(CCL) -o $(BIN) $(TMP_ROOT)/url.o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@$(BIN)
+
+.PHONY : test/slowloris
+test/slowloris: | create_tree
+	@$(CC) -c ./tests/slowloris.c -o $(TMP_ROOT)/slowloris.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@$(CCL) -o $(BIN) $(TMP_ROOT)/slowloris.o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@echo test a server for slowloris using: $(BIN)
 
 endif
 

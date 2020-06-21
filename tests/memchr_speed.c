@@ -1,5 +1,5 @@
 
-#define FIO_STRING_NAME fio_str
+#define FIO_STR_NAME fio_str
 #define FIO_CLI 1
 #define FIO_LOG 1
 #include <fio-stl.h>
@@ -11,8 +11,8 @@
 
 #define ALLOW_UNALIGNED_MEMORY_ACCESS 0
 
-static inline void *fio_memchr_naive(const void *buffer_, const int c,
-                                     size_t buffer_len) {
+static inline void *
+fio_memchr_naive(const void *buffer_, const int c, size_t buffer_len) {
   const char *buffer = (const char *)buffer_;
   while (buffer_len--) {
     if (*buffer == c)
@@ -22,8 +22,10 @@ static inline void *fio_memchr_naive(const void *buffer_, const int c,
   return NULL;
 }
 
-static inline void *fio_memchr2_naive(const void *buffer_, size_t buffer_len,
-                                      const int c1, const int c2) {
+static inline void *fio_memchr2_naive(const void *buffer_,
+                                      size_t buffer_len,
+                                      const int c1,
+                                      const int c2) {
   const char *buffer = (const char *)buffer_;
   while (buffer_len--) {
     if (*buffer == (char)c1 || *buffer == (char)c2)
@@ -96,8 +98,8 @@ found:
 /**
  * Finds the first occurance of up to 8 characters.
  */
-static inline void *fio_memchr(const void *buffer, const int brk,
-                               const size_t buffer_len) {
+static inline void *
+fio_memchr(const void *buffer, const int brk, const size_t buffer_len) {
   if (!buffer || !buffer_len)
     return NULL;
   const uint8_t *buf = (const uint8_t *)buffer;
@@ -149,8 +151,10 @@ found:
 /**
  * Finds the first occurance of up to 8 characters.
  */
-static inline void *fio_memchr2(const void *buffer, const size_t buffer_len,
-                                const int brk1, const int brk2) {
+static inline void *fio_memchr2(const void *buffer,
+                                const size_t buffer_len,
+                                const int brk1,
+                                const int brk2) {
   if (!buffer || !buffer_len)
     return NULL;
   const uint8_t *buf = (const uint8_t *)buffer;
@@ -208,8 +212,11 @@ tail:
 /**
  * Finds the first occurance of up to 8 characters.
  */
-static inline void *fio_memchr4(const void *buffer, const size_t buffer_len,
-                                const int brk1, const int brk2, const int brk3,
+static inline void *fio_memchr4(const void *buffer,
+                                const size_t buffer_len,
+                                const int brk1,
+                                const int brk2,
+                                const int brk3,
                                 const int brk4) {
   if (!buffer || !buffer_len)
     return NULL;
@@ -285,7 +292,8 @@ found:
 /**
  * Finds the first occurance of up to 8 characters.
  */
-static inline void *fio_memchrx(const void *buffer, const size_t buffer_len,
+static inline void *fio_memchrx(const void *buffer,
+                                const size_t buffer_len,
                                 const void *markers_,
                                 const uint8_t markers_count) {
   if (!buffer || !buffer_len)
@@ -464,48 +472,48 @@ found:
   return (void *)(buf + pos);
 }
 
-static inline void *seek4_strpbrk(const void *buffer, const int c,
-                                  size_t buffer_len) {
+static inline void *
+seek4_strpbrk(const void *buffer, const int c, size_t buffer_len) {
   char brks[5] = {1, 55, 66, c, 0};
   return strpbrk((char *)buffer, brks);
   (void)buffer_len;
 }
 
-static inline void *seek2_loop(const void *buffer, const int c,
-                               size_t buffer_len) {
+static inline void *
+seek2_loop(const void *buffer, const int c, size_t buffer_len) {
   return fio_memchr2_naive(buffer, buffer_len, '\r', c);
 }
 
-static inline void *seek2_fio(const void *buffer, const int c,
-                              size_t buffer_len) {
+static inline void *
+seek2_fio(const void *buffer, const int c, size_t buffer_len) {
   return fio_memchr2(buffer, buffer_len, '\r', c);
 }
 
-static inline void *seek2x_fio(const void *buffer, const int c,
-                               size_t buffer_len) {
+static inline void *
+seek2x_fio(const void *buffer, const int c, size_t buffer_len) {
   uint8_t brks[4] = {'\r', c};
   return fio_memchrx(buffer, buffer_len, brks, 4);
 }
 
-static inline void *seek4_loop(const void *buffer, const int c,
-                               size_t buffer_len) {
+static inline void *
+seek4_loop(const void *buffer, const int c, size_t buffer_len) {
   uint8_t brks[4] = {1, 55, 66, c};
   return fio_memchrx_naive(buffer, buffer_len, brks, 4);
 }
 
-static inline void *seek4_fio(const void *buffer, const int c,
-                              size_t buffer_len) {
+static inline void *
+seek4_fio(const void *buffer, const int c, size_t buffer_len) {
   return fio_memchr4(buffer, buffer_len, 1, 55, 66, c);
 }
 
-static inline void *seek4x_fio(const void *buffer, const int c,
-                               size_t buffer_len) {
+static inline void *
+seek4x_fio(const void *buffer, const int c, size_t buffer_len) {
   uint8_t brks[4] = {1, 55, 66, c};
   return fio_memchrx(buffer, buffer_len, brks, 4);
 }
 
-static inline void *seek4_print_title(const void *buffer, const int c,
-                                      size_t buffer_len) {
+static inline void *
+seek4_print_title(const void *buffer, const int c, size_t buffer_len) {
   (void)buffer;
   (void)buffer_len;
   (void)c;
@@ -516,11 +524,14 @@ static inline void *seek4_print_title(const void *buffer, const int c,
 int main(int argc, char const **argv) {
 
   fio_cli_start(
-      argc, argv, 1, 0,
+      argc,
+      argv,
+      0,
+      1,
       "This program tests the memchr speed against a custom implementation. "
       "It's meant to be used against defferent data to test how seeking "
       "performs in different circumstances.\n use: appname <filename>",
-      "-c the char to be tested against (only the fist char in the string");
+      "-c the char to be tested against (only the first char in the string");
   if (fio_cli_unnamed_count()) {
     fio_cli_set_default("-f", fio_cli_unnamed(0));
   } else {
@@ -533,8 +544,8 @@ int main(int argc, char const **argv) {
   size_t stop;
   size_t count;
 
-  fprintf(stderr, "Size of longest word found %lu\n",
-          sizeof(unsigned long long));
+  fprintf(
+      stderr, "Size of longest word found %lu\n", sizeof(unsigned long long));
 
   struct {
     void *(*func)(const void *buffer, const int brk, const size_t buffer_len);
@@ -558,14 +569,15 @@ int main(int argc, char const **argv) {
   size_t func_pos = 0;
 
   uint8_t char2find = fio_cli_get("-c")[0];
-  fio_str_s str = FIO_STRING_INIT;
+  fio_str_s str = FIO_STR_INIT;
   fio_str_info_s data = fio_str_readfile(&str, fio_cli_get("-f"), 0, 0);
   if (!data.len) {
     fprintf(stderr, "ERROR: Couldn't open file %s\n", fio_cli_get("-f"));
     perror("reported error:");
     exit(-1);
   }
-  fprintf(stderr, "Starting to test file with %lu bytes\n",
+  fprintf(stderr,
+          "Starting to test file with %lu bytes\n",
           (unsigned long)data.len);
   if (0) {
     /* dump to file, if you want to test readfile */
@@ -611,8 +623,12 @@ int main(int argc, char const **argv) {
         fprintf(stderr, " + ");
       fprintf(stderr, "%lu", end - start);
     }
-    fprintf(stderr, ")/%d\n === finding %lu items in %zu bytes took %lfs\n",
-            RUNS, count, data.len, (avrg / RUNS) / (1.0 * CLOCKS_PER_SEC));
+    fprintf(stderr,
+            ")/%d\n === finding %lu items in %zu bytes took %lfs\n",
+            RUNS,
+            count,
+            data.len,
+            (avrg / RUNS) / (1.0 * CLOCKS_PER_SEC));
     func_pos++;
   }
   fprintf(stderr, "\n");

@@ -1,5 +1,6 @@
 #define FIO_MALLOC
 #define FIO_LOG
+#define FIO_TIME
 #include <fio-stl.h>
 
 #include <pthread.h>
@@ -11,7 +12,6 @@
 #define TEST_CYCLES_START 128
 #define TEST_CYCLES_END 256
 #define TEST_CYCLES_REPEAT 3
-#define REPEAT_LIB_TEST 0
 
 static size_t test_mem_functions(void *(*malloc_func)(size_t),
                                  void *(*calloc_func)(size_t, size_t),

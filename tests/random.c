@@ -6,7 +6,7 @@
 //   return ((uint32_t)rand() << 16) ^ (uint32_t)rand();
 // }
 #define HWD_BITS 64
-static uint64_t next(void) { return fio_rand64(); }
+FIO_IFUNC uint64_t next(void) { return fio_rand64(); }
 
 /*
  * Copyright (C) 2004-2016 David Blackman.
@@ -608,13 +608,18 @@ static double compute_pvalue(const bool trans) {
        cat_count[i] of them. Must correct for that. */
     pvalue = pco_scale(pvalue, cat_count[i]);
     printf(") weight %s%d (%" PRIu32 "), p-value = %.3g\n",
-           i == NUMCATS - 1 ? ">=" : "", i + 1, cat_count[i], pvalue);
+           i == NUMCATS - 1 ? ">=" : "",
+           i + 1,
+           cat_count[i],
+           pvalue);
     if (pvalue < overall_pvalue)
       overall_pvalue = pvalue;
   }
 
   printf("bits per word = %d (analyzing %s); min category p-value = %.3g\n\n",
-         HWD_BITS, trans ? "transitions" : "bits", overall_pvalue);
+         HWD_BITS,
+         trans ? "transitions" : "bits",
+         overall_pvalue);
   /* again, we're cherry picking worst of NUMCATS, so correct it again. */
   return pco_scale(overall_pvalue, NUMCATS);
 }
@@ -634,8 +639,11 @@ static void analyze(int64_t pos, bool trans, bool final) {
   const time_t tm = time(0);
 
   printf("processed %.3g bytes in %.3g seconds (%.4g GB/s, %.4g TB/h). %s\n",
-         (double)pos, (double)(tm - tstart), pos * 1E-9 / (double)(tm - tstart),
-         pos * (3600 * 1E-12) / (double)(tm - tstart), ctime(&tm));
+         (double)pos,
+         (double)(tm - tstart),
+         pos * 1E-9 / (double)(tm - tstart),
+         pos * (3600 * 1E-12) / (double)(tm - tstart),
+         ctime(&tm));
 
   if (final)
     printf("final\n");
@@ -648,9 +656,19 @@ static void analyze(int64_t pos, bool trans, bool final) {
     printf("------\n\n");
 }
 
-static int64_t progsize[] = {
-    100000000, 125000000, 150000000, 175000000, 200000000, 250000000, 300000000,
-    400000000, 500000000, 600000000, 700000000, 850000000, 0};
+static int64_t progsize[] = {100000000,
+                             125000000,
+                             150000000,
+                             175000000,
+                             200000000,
+                             250000000,
+                             300000000,
+                             400000000,
+                             500000000,
+                             600000000,
+                             700000000,
+                             850000000,
+                             0};
 
 /* We use the all-one signature (the most probable) as initial signature. */
 static int64_t pos;
@@ -698,11 +716,13 @@ int main(int argc, char **argv) {
 #ifdef HWD_MMAP
   fprintf(stderr, "Allocating memory via mmap()... ");
   // (SIZE + 1) is necessary for a correct memory alignment.
-  cs = mmap(
-      (void *)(0x0UL),
-      (SIZE + 1) * sizeof *cs + SIZE * sizeof *norm + SIZE * sizeof *count_sum,
-      PROT_READ | PROT_WRITE,
-      MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | (30 << MAP_HUGE_SHIFT), 0, 0);
+  cs = mmap((void *)(0x0UL),
+            (SIZE + 1) * sizeof *cs + SIZE * sizeof *norm +
+                SIZE * sizeof *count_sum,
+            PROT_READ | PROT_WRITE,
+            MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | (30 << MAP_HUGE_SHIFT),
+            0,
+            0);
   if (cs == MAP_FAILED) {
     fprintf(stderr, "Failed.\n");
     exit(1);
@@ -723,8 +743,9 @@ int main(int argc, char **argv) {
       n = (int64_t)dn;
     else if (sscanf(argv[i], "--low-pv=%lf", &low_pvalue) == 1) {
     } else {
-      fprintf(stderr, "Optional arg must be --progress or -t or "
-                      "--low-pv=number or numeric\n");
+      fprintf(stderr,
+              "Optional arg must be --progress or -t or "
+              "--low-pv=number or numeric\n");
       exit(1);
     }
   }
