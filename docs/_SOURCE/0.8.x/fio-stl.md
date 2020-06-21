@@ -2265,6 +2265,18 @@ Unlocks the sub-lock, no matter which thread owns the lock.
 
 Returns 1 if the specified sub-lock is engaged. Otherwise returns 0.
 
+#### `fio_trylock_full(fio_lock_i *lock)`
+
+Tries to lock all sub-locks. Returns 0 on success and 1 on failure.
+
+#### `fio_lock_full(fio_lock_i *lock)`
+
+Busy waits for all sub-locks to become available - not recommended.
+
+#### `fio_unlock_full(fio_lock_i *lock)`
+
+Unlocks all sub-locks, no matter which thread owns which lock.
+
 -------------------------------------------------------------------------------
 
 ## Bit-Byte operations:
@@ -3594,6 +3606,51 @@ Returns the number of bytes consumed before parsing stopped (due to either error
 Zero (0) is a valid number and may indicate that the buffer's memory contains a partial object that can't be fully parsed just yet.
 
 **Note!**: partial Numeral objects may be result in errors, as the number 1234 may be fragmented as 12 and 34 when streaming data. facil.io doesn't protect against this possible error.
+
+
+
+#### `fio_json_parser_is_in_array`
+
+```c
+uint8_t fio_json_parser_is_in_array(fio_json_parser_s *parser);
+```
+
+Tests the state of the JSON parser.
+
+Returns 1 if the parser is currently within an Array or 0 if it isn't.
+
+
+#### `fio_json_parser_is_in_object`
+
+```c
+uint8_t fio_json_parser_is_in_object(fio_json_parser_s *parser);
+```
+
+Tests the state of the JSON parser.
+
+Returns 1 if the parser is currently within an Object or 0 if it isn't.
+
+
+#### `fio_json_parser_is_key`
+
+```c
+uint8_t fio_json_parser_is_key(fio_json_parser_s *parser);
+```
+
+Tests the state of the JSON parser.
+
+Returns 1 if the parser is currently parsing a "key" within an object or 0 if it isn't.
+
+
+#### `fio_json_parser_is_value`
+
+```c
+uint8_t fio_json_parser_is_value(fio_json_parser_s *parser);
+```
+
+Tests the state of the JSON parser.
+
+Returns 1 if the parser is currently parsing a "value" (within a array, an object or stand-alone) or 0 if it isn't (it's parsing a key).
 
 ### JSON Required Callbacks
 
