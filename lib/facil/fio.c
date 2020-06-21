@@ -48,6 +48,17 @@ Internal STL features in use (unpublished)
 #define FIO_MAX_ADDR_LEN 48
 #endif
 
+#if !defined(FIO_ENGINE_EPOLL) && !defined(FIO_ENGINE_KQUEUE) &&               \
+    !defined(FIO_ENGINE_POLL)
+#if defined(HAVE_KQUEUE)
+#define FIO_ENGINE_KQUEUE 1
+#elif defined(HAVE_EPOLL)
+#define FIO_ENGINE_EPOLL 1
+#else
+#define FIO_ENGINE_POLL 1
+#endif
+#endif
+
 /* *****************************************************************************
 Section Start Marker
 
@@ -89,7 +100,7 @@ static fio_queue_s fio___task_queue = FIO_QUEUE_INIT(fio___task_queue);
 static fio_queue_s fio___io_task_queue = FIO_QUEUE_INIT(fio___io_task_queue);
 static fio_timer_queue_s fio___timer_tasks = FIO_TIMER_QUEUE_INIT;
 
-static inline void fio___defer_clear_io_queue(void) {
+FIO_IFUNC void fio___defer_clear_io_queue(void) {
   while (fio_queue_count(&fio___io_task_queue)) {
     fio_queue_task_s t = fio_queue_pop(&fio___io_task_queue);
     if (!t.fn)
@@ -100,6 +111,32 @@ static inline void fio___defer_clear_io_queue(void) {
     } u = {.t = t.fn};
     u.io((uintptr_t)t.udata1, NULL, t.udata2);
   }
+}
+
+/** Returns the number of miliseconds until the next event, or FIO_POLL_TICK */
+FIO_IFUNC size_t fio___timer_calc_first_interval(void) {
+  if (fio_queue_count(&fio___task_queue) ||
+      fio_queue_count(&fio___io_task_queue))
+    return 0;
+  struct timespec now_tm = fio_last_tick();
+  const uint64_t now = (now_tm.tv_sec * 1000) + (now_tm.tv_nsec / 1000000);
+  const uint64_t next = fio_timer_next_at(&fio___timer_tasks);
+  if (next >= now + FIO_POLL_TICK)
+    return FIO_POLL_TICK;
+  return next - now;
+}
+
+FIO_IFUNC void fio_defer_on_fork(void) {
+  fio___task_queue.lock = FIO_LOCK_INIT;
+  fio___io_task_queue.lock = FIO_LOCK_INIT;
+  fio___timer_tasks.lock = FIO_LOCK_INIT;
+  fio___defer_clear_io_queue();
+}
+
+FIO_IFUNC int
+fio_defer_urgent(void (*task)(void *, void *), void *udata1, void *udata2) {
+  return fio_queue_push_urgent(
+      &fio___task_queue, .fn = task, .udata1 = udata1, .udata2 = udata2);
 }
 
 /* *****************************************************************************
@@ -191,6 +228,18 @@ void fio_state_callback_clear(callback_type_e e) {
   fio_unlock(fio_state_tasks_array_lock + (uintptr_t)e);
 }
 
+FIO_IFUNC void fio_state_callback_clear_all(void) {
+  for (size_t i = 0; i < FIO_CALL_NEVER; ++i) {
+    fio_state_callback_clear((callback_type_e)i);
+  }
+}
+
+FIO_IFUNC void fio_state_callback_on_fork(void) {
+  for (size_t i = 0; i < FIO_CALL_NEVER; ++i) {
+    fio_state_tasks_array_lock[i] = FIO_LOCK_INIT;
+  }
+}
+
 /**
  * Forces all the existing callbacks to run, as if the event occurred.
  *
@@ -260,7 +309,7 @@ Section Start Marker
 
 
 
-                           IO Data Array (state machine)
+                             UUID ENV data storage
 
 
 
@@ -275,16 +324,6 @@ Section Start Marker
 
 
 ***************************************************************************** */
-
-/* *****************************************************************************
-Event deferring (declarations)
-***************************************************************************** */
-
-static void deferred_on_close(void *uuid_, void *pr_);
-static void deferred_on_shutdown(void *arg, void *arg2);
-static void deferred_on_ready(void *arg, void *arg2);
-static void deferred_on_data(void *uuid, void *arg2);
-static void deferred_ping(void *arg, void *arg2);
 
 /* *****************************************************************************
 UUID env objects / store
@@ -335,7 +374,33 @@ FIO_IFUNC void fio_uuid_env_obj_call_callback(fio_uuid_env_obj_s o) {
 #include <fio-stl.h>
 
 /* *****************************************************************************
-State machine types and data
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+                               UUID Data Structure
+
+
+
+
+
+
+
+
+
+
+
+
+
 ***************************************************************************** */
 
 typedef struct fio_packet_s fio_packet_s;
@@ -359,12 +424,8 @@ typedef struct {
   fio___uuid_env_s env;
   /** The number of pending packets that are in the queue. */
   uint16_t packet_count;
-  /** flag for polling state */
-  unsigned short polling;
   /* timeout settings */
   uint8_t timeout;
-  /* indicates that the fd should be considered scheduled (added to poll) */
-  fio_lock_i scheduled;
   /* fd_data lock */
   fio_lock_i lock;
   /* used to convert `fd` to `uuid` and validate connections */
@@ -378,6 +439,50 @@ typedef struct {
   /** peer address length */
   uint8_t addr[FIO_MAX_ADDR_LEN];
 } fio_fd_data_s;
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+                           IO Data Array (state machine)
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/* *****************************************************************************
+Event deferring (declarations)
+***************************************************************************** */
+
+static void deferred_on_close(void *uuid_, void *pr_);
+static void deferred_on_shutdown(void *arg, void *arg2);
+static void deferred_on_ready(void *arg, void *arg2);
+static void deferred_on_data(void *uuid, void *arg2);
+static void deferred_ping(void *arg, void *arg2);
+
+/* *****************************************************************************
+State machine types and data
+***************************************************************************** */
 
 struct fio___data_s {
   /* last `poll` cycle */
@@ -408,6 +513,10 @@ struct fio___data_s {
   fio_fd_data_s info[];
 } * fio_data;
 
+/* *****************************************************************************
+Helper access macors and functions
+***************************************************************************** */
+
 #define fd_data(fd) (fio_data->info[(uintptr_t)(fd)])
 #define uuid_data(uuid) fd_data(fio_uuid2fd((uuid)))
 #define fd2uuid(fd)                                                            \
@@ -423,9 +532,11 @@ struct fio___data_s {
 #define uuid_is_still_valid(uuid)                                              \
   (((uintptr_t)(uuid)&0xFF) == uuid_data((uuid)).counter)
 
+FIO_IFUNC void fio_mark_time(void) { fio_data->last_cycle = fio_time_mono(); }
+
 #define touchfd(fd) fd_data((fd)).active = fio_data->last_cycle.tv_sec
 
-inline static int uuid_try_lock(intptr_t uuid) {
+FIO_IFUNC int uuid_try_lock(intptr_t uuid) {
   if (!uuid_is_valid(uuid))
     goto error;
   if (fio_trylock(&uuid_data(uuid).lock))
@@ -453,10 +564,66 @@ error:
     }                                                                          \
   } while (0)
 
+#define UUID_LOCK(uuid, invalid_lable)                                         \
+  do {                                                                         \
+    switch (uuid_try_lock(uuid)) {                                             \
+    case 0:                                                                    \
+      break;                                                                   \
+    case 2:                                                                    \
+      goto invalid_lable;                                                      \
+    }                                                                          \
+    FIO_THREAD_RESCHEDULE();                                                   \
+  } while (1)
+
 #define UUID_UNLOCK(uuid)                                                      \
   do {                                                                         \
     fio_unlock(&uuid_data(uuid).lock);                                         \
   } while (0)
+
+FIO_IFUNC void fio_packet_free_all(fio_packet_s *packet);
+
+/* resets connection data, marking it as either open or closed. */
+FIO_IFUNC int fio_clear_fd(intptr_t fd, uint8_t is_open) {
+  fio_packet_s *packet;
+  fio_protocol_s *protocol;
+  fio_rw_hook_s *rw_hooks;
+  void *rw_udata;
+  fio___uuid_env_s env;
+  fio_lock_full(&(fd_data(fd).lock));
+  intptr_t uuid = fd2uuid(fd);
+  env = fd_data(fd).env;
+  packet = fd_data(fd).packet;
+  protocol = fd_data(fd).protocol;
+  rw_hooks = fd_data(fd).rw_hooks;
+  rw_udata = fd_data(fd).rw_udata;
+  fd_data(fd) = (fio_fd_data_s){
+      .rw_hooks = (fio_rw_hook_s *)&FIO_DEFAULT_RW_HOOKS,
+      .open = is_open,
+      .lock = fd_data(fd).lock,
+      .counter = fd_data(fd).counter + (!is_open),
+      .packet_last = &fd_data(fd).packet,
+      .env = FIO_MAP_INIT,
+  };
+  if (fio_data->max_open_fd < fd) {
+    fio_data->max_open_fd = fd;
+  } else {
+    while (fio_data->max_open_fd && !fd_data(fio_data->max_open_fd).open)
+      --fio_data->max_open_fd;
+  }
+  fio_unlock_full(&(fd_data(fd).lock));
+  if (rw_hooks && rw_hooks->cleanup)
+    rw_hooks->cleanup(rw_udata);
+  fio_packet_free_all(packet);
+  fio___uuid_env_destroy(&env);
+  if (protocol && protocol->on_close) {
+    fio_defer(deferred_on_close, (void *)uuid, protocol);
+  }
+  FIO_LOG_DEBUG("FD %d re-initialized (state: %p-%s).",
+                (int)fd,
+                (void *)fd2uuid(fd),
+                (is_open ? "open" : "closed"));
+  return 0;
+}
 
 /* *****************************************************************************
 Public API
@@ -486,6 +653,62 @@ void fio_touch(intptr_t uuid) {
   }
 }
 
+int fio_is_valid(intptr_t uuid) { return uuid_is_valid(uuid); }
+
+int fio_is_closed(intptr_t uuid) {
+  return !uuid_is_valid(uuid) || !uuid_data(uuid).open || uuid_data(uuid).close;
+}
+
+void fio_stop(void) {
+  if (fio_data)
+    fio_data->active = 0;
+}
+
+int16_t fio_is_running(void) { return fio_data && fio_data->active; }
+
+struct timespec fio_last_tick(void) {
+  return fio_data->last_cycle;
+}
+
+fio_str_info_s fio_peer_addr(intptr_t uuid) {
+  if (fio_is_closed(uuid) || !uuid_data(uuid).addr_len)
+    return (fio_str_info_s){.buf = NULL, .len = 0, .capa = 0};
+  return (fio_str_info_s){.buf = (char *)uuid_data(uuid).addr,
+                          .len = uuid_data(uuid).addr_len,
+                          .capa = 0};
+}
+
+/**
+ * Writes the local machine address (qualified host name) to the buffer.
+ */
+size_t fio_local_addr(char *dest, size_t limit) {
+  if (gethostname(dest, limit))
+    return 0;
+
+  struct addrinfo hints, *info;
+  memset(&hints, 0, sizeof hints);
+  hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
+  hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+  hints.ai_flags = AI_CANONNAME;   // get cannonical name
+
+  if (getaddrinfo(dest, "http", &hints, &info) != 0)
+    return 0;
+
+  for (struct addrinfo *pos = info; pos; pos = pos->ai_next) {
+    if (pos->ai_canonname) {
+      size_t len = strlen(pos->ai_canonname);
+      if (len >= limit)
+        len = limit - 1;
+      memcpy(dest, pos->ai_canonname, len);
+      dest[len] = 0;
+      freeaddrinfo(info);
+      return len;
+    }
+  }
+
+  freeaddrinfo(info);
+  return 0;
+}
 /* *****************************************************************************
 Section Start Marker
 
@@ -500,7 +723,328 @@ Section Start Marker
 
 
 
-                             Polling (poll only)
+
+                       Polling State Machine - epoll
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if FIO_ENGINE_EPOLL
+#include <sys/epoll.h>
+
+/**
+ * Returns a C string detailing the IO engine selected during compilation.
+ *
+ * Valid values are "kqueue", "epoll" and "poll".
+ */
+char const *fio_engine(void) { return "epoll"; }
+
+/* epoll tester, in and out */
+static int evio_fd[3] = {-1, -1, -1};
+
+FIO_IFUNC void fio_poll_close(void) {
+  for (int i = 0; i < 3; ++i) {
+    if (evio_fd[i] != -1) {
+      close(evio_fd[i]);
+      evio_fd[i] = -1;
+    }
+  }
+}
+
+static void fio_poll_init(void) {
+  fio_poll_close();
+  for (int i = 0; i < 3; ++i) {
+    evio_fd[i] = epoll_create1(EPOLL_CLOEXEC);
+    if (evio_fd[i] == -1)
+      goto error;
+  }
+  for (int i = 1; i < 3; ++i) {
+    struct epoll_event chevent = {
+        .events = (EPOLLOUT | EPOLLIN),
+        .data.fd = evio_fd[i],
+    };
+    if (epoll_ctl(evio_fd[0], EPOLL_CTL_ADD, evio_fd[i], &chevent) == -1)
+      goto error;
+  }
+  return;
+error:
+  FIO_LOG_FATAL("couldn't initialize epoll.");
+  fio_poll_close();
+  exit(errno);
+  return;
+}
+
+FIO_IFUNC int fio___poll_add2(int fd, uint32_t events, int ep_fd) {
+  struct epoll_event chevent;
+  int ret;
+  do {
+    errno = 0;
+    chevent = (struct epoll_event){
+        .events = events,
+        .data.fd = fd,
+    };
+    ret = epoll_ctl(ep_fd, EPOLL_CTL_MOD, fd, &chevent);
+    if (ret == -1 && errno == ENOENT) {
+      errno = 0;
+      chevent = (struct epoll_event){
+          .events = events,
+          .data.fd = fd,
+      };
+      ret = epoll_ctl(ep_fd, EPOLL_CTL_ADD, fd, &chevent);
+    }
+  } while (errno == EINTR);
+
+  return ret;
+}
+
+FIO_IFUNC void fio_poll_add_read(intptr_t fd) {
+  fio___poll_add2(
+      fd, (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT), evio_fd[1]);
+  return;
+}
+
+FIO_IFUNC void fio_poll_add_write(intptr_t fd) {
+  fio___poll_add2(
+      fd, (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT), evio_fd[2]);
+  return;
+}
+
+FIO_IFUNC void fio_poll_add(intptr_t fd) {
+  if (fio___poll_add2(fd,
+                      (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                      evio_fd[1]) == -1)
+    return;
+  fio___poll_add2(
+      fd, (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT), evio_fd[2]);
+  return;
+}
+
+FIO_IFUNC void fio_poll_remove_fd(intptr_t fd) {
+  struct epoll_event chevent = {.events = (EPOLLOUT | EPOLLIN), .data.fd = fd};
+  epoll_ctl(evio_fd[1], EPOLL_CTL_DEL, fd, &chevent);
+  epoll_ctl(evio_fd[2], EPOLL_CTL_DEL, fd, &chevent);
+}
+
+FIO_SFUNC size_t fio_poll(void) {
+  int timeout_millisec = fio___timer_calc_first_interval();
+  struct epoll_event internal[2];
+  struct epoll_event events[FIO_POLL_MAX_EVENTS];
+  int total = 0;
+  /* wait for events and handle them */
+  int internal_count = epoll_wait(evio_fd[0], internal, 2, timeout_millisec);
+  if (internal_count == 0)
+    return internal_count;
+  for (int j = 0; j < internal_count; ++j) {
+    int active_count =
+        epoll_wait(internal[j].data.fd, events, FIO_POLL_MAX_EVENTS, 0);
+    if (active_count > 0) {
+      for (int i = 0; i < active_count; i++) {
+        if (events[i].events & (~(EPOLLIN | EPOLLOUT))) {
+          // errors are hendled as disconnections (on_close)
+          fio_force_close_in_poll(fd2uuid(events[i].data.fd));
+        } else {
+          // no error, then it's an active event(s)
+          if (events[i].events & EPOLLOUT) {
+            fio_defer_push_urgent(
+                deferred_on_ready, (void *)fd2uuid(events[i].data.fd), NULL);
+          }
+          if (events[i].events & EPOLLIN)
+            fio_defer_push_task(
+                deferred_on_data, (void *)fd2uuid(events[i].data.fd), NULL);
+        }
+      } // end for loop
+      total += active_count;
+    }
+  }
+  return total;
+}
+
+#endif
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+
+                       Polling State Machine - kqueue
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if FIO_ENGINE_KQUEUE
+#include <sys/event.h>
+
+/**
+ * Returns a C string detailing the IO engine selected during compilation.
+ *
+ * Valid values are "kqueue", "epoll" and "poll".
+ */
+char const *fio_engine(void) { return "kqueue"; }
+
+static int evio_fd = -1;
+
+FIO_IFUNC void fio_poll_close(void) { close(evio_fd); }
+
+FIO_IFUNC void fio_poll_init(void) {
+  fio_poll_close();
+  evio_fd = kqueue();
+  if (evio_fd == -1) {
+    FIO_LOG_FATAL("couldn't open kqueue.\n");
+    exit(errno);
+  }
+}
+
+FIO_IFUNC void fio_poll_add_read(intptr_t fd) {
+  struct kevent chevent[1];
+  EV_SET(chevent,
+         fd,
+         EVFILT_READ,
+         EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
+         0,
+         0,
+         ((void *)fd));
+  do {
+    errno = 0;
+    kevent(evio_fd, chevent, 1, NULL, 0, NULL);
+  } while (errno == EINTR);
+  return;
+}
+
+FIO_IFUNC void fio_poll_add_write(intptr_t fd) {
+  struct kevent chevent[1];
+  EV_SET(chevent,
+         fd,
+         EVFILT_WRITE,
+         EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
+         0,
+         0,
+         ((void *)fd));
+  do {
+    errno = 0;
+    kevent(evio_fd, chevent, 1, NULL, 0, NULL);
+  } while (errno == EINTR);
+  return;
+}
+
+FIO_IFUNC void fio_poll_add(intptr_t fd) {
+  struct kevent chevent[2];
+  EV_SET(chevent,
+         fd,
+         EVFILT_READ,
+         EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
+         0,
+         0,
+         ((void *)fd));
+  EV_SET(chevent + 1,
+         fd,
+         EVFILT_WRITE,
+         EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
+         0,
+         0,
+         ((void *)fd));
+  do {
+    errno = 0;
+    kevent(evio_fd, chevent, 2, NULL, 0, NULL);
+  } while (errno == EINTR);
+  return;
+}
+
+FIO_IFUNC void fio_poll_remove_fd(intptr_t fd) {
+  if (evio_fd < 0)
+    return;
+  struct kevent chevent[2];
+  EV_SET(chevent, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+  EV_SET(chevent + 1, fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
+  do {
+    errno = 0;
+    kevent(evio_fd, chevent, 2, NULL, 0, NULL);
+  } while (errno == EINTR);
+}
+
+FIO_SFUNC size_t fio_poll(void) {
+  if (evio_fd < 0)
+    return -1;
+  int timeout_millisec = fio___timer_calc_first_interval();
+  struct kevent events[FIO_POLL_MAX_EVENTS] = {{0}};
+
+  const struct timespec timeout = {
+      .tv_sec = (timeout_millisec / 1000),
+      .tv_nsec = ((timeout_millisec & (~1023UL)) * 1000000)};
+  /* wait for events and handle them */
+  int active_count =
+      kevent(evio_fd, NULL, 0, events, FIO_POLL_MAX_EVENTS, &timeout);
+
+  if (active_count > 0) {
+    for (int i = 0; i < active_count; i++) {
+      // test for event(s) type
+      if (events[i].filter == EVFILT_WRITE) {
+        fio_defer_push_urgent(
+            deferred_on_ready, ((void *)fd2uuid(events[i].udata)), NULL);
+      } else if (events[i].filter == EVFILT_READ) {
+        fio_defer_push_task(
+            deferred_on_data, (void *)fd2uuid(events[i].udata), NULL);
+      }
+      if (events[i].flags & (EV_EOF | EV_ERROR)) {
+        fio_force_close_in_poll(fd2uuid(events[i].udata));
+      }
+    }
+  } else if (active_count < 0) {
+    if (errno == EINTR)
+      return 0;
+    return -1;
+  }
+  return active_count;
+}
+
+#endif
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+
+                       Polling State Machine - poll
+
 
 
 
@@ -516,7 +1060,127 @@ Section Start Marker
 
 ***************************************************************************** */
 
-static int fio_poll_add(intptr_t uuid, uint16_t state);
+#if FIO_ENGINE_POLL
+
+/**
+ * Returns a C string detailing the IO engine selected during compilation.
+ *
+ * Valid values are "kqueue", "epoll" and "poll".
+ */
+char const *fio_engine(void) { return "poll"; }
+
+#define FIO_POLL_READ_EVENTS (POLLPRI | POLLIN)
+#define FIO_POLL_WRITE_EVENTS (POLLOUT)
+
+static struct pollfd *fio___pollfd;
+static fio_lock_i fio___poll_lock = FIO_LOCK_INIT;
+
+FIO_IFUNC void fio_poll_close(void) {}
+
+FIO_IFUNCc void fio_poll_init(void) {
+  fio___pollfd = calloc(sizeof(*fio___pollfd), fio_capa());
+}
+
+FIO_IFUNC void fio_poll_remove_fd(int fd) {
+  fio___pollfd[fd].fd = -1;
+  fio___pollfd[fd].events = 0;
+}
+
+FIO_IFUNC void fio_poll_add_read(int fd) {
+  fio___pollfd[fd].fd = fd;
+  fio___pollfd[fd].events |= FIO_POLL_READ_EVENTS;
+}
+
+FIO_IFUNC void fio_poll_add_write(int fd) {
+  fio___pollfd[fd].fd = fd;
+  fio___pollfd[fd].events |= FIO_POLL_WRITE_EVENTS;
+}
+
+FIO_IFUNC void fio_poll_add(int fd) {
+  fio___pollfd[fd].fd = fd;
+  fio___pollfd[fd].events = FIO_POLL_READ_EVENTS | FIO_POLL_WRITE_EVENTS;
+}
+
+FIO_IFUNC void fio_poll_remove_read(int fd) {
+  fio_lock(&fio___poll_lock);
+  if (fio___pollfd[fd].events & FIO_POLL_WRITE_EVENTS)
+    fio___pollfd[fd].events = FIO_POLL_WRITE_EVENTS;
+  else {
+    fio_poll_remove_fd(fd);
+  }
+  fio_unlock(&fio___poll_lock);
+}
+
+FIO_IFUNC void fio_poll_remove_write(int fd) {
+  fio_lock(&fio___poll_lock);
+  if (fio___pollfd[fd].events & FIO_POLL_READ_EVENTS)
+    fio___pollfd[fd].events = FIO_POLL_READ_EVENTS;
+  else {
+    fio_poll_remove_fd(fd);
+  }
+  fio_unlock(&fio___poll_lock);
+}
+
+/** returns non-zero if events were scheduled, 0 if idle */
+static size_t fio_poll(void) {
+  /* shrink fd poll range */
+  size_t end = fio_data->capa; // max_open_fd might break TLS?
+  size_t start = 0;
+  struct pollfd *list = NULL;
+  fio_lock(&fio___poll_lock);
+  while (start < end && fio___pollfd[start].fd == -1)
+    ++start;
+  while (start < end && fio___pollfd[end - 1].fd == -1)
+    --end;
+  if (start != end) {
+    /* copy poll list for multi-threaded poll */
+    list = fio_malloc(sizeof(struct pollfd) * end);
+    memcpy(list + start,
+           fio___pollfd + start,
+           (sizeof(struct pollfd)) * (end - start));
+  }
+  fio_unlock(&fio___poll_lock);
+
+  int timeout = fio___timer_calc_first_interval();
+  size_t count = 0;
+
+  if (start == end) {
+    FIO_THREAD_WAIT((timeout * 1000000UL));
+  } else if (poll(list + start, end - start, timeout) == -1) {
+    goto finish;
+  }
+  for (size_t i = start; i < end; ++i) {
+    if (list[i].revents) {
+      touchfd(i);
+      ++count;
+      if (list[i].revents & FIO_POLL_WRITE_EVENTS) {
+        // FIO_LOG_DEBUG("Poll Write %zu => %p", i, (void *)fd2uuid(i));
+        fio_poll_remove_write(i);
+        fio_defer_push_urgent(deferred_on_ready, (void *)fd2uuid(i), NULL);
+      }
+      if (list[i].revents & FIO_POLL_READ_EVENTS) {
+        // FIO_LOG_DEBUG("Poll Read %zu => %p", i, (void *)fd2uuid(i));
+        fio_poll_remove_read(i);
+        fio_defer_push_task(deferred_on_data, (void *)fd2uuid(i), NULL);
+      }
+      if (list[i].revents & (POLLHUP | POLLERR)) {
+        // FIO_LOG_DEBUG("Poll Hangup %zu => %p", i, (void *)fd2uuid(i));
+        fio_poll_remove_fd(i);
+        fio_force_close_in_poll(fd2uuid(i));
+      }
+      if (list[i].revents & POLLNVAL) {
+        // FIO_LOG_DEBUG("Poll Invalid %zu => %p", i, (void *)fd2uuid(i));
+        fio_poll_remove_fd(i);
+        fio_clear_fd(i, 0);
+      }
+    }
+  }
+finish:
+  fio_free(list);
+  return count;
+}
+
+#endif /* FIO_ENGINE_POLL */
 
 /* *****************************************************************************
 Section Start Marker
@@ -568,14 +1232,14 @@ struct fio_packet_s {
   uintptr_t len;
 };
 
-static inline void fio_packet_free(fio_packet_s *packet) {
+FIO_IFUNC void fio_packet_free(fio_packet_s *packet) {
   if (packet) {
     packet->dealloc(packet->data.buf);
     fio_free(packet);
   }
 }
 
-static inline void fio_packet_free_all(fio_packet_s *packet) {
+FIO_IFUNC void fio_packet_free_all(fio_packet_s *packet) {
   while (packet) {
     fio_packet_s *t = packet->next;
     packet->dealloc(packet->data.buf);
@@ -794,48 +1458,6 @@ Section Start Marker
 
 
 ***************************************************************************** */
-
-/* resets connection data, marking it as either open or closed. */
-static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
-  fio_packet_s *packet;
-  fio_protocol_s *protocol;
-  fio_rw_hook_s *rw_hooks;
-  void *rw_udata;
-  fio___uuid_env_s env;
-  fio_lock(&(fd_data(fd).lock));
-  intptr_t uuid = fd2uuid(fd);
-  env = fd_data(fd).env;
-  packet = fd_data(fd).packet;
-  protocol = fd_data(fd).protocol;
-  rw_hooks = fd_data(fd).rw_hooks;
-  rw_udata = fd_data(fd).rw_udata;
-  fd_data(fd) = (fio_fd_data_s){
-      .rw_hooks = (fio_rw_hook_s *)&FIO_DEFAULT_RW_HOOKS,
-      .open = is_open,
-      .lock = fd_data(fd).lock,
-      .counter = fd_data(fd).counter + (!is_open),
-      .packet_last = &fd_data(fd).packet,
-  };
-  if (fio_data->max_open_fd < fd) {
-    fio_data->max_open_fd = fd;
-  } else {
-    while (fio_data->max_open_fd && !fd_data(fio_data->max_open_fd).open)
-      --fio_data->max_open_fd;
-  }
-  fio_unlock(&(fd_data(fd).lock));
-  if (rw_hooks && rw_hooks->cleanup)
-    rw_hooks->cleanup(rw_udata);
-  fio_packet_free_all(packet);
-  fio___uuid_env_destroy(&env);
-  if (protocol && protocol->on_close) {
-    fio_defer(deferred_on_close, (void *)uuid, protocol);
-  }
-  FIO_LOG_DEBUG("FD %d re-initialized (state: %p-%s).",
-                (int)fd,
-                (void *)fd2uuid(fd),
-                (is_open ? "open" : "closed"));
-  return 0;
-}
 
 /**
  * `fio_close` marks the connection for disconnection once all the data was
@@ -1080,34 +1702,29 @@ inline static void protocol_validate(fio_protocol_s *protocol) {
 static int fio_attach__internal(void *uuid_, void *protocol) {
   intptr_t uuid = (intptr_t)uuid_;
   protocol_validate(protocol);
-
-  do {
-    UUID_TRYLOCK(uuid, lock_was_busy, error_invalid_uuid);
-    fio_protocol_s *old_pr = uuid_data(uuid).protocol;
-    uuid_data(uuid).open = 1;
-    uuid_data(uuid).protocol = protocol;
-    touchfd(fio_uuid2fd(uuid));
-    UUID_UNLOCK(uuid);
-    if (old_pr) {
-      /* protocol replacement */
-      fio_defer(deferred_on_close, (void *)uuid, old_pr);
-      if (!protocol) {
-        /* hijacking */
-        fio_poll_remove_fd(fio_uuid2fd(uuid));
-        fio_poll_add_write(fio_uuid2fd(uuid));
-      }
-    } else if (protocol) {
-      /* adding a new uuid to the reactor */
-      fio_poll_add(fio_uuid2fd(uuid));
+  UUID_LOCK(uuid, error_invalid_uuid);
+  fio_protocol_s *old_pr = uuid_data(uuid).protocol;
+  uuid_data(uuid).open = 1;
+  uuid_data(uuid).protocol = protocol;
+  touchfd(fio_uuid2fd(uuid));
+  UUID_UNLOCK(uuid);
+  if (old_pr) {
+    /* protocol replacement */
+    fio_defer(deferred_on_close, (void *)uuid, old_pr);
+    if (!protocol) {
+      /* hijacking */
+      fio_poll_remove_fd(fio_uuid2fd(uuid));
+      fio_poll_add_write(fio_uuid2fd(uuid));
     }
-    return 0;
-  lock_was_busy:
-    FIO_THREAD_RESCHEDULE();
-  } while (1);
+  } else if (protocol) {
+    /* adding a new uuid to the reactor */
+    fio_poll_add(fio_uuid2fd(uuid));
+  }
+  return 0;
 
 error_invalid_uuid:
   if (protocol)
-    fio_defer_push_task(deferred_on_close, (void *)uuid, protocol);
+    fio_defer(deferred_on_close, (void *)uuid, protocol);
   return -1;
 }
 
@@ -1156,7 +1773,15 @@ static ssize_t fio_hooks_default_flush(intptr_t uuid, void *udata) {
 
 static void fio_hooks_default_cleanup(void *udata) { (void)(udata); }
 
-static inline void fio_rw_hook_validate(fio_rw_hook_s *rw_hooks) {
+const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS = {
+    .read = fio_hooks_default_read,
+    .write = fio_hooks_default_write,
+    .flush = fio_hooks_default_flush,
+    .before_close = fio_hooks_default_before_close,
+    .cleanup = fio_hooks_default_cleanup,
+};
+
+FIO_IFUNC void fio_rw_hook_validate(fio_rw_hook_s *rw_hooks) {
   if (!rw_hooks->read)
     rw_hooks->read = fio_hooks_default_read;
   if (!rw_hooks->write)
@@ -1168,14 +1793,6 @@ static inline void fio_rw_hook_validate(fio_rw_hook_s *rw_hooks) {
   if (!rw_hooks->cleanup)
     rw_hooks->cleanup = fio_hooks_default_cleanup;
 }
-
-const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS = {
-    .read = fio_hooks_default_read,
-    .write = fio_hooks_default_write,
-    .flush = fio_hooks_default_flush,
-    .before_close = fio_hooks_default_before_close,
-    .cleanup = fio_hooks_default_cleanup,
-};
 
 /* *****************************************************************************
 
@@ -1205,22 +1822,121 @@ Initialization, Reactor Loops and Cleanup
 
 ***************************************************************************** */
 
+/* Called within a child process after it starts. */
+static void fio_on_fork(void) {
+  fio_defer_on_fork();
+  fio_malloc_after_fork();
+  fio_poll_close();
+  fio_poll_init();
+  fio_rand_reseed();
+  fio_state_callback_on_fork();
+
+  const size_t limit = fio_data->capa;
+  for (size_t i = 0; i < limit; ++i) {
+    fd_data(i).lock = FIO_LOCK_INIT;
+    if (fd_data(i).protocol) {
+      fd_data(i).protocol->rsv = 0;
+      fio_force_close(fd2uuid(i));
+    }
+  }
+
+  uint16_t old_active = fio_data->active;
+  fio_data->active = 0;
+  fio_defer_perform();
+  fio_data->active = old_active;
+  fio_data->is_worker = 1;
+  fio_state_callback_force(FIO_CALL_IN_CHILD);
+}
+
 static void __attribute__((constructor)) fio___lib_init(void) {
+  /* mark initialization as performed, so state callbacks will be performed */
   fio_lock(&fio_state_tasks_array_lock[FIO_CALL_NEVER]);
+
+  /* detect socket capacity - MUST be first...*/
+  ssize_t capa = 0;
+  {
+#ifdef _SC_OPEN_MAX
+    capa = sysconf(_SC_OPEN_MAX);
+#elif defined(FOPEN_MAX)
+    capa = FOPEN_MAX;
+#endif
+    // try to maximize limits - collect max and set to max
+    struct rlimit rlim = {.rlim_max = 0};
+    if (getrlimit(RLIMIT_NOFILE, &rlim) == -1) {
+      FIO_LOG_WARNING("`getrlimit` failed in `fio_lib_init`.");
+      perror("\terrno:");
+    } else {
+      rlim_t original = rlim.rlim_cur;
+      rlim.rlim_cur = rlim.rlim_max;
+      if (rlim.rlim_cur > FIO_MAX_SOCK_CAPACITY) {
+        rlim.rlim_cur = rlim.rlim_max = FIO_MAX_SOCK_CAPACITY;
+      }
+      while (setrlimit(RLIMIT_NOFILE, &rlim) == -1 && rlim.rlim_cur > original)
+        --rlim.rlim_cur;
+      getrlimit(RLIMIT_NOFILE, &rlim);
+      capa = rlim.rlim_cur;
+      if (capa > 1024) /* leave a slice of room */
+        capa -= 16;
+    }
+    FIO_LOG_DEBUG2("facil.io " FIO_VERSION_STRING " capacity initialization:\n"
+                   "*    Meximum open files %zu out of %zu\n"
+                   "*    Allocating %zu bytes for state handling.\n"
+                   "*    %zu bytes per connection + %zu for state handling.",
+                   capa,
+                   (size_t)rlim.rlim_max,
+                   (sizeof(*fio_data) + (capa * (sizeof(*fio_data->info)))),
+                   (sizeof(*fio_data->info)),
+                   sizeof(*fio_data));
+  }
+
+  /* allocate and initialize main data structures by detected capacity */
+  fio_data = fio_mmap(sizeof(*fio_data) + (capa * (sizeof(*fio_data->info))));
+  FIO_ASSERT_ALLOC(fio_data);
+  fio_data->capa = capa;
+  fio_data->parent = getpid();
+  fio_data->connection_count = 0;
+
+  /* initialize polling engine */
+  fio_poll_init();
+
+  /* mark fist time cycle */
+  fio_mark_time();
+
+  for (ssize_t i = 0; i < capa; ++i) {
+    fio_clear_fd(i, 0);
+  }
+
+  /* call initialization callbacks */
   fio_state_callback_force(FIO_CALL_ON_INITIALIZE);
+  fio_state_callback_clear(FIO_CALL_ON_INITIALIZE); // leave in memory?
 }
 
 static void __attribute__((destructor)) fio___lib_destroy(void) {
+  uint8_t add_eol = fio_is_master();
+  fio_on_fork();
   /* clear pending tasks */
+  fio_timer_push2queue(&fio___task_queue, &fio___timer_tasks, fio_time_milli());
   fio_queue_perform_all(&fio___task_queue);
   fio___defer_clear_io_queue();
+  fio_queue_perform_all(&fio___task_queue);
+  fio_timer_clear(&fio___timer_tasks);
   /* perform at_exit callbacks */
   fio_state_callback_force(FIO_CALL_AT_EXIT);
   fio_unlock(&fio_state_tasks_array_lock[FIO_CALL_NEVER]);
+  fio_state_callback_clear_all();
   /* clear pending tasks (again) */
   fio_queue_perform_all(&fio___task_queue);
   fio___defer_clear_io_queue();
-  /* TODO free IO state machine */
+  fio_queue_destroy(&fio___task_queue);
+  fio_queue_destroy(&fio___io_task_queue);
+
+  /* free IO state machine and finish up */
+  fio_poll_close();
+  fio_free(fio_data);
+  FIO_LOG_DEBUG("(%d) facil.io resources released, exit complete.",
+                (int)getpid());
+  if (add_eol)
+    fprintf(stderr, "\n"); /* add EOL to logs (logging adds EOL before text */
 }
 
 /* *****************************************************************************
@@ -1251,12 +1967,8 @@ IO Kernal - public API
 
 ***************************************************************************** */
 
-/* *****************************************************************************
-Task Queues - Public API
-***************************************************************************** */
-
 /** The IO task internal wrapper */
-static inline int fio___defer_perform_io_task(void) {
+FIO_IFUNC int fio___defer_perform_io_task(void) {
   fio_queue_task_s t = fio_queue_pop(&fio___io_task_queue);
   if (!t.fn)
     return -1;
@@ -1273,6 +1985,10 @@ reschedule:
   fio_queue_push(&fio___io_task_queue, u.t, t.udata1, t.udata2);
   return 0;
 }
+
+/* *****************************************************************************
+Task Queues - Public API
+***************************************************************************** */
 
 /**
  * Defers a task's execution.
