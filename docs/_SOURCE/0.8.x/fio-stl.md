@@ -2280,7 +2280,8 @@ macro. i.e.:
 if(fio_trylock_group(&lock,
                      FIO_LOCK_SUBLOCK(1) |
                      FIO_LOCK_SUBLOCK(2)) == 0) {
-   // act in lock
+  // act in lock and then release the SAME lock with:
+  fio_unlock_group(&lock, FIO_LOCK_SUBLOCK(1) | FIO_LOCK_SUBLOCK(2));
 }
 ```
 
