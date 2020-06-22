@@ -784,6 +784,12 @@ test/json: | create_tree
 	@$(CCL) -o $(BIN) $(TMP_ROOT)/json.o $(LINKER_FLAGS) $(OPTIMIZATION)
 	@$(BIN)
 
+.PHONY : test/json_minify
+test/json_minify: | create_tree
+	@$(CC) -c ./tests/json_minify.c -o $(TMP_ROOT)/json.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@$(CCL) -o $(BIN) $(TMP_ROOT)/json.o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@$(BIN)
+
 .PHONY : test/memchr
 test/memchr: | create_tree
 	@$(CC) -c ./tests/memchr_speed.c -o $(TMP_ROOT)/memchr.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
