@@ -11784,29 +11784,38 @@ SFUNC size_t fio_json_parse(fio_json_parser_s *parser,
                             const char *buffer,
                             const size_t len);
 
-/** Tests the state of the JSON parser. Returns 1 for true and 0 for false. */
-SFUNC uint8_t fio_json_parser_is_in_array(fio_json_parser_s *parser);
-
-/** Tests the state of the JSON parser. Returns 1 for true and 0 for false. */
-SFUNC uint8_t fio_json_parser_is_in_object(fio_json_parser_s *parser);
-
-/** Tests the state of the JSON parser. Returns 1 for true and 0 for false. */
-SFUNC uint8_t fio_json_parser_is_key(fio_json_parser_s *parser);
-
-/** Tests the state of the JSON parser. Returns 1 for true and 0 for false. */
-SFUNC uint8_t fio_json_parser_is_value(fio_json_parser_s *parser);
-
 /* *****************************************************************************
-JSON Parsing - Implementation - Callbacks
+JSON Parsing - Implementation - Helpers and Callbacks
 
 
 Note: static Callacks must be implemented in the C file that uses the parser
-***************************************************************************** */
 
+Note: a Helper API is provided for the parsing implementation.
+***************************************************************************** */
 #ifdef FIO_EXTERN_COMPLETE
 
 /** common FIO_JSON callback function properties */
 #define FIO_JSON_CB static inline __attribute__((unused))
+
+/* *****************************************************************************
+JSON Parsing - Helpers API
+***************************************************************************** */
+
+/** Tests the state of the JSON parser. Returns 1 for true and 0 for false. */
+FIO_JSON_CB uint8_t fio_json_parser_is_in_array(fio_json_parser_s *parser);
+
+/** Tests the state of the JSON parser. Returns 1 for true and 0 for false. */
+FIO_JSON_CB uint8_t fio_json_parser_is_in_object(fio_json_parser_s *parser);
+
+/** Tests the state of the JSON parser. Returns 1 for true and 0 for false. */
+FIO_JSON_CB uint8_t fio_json_parser_is_key(fio_json_parser_s *parser);
+
+/** Tests the state of the JSON parser. Returns 1 for true and 0 for false. */
+FIO_JSON_CB uint8_t fio_json_parser_is_value(fio_json_parser_s *parser);
+
+/* *****************************************************************************
+JSON Parsing - Implementation - Callbacks
+***************************************************************************** */
 
 /** a NULL object was detected */
 FIO_JSON_CB void fio_json_on_null(fio_json_parser_s *p);
@@ -11835,29 +11844,29 @@ FIO_JSON_CB void fio_json_on_json(fio_json_parser_s *p);
 FIO_JSON_CB void fio_json_on_error(fio_json_parser_s *p);
 
 /* *****************************************************************************
-JSON Parsing - Implementation - Parser
+JSON Parsing - Implementation - Helpers and Parsing
 
 
 Note: static Callacks must be implemented in the C file that uses the parser
 ***************************************************************************** */
 
 /** Tests the state of the JSON parser. Returns 1 for true and 0 for false. */
-SFUNC uint8_t fio_json_parser_is_in_array(fio_json_parser_s *p) {
+FIO_JSON_CB uint8_t fio_json_parser_is_in_array(fio_json_parser_s *p) {
   return p->depth && fio_bitmap_get(p->nesting, p->depth);
 }
 
 /** Tests the state of the JSON parser. Returns 1 for true and 0 for false. */
-SFUNC uint8_t fio_json_parser_is_in_object(fio_json_parser_s *p) {
+FIO_JSON_CB uint8_t fio_json_parser_is_in_object(fio_json_parser_s *p) {
   return p->depth && !fio_bitmap_get(p->nesting, p->depth);
 }
 
 /** Tests the state of the JSON parser. Returns 1 for true and 0 for false. */
-SFUNC uint8_t fio_json_parser_is_key(fio_json_parser_s *p) {
+FIO_JSON_CB uint8_t fio_json_parser_is_key(fio_json_parser_s *p) {
   return fio_json_parser_is_in_object(p) && !p->expect;
 }
 
 /** Tests the state of the JSON parser. Returns 1 for true and 0 for false. */
-SFUNC uint8_t fio_json_parser_is_value(fio_json_parser_s *p) {
+FIO_JSON_CB uint8_t fio_json_parser_is_value(fio_json_parser_s *p) {
   return !fio_json_parser_is_key(p);
 }
 
