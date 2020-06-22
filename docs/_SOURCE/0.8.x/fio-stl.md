@@ -2230,20 +2230,24 @@ Returns the new value.
 
 A spinlock type based on a volatile unsigned char.
 
-**Note**: the spinlock contains one main lock (`sub == 0`) and 7 sub-locks (`sub >= 1 && sub <= 7`), which could be managed separately using the `fio_lock_sublock`, `fio_trylock_sublock` and `fio_unlock_sublock` functions.
+**Note**: the spinlock contains one main / default lock (`sub == 0`) and 7 sub-locks (`sub >= 1 && sub <= 7`), which could be managed:
+
+- Separately: using the `fio_lock_sublock`, `fio_trylock_sublock` and `fio_unlock_sublock` functions.
+- Jointly: using the `fio_trylock_group`, `fio_lock_group` and `fio_unlock_group` functions.
+- Collectively: using the `fio_trylock_full`, `fio_lock_full` and `fio_unlock_full` functions.
 
 
 #### `fio_lock(fio_lock_i *)`
 
-Busy waits for a lock to become available.
+Busy waits for the default lock (sub-lock `0`) to become available.
 
 #### `fio_trylock(fio_lock_i *)`
 
-Attempts to acquire the lock. Returns 0 on success and 1 on failure.
+Attempts to acquire the default lock (sub-lock `0`). Returns 0 on success and 1 on failure.
 
 #### `fio_unlock(fio_lock_i *)`
 
-Unlocks the lock, no matter which thread owns the lock.
+Unlocks the default lock (sub-lock `0`), no matter which thread owns the lock.
 
 #### `fio_is_locked(fio_lock_i *)`
 
@@ -2264,6 +2268,33 @@ Unlocks the sub-lock, no matter which thread owns the lock.
 #### `fio_is_sublocked(fio_lock_i *, uint8_t sub)`
 
 Returns 1 if the specified sub-lock is engaged. Otherwise returns 0.
+
+#### `uint8_t fio_trylock_group(fio_lock_i *lock, const uint8_t group)`
+
+Tries to lock a group of sub-locks.
+
+Combine a number of sub-locks using OR (`|`) and the FIO_LOCK_SUBLOCK(i)
+macro. i.e.:
+
+```c
+if(fio_trylock_group(&lock,
+                     FIO_LOCK_SUBLOCK(1) |
+                     FIO_LOCK_SUBLOCK(2)) == 0) {
+   // act in lock
+}
+```
+
+Returns 0 on success and 1 on failure.
+
+#### `void fio_lock_group(fio_lock_i *lock, uint8_t group)`
+
+Busy waits for a group lock to become available - not recommended.
+
+See `fio_trylock_group` for details.
+
+#### `void fio_unlock_group(fio_lock_i *lock, uint8_t group)`
+
+Unlocks a sub-lock group, no matter which thread owns which sub-lock.
 
 #### `fio_trylock_full(fio_lock_i *lock)`
 
