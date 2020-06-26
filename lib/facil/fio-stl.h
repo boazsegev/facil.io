@@ -600,6 +600,13 @@ Common macros
 
 ***************************************************************************** */
 
+/* FIO_LOCK2 dependencies */
+#ifdef FIO_LOCK2
+#ifndef FIO_ATOMIC
+#define FIO_ATOMIC
+#endif
+#endif /* FIO_LOCK2 */
+
 /* FIO_MALLOC dependencies */
 #ifdef FIO_MALLOC
 #ifndef FIO_LOG
@@ -940,8 +947,9 @@ typedef volatile unsigned char fio_lock_i;
 /** Tries to lock a specific sublock. Returns 0 on success and 1 on failure. */
 FIO_IFUNC uint8_t fio_trylock_sublock(fio_lock_i *lock, uint8_t sub) {
   __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
-  sub = 1U << (sub & 7);
-  return fio_atomic_or(lock, sub) & sub;
+  sub &= 7;
+  uint8_t sub_ = 1U << sub;
+  return ((fio_atomic_or(lock, sub_) & sub_) >> sub);
 }
 
 /** Busy waits for a specific sublock to become available - not recommended. */
@@ -970,10 +978,12 @@ FIO_IFUNC void fio_unlock_sublock(fio_lock_i *lock, uint8_t sub) {
  *
  * Returns 0 on success and non-zero on failure.
  */
-FIO_IFUNC uint8_t fio_trylock_group(fio_lock_i *lock, const uint8_t group) {
+FIO_IFUNC uint8_t fio_trylock_group(fio_lock_i *lock, uint8_t group) {
+  if (!group)
+    group = 1;
   __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
-  uint8_t state = fio_atomic_or(lock, group) & group;
-  if (!state)
+  uint8_t state = fio_atomic_or(lock, group);
+  if (!(state & group))
     return 0;
   fio_atomic_and(lock, state);
   return 1;
@@ -992,6 +1002,8 @@ FIO_IFUNC void fio_lock_group(fio_lock_i *lock, uint8_t group) {
 
 /** Unlocks a sublock group, no matter which thread owns which sublock. */
 FIO_IFUNC void fio_unlock_group(fio_lock_i *lock, uint8_t group) {
+  if (!group)
+    group = 1;
   fio_atomic_and(lock, ~group);
 }
 
@@ -1047,6 +1059,266 @@ FIO_IFUNC uint8_t FIO_NAME_BL(fio, sublocked)(fio_lock_i *lock, uint8_t sub) {
 
 #endif /* FIO_ATOMIC */
 #undef FIO_ATOMIC
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+                      Multi-Lock with Mutex Emulation
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if defined(FIO_LOCK2) && !defined(H___FIO_LOCK2___H)
+
+#ifndef FIO_THREAD_T
+#include <pthread.h>
+#define FIO_THREAD_T pthread_t
+#endif
+
+#ifndef FIO_THREAD_ID
+#define FIO_THREAD_ID() pthread_self()
+#endif
+
+#ifndef FIO_THREAD_PAUSE
+#define FIO_THREAD_PAUSE(id)                                                   \
+  do {                                                                         \
+    sigset_t set;                                                              \
+    sigemptyset(&set);                                                         \
+    sigaddset(&set, SIGINT);                                                   \
+    sigaddset(&set, SIGTERM);                                                  \
+    sigaddset(&set, SIGCONT);                                                  \
+    sigwait(&set, NULL);                                                       \
+  } while (0)
+#endif
+
+#ifndef FIO_THREAD_RESUME
+#define FIO_THREAD_RESUME(id) pthread_kill((id), SIGCONT)
+#endif
+
+typedef volatile struct fio___lock2_wait_s fio___lock2_wait_s;
+
+/* *****************************************************************************
+Public API
+***************************************************************************** */
+
+/**
+ * The fio_lock2 variation is a Mutex style multi-lock.
+ *
+ * Thread functions and types are managed by the following macros:
+ * * the `FIO_THREAD_T` macro should return a thread type, default: `pthread_t`
+ * * the `FIO_THREAD_ID()` macro should return this thread's FIO_THREAD_T.
+ * * the `FIO_THREAD_PAUSE(id)` macro should temporarily pause thread execution.
+ * * the `FIO_THREAD_RESUME(id)` macro should resume thread execution.
+ */
+typedef struct {
+  volatile size_t lock;
+  fio___lock2_wait_s *waiting;
+} fio_lock2_s;
+
+/**
+ * Tries to lock a multilock.
+ *
+ * Combine a number of sublocks using OR (`|`) and the FIO_LOCK_SUBLOCK(i)
+ * macro. i.e.:
+ *
+ *      if(!fio_trylock2(&lock,
+ *                            FIO_LOCK_SUBLOCK(1) | FIO_LOCK_SUBLOCK(2))) {
+ *         // act in lock
+ *      }
+ *
+ * Returns 0 on success and non-zero on failure.
+ */
+FIO_IFUNC uint8_t fio_trylock2(fio_lock2_s *lock, size_t group);
+
+/**
+ * Locks a multilock, waiting as needed.
+ *
+ * Combine a number of sublocks using OR (`|`) and the FIO_LOCK_SUBLOCK(i)
+ * macro. i.e.:
+ *
+ *      fio_lock2(&lock, FIO_LOCK_SUBLOCK(1) | FIO_LOCK_SUBLOCK(2)));
+ *
+ * Doesn't return until a successful lock was acquired.
+ */
+SFUNC void fio_lock2(fio_lock2_s *lock, size_t group);
+
+/**
+ * Unlocks a multilock, regardless of who owns the locked group.
+ *
+ * Combine a number of sublocks using OR (`|`) and the FIO_LOCK_SUBLOCK(i)
+ * macro. i.e.:
+ *
+ *      fio_unlock2(&lock, FIO_LOCK_SUBLOCK(1) | FIO_LOCK_SUBLOCK(2));
+ *
+ */
+SFUNC void fio_unlock2(fio_lock2_s *lock, size_t group);
+
+/* *****************************************************************************
+Implementation - Inline
+***************************************************************************** */
+
+/**
+ * Tries to lock a multilock.
+ *
+ * Combine a number of sublocks using OR (`|`) and the FIO_LOCK_SUBLOCK(i)
+ * macro. i.e.:
+ *
+ *      if(!fio_trylock2(&lock,
+ *                            FIO_LOCK_SUBLOCK(1) | FIO_LOCK_SUBLOCK(2))) {
+ *         // act in lock
+ *      }
+ *
+ * Returns 0 on success and non-zero on failure.
+ */
+FIO_IFUNC uint8_t fio_trylock2(fio_lock2_s *lock, size_t group) {
+  if (!group)
+    group = 1;
+  __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
+  size_t state = fio_atomic_or(&lock->lock, group);
+  if (!(state & group))
+    return 0;
+  fio_atomic_and(&lock->lock, state);
+  return 1;
+}
+
+/* *****************************************************************************
+Implementation - Extern
+***************************************************************************** */
+#if defined(FIO_EXTERN_COMPLETE)
+
+struct fio___lock2_wait_s {
+  FIO_THREAD_T t;
+  fio___lock2_wait_s *next;
+};
+
+/**
+ * Locks a multilock, waiting as needed.
+ *
+ * Combine a number of sublocks using OR (`|`) and the FIO_LOCK_SUBLOCK(i)
+ * macro. i.e.:
+ *
+ *      fio_lock2(&lock, FIO_LOCK_SUBLOCK(1) | FIO_LOCK_SUBLOCK(2)));
+ *
+ * Doesn't return until a successful lock was acquired.
+ */
+SFUNC void fio_lock2(fio_lock2_s *lock, size_t group) {
+  const size_t inner_lock = (sizeof(inner_lock) >= 8)
+                                ? ((size_t)1UL << 63)
+                                : (sizeof(inner_lock) >= 4)
+                                      ? ((size_t)1UL << 31)
+                                      : (sizeof(inner_lock) >= 2)
+                                            ? ((size_t)1UL << 15)
+                                            : ((size_t)1UL << 7);
+  fio___lock2_wait_s self_thread;
+  if (!group)
+    group = 1;
+  __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
+  size_t state = fio_atomic_or(&lock->lock, group);
+  if (!(state & group))
+    return;
+
+  /* enter waitlist lock */
+  while ((fio_atomic_or(&lock->lock, inner_lock) & inner_lock)) {
+    FIO_THREAD_RESCHEDULE();
+  }
+
+  /* add thread to end of waitlist */
+  self_thread.t = FIO_THREAD_ID();
+  self_thread.next = NULL; // lock->waiting;
+  {
+    fio___lock2_wait_s *volatile *i = &(lock->waiting);
+    while (i[0]) {
+      i = &(i[0]->next);
+    }
+    (*i) = &self_thread;
+  }
+
+  /* release waitlist lock and return lock's state */
+  fio_atomic_and(&lock->lock, (state & (~inner_lock)));
+
+  for (;;) {
+    state = fio_atomic_or(&lock->lock, group);
+    if (!(state & group))
+      break;
+    // `next` may have been added while we didn't look
+    if (self_thread.next) {
+      /* resume next thread if this isn't for us (possibly different group) */
+      fio_atomic_and(&lock->lock, state);
+      FIO_THREAD_RESUME(self_thread.next->t);
+    }
+    FIO_THREAD_PAUSE(self_thread.t);
+  }
+
+  /* lock waitlist */
+  while ((fio_atomic_or(&lock->lock, inner_lock) & inner_lock)) {
+    FIO_THREAD_RESCHEDULE();
+  }
+  /* remove self from waiting list */
+  for (fio___lock2_wait_s *volatile *i = &lock->waiting; *i; i = &(*i)->next) {
+    if (*i != &self_thread)
+      continue;
+    *i = (*i)->next;
+    break;
+  }
+  /* unlock waitlist */
+  fio_atomic_and(&lock->lock, ~inner_lock);
+}
+
+/**
+ * Unlocks a multilock, regardless of who owns the locked group.
+ *
+ * Combine a number of sublocks using OR (`|`) and the FIO_LOCK_SUBLOCK(i)
+ * macro. i.e.:
+ *
+ *      fio_unlock2(&lock, FIO_LOCK_SUBLOCK(1) | FIO_LOCK_SUBLOCK(2));
+ *
+ */
+SFUNC void fio_unlock2(fio_lock2_s *lock, size_t group) {
+  size_t inner_lock;
+  if (sizeof(inner_lock) >= 8)
+    inner_lock = (size_t)1UL << 63;
+  else if (sizeof(inner_lock) >= 4)
+    inner_lock = (size_t)1UL << 31;
+  else if (sizeof(inner_lock) >= 2)
+    inner_lock = (size_t)1UL << 15;
+  else
+    inner_lock = (size_t)1UL << 7;
+  fio___lock2_wait_s *waiting;
+  if (!group)
+    group = 1;
+  /* spinlock for waitlist */
+  while ((fio_atomic_or(&lock->lock, inner_lock) & inner_lock)) {
+    FIO_THREAD_RESCHEDULE();
+  }
+  /* unlock group */
+  waiting = lock->waiting;
+  fio_atomic_and(&lock->lock, ~group);
+  if (waiting) {
+    FIO_THREAD_RESUME(waiting->t);
+  }
+  /* unlock waitlist */
+  fio_atomic_and(&lock->lock, ~inner_lock);
+}
+
+#endif /* FIO_EXTERN_COMPLETE */
+
+#endif /* FIO_LOCK2 */
+#undef FIO_LOCK2
 
 /* *****************************************************************************
 
@@ -14919,6 +15191,197 @@ TEST_FUNC void fio___dynamic_types_test___atomic(void) {
 }
 
 /* *****************************************************************************
+Locking - Speed Test
+***************************************************************************** */
+#define FIO_LOCK2
+#include __FILE__
+#define FIO___LOCK2_TEST_TASK (1LU << 25)
+#define FIO___LOCK2_TEST_THREADS 32U
+#define FIO___LOCK2_TEST_REPEAT 1
+
+FIO_IFUNC void fio___lock_speedtest_task_inner(void *s) {
+  size_t *r = (size_t *)s;
+  static size_t i;
+  for (i = 0; i < FIO___LOCK2_TEST_TASK; ++i) {
+    __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
+    ++r[0];
+  }
+}
+
+static void *fio___lock_mytask_lock(void *s) {
+  static fio_lock_i lock = FIO_LOCK_INIT;
+  fio_lock(&lock);
+  if (s)
+    fio___lock_speedtest_task_inner(s);
+  fio_unlock(&lock);
+  return NULL;
+}
+
+static void *fio___lock_mytask_lock2(void *s) {
+  static fio_lock2_s lock = {FIO_LOCK_INIT};
+  fio_lock2(&lock, 1);
+  if (s)
+    fio___lock_speedtest_task_inner(s);
+  fio_unlock2(&lock, 1);
+  return NULL;
+}
+
+static void *fio___lock_mytask_mutex(void *s) {
+  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_lock(&mutex);
+  if (s)
+    fio___lock_speedtest_task_inner(s);
+  pthread_mutex_unlock(&mutex);
+  return NULL;
+}
+
+TEST_FUNC void fio___dynamic_types_test___lock2_speed(void) {
+  clock_t start, end;
+  pthread_t threads[FIO___LOCK2_TEST_THREADS];
+
+  struct {
+    size_t type_size;
+    const char *type_name;
+    const char *name;
+    void *(*task)(void *);
+  } test_funcs[] = {
+      {
+          .type_size = sizeof(fio_lock_i),
+          .type_name = "fio_lock_i",
+          .name = "fio_lock      (spinlock)",
+          .task = fio___lock_mytask_lock,
+      },
+      {
+          .type_size = sizeof(fio_lock2_s),
+          .type_name = "fio_lock2_s",
+          .name = "fio_lock2 (pause/resume)",
+          .task = fio___lock_mytask_lock2,
+      },
+      {
+          .type_size = sizeof(pthread_mutex_t),
+          .type_name = "pthread_mutex_t",
+          .name = "pthreads (pthread_mutex)",
+          .task = fio___lock_mytask_mutex,
+      },
+      {
+          .name = NULL,
+          .task = NULL,
+      },
+  };
+  fprintf(stderr, "* Speed testing The following types:\n");
+  for (size_t fn = 0; test_funcs[fn].name; ++fn) {
+    fprintf(stderr,
+            "\t%s\t(%zu bytes)\n",
+            test_funcs[fn].type_name,
+            test_funcs[fn].type_size);
+  }
+
+  fprintf(stderr,
+          "\n* Speed testing locking schemes, long work calculation...");
+  start = clock();
+  for (size_t i = 0; i < FIO___LOCK2_TEST_THREADS; ++i) {
+    size_t result = 0;
+    __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
+    fio___lock_speedtest_task_inner(&result);
+  }
+  end = clock();
+  fprintf(stderr, " %zu CPU/c\n", end - start);
+  clock_t long_work = end - start;
+
+  start = clock();
+  for (size_t i = 0; i < FIO___LOCK2_TEST_TASK; ++i) {
+    __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
+  }
+  end = clock();
+  fprintf(stderr,
+          "\n* Speed testing locking schemes - no contention, short work (%zu "
+          "CPU/c):\n"
+          "\t\t(%zu itterations)\n",
+          end - start,
+          (size_t)FIO___LOCK2_TEST_TASK);
+
+  for (int test_repeat = 0; test_repeat < FIO___LOCK2_TEST_REPEAT;
+       ++test_repeat) {
+    if (FIO___LOCK2_TEST_REPEAT > 1)
+      fprintf(
+          stderr, "%s (%d)\n", (test_repeat ? "Round" : "Warmup"), test_repeat);
+    for (size_t fn = 0; test_funcs[fn].name; ++fn) {
+      test_funcs[fn].task(NULL); /* warmup */
+      start = clock();
+      for (size_t i = 0; i < FIO___LOCK2_TEST_TASK; ++i) {
+        __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
+        test_funcs[fn].task(NULL);
+      }
+      end = clock();
+      fprintf(stderr, "\t%s: %zu CPU/c\n", test_funcs[fn].name, end - start);
+    }
+  }
+
+  fprintf(stderr,
+          "\n* Speed testing locking schemes - no contention, long work (%zu "
+          "CPU/c):\n",
+          long_work);
+  for (int test_repeat = 0; test_repeat < FIO___LOCK2_TEST_REPEAT;
+       ++test_repeat) {
+    if (FIO___LOCK2_TEST_REPEAT > 1)
+      fprintf(
+          stderr, "%s (%d)\n", (test_repeat ? "Round" : "Warmup"), test_repeat);
+    for (size_t fn = 0; test_funcs[fn].name; ++fn) {
+      size_t result = 0;
+      test_funcs[fn].task((void *)&result); /* warmup */
+      result = 0;
+      start = clock();
+      for (size_t i = 0; i < FIO___LOCK2_TEST_THREADS; ++i) {
+        __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
+        test_funcs[fn].task(&result);
+      }
+      end = clock();
+      fprintf(stderr,
+              "\t%s: %zu CPU/c (%zu CPU/c)\n",
+              test_funcs[fn].name,
+              end - start,
+              end - (start + long_work));
+      FIO_T_ASSERT(result == (FIO___LOCK2_TEST_TASK * FIO___LOCK2_TEST_THREADS),
+                   "%s final result error.",
+                   test_funcs[fn].name);
+    }
+  }
+
+  fprintf(stderr,
+          "\n* Speed testing locking schemes - %zu threads, long work (%zu "
+          "CPU/c):\n",
+          (size_t)FIO___LOCK2_TEST_THREADS,
+          long_work);
+  for (int test_repeat = 0; test_repeat < FIO___LOCK2_TEST_REPEAT;
+       ++test_repeat) {
+    if (FIO___LOCK2_TEST_REPEAT > 1)
+      fprintf(
+          stderr, "%s (%d)\n", (test_repeat ? "Round" : "Warmup"), test_repeat);
+    for (size_t fn = 0; test_funcs[fn].name; ++fn) {
+      size_t result = 0;
+      test_funcs[fn].task((void *)&result); /* warmup */
+      result = 0;
+      start = clock();
+      for (size_t i = 0; i < FIO___LOCK2_TEST_THREADS; ++i) {
+        pthread_create(threads + i, NULL, test_funcs[fn].task, &result);
+      }
+      for (size_t i = 0; i < FIO___LOCK2_TEST_THREADS; ++i) {
+        pthread_join(threads[i], NULL);
+      }
+      end = clock();
+      fprintf(stderr,
+              "\t%s: %zu CPU/c (%zu CPU/c)\n",
+              test_funcs[fn].name,
+              end - start,
+              end - (start + long_work));
+      FIO_T_ASSERT(result == (FIO___LOCK2_TEST_TASK * FIO___LOCK2_TEST_THREADS),
+                   "%s final result error.",
+                   test_funcs[fn].name);
+    }
+  }
+}
+
+/* *****************************************************************************
 URL parsing - Test
 ***************************************************************************** */
 
@@ -16664,12 +17127,12 @@ TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h,
                                       uint8_t mem_alignment_ofset) {
 #ifdef DEBUG
   fprintf(stderr,
-          "Testing %s speed "
+          "* Testing %s speed "
           "(DEBUG mode detected - speed may be affected).\n",
           name);
   uint64_t cycles_start_at = (8192 << 4);
 #else
-  fprintf(stderr, "Testing %s speed.\n", name);
+  fprintf(stderr, "* Testing %s speed.\n", name);
   uint64_t cycles_start_at = (8192 << 8);
 #endif
   /* test based on code from BearSSL with credit to Thomas Pornin */
@@ -16697,7 +17160,7 @@ TEST_FUNC void fio_test_hash_function(fio__hashing_func_fn h,
     if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
         cycles >= ((uint64_t)1 << 62)) {
       fprintf(stderr,
-              "%-40s %8.2f MB/s\n",
+              "\t%-40s %8.2f MB/s\n",
               name,
               (double)(buffer_len * cycles) /
                   (((end - start) * (1000000.0 / CLOCKS_PER_SEC))));
@@ -17265,6 +17728,8 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fio___dynamic_types_test___fiobj();
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___risky();
+  fprintf(stderr, "===============\n");
+  fio___dynamic_types_test___lock2_speed();
   fprintf(stderr, "===============\n");
   {
     char timebuf[64];

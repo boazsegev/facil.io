@@ -2226,6 +2226,14 @@ A MACRO / function that performs `nand` atomically.
 
 Returns the new value.
 
+### a SpinLock style MultiLock
+
+Atomic operations lend themselves easily to implementing spinlocks, so the facil.io STL includes one whenever atomic operations are defined (`FIO_ATOMIC`).
+
+Spinlocks are effective for very short critical sections or when a a failure to acquire a lock allows the program to redirect itself to other pending tasks. 
+
+However, in general, spinlocks should be avoided when a task might take a longer time to complete or when the program might need to wait for a high contention lock to become available.
+
 #### `fio_lock_i`
 
 A spinlock type based on a volatile unsigned char.
@@ -2308,6 +2316,91 @@ Busy waits for all sub-locks to become available - not recommended.
 #### `fio_unlock_full(fio_lock_i *lock)`
 
 Unlocks all sub-locks, no matter which thread owns which lock.
+
+-------------------------------------------------------------------------------
+
+## MultiLock with Thread Suspension
+
+If the `FIO_LOCK2` macro is defined than the multi-lock `fio_lock2_s` type and it's functions will be defined.
+
+The `fio_lock2` locking mechanism follows a bitwise approach to multi-locking, allowing a single lock to contain up to 31 sublocks (on 32 bit machines) or 63 sublocks (on 64 bit machines).
+
+This is a very powerful tool that allows simultaneous locking of multiple sublocks (similar to `fio_trylock_group`) while also supporting a thread "waitlist" where paused threads await their turn to access the lock and enter the critical section.
+
+The default implementation uses `pthread` (POSIX Threads) to access the thread's "ID", pause the thread (using `sigwait`) and resume the thread (with `pthread_kill`).
+
+The default behavior can be controlled using the following MACROS:
+
+* the `FIO_THREAD_T` macro should return a thread type, default: `pthread_t`
+
+* the `FIO_THREAD_ID()` macro should return this thread's FIO_THREAD_T.
+
+* the `FIO_THREAD_PAUSE(id)` macro should temporarily pause thread execution.
+
+* the `FIO_THREAD_RESUME(id)` macro should resume thread execution.
+
+#### `fio_lock2_s`
+
+```c
+typedef struct {
+  volatile size_t lock;
+  fio___lock2_wait_s *waiting; /**/
+} fio_lock2_s;
+```
+
+The `fio_lock2_s` type **must be considered opaque** and the struct's fields should **never** be accessed directly.
+
+The `fio_lock2_s` type is the lock's type.
+
+#### `fio_trylock2`
+
+```c
+uint8_t fio_trylock2(fio_lock2_s *lock, size_t group);
+```
+
+Tries to lock a multilock.
+
+Combine a number of sublocks using OR (`|`) and the FIO_LOCK_SUBLOCK(i)
+macro. i.e.:
+
+```c
+if(!fio_trylock2(&lock, FIO_LOCK_SUBLOCK(1) | FIO_LOCK_SUBLOCK(2))) {
+  // act in lock
+  fio_unlock2(&lock, FIO_LOCK_SUBLOCK(1) | FIO_LOCK_SUBLOCK(2));
+}
+```
+
+Returns 0 on success and non-zero on failure.
+
+#### `fio_lock2`
+
+```c
+void fio_lock2(fio_lock2_s *lock, size_t group);
+```
+
+Locks a multilock, waiting as needed.
+
+Combine a number of sublocks using OR (`|`) and the FIO_LOCK_SUBLOCK(i)
+macro. i.e.:
+
+     fio_lock2(&lock, FIO_LOCK_SUBLOCK(1) | FIO_LOCK_SUBLOCK(2)));
+
+Doesn't return until a successful lock was acquired.
+
+#### `fio_unlock2`
+
+```c
+void fio_unlock2(fio_lock2_s *lock, size_t group);
+  ```
+
+Unlocks a multilock, regardless of who owns the locked group.
+
+Combine a number of sublocks using OR (`|`) and the FIO_LOCK_SUBLOCK(i)
+macro. i.e.:
+
+```c
+fio_unlock2(&lock, FIO_LOCK_SUBLOCK(1) | FIO_LOCK_SUBLOCK(2));
+````
 
 -------------------------------------------------------------------------------
 
@@ -3354,6 +3447,8 @@ Pushes due events from the timer queue to an event queue.
 If `now` is `0`, than `fio_time_milli` will be called to supply `now`'s value.
 
 **Note**: all the `start_at` values for all the events in the timer queue will be treated as if they use the same units as (and are relative to) `now`. By default, this unit should be milliseconds, to allow `now` to be zero.
+
+Returns the number of tasks pushed to the queue. A value of `0` indicates no new tasks were scheduled.
 
 #### `fio_timer_next_at`
 
