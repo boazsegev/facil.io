@@ -2726,7 +2726,7 @@ FIO_SFUNC fio___mem_block_s *fio___mem_block_alloc(void) {
                  (void *)b);
 #endif
   /* initialize and push all block slices into memory pool */
-  for (uint16_t i = 0; i < (FIO_MEMORY_BLOCKS_PER_ALLOCATION - 1); ++i) {
+  for (size_t i = 0; i < (FIO_MEMORY_BLOCKS_PER_ALLOCATION - 1); ++i) {
     fio___mem_block_s *tmp =
         FIO_PTR_MATH_ADD(fio___mem_block_s, b, (FIO_MEMORY_BLOCK_SIZE * i));
     *tmp = (fio___mem_block_s){.root = i, .ref = 0};
@@ -2761,7 +2761,7 @@ FIO_SFUNC void fio___mem_block_free(fio___mem_block_s *b) {
     return;
   }
   /* remove all block slices from memory pool */
-  for (uint16_t i = 0; i < (FIO_MEMORY_BLOCKS_PER_ALLOCATION); ++i) {
+  for (size_t i = 0; i < (FIO_MEMORY_BLOCKS_PER_ALLOCATION); ++i) {
     fio___mem_block_node_s *tmp = FIO_PTR_MATH_ADD(
         fio___mem_block_node_s, b, (FIO_MEMORY_BLOCK_SIZE * i));
     fio___mem_available_blocks_remove(tmp);
@@ -3347,7 +3347,7 @@ Random - Implementation
 #endif
 
 static __thread uint64_t fio___rand_state[4]; /* random state */
-static __thread uint32_t fio___rand_counter;  /* seed counter */
+static __thread size_t fio___rand_counter;    /* seed counter */
 /* feeds random data to the algorithm through this 256 bit feed. */
 static __thread uint64_t fio___rand_buffer[4] = {0x9c65875be1fce7b9ULL,
                                                  0x7cc568e838f6a40d,
@@ -3436,7 +3436,7 @@ IFUNC void fio_rand_reseed(void) {
 SFUNC uint64_t fio_rand64(void) {
   /* modeled after xoroshiro128+, by David Blackman and Sebastiano Vigna */
   const uint64_t P[] = {0x37701261ED6C16C7ULL, 0x764DBBB75F3B3E0DULL};
-  if (((fio___rand_counter++) & (((uint32_t)1 << 19) - 1)) == 0) {
+  if (((fio___rand_counter++) & (((size_t)1 << 19) - 1)) == 0) {
     /* re-seed state every 524,288 requests / 2^19-1 attempts  */
     fio_rand_reseed();
   }
@@ -5459,7 +5459,7 @@ IFUNC void FIO_NAME(FIO_ARRAY_NAME, destroy)(FIO_ARRAY_PTR ary_) {
   FIO_NAME(FIO_ARRAY_NAME, s) tmp = *ary;
   *ary = (FIO_NAME(FIO_ARRAY_NAME, s))FIO_ARRAY_INIT;
 #if !FIO_ARRAY_TYPE_DESTROY_SIMPLE
-  for (uint32_t i = tmp.start; i < tmp.end; ++i) {
+  for (size_t i = tmp.start; i < tmp.end; ++i) {
     FIO_ARRAY_TYPE_DESTROY(tmp.ary[i]);
   }
 #endif
@@ -5535,7 +5535,7 @@ SFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, concat)(FIO_ARRAY_PTR dest_,
 #if FIO_ARRAY_TYPE_COPY_SIMPLE && FIO_ARRAY_TYPE_CONCAT_SIMPLE
   memcpy(dest->ary + dest->end, src->ary + src->start, src->end - src->start);
 #else
-  for (uint32_t i = 0; i + src->start < src->end; ++i) {
+  for (size_t i = 0; i + src->start < src->end; ++i) {
     FIO_ARRAY_TYPE_CONCAT_COPY((dest->ary + dest->end + i)[0],
                                (src->ary + i + src->start)[0]);
   }
@@ -5593,7 +5593,7 @@ IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, set)(FIO_ARRAY_PTR ary_,
 #if FIO_ARRAY_TYPE_INVALID_SIMPLE
       memset(ary->ary + ary->end, 0, (index - ary->end) * sizeof(*ary->ary));
 #else
-      for (uint32_t i = ary->end; i <= (uint32_t)index; ++i) {
+      for (size_t i = ary->end; i <= (size_t)index; ++i) {
         FIO_ARRAY_TYPE_COPY(ary->ary[i], FIO_ARRAY_TYPE_INVALID);
       }
 #endif
@@ -5758,8 +5758,8 @@ IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, remove2)(FIO_ARRAY_PTR ary_,
                                                  FIO_ARRAY_TYPE data) {
   FIO_NAME(FIO_ARRAY_NAME, s) *ary =
       (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
-  uint32_t c = 0;
-  uint32_t i = ary->start;
+  size_t c = 0;
+  size_t i = ary->start;
   while (i < ary->end) {
     if (!(FIO_ARRAY_TYPE_CMP(ary->ary[i + c], data))) {
       ary->ary[i] = ary->ary[i + c];
@@ -5924,9 +5924,9 @@ IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME,
     start_at += ary->end - ary->start;
   if (start_at < 0)
     start_at = 0;
-  for (uint32_t i = ary->start + start_at; i < ary->end; ++i) {
+  for (size_t i = ary->start + start_at; i < ary->end; ++i) {
     if (task(ary->ary[i], arg) == -1) {
-      return (i + 1) - ary->start;
+      return (uint32_t)((i + 1) - ary->start);
     }
   }
   return ary->end - ary->start;
@@ -7008,12 +7008,12 @@ SFUNC FIO_NAME(FIO_MAP_NAME, __pos_s)
                                       FIO_MAP_HASH hash,
                                       FIO_MAP_SIZE_TYPE ihash,
                                       FIO_MAP_OBJ_KEY key) {
-  const FIO_MAP_SIZE_TYPE imask = ((FIO_MAP_SIZE_TYPE)1 << m->bits) - 1;
-  const FIO_MAP_SIZE_TYPE test_mask = ~imask;
+  const size_t imask = ((FIO_MAP_SIZE_TYPE)1 << m->bits) - 1;
+  const size_t test_mask = ~imask;
   FIO_MAP_SIZE_TYPE *imap = FIO_NAME(FIO_MAP_NAME, __imap)(m);
   FIO_NAME(FIO_MAP_NAME, __pos_s)
   r = {.i = FIO_MAP_INDEX_INVALID, .imap = FIO_MAP_INDEX_INVALID};
-  FIO_MAP_SIZE_TYPE i = ihash;
+  size_t i = ihash;
   if (!m->map)
     return r;
   ihash &= test_mask;
@@ -7079,7 +7079,7 @@ Hash Map / Set - Internal API (Helpers) - Rehashing
 
 /** Internal: rehashes the map. */
 FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, __rehash_no_holes)(FIO_MAP_S *m) {
-  FIO_MAP_SIZE_TYPE pos = 0;
+  size_t pos = 0;
   FIO_MAP_SIZE_TYPE *imap = FIO_NAME(FIO_MAP_NAME, __imap)(m);
   FIO_NAME(FIO_MAP_NAME, each_s) *map = m->map;
   while (pos < m->w) {
@@ -13779,7 +13779,7 @@ FIOBJ Complex Iteration
 ***************************************************************************** */
 typedef struct {
   FIOBJ obj;
-  uint32_t pos;
+  size_t pos;
 } fiobj____stack_element_s;
 
 #define FIO_ARRAY_NAME fiobj____active_stack
@@ -14047,7 +14047,7 @@ FIOBJ JSON support - output
 
 FIO_IFUNC void fiobj___json_format_internal_beauty_pad(FIOBJ json,
                                                        size_t level) {
-  uint32_t pos = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(json);
+  size_t pos = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), len)(json);
   fio_str_info_s tmp = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING),
                                 resize)(json, (level << 1) + pos + 2);
   tmp.buf[pos++] = '\r';
@@ -14092,7 +14092,7 @@ fiobj___json_format_internal__(fiobj___json_format_internal__s *args, FIOBJ o) {
       FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(args->json, "[", 1);
       const uint32_t len =
           FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), count)(o);
-      for (uint32_t i = 0; i < len; ++i) {
+      for (size_t i = 0; i < len; ++i) {
         if (args->beautify) {
           fiobj___json_format_internal_beauty_pad(args->json, args->level);
         }
@@ -14118,7 +14118,7 @@ fiobj___json_format_internal__(fiobj___json_format_internal__s *args, FIOBJ o) {
     {
       ++args->level;
       FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_STRING), write)(args->json, "{", 1);
-      uint32_t i = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), count)(o);
+      size_t i = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), count)(o);
       if (i) {
         FIO_MAP_EACH2(FIO_NAME(fiobj, FIOBJ___NAME_HASH), o, couplet) {
           if (args->beautify) {
@@ -14431,7 +14431,7 @@ TEST_FUNC void fio___dynamic_types_test___atol(void) {
     FIO_T_ASSERT(
         i == i2, "fio_ltoa-fio_atol roundtrip error %lld != %lld", i, i2);
   }
-  for (uint8_t bit = 0; bit < sizeof(int64_t) * 8; ++bit) {
+  for (size_t bit = 0; bit < sizeof(int64_t) * 8; ++bit) {
     uint64_t i = (uint64_t)1 << bit;
     size_t tmp = fio_ltoa(buffer, (int64_t)i, 0);
     FIO_T_ASSERT(tmp > 0, "fio_ltoa return length error");
@@ -15182,6 +15182,7 @@ TEST_FUNC void fio___dynamic_types_test___atomic(void) {
       FIO_T_ASSERT(i == j || !fio_is_sublocked(&lock, j),
                    "another sublock was flagged, though it wasn't engaged");
     }
+    FIO_T_ASSERT(fio_is_sublocked(&lock, i), "lock should remain engaged");
     fio_unlock_sublock(&lock, i);
     FIO_T_ASSERT(!fio_is_sublocked(&lock, i), "sublock should be released");
     FIO_T_ASSERT(!fio_trylock_full(&lock), "fio_trylock_full should succeed");
@@ -15276,18 +15277,6 @@ TEST_FUNC void fio___dynamic_types_test___lock2_speed(void) {
             test_funcs[fn].type_size);
   }
 
-  fprintf(stderr,
-          "\n* Speed testing locking schemes, long work calculation...");
-  start = clock();
-  for (size_t i = 0; i < FIO___LOCK2_TEST_THREADS; ++i) {
-    size_t result = 0;
-    __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
-    fio___lock_speedtest_task_inner(&result);
-  }
-  end = clock();
-  fprintf(stderr, " %zu CPU/c\n", end - start);
-  clock_t long_work = end - start;
-
   start = clock();
   for (size_t i = 0; i < FIO___LOCK2_TEST_TASK; ++i) {
     __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
@@ -15318,9 +15307,17 @@ TEST_FUNC void fio___dynamic_types_test___lock2_speed(void) {
   }
 
   fprintf(stderr,
-          "\n* Speed testing locking schemes - no contention, long work (%zu "
-          "CPU/c):\n",
-          long_work);
+          "\n* Speed testing locking schemes - no contention, long work ");
+  start = clock();
+  for (size_t i = 0; i < FIO___LOCK2_TEST_THREADS; ++i) {
+    size_t result = 0;
+    __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
+    fio___lock_speedtest_task_inner(&result);
+  }
+  end = clock();
+  fprintf(stderr, " %zu CPU/c\n", end - start);
+  clock_t long_work = end - start;
+  fprintf(stderr, "(%zu CPU/c):\n", long_work);
   for (int test_repeat = 0; test_repeat < FIO___LOCK2_TEST_REPEAT;
        ++test_repeat) {
     if (FIO___LOCK2_TEST_REPEAT > 1)
