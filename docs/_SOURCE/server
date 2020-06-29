@@ -195,6 +195,13 @@ else
       env[PATH_INFO] << ".html"
     end
     data = render(env[PATH_INFO]) if(@bakers.include?(File.extname(env[PATH_INFO])))
+    # gzip resources for gzipped responses (TODO? brotli)
+    if(File.file?("#{STATIC_ROOT}#{original_path}") && File.size?("#{STATIC_ROOT}#{original_path}").to_i >= 16384)
+      `gzip -kf -9 #{STATIC_ROOT}#{original_path}`
+      if(File.file?("#{STATIC_ROOT}#{original_path}.gz") && File.size?("#{STATIC_ROOT}#{original_path}.gz").to_i + 8192 >= File.size?("#{STATIC_ROOT}#{original_path}").to_i)
+        File.delete("#{STATIC_ROOT}#{original_path}.gz")
+      end
+    end
     # use iodine's X-Sendfile support to send file from disk
     puts "SENDFILE: #{STATIC_ROOT}#{original_path}"
     [200, {X_SENDFILE => "#{STATIC_ROOT}#{original_path}"}, [data]]
