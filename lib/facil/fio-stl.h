@@ -990,7 +990,7 @@ FIO_IFUNC uint8_t fio_trylock_group(fio_lock_i *lock, uint8_t group) {
   uint8_t state = fio_atomic_or(lock, group);
   if (!(state & group))
     return 0;
-  fio_atomic_and(lock, state);
+  fio_atomic_and(lock, (state | (~group)));
   return 1;
 }
 
@@ -1009,7 +1009,7 @@ FIO_IFUNC void fio_lock_group(fio_lock_i *lock, uint8_t group) {
 FIO_IFUNC void fio_unlock_group(fio_lock_i *lock, uint8_t group) {
   if (!group)
     group = 1;
-  fio_atomic_and(lock, ~group);
+  fio_atomic_and(lock, (~group));
 }
 
 /** Tries to lock all sublocks. Returns 0 on success and 1 on failure. */
@@ -1198,7 +1198,7 @@ FIO_IFUNC uint8_t fio_trylock2(fio_lock2_s *lock, size_t group) {
   size_t state = fio_atomic_or(&lock->lock, group);
   if (!(state & group))
     return 0;
-  fio_atomic_and(&lock->lock, state);
+  fio_atomic_and(&lock->lock, (state | (~group)));
   return 1;
 }
 
@@ -1238,14 +1238,16 @@ SFUNC void fio_lock2(fio_lock2_s *lock, size_t group) {
   if (!(state & group))
     return;
 
+  /* initialize self-waiting node memory (using stack memory) */
+  self_thread.t = FIO_THREAD_ID();
+  self_thread.next = NULL; // lock->waiting;
+
   /* enter waitlist lock */
   while ((fio_atomic_or(&lock->lock, inner_lock) & inner_lock)) {
     FIO_THREAD_RESCHEDULE();
   }
 
-  /* add thread to end of waitlist */
-  self_thread.t = FIO_THREAD_ID();
-  self_thread.next = NULL; // lock->waiting;
+  /* add self-thread to end of waitlist */
   {
     fio___lock2_wait_s *volatile *i = &(lock->waiting);
     while (i[0]) {
@@ -1255,6 +1257,7 @@ SFUNC void fio_lock2(fio_lock2_s *lock, size_t group) {
   }
 
   /* release waitlist lock and return lock's state */
+  state = (state | (~group)) & (~inner_lock);
   fio_atomic_and(&lock->lock, (state & (~inner_lock)));
 
   for (;;) {
@@ -1264,7 +1267,7 @@ SFUNC void fio_lock2(fio_lock2_s *lock, size_t group) {
     // `next` may have been added while we didn't look
     if (self_thread.next) {
       /* resume next thread if this isn't for us (possibly different group) */
-      fio_atomic_and(&lock->lock, state);
+      fio_atomic_and(&lock->lock, (state | (~group)));
       FIO_THREAD_RESUME(self_thread.next->t);
     }
     FIO_THREAD_PAUSE(self_thread.t);
