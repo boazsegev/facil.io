@@ -112,7 +112,7 @@ fio_memchr(const void *buffer, const int brk, const size_t buffer_len) {
   /* align memory */
   while ((uintptr_t)(buf + pos) & 3) {
     if (buf[pos] == brk)
-      goto found;
+      return (void *)(buf + pos);
     ++pos;
   }
 
@@ -139,13 +139,10 @@ tail:
 
   while (pos < buffer_len) {
     if (buf[pos] == brk)
-      goto found;
+      return (void *)(buf + pos);
     ++pos;
   }
   return NULL;
-
-found:
-  return (void *)(buf + pos);
 }
 
 /**

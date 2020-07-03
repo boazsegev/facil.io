@@ -402,7 +402,7 @@ else ifeq ($(call TRY_COMPILE, $(FIO_TEST_SOCKET_AND_NETWORK_SERVICE), "-lsocket
   $(info * Detected socket API from libsocket and libnsl)
   LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) socket nsl
 else
-  $(error No socket API available)
+  $(warning No socket API detected - won't be able to compile facil.io)
 endif
 
 endif # TEST4SOCKET

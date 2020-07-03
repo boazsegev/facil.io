@@ -1103,7 +1103,7 @@ FIO_IFUNC uint8_t FIO_NAME_BL(fio, sublocked)(fio_lock_i *lock, uint8_t sub) {
 #define FIO_THREAD_PAUSE(id)                                                   \
   do {                                                                         \
     sigset_t set___;                                                           \
-    int *got___sig;                                                            \
+    int got___sig;                                                             \
     sigemptyset(&set___);                                                      \
     sigaddset(&set___, SIGINT);                                                \
     sigaddset(&set___, SIGTERM);                                               \
