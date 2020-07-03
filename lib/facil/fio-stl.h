@@ -859,8 +859,8 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 
 ***************************************************************************** */
 
-#if defined(FIO_ATOMIC) && !defined(fio_atomic_exchange)
-
+#if defined(FIO_ATOMIC) && !defined(H___FIO_ATOMIC___H)
+#define H___FIO_ATOMIC___H 1
 /* C11 Atomics are defined? */
 #if defined(__ATOMIC_RELAXED)
 /** An atomic load operation, returns value in pointer. */
@@ -871,6 +871,8 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 
 // clang-format off
 
+/** An atomic compare and exchange operation, returns true if an exchange occured. `p_expected` MAY be overwritten with the existing value (system specific). */
+#define fio_atomic_compare_exchange_p(p_obj, p_expected, p_desired) __atomic_compare_exchange((p_obj), (p_expected), (p_desired), 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
 /** An atomic exchange operation, returns previous value */
 #define fio_atomic_exchange(p_obj, value) __atomic_exchange_n((p_obj), (value), __ATOMIC_SEQ_CST)
 /** An atomic addition operation, returns previous value */
@@ -906,9 +908,12 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
   do {                                                                         \
     dest = *(p_obj);                                                           \
   } while (!__sync_bool_compare_and_swap((p_obj), dest, dest))
+
+
+/** An atomic compare and exchange operation, returns true if an exchange occured. `p_expected` MAY be overwritten with the existing value (system specific). */
+#define fio_atomic_compare_exchange_p(p_obj, p_expected, p_desired) __sync_bool_compare_and_swap((p_obj), (p_expected), *(p_desired))
 /** An atomic exchange operation, ruturns previous value */
-#define fio_atomic_exchange(p_obj, value)                                      \
-  __sync_val_compare_and_swap((p_obj), *(p_obj), (value))
+#define fio_atomic_exchange(p_obj, value) __sync_val_compare_and_swap((p_obj), *(p_obj), (value))
 /** An atomic addition operation, returns new value */
 #define fio_atomic_add(p_obj, value) __sync_fetch_and_add((p_obj), (value))
 /** An atomic subtraction operation, returns new value */
@@ -15119,6 +15124,21 @@ TEST_FUNC void fio___dynamic_types_test___atomic(void) {
   FIO_T_ASSERT(r1.s == 1 && s.s == 99, "fio_atomic_exchange failed for s");
   FIO_T_ASSERT(r1.l == 1 && s.l == 99, "fio_atomic_exchange failed for l");
   FIO_T_ASSERT(r1.w == 1 && s.w == 99, "fio_atomic_exchange failed for w");
+  // clang-format off
+  FIO_T_ASSERT(!fio_atomic_compare_exchange_p(&s.c, &r1.c, &r1.c), "fio_atomic_compare_exchange_p didn't fail for c");
+  FIO_T_ASSERT(!fio_atomic_compare_exchange_p(&s.s, &r1.s, &r1.s), "fio_atomic_compare_exchange_p didn't fail for s");
+  FIO_T_ASSERT(!fio_atomic_compare_exchange_p(&s.l, &r1.l, &r1.l), "fio_atomic_compare_exchange_p didn't fail for l");
+  FIO_T_ASSERT(!fio_atomic_compare_exchange_p(&s.w, &r1.w, &r1.w), "fio_atomic_compare_exchange_p didn't fail for w");
+  r1.c = 1;s.c = 99; r1.s = 1;s.s = 99; r1.l = 1;s.l = 99; r1.w = 1;s.w = 99; /* ignore system spefcific behavior. */
+  r1.c = fio_atomic_compare_exchange_p(&s.c,&s.c, &r1.c);
+  r1.s = fio_atomic_compare_exchange_p(&s.s,&s.s, &r1.s);
+  r1.l = fio_atomic_compare_exchange_p(&s.l,&s.l, &r1.l);
+  r1.w = fio_atomic_compare_exchange_p(&s.w,&s.w, &r1.w);
+  FIO_T_ASSERT(r1.c == 1 && s.c == 1, "fio_atomic_compare_exchange_p failed for c");
+  FIO_T_ASSERT(r1.s == 1 && s.s == 1, "fio_atomic_compare_exchange_p failed for s");
+  FIO_T_ASSERT(r1.l == 1 && s.l == 1, "fio_atomic_compare_exchange_p failed for l");
+  FIO_T_ASSERT(r1.w == 1 && s.w == 1, "fio_atomic_compare_exchange_p failed for w");
+  // clang-format on
 
   uint64_t val = 1;
   FIO_T_ASSERT(fio_atomic_and(&val, 2) == 1,

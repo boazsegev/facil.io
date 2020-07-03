@@ -2226,6 +2226,14 @@ A MACRO / function that performs `nand` atomically.
 
 Returns the new value.
 
+#### `fio_atomic_compare_exchange_p(p_obj, p_expected, p_desired)`
+
+A MACRO / function that performs a system specific `fio_atomic_compare_exchange` using pointers.
+
+The behavior of this instruction is compiler / CPU architecture specific, where `p_expected` **SHOULD** be overwritten with the latest value of `p_obj`, but **MAY NOT**, depending on system and compiler implementations.
+
+Returns 1 for successful exchange or 0 for failure.
+
 ### a SpinLock style MultiLock
 
 Atomic operations lend themselves easily to implementing spinlocks, so the facil.io STL includes one whenever atomic operations are defined (`FIO_ATOMIC`).
