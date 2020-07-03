@@ -102,13 +102,13 @@ LINKER_LIBS_EXT:=
 # add DEBUG flag if requested
 ifeq ($(DEBUG), 1)
   $(info * Detected DEBUG environment flag, enforcing debug mode compilation)
-	FLAGS:=$(FLAGS) DEBUG
-	# # comment the following line if you want to use a different address sanitizer or a profiling tool.
-	OPTIMIZATION:=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer
-	# possibly useful:  -Wconversion -Wcomma -fsanitize=undefined -Wshadow
-	# go crazy with clang: -Weverything -Wno-cast-qual -Wno-used-but-marked-unused -Wno-reserved-id-macro -Wno-padded -Wno-disabled-macro-expansion -Wno-documentation-unknown-command -Wno-bad-function-cast -Wno-missing-prototypes
+  FLAGS:=$(FLAGS) DEBUG
+  # # comment the following line if you want to use a different address sanitizer or a profiling tool.
+  OPTIMIZATION:=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer
+  # possibly useful:  -Wconversion -Wcomma -fsanitize=undefined -Wshadow
+  # go crazy with clang: -Weverything -Wno-cast-qual -Wno-used-but-marked-unused -Wno-reserved-id-macro -Wno-padded -Wno-disabled-macro-expansion -Wno-documentation-unknown-command -Wno-bad-function-cast -Wno-missing-prototypes
 else
-	FLAGS:=$(FLAGS) NDEBUG NODEBUG
+  FLAGS:=$(FLAGS) NDEBUG NODEBUG
 endif
 
 #############################################################################
@@ -132,7 +132,7 @@ TEST4ENDIAN:=1    # __BIG_ENDIAN__=?
 
 # add FIO_PUBSUB_SUPPORT flag if requested
 ifdef FIO_PUBSUB_SUPPORT
-	FLAGS:=$(FLAGS) FIO_PUBSUB_SUPPORT=$(FIO_PUBSUB_SUPPORT)
+  FLAGS:=$(FLAGS) FIO_PUBSUB_SUPPORT=$(FIO_PUBSUB_SUPPORT)
 endif
 
 #############################################################################
@@ -141,26 +141,26 @@ endif
 
 
 ifneq ($(OS),Windows_NT)
-	OS:=$(shell uname)
+  OS:=$(shell uname)
 else
-	$(warning *** Windows systems might not work with this makefile / library.)
+  $(warning *** Windows systems might not work with this makefile / library.)
 endif
 ifeq ($(OS),Darwin) # Run MacOS commands
-	# debugger
-	DB=lldb
-	# disassemble tool. Use stub to disable.
-	# DISAMS=otool -dtVGX
-	# documentation commands
-	# DOCUMENTATION=cldoc generate $(INCLUDE_STR) -- --output ./html $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*))
-	# rule modifier (can't be indented)
+  # debugger
+  DB=lldb
+  # disassemble tool. Use stub to disable.
+  # DISAMS=otool -dtVGX
+  # documentation commands
+  # DOCUMENTATION=cldoc generate $(INCLUDE_STR) -- --output ./html $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*))
+  # rule modifier (can't be indented)
 $(DEST)/libfacil.so: LDFLAGS+=-dynamiclib -install_name $(realpath $(DEST))/libfacil.so
 else
-	# debugger
-	DB=gdb
-	# disassemble tool, leave undefined.
-	# DISAMS=otool -tVX
-	# documentation commands
-	DOCUMENTATION=
+  # debugger
+  DB=gdb
+  # disassemble tool, leave undefined.
+  # DISAMS=otool -tVX
+  # documentation commands
+  DOCUMENTATION=
 endif
 
 #############################################################################
@@ -208,7 +208,7 @@ OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d) $(TEST_OBJS:.o=.d)
 #
 # https://kristerw.blogspot.com/2017/05/interprocedural-optimization-in-gcc.html
 ifeq ($(shell $(CC) -v 2>&1 | grep -o "^gcc version"),gcc version)
-	OPTIMIZATION+=-fno-ipa-icf
+  OPTIMIZATION+=-fno-ipa-icf
 endif
 
 #############################################################################
@@ -236,7 +236,7 @@ FIO_POLL_TEST_KQUEUE:="\\n\
 \#include <stdlib.h>\\n\
 \#include <sys/event.h>\\n\
 int main(void) {\\n\
-	int fd = kqueue();\\n\
+  int fd = kqueue();\\n\
 }\\n\
 "
 
@@ -249,7 +249,7 @@ FIO_POLL_TEST_EPOLL:="\\n\
 \#include <fcntl.h>\\n\
 \#include <sys/epoll.h>\\n\
 int main(void) {\\n\
-	int fd = epoll_create1(EPOLL_CLOEXEC);\\n\
+  int fd = epoll_create1(EPOLL_CLOEXEC);\\n\
 }\\n\
 "
 
@@ -267,27 +267,27 @@ int main(void) {\\n\
 # Test for manual selection and then TRY_COMPILE with each polling engine
 ifdef FIO_POLL
   $(info * Skipping polling tests, enforcing manual selection of: poll)
-	FLAGS+=FIO_ENGINE_POLL HAVE_POLL
+  FLAGS+=FIO_ENGINE_POLL HAVE_POLL
 else ifdef FIO_FORCE_POLL
   $(info * Skipping polling tests, enforcing manual selection of: poll)
-	FLAGS+=FIO_ENGINE_POLL HAVE_POLL
+  FLAGS+=FIO_ENGINE_POLL HAVE_POLL
 else ifdef FIO_FORCE_EPOLL
   $(info * Skipping polling tests, enforcing manual selection of: epoll)
-	FLAGS+=FIO_ENGINE_EPOLL HAVE_EPOLL
+  FLAGS+=FIO_ENGINE_EPOLL HAVE_EPOLL
 else ifdef FIO_FORCE_KQUEUE
   $(info * Skipping polling tests, enforcing manual selection of: kqueue)
-	FLAGS+=FIO_ENGINE_KQUEUE HAVE_KQUEUE
+  FLAGS+=FIO_ENGINE_KQUEUE HAVE_KQUEUE
 else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_EPOLL), $(EMPTY)), 0)
   $(info * Detected `epoll`)
-	FLAGS+=HAVE_EPOLL
+  FLAGS+=HAVE_EPOLL
 else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_KQUEUE), $(EMPTY)), 0)
   $(info * Detected `kqueue`)
-	FLAGS+=HAVE_KQUEUE
+  FLAGS+=HAVE_KQUEUE
 else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_POLL), $(EMPTY)), 0)
   $(info * Detected `poll` - this is suboptimal fallback!)
-	FLAGS+=HAVE_POLL
+  FLAGS+=HAVE_POLL
 else
-	$(warning No supported polling engine! won't be able to compile facil.io)
+$(warning No supported polling engine! won't be able to compile facil.io)
 endif
 
 endif # TEST4POLL
@@ -304,8 +304,8 @@ FIO_SENDFILE_TEST_LINUX:="\\n\
 \#include <stdio.h>\\n\
 \#include <sys/sendfile.h>\\n\
 int main(void) {\\n\
-	off_t offset = 0;\\n\
-	ssize_t result = sendfile(2, 1, (off_t *)&offset, 300);\\n\
+  off_t offset = 0;\\n\
+  ssize_t result = sendfile(2, 1, (off_t *)&offset, 300);\\n\
 }\\n\
 "
 
@@ -318,9 +318,9 @@ FIO_SENDFILE_TEST_BSD:="\\n\
 \#include <sys/socket.h>\\n\
 \#include <sys/uio.h>\\n\
 int main(void) {\\n\
-	off_t sent = 0;\\n\
-	off_t offset = 0;\\n\
-	ssize_t result = sendfile(2, 1, offset, (size_t)sent, NULL, &sent, 0);\\n\
+  off_t sent = 0;\\n\
+  off_t offset = 0;\\n\
+  ssize_t result = sendfile(2, 1, offset, (size_t)sent, NULL, &sent, 0);\\n\
 }\\n\
 "
 
@@ -333,24 +333,24 @@ FIO_SENDFILE_TEST_APPLE:="\\n\
 \#include <sys/socket.h>\\n\
 \#include <sys/uio.h>\\n\
 int main(void) {\\n\
-	off_t sent = 0;\\n\
-	off_t offset = 0;\\n\
-	ssize_t result = sendfile(2, 1, offset, &sent, NULL, 0);\\n\
+  off_t sent = 0;\\n\
+  off_t offset = 0;\\n\
+  ssize_t result = sendfile(2, 1, offset, &sent, NULL, 0);\\n\
 }\\n\
 "
 
 ifeq ($(call TRY_COMPILE, $(FIO_SENDFILE_TEST_LINUX), $(EMPTY)), 0)
   $(info * Detected `sendfile` (Linux))
-	FLAGS+=USE_SENDFILE_LINUX HAVE_SENDFILE
+  FLAGS+=USE_SENDFILE_LINUX HAVE_SENDFILE
 else ifeq ($(call TRY_COMPILE, $(FIO_SENDFILE_TEST_BSD), $(EMPTY)), 0)
   $(info * Detected `sendfile` (BSD))
-	FLAGS+=USE_SENDFILE_BSD HAVE_SENDFILE
+  FLAGS+=USE_SENDFILE_BSD HAVE_SENDFILE
 else ifeq ($(call TRY_COMPILE, $(FIO_SENDFILE_TEST_APPLE), $(EMPTY)), 0)
   $(info * Detected `sendfile` (Apple))
-	FLAGS+=USE_SENDFILE_APPLE HAVE_SENDFILE
+  FLAGS+=USE_SENDFILE_APPLE HAVE_SENDFILE
 else
   $(info * No `sendfile` support detected.)
-	FLAGS:=$(FLAGS) USE_SENDFILE=0
+  FLAGS:=$(FLAGS) USE_SENDFILE=0
 endif
 
 endif # TEST4SENDFILE
@@ -364,15 +364,15 @@ FIO_TEST_STRUCT_TM_TM_ZONE:="\\n\
 \#define _GNU_SOURCE\\n\
 \#include <time.h>\\n\
 int main(void) {\\n\
-	struct tm tm;\\n\
-	tm.tm_zone = \"UTC\";\\n\
-	return 0;\\n\
+  struct tm tm;\\n\
+  tm.tm_zone = \"UTC\";\\n\
+  return 0;\\n\
 }\\n\
 "
 
 ifeq ($(call TRY_COMPILE, $(FIO_TEST_STRUCT_TM_TM_ZONE), $(EMPTY)), 0)
   $(info * Detected 'tm_zone' field in 'struct tm')
-	FLAGS:=$(FLAGS) HAVE_TM_TM_ZONE=1
+  FLAGS:=$(FLAGS) HAVE_TM_TM_ZONE=1
 endif
 
 endif # TEST4TM_ZONE
@@ -388,11 +388,11 @@ FIO_TEST_SOCKET_AND_NETWORK_SERVICE:="\\n\
 \#include <netinet/in.h>\\n\
 \#include <arpa/inet.h>\\n\
 int main(void) {\\n\
-	struct sockaddr_in addr = { .sin_port = 0 };\\n\
-	int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);\\n\
-	if(fd == -1) return 1;\\n\
-	if(inet_pton(AF_INET, \"127.0.0.1\", &addr.sin_addr) < 1) return 1;\\n\
-	return connect(fd, (struct sockaddr *)&addr, sizeof addr) < 0 ? 1 : 0;\\n\
+  struct sockaddr_in addr = { .sin_port = 0 };\\n\
+  int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);\\n\
+  if(fd == -1) return 1;\\n\
+  if(inet_pton(AF_INET, \"127.0.0.1\", &addr.sin_addr) < 1) return 1;\\n\
+  return connect(fd, (struct sockaddr *)&addr, sizeof addr) < 0 ? 1 : 0;\\n\
 }\\n\
 "
 
@@ -400,7 +400,7 @@ ifeq ($(call TRY_COMPILE, $(FIO_TEST_SOCKET_AND_NETWORK_SERVICE), $(EMPTY)), 0)
   $(info * Detected native socket API, without additional libraries)
 else ifeq ($(call TRY_COMPILE, $(FIO_TEST_SOCKET_AND_NETWORK_SERVICE), "-lsocket" "-lnsl"), 0)
   $(info * Detected socket API from libsocket and libnsl)
-	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) socket nsl
+  LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) socket nsl
 else
   $(error No socket API available)
 endif
@@ -462,8 +462,8 @@ OPENSSL_LIBS:=
 OPENSSL_LDFLAGS:="-lssl" "-lcrypto"
 # detect OpenSSL flags using pkg-config, if available
 ifeq ($(shell $(PKG_CONFIG) -- openssl >/dev/null 2>&1; echo $$?), 0)
-	OPENSSL_CFLAGS:=$(shell $(PKG_CONFIG) --cflags openssl)
-	OPENSSL_LDFLAGS:=$(shell $(PKG_CONFIG) --libs openssl)
+  OPENSSL_CFLAGS:=$(shell $(PKG_CONFIG) --cflags openssl)
+  OPENSSL_LDFLAGS:=$(shell $(PKG_CONFIG) --libs openssl)
 endif
 
 
@@ -472,20 +472,20 @@ ifdef FIO_NO_TLS
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_SOURCE), $(EMPTY)), 0)
   $(info * Detected the BearSSL source code library, setting HAVE_BEARSSL)
   # TODO: when BearSSL support arrived, set the FIO_TLS_FOUND flag as well
-	FLAGS+=HAVE_BEARSSL
+  FLAGS+=HAVE_BEARSSL
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_EXT), "-lbearssl"), 0)
   $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
   # TODO: when BearSSL support arrived, set the FIO_TLS_FOUND flag as well
-	FLAGS+=HAVE_BEARSSL
-	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
+  FLAGS+=HAVE_BEARSSL
+  LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), $(OPENSSL_CFLAGS) $(OPENSSL_LDFLAGS)), 0)
   $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
-	FLAGS+=HAVE_OPENSSL FIO_TLS_FOUND
-	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) $(OPENSSL_LIBS)
-	LDFLAGS+=$(OPENSSL_LDFLAGS)
-	CFLAGS+=$(OPENSSL_CFLAGS)
-	PKGC_REQ_OPENSSL=openssl >= 1.1, openssl < 1.2
-	PKGC_REQ+=$$(PKGC_REQ_OPENSSL)
+  FLAGS+=HAVE_OPENSSL FIO_TLS_FOUND
+  LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) $(OPENSSL_LIBS)
+  LDFLAGS+=$(OPENSSL_LDFLAGS)
+  CFLAGS+=$(OPENSSL_CFLAGS)
+  PKGC_REQ_OPENSSL=openssl >= 1.1, openssl < 1.2
+  PKGC_REQ+=$$(PKGC_REQ_OPENSSL)
 else
   $(info * No compatible SSL/TLS library detected.)
 endif
@@ -493,8 +493,8 @@ endif
 # S2N TLS/SSL library: https://github.com/awslabs/s2n
 ifeq ($(call TRY_COMPILE, "\#include <s2n.h>\\n int main(void) {}", "-ls2n") , 0)
   $(info * Detected the s2n library, setting HAVE_S2N)
-	FLAGS:=$(FLAGS) HAVE_S2N
-	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
+  FLAGS:=$(FLAGS) HAVE_S2N
+  LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
 endif
 
 endif # TEST4SSL
@@ -506,10 +506,10 @@ ifdef TEST4ZLIB
 
 ifeq ($(call TRY_COMPILE, "\#include <zlib.h>\\nint main(void) {}", "-lz") , 0)
   $(info * Detected the zlib library, setting HAVE_ZLIB)
-	FLAGS:=$(FLAGS) HAVE_ZLIB
-	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
-	PKGC_REQ_ZLIB=zlib
-	PKGC_REQ+=$$(PKGC_REQ_ZLIB)
+  FLAGS:=$(FLAGS) HAVE_ZLIB
+  LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
+  PKGC_REQ_ZLIB=zlib
+  PKGC_REQ+=$$(PKGC_REQ_ZLIB)
 endif
 
 endif #TEST4ZLIB
@@ -521,13 +521,13 @@ ifdef TEST4PG
 
 ifeq ($(call TRY_COMPILE, "\#include <libpq-fe.h>\\n int main(void) {}", "-lpg") , 0)
   $(info * Detected the PostgreSQL library, setting HAVE_POSTGRESQL)
-	FLAGS:=$(FLAGS) HAVE_POSTGRESQL
-	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) pg
+  FLAGS:=$(FLAGS) HAVE_POSTGRESQL
+  LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) pg
 else ifeq ($(call TRY_COMPILE, "\#include </usr/include/postgresql/libpq-fe.h>\\nint main(void) {}", "-lpg") , 0)
   $(info * Detected the PostgreSQL library, setting HAVE_POSTGRESQL)
-	FLAGS:=$(FLAGS) HAVE_POSTGRESQL
-	INCLUDE_STR:=$(INCLUDE_STR) -I/usr/include/postgresql
-	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) pg
+  FLAGS:=$(FLAGS) HAVE_POSTGRESQL
+  INCLUDE_STR:=$(INCLUDE_STR) -I/usr/include/postgresql
+  LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) pg
 endif
 
 endif # TEST4PG
@@ -539,10 +539,10 @@ ifdef TEST4ENDIAN
 
 ifeq ($(call TRY_COMPILE_AND_RUN, "int main(void) {int i = 1; return (int)(i & ((unsigned char *)&i)[sizeof(i)-1]);}\n",$(EMPTY)), 1)
   $(info * Detected Big Endian byte order.)
-	FLAGS:=$(FLAGS) __BIG_ENDIAN__
+  FLAGS:=$(FLAGS) __BIG_ENDIAN__
 else ifeq ($(call TRY_COMPILE_AND_RUN, "int main(void) {int i = 1; return (int)(i & ((unsigned char *)&i)[0]);}\n",$(EMPTY)), 1)
   $(info * Detected Little Endian byte order.)
-	FLAGS:=$(FLAGS) __BIG_ENDIAN__=0
+  FLAGS:=$(FLAGS) __BIG_ENDIAN__=0
 else
   $(info * Byte ordering (endianness) detection failed)
 endif
