@@ -1102,12 +1102,13 @@ FIO_IFUNC uint8_t FIO_NAME_BL(fio, sublocked)(fio_lock_i *lock, uint8_t sub) {
 #ifndef FIO_THREAD_PAUSE
 #define FIO_THREAD_PAUSE(id)                                                   \
   do {                                                                         \
-    sigset_t set;                                                              \
-    sigemptyset(&set);                                                         \
-    sigaddset(&set, SIGINT);                                                   \
-    sigaddset(&set, SIGTERM);                                                  \
-    sigaddset(&set, SIGCONT);                                                  \
-    sigwait(&set, NULL);                                                       \
+    sigset_t set___;                                                           \
+    int *got___sig;                                                            \
+    sigemptyset(&set___);                                                      \
+    sigaddset(&set___, SIGINT);                                                \
+    sigaddset(&set___, SIGTERM);                                               \
+    sigaddset(&set___, SIGCONT);                                               \
+    sigwait(&set___, &got___sig);                                              \
   } while (0)
 #endif
 
