@@ -212,7 +212,7 @@ ifeq ($(shell $(CC) -v 2>&1 | grep -o "^gcc version"),gcc version)
 endif
 
 #############################################################################
-# TRY_COMPILE and TRY_COMPILE_AND_RUN functions
+# TRY_RUN, TRY_COMPILE and TRY_COMPILE_AND_RUN functions
 #
 # Call using $(call TRY_COMPILE, code, compiler_flags)
 #
@@ -221,6 +221,7 @@ endif
 # TRY_COMPILE_AND_RUN returns the program's shell code as string.
 #############################################################################
 
+TRY_RUN=$(shell $(1) >> /dev/null 2> /dev/null; echo $$?;)
 TRY_COMPILE=$(shell printf $(1) | $(CC) $(INCLUDE_STR) $(LDFLAGS) $(2) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null)
 TRY_COMPILE_AND_RUN=$(shell printf $(1) | $(CC) $(2) -xc -o ./___fio_tmp_test_ - 2> /dev/null ; ./___fio_tmp_test_ >> /dev/null 2> /dev/null; echo $$?; rm ./___fio_tmp_test_ 2> /dev/null)
 EMPTY:=
@@ -571,6 +572,15 @@ comma := ,
 $(eval PKGC_REQ_EVAL:=$(subst $(space),$(comma) ,$(strip $(PKGC_REQ))))
 
 #############################################################################
+# Task Settings - Compile Time Measurement
+#############################################################################
+TIME_TEST_CMD:=which time
+ifeq ($(call TRY_RUN, $(TIME_TEST_CMD), $(EMPTY)), 0)
+  CC:=time $(CC)
+  CXX:=time $(CXX)
+endif
+
+#############################################################################
 # Tasks - Building
 #############################################################################
 
@@ -717,7 +727,7 @@ test/ci:| ci.___clean cmake test/set_debug_flags test/ci.___clean ci.test_build 
 .PHONY : test/stl
 test/stl: | stl.___clean
 	@echo "* Compiling facil.io STL test"
-	@time $(CC) -c ./tests/stl_test.c -o $(TMP_ROOT)/stl_test.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+	@$(CC) -c ./tests/stl_test.c -o $(TMP_ROOT)/stl_test.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
 	@echo "* Linking STL test"
 	@$(CC) -o $(BIN) $(TMP_ROOT)/stl_test.o $(LINKER_FLAGS) $(OPTIMIZATION)
 	@$(BIN)
@@ -725,7 +735,7 @@ test/stl: | stl.___clean
 .PHONY : test/core
 test/core: | core.___clean
 	@echo "* Compiling facil.io Core IO Library test"
-	@time $(CC) -c ./tests/core_test.c -o $(TMP_ROOT)/core_test.o $(CFLAGS_DEPENDENCY) -DFIO_WEAK_TLS $(CFLAGS) $(OPTIMIZATION)
+	@$(CC) -c ./tests/core_test.c -o $(TMP_ROOT)/core_test.o $(CFLAGS_DEPENDENCY) -DFIO_WEAK_TLS $(CFLAGS) $(OPTIMIZATION)
 	@echo "* Linking Core IO Library test"
 	@$(CC) -o $(BIN) $(TMP_ROOT)/core_test.o $(LINKER_FLAGS) $(OPTIMIZATION)
 	@$(BIN)
