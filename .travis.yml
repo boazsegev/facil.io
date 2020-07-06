@@ -11,8 +11,8 @@ compiler:
 script:
   - make vars
   - DEBUG=1 make vars
-  - CC="time $CC" make test/stl
-  - CC="time $CC" ASAN_OPTIONS=detect_leaks=0 make test/ci
+  - make test/stl
+  - ASAN_OPTIONS=detect_leaks=0 make test/ci
 notifications:
   email: false
 after_success:
