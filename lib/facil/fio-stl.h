@@ -1089,6 +1089,7 @@ FIO_IFUNC uint8_t FIO_NAME_BL(fio, sublocked)(fio_lock_i *lock, uint8_t sub) {
 
 ***************************************************************************** */
 #if defined(FIO_LOCK2) && !defined(H___FIO_LOCK2___H)
+#define H___FIO_LOCK2___H 1
 
 #ifndef FIO_THREAD_T
 #include <pthread.h>
@@ -1116,7 +1117,7 @@ FIO_IFUNC uint8_t FIO_NAME_BL(fio, sublocked)(fio_lock_i *lock, uint8_t sub) {
 #define FIO_THREAD_RESUME(id) pthread_kill((id), SIGCONT)
 #endif
 
-typedef volatile struct fio___lock2_wait_s fio___lock2_wait_s;
+typedef struct fio___lock2_wait_s fio___lock2_wait_s;
 
 /* *****************************************************************************
 Public API
@@ -1133,7 +1134,7 @@ Public API
  */
 typedef struct {
   volatile size_t lock;
-  fio___lock2_wait_s *waiting;
+  fio___lock2_wait_s *volatile waiting;
 } fio_lock2_s;
 
 /**
@@ -1209,7 +1210,7 @@ Implementation - Extern
 
 struct fio___lock2_wait_s {
   FIO_THREAD_T t;
-  fio___lock2_wait_s *next;
+  fio___lock2_wait_s *volatile next;
 };
 
 /**
@@ -1326,8 +1327,8 @@ SFUNC void fio_unlock2(fio_lock2_s *lock, size_t group) {
 
 #endif /* FIO_EXTERN_COMPLETE */
 
-#endif /* FIO_LOCK2 */
 #undef FIO_LOCK2
+#endif /* FIO_LOCK2 */
 
 /* *****************************************************************************
 
@@ -2738,7 +2739,7 @@ FIO_SFUNC fio___mem_block_s *fio___mem_block_alloc(void) {
   for (size_t i = 0; i < (FIO_MEMORY_BLOCKS_PER_ALLOCATION - 1); ++i) {
     fio___mem_block_s *tmp =
         FIO_PTR_MATH_ADD(fio___mem_block_s, b, (FIO_MEMORY_BLOCK_SIZE * i));
-    *tmp = (fio___mem_block_s){.root = i, .ref = 0};
+    *tmp = (fio___mem_block_s){.root = (uint16_t)i, .ref = 0};
     fio___mem_available_blocks_push(&fio___mem_state->available,
                                     (fio___mem_block_node_s *)tmp);
   }
@@ -7049,8 +7050,8 @@ SFUNC FIO_NAME(FIO_MAP_NAME, __pos_s)
           FIO_MAP_OBJ_KEY_CMP(m->map[(imap[i] & imask)].obj, key)) {
         /* object found */
         r = (FIO_NAME(FIO_MAP_NAME, __pos_s)){
-            .i = (imap[i] & imask),
-            .imap = i,
+            .i = (FIO_MAP_SIZE_TYPE)(imap[i] & imask),
+            .imap = (FIO_MAP_SIZE_TYPE)i,
         };
         return r;
       }
@@ -7069,8 +7070,8 @@ seek_as_array:
     if (m->map[i].hash == hash &&
         FIO_MAP_OBJ_KEY_CMP(m->map[(i & imask)].obj, key)) {
       r = (FIO_NAME(FIO_MAP_NAME, __pos_s)){
-          .i = i,
-          .imap = i,
+          .i = (FIO_MAP_SIZE_TYPE)i,
+          .imap = (FIO_MAP_SIZE_TYPE)i,
       };
       return r;
     }
