@@ -134,10 +134,10 @@ int main(int argc, char const *argv[]) {
       argv,
       0,
       1,
-      "This program runs a JSON roundtrip test. Use:\n\n\tNAME [-d] [-f "
-      "<filename>]\n\tNAME [-d] [JSON string]",
-      FIO_CLI_STRING("--file -f a file to load for JSON roundtrip testing."),
-      FIO_CLI_BOOL("--pretty -p -b test Beautify / Prettify roundtrip."),
+      "This program runs a JSON minification program, printing the output to "
+      "stdout. Use:\n\n\tNAME [-v] [-f "
+      "<filename>]\n\tNAME [-v] [JSON string]",
+      FIO_CLI_STRING("--file -f a file to load for JSON minification."),
       FIO_CLI_BOOL("--verbose -v enable debugging mode logging."));
   if (fio_cli_get_bool("-v")) {
     FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
@@ -157,7 +157,7 @@ int main(int argc, char const *argv[]) {
   FIO_LOG_DEBUG2("attempting to parse:\n%s\n", fio_str2ptr(&json));
 
   // Parsing the JSON and cleanup
-  run_my_json_example(fio_str2ptr(&json), fio_str_len(&json));
+  run_my_json_minifier(fio_str2ptr(&json), fio_str_len(&json));
   fio_str_destroy(&json);
   return 0;
 }
