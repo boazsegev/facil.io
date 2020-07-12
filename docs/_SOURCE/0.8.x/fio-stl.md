@@ -2097,23 +2097,27 @@ This macro routs to the `FIO_LOG2STDERR` function after prefixing the message wi
 
 #### `FIO_LOG_DEBUG(msg, ...)`
 
-Logs `msg` **if** log level is equal or above requested log level.
+Logs `msg` **if** log level is equal or above requested log level of `FIO_LOG_LEVEL_DEBUG`.
 
 #### `FIO_LOG_INFO(msg, ...)`
 
-Logs `msg` **if** log level is equal or above requested log level.
+Logs `msg` **if** log level is equal or above requested log level of `FIO_LOG_LEVEL_INFO`.
 
 #### `FIO_LOG_WARNING(msg, ...)`
 
-Logs `msg` **if** log level is equal or above requested log level.
+Logs `msg` **if** log level is equal or above requested log level of `FIO_LOG_LEVEL_WARNING`.
 
 #### `FIO_LOG_ERROR(msg, ...)`
 
-Logs `msg` **if** log level is equal or above requested log level.
+Logs `msg` **if** log level is equal or above requested log level of `FIO_LOG_LEVEL_ERROR`.
+
+#### `FIO_LOG_SECURITY(msg, ...)`
+
+Logs `msg` **if** log level is equal or above requested log level of `FIO_LOG_LEVEL_ERROR`.
 
 #### `FIO_LOG_FATAL(msg, ...)`
 
-Logs `msg` **if** log level is equal or above requested log level.
+Logs `msg` **if** log level is equal or above requested log level of `FIO_LOG_LEVEL_FATAL`.
 
 #### `FIO_ASSERT(cond, msg, ...)`
 

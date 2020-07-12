@@ -456,6 +456,7 @@ Miscellaneous helper macros
 #define FIO_LOG_INFO(...)
 #define FIO_LOG_WARNING(...)
 #define FIO_LOG_ERROR(...)
+#define FIO_LOG_SECURITY(...)
 #define FIO_LOG_FATAL(...)
 #define FIO_LOG2STDERR(...)
 #define FIO_LOG2STDERR2(...)
@@ -755,7 +756,7 @@ FIO_LOG_WARNING("number invalid: %d", i); // => WARNING: number invalid: 3
 #undef FIO_LOG2STDERR
 
 #pragma weak FIO_LOG2STDERR
-void __attribute__((format(printf, 1, 0), weak))
+__attribute__((format(printf, 1, 0), weak)) void
 FIO_LOG2STDERR(const char *format, ...) {
   char tmp___log[FIO_LOG____LENGTH_ON_STACK];
   va_list argv;
@@ -819,17 +820,19 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
 
 // clang-format off
 #undef FIO_LOG_DEBUG
-#define FIO_LOG_DEBUG(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG,"DEBUG:\t(" FIO__FILE__ ":" FIO_MACRO2STR(__LINE__) ") " __VA_ARGS__)
+#define FIO_LOG_DEBUG(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG,"DEBUG:    (" FIO__FILE__ ":" FIO_MACRO2STR(__LINE__) ") " __VA_ARGS__)
 #undef FIO_LOG_DEBUG2
-#define FIO_LOG_DEBUG2(...)  FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG, "DEBUG:\t" __VA_ARGS__)
+#define FIO_LOG_DEBUG2(...)  FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG, "DEBUG:    " __VA_ARGS__)
 #undef FIO_LOG_INFO
-#define FIO_LOG_INFO(...)    FIO_LOG_PRINT__(FIO_LOG_LEVEL_INFO, "INFO:\t" __VA_ARGS__)
+#define FIO_LOG_INFO(...)    FIO_LOG_PRINT__(FIO_LOG_LEVEL_INFO, "INFO:     " __VA_ARGS__)
 #undef FIO_LOG_WARNING
-#define FIO_LOG_WARNING(...) FIO_LOG_PRINT__(FIO_LOG_LEVEL_WARNING, "\x1B[2mWARNING\x1B[0m: " __VA_ARGS__)
+#define FIO_LOG_WARNING(...) FIO_LOG_PRINT__(FIO_LOG_LEVEL_WARNING, "\x1B[2mWARNING:\x1B[0m  " __VA_ARGS__)
+#undef FIO_LOG_SECURITY
+#define FIO_LOG_SECURITY(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_ERROR, "\x1B[1mSECURITY:\x1B[0m " __VA_ARGS__)
 #undef FIO_LOG_ERROR
-#define FIO_LOG_ERROR(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_ERROR, "\x1B[1mERROR:\x1B[0m\t" __VA_ARGS__)
+#define FIO_LOG_ERROR(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_ERROR, "\x1B[1mERROR:\x1B[0m    " __VA_ARGS__)
 #undef FIO_LOG_FATAL
-#define FIO_LOG_FATAL(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_FATAL, "\x1B[1;7mFATAL:\x1B[0m\t" __VA_ARGS__)
+#define FIO_LOG_FATAL(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_FATAL, "\x1B[1;7mFATAL:\x1B[0m    " __VA_ARGS__)
 // clang-format on
 
 #endif /* FIO_LOG */
@@ -7057,8 +7060,8 @@ SFUNC FIO_NAME(FIO_MAP_NAME, __pos_s)
       }
       if (++full_collisions >= FIO_MAP_MAX_FULL_COLLISIONS) {
         m->under_attack = 1;
-        FIO_LOG2STDERR("\x1B[1mSECURITY:\x1B[0m (core type) Map under attack?"
-                       " (multiple full collisions)");
+        FIO_LOG_SECURITY("(core type) Map under attack?"
+                         " (multiple full collisions)");
       }
     }
     i += FIO_MAP_CUCKOO_STEPS;
@@ -17714,6 +17717,7 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   FIO_LOG_DEBUG2("example FIO_LOG_DEBUG2 message.");
   FIO_LOG_INFO("example FIO_LOG_INFO message.");
   FIO_LOG_WARNING("example FIO_LOG_WARNING message.");
+  FIO_LOG_SECURITY("example FIO_LOG_SECURITY message.");
   FIO_LOG_ERROR("example FIO_LOG_ERROR message.");
   FIO_LOG_FATAL("example FIO_LOG_FATAL message.");
   fprintf(stderr, "===============\n");
