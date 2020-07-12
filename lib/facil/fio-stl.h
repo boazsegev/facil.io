@@ -4852,9 +4852,9 @@ finish:
         (r.scheme.buf[2] | 32) == 'l' && (r.scheme.buf[3] | 32) == 'e') ||
        ((r.scheme.buf[0] | 32) == 'u' && (r.scheme.buf[1] | 32) == 'n' &&
         (r.scheme.buf[2] | 32) == 'i' && (r.scheme.buf[3] | 32) == 'x'))) {
-    r.path.buf = r.host.buf;
-    r.path.len += r.host.len;
-    r.host.len = 0;
+    r.path.len += (r.path.buf - (r.scheme.buf + 7));
+    r.path.buf = r.scheme.buf + 7;
+    r.user.len = r.password.len = r.port.len = r.host.len = 0;
   }
 
   /* set any empty values to NULL */
