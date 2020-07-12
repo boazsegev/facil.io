@@ -15222,11 +15222,13 @@ TEST_FUNC void fio___dynamic_types_test___atomic(void) {
 /* *****************************************************************************
 Locking - Speed Test
 ***************************************************************************** */
-#define FIO_LOCK2
-#include __FILE__
 #define FIO___LOCK2_TEST_TASK (1LU << 25)
 #define FIO___LOCK2_TEST_THREADS 32U
 #define FIO___LOCK2_TEST_REPEAT 1
+
+#ifndef H___FIO_LOCK2___H
+#include <pthread.h>
+#endif
 
 FIO_IFUNC void fio___lock_speedtest_task_inner(void *s) {
   size_t *r = (size_t *)s;
@@ -15246,6 +15248,7 @@ static void *fio___lock_mytask_lock(void *s) {
   return NULL;
 }
 
+#ifdef H___FIO_LOCK2___H
 static void *fio___lock_mytask_lock2(void *s) {
   static fio_lock2_s lock = {FIO_LOCK_INIT};
   fio_lock2(&lock, 1);
@@ -15254,6 +15257,7 @@ static void *fio___lock_mytask_lock2(void *s) {
   fio_unlock2(&lock, 1);
   return NULL;
 }
+#endif
 
 static void *fio___lock_mytask_mutex(void *s) {
   static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -15265,7 +15269,7 @@ static void *fio___lock_mytask_mutex(void *s) {
 }
 
 TEST_FUNC void fio___dynamic_types_test___lock2_speed(void) {
-  clock_t start, end;
+  uint64_t start, end;
   pthread_t threads[FIO___LOCK2_TEST_THREADS];
 
   struct {
@@ -15280,12 +15284,14 @@ TEST_FUNC void fio___dynamic_types_test___lock2_speed(void) {
           .name = "fio_lock      (spinlock)",
           .task = fio___lock_mytask_lock,
       },
+#ifdef H___FIO_LOCK2___H
       {
           .type_size = sizeof(fio_lock2_s),
           .type_name = "fio_lock2_s",
           .name = "fio_lock2 (pause/resume)",
           .task = fio___lock_mytask_lock2,
       },
+#endif
       {
           .type_size = sizeof(pthread_mutex_t),
           .type_name = "pthread_mutex_t",
@@ -15305,16 +15311,16 @@ TEST_FUNC void fio___dynamic_types_test___lock2_speed(void) {
             test_funcs[fn].type_size);
   }
 
-  start = clock();
+  start = fio_time_micro();
   for (size_t i = 0; i < FIO___LOCK2_TEST_TASK; ++i) {
     __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
   }
-  end = clock();
+  end = fio_time_micro();
   fprintf(stderr,
           "\n* Speed testing locking schemes - no contention, short work (%zu "
-          "CPU/c):\n"
+          "mms):\n"
           "\t\t(%zu itterations)\n",
-          end - start,
+          (size_t)(end - start),
           (size_t)FIO___LOCK2_TEST_TASK);
 
   for (int test_repeat = 0; test_repeat < FIO___LOCK2_TEST_REPEAT;
@@ -15324,28 +15330,31 @@ TEST_FUNC void fio___dynamic_types_test___lock2_speed(void) {
           stderr, "%s (%d)\n", (test_repeat ? "Round" : "Warmup"), test_repeat);
     for (size_t fn = 0; test_funcs[fn].name; ++fn) {
       test_funcs[fn].task(NULL); /* warmup */
-      start = clock();
+      start = fio_time_micro();
       for (size_t i = 0; i < FIO___LOCK2_TEST_TASK; ++i) {
         __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
         test_funcs[fn].task(NULL);
       }
-      end = clock();
-      fprintf(stderr, "\t%s: %zu CPU/c\n", test_funcs[fn].name, end - start);
+      end = fio_time_micro();
+      fprintf(stderr,
+              "\t%s: %zu mms\n",
+              test_funcs[fn].name,
+              (size_t)(end - start));
     }
   }
 
   fprintf(stderr,
           "\n* Speed testing locking schemes - no contention, long work ");
-  start = clock();
+  start = fio_time_micro();
   for (size_t i = 0; i < FIO___LOCK2_TEST_THREADS; ++i) {
     size_t result = 0;
     __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
     fio___lock_speedtest_task_inner(&result);
   }
-  end = clock();
-  fprintf(stderr, " %zu CPU/c\n", end - start);
+  end = fio_time_micro();
+  fprintf(stderr, " %zu mms\n", (size_t)(end - start));
   clock_t long_work = end - start;
-  fprintf(stderr, "(%zu CPU/c):\n", long_work);
+  fprintf(stderr, "(%zu mms):\n", long_work);
   for (int test_repeat = 0; test_repeat < FIO___LOCK2_TEST_REPEAT;
        ++test_repeat) {
     if (FIO___LOCK2_TEST_REPEAT > 1)
@@ -15355,17 +15364,17 @@ TEST_FUNC void fio___dynamic_types_test___lock2_speed(void) {
       size_t result = 0;
       test_funcs[fn].task((void *)&result); /* warmup */
       result = 0;
-      start = clock();
+      start = fio_time_micro();
       for (size_t i = 0; i < FIO___LOCK2_TEST_THREADS; ++i) {
         __asm__ volatile("" ::: "memory"); /* clobber CPU registers */
         test_funcs[fn].task(&result);
       }
-      end = clock();
+      end = fio_time_micro();
       fprintf(stderr,
-              "\t%s: %zu CPU/c (%zu CPU/c)\n",
+              "\t%s: %zu mms (%zu mms)\n",
               test_funcs[fn].name,
-              end - start,
-              end - (start + long_work));
+              (size_t)(end - start),
+              (size_t)(end - (start + long_work)));
       FIO_T_ASSERT(result == (FIO___LOCK2_TEST_TASK * FIO___LOCK2_TEST_THREADS),
                    "%s final result error.",
                    test_funcs[fn].name);
@@ -15374,7 +15383,7 @@ TEST_FUNC void fio___dynamic_types_test___lock2_speed(void) {
 
   fprintf(stderr,
           "\n* Speed testing locking schemes - %zu threads, long work (%zu "
-          "CPU/c):\n",
+          "mms):\n",
           (size_t)FIO___LOCK2_TEST_THREADS,
           long_work);
   for (int test_repeat = 0; test_repeat < FIO___LOCK2_TEST_REPEAT;
@@ -15386,26 +15395,25 @@ TEST_FUNC void fio___dynamic_types_test___lock2_speed(void) {
       size_t result = 0;
       test_funcs[fn].task((void *)&result); /* warmup */
       result = 0;
-      start = clock();
+      start = fio_time_micro();
       for (size_t i = 0; i < FIO___LOCK2_TEST_THREADS; ++i) {
         pthread_create(threads + i, NULL, test_funcs[fn].task, &result);
       }
       for (size_t i = 0; i < FIO___LOCK2_TEST_THREADS; ++i) {
         pthread_join(threads[i], NULL);
       }
-      end = clock();
+      end = fio_time_micro();
       fprintf(stderr,
-              "\t%s: %zu CPU/c (%zu CPU/c)\n",
+              "\t%s: %zu mms (%zu mms)\n",
               test_funcs[fn].name,
-              end - start,
-              end - (start + long_work));
+              (size_t)(end - start),
+              (size_t)(end - (start + long_work)));
       FIO_T_ASSERT(result == (FIO___LOCK2_TEST_TASK * FIO___LOCK2_TEST_THREADS),
                    "%s final result error.",
                    test_funcs[fn].name);
     }
   }
 }
-
 /* *****************************************************************************
 URL parsing - Test
 ***************************************************************************** */
@@ -17755,6 +17763,9 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___risky();
   fprintf(stderr, "===============\n");
+#ifndef H___FIO_LOCK2___H
+  FIO_LOG_WARNING("Won't test `fio_lock2` functions (needs `FIO_LOCK2`).");
+#endif
   fio___dynamic_types_test___lock2_speed();
   fprintf(stderr, "===============\n");
   {
