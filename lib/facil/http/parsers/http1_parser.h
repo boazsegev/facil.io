@@ -530,7 +530,8 @@ inline /* inline the function of it's short enough */
         val[val_len++] = *start_value;
         ++start_value;
       }
-      val[val_len] = 0;
+      if (val_len < 255)
+        val[val_len] = 0;
     }
     /* perform callback with `val` or indicate error */
     if (val_len == 256 ||

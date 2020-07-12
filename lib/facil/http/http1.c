@@ -369,10 +369,10 @@ static int http1_stream(http_internal_s *h, void *data, uintptr_t length) {
   if (out) {
     fiobj_free(h->headers_out);
     h->headers_out = should_chunk ? fiobj_true() : fiobj_false();
-    if (!length)
+    if (!length || !data)
       goto finish;
   } else {
-    if (!length)
+    if (!length || !data)
       return -1;
     out = fiobj_str_new_buf(length + 8);
   }
