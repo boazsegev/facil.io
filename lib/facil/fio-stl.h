@@ -3379,9 +3379,9 @@ IFUNC void fio_rand_feed2seed(void *buf_, size_t len) {
   }
   switch (len & 7) {
   case 7:
-    /* fallthrough */
     tmp <<= 8;
     tmp |= buf[6];
+    /* fallthrough */
   case 6:
     tmp <<= 8;
     tmp |= buf[5];
@@ -15310,6 +15310,9 @@ TEST_FUNC void fio___dynamic_types_test___lock2_speed(void) {
             test_funcs[fn].type_name,
             test_funcs[fn].type_size);
   }
+#ifndef H___FIO_LOCK2___H
+  FIO_LOG_WARNING("Won't test `fio_lock2` functions (needs `FIO_LOCK2`).");
+#endif
 
   start = fio_time_micro();
   for (size_t i = 0; i < FIO___LOCK2_TEST_TASK; ++i) {
@@ -17763,9 +17766,6 @@ TEST_FUNC void fio_test_dynamic_types(void) {
   fprintf(stderr, "===============\n");
   fio___dynamic_types_test___risky();
   fprintf(stderr, "===============\n");
-#ifndef H___FIO_LOCK2___H
-  FIO_LOG_WARNING("Won't test `fio_lock2` functions (needs `FIO_LOCK2`).");
-#endif
   fio___dynamic_types_test___lock2_speed();
   fprintf(stderr, "===============\n");
   {
