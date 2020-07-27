@@ -17,7 +17,12 @@ static void redis_cleanup(void *e_) {
 void initialize_cli(int argc, char const *argv[]) {
   /*     ****  Command line arguments ****     */
   fio_cli_start(
-      argc, argv, 0, 0, NULL, FIO_CLI_PRINT_HEADER("Address binding:"),
+      argc,
+      argv,
+      0,
+      0,
+      NULL,
+      FIO_CLI_PRINT_HEADER("Address binding:"),
       FIO_CLI_INT("-port -p port number to listen to. defaults port 3000"),
       FIO_CLI_STRING("-bind -b address to listen to. defaults any available."),
       FIO_CLI_PRINT_HEADER("Concurrency:"),
@@ -73,11 +78,11 @@ void initialize_cli(int argc, char const *argv[]) {
   if (fio_cli_get("-redis") && strlen(fio_cli_get("-redis"))) {
     FIO_LOG_INFO("* Initializing Redis connection to %s\n",
                  fio_cli_get("-redis"));
-    http_url_s info =
-        http_url_parse(fio_cli_get("-redis"), strlen(fio_cli_get("-redis")));
-    fio_pubsub_engine_s *e =
-        redis_engine_create(.address = info.host, .port = info.port,
-                            .auth = info.password);
+    fio_url_s info =
+        fio_url_parse(fio_cli_get("-redis"), strlen(fio_cli_get("-redis")));
+    fio_pubsub_engine_s *e = redis_engine_create(.address = info.host,
+                                                 .port = info.port,
+                                                 .auth = info.password);
     if (e) {
       fio_state_callback_add(FIO_CALL_ON_FINISH, redis_cleanup, e);
       FIO_PUBSUB_DEFAULT = e;
