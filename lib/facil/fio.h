@@ -134,6 +134,10 @@ Compilation Macros
 #define FIO_TLS_TIMEOUT 4
 #endif
 
+#ifndef FIO_POLL_MAX_EVENTS
+/* The number of events to collect with each call to epoll or kqueue. */
+#define FIO_POLL_MAX_EVENTS 32
+#endif
 /* *****************************************************************************
 Import STL
 ***************************************************************************** */

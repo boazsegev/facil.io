@@ -18,9 +18,17 @@ must be implemented by the including file (the callbacks).
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef FIO_LOG_DEBUG
+#define WEBSOCKET_LOG_DEBUG FIO_LOG_DEBUG
+#else
 #if DEBUG
 #include <stdio.h>
-#endif
+#define WEBSOCKET_LOG_DEBUG(...) fprintf(stderr, "DEBUG:\t" __VA_ARGS__)
+#else
+#define WEBSOCKET_LOG_DEBUG(...)
+#endif /* DEBUG */
+#endif /* FIO_LOG_DEBUG */
+
 /* *****************************************************************************
 API - Message Wrapping
 ***************************************************************************** */
@@ -451,9 +459,7 @@ static uint64_t websocket_consume(void *buffer,
   volatile struct websocket_packet_info_s info =
       websocket_buffer_peek(buffer, len);
   if (!info.head_length) {
-#if DEBUG
-    fprintf(stderr, "ERROR: WebSocket protocol error - malicious header.\n");
-#endif
+    WEBSOCKET_LOG_DEBUG("WebSocket protocol error - malicious header.\n");
     websocket_on_protocol_error(udata);
     return 0;
   }
@@ -474,9 +480,7 @@ static uint64_t websocket_consume(void *buffer,
       ((uint8_t *)(&mask))[3] = ((uint8_t *)(payload))[-1];
       websocket_xmask(payload, info.packet_length, mask);
     } else if (require_masking && info.packet_length) {
-#if DEBUG
-      fprintf(stderr, "ERROR: WebSocket protocol error - unmasked data.\n");
-#endif
+      WEBSOCKET_LOG_DEBUG("WebSocket protocol error - unmasked data.\n");
       websocket_on_protocol_error(udata);
     }
     /* call callback */
@@ -524,11 +528,8 @@ static uint64_t websocket_consume(void *buffer,
       websocket_on_protocol_pong(udata, payload, info.packet_length);
       break;
     default:
-#if DEBUG
-      fprintf(stderr,
-              "ERROR: WebSocket protocol error - unknown opcode %u\n",
-              (unsigned int)(pos[0] & 15));
-#endif
+      WEBSOCKET_LOG_DEBUG("WebSocket protocol error - unknown opcode %u\n",
+                          (unsigned int)(pos[0] & 15));
       websocket_on_protocol_error(udata);
     }
     /* step forward */

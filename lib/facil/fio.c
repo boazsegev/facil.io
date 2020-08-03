@@ -60,6 +60,24 @@ Internal STL features in use (unpublished)
 #endif
 
 /* *****************************************************************************
+Lock designation
+***************************************************************************** */
+
+enum fio_protocol_lock_e {
+  FIO_PR_LOCK_TASK = 0,
+  FIO_PR_LOCK_PING = 1,
+  FIO_PR_LOCK_DATA = 2,
+};
+
+// clang-format off
+#define FIO_UUID_LOCK_PROTOCOL             FIO_LOCK_SUBLOCK(1)
+#define FIO_UUID_LOCK_RW_HOOKS             FIO_LOCK_SUBLOCK(2)
+#define FIO_UUID_LOCK_PACKET_READ          FIO_LOCK_SUBLOCK(3)
+#define FIO_UUID_LOCK_PACKET_WRITE         FIO_LOCK_SUBLOCK(4)
+#define FIO_UUID_LOCK_ENV                  FIO_LOCK_SUBLOCK(5)
+// clang-format on
+
+/* *****************************************************************************
 Section Start Marker
 
 
@@ -137,6 +155,121 @@ FIO_IFUNC int
 fio_defer_urgent(void (*task)(void *, void *), void *udata1, void *udata2) {
   return fio_queue_push_urgent(
       &fio___task_queue, .fn = task, .udata1 = udata1, .udata2 = udata2);
+}
+
+FIO_IFUNC fio_protocol_s *protocol_try_lock(intptr_t uuid, uint8_t sub);
+FIO_IFUNC void protocol_unlock(fio_protocol_s *pr, uint8_t sub);
+
+/** The IO task internal wrapper */
+FIO_IFUNC int fio___perform_io_task(void) {
+  fio_queue_task_s t = fio_queue_pop(&fio___io_task_queue);
+  if (!t.fn)
+    return -1;
+  union {
+    void (*t)(void *, void *);
+    void (*io)(intptr_t, fio_protocol_s *, void *);
+  } u = {.t = t.fn};
+  fio_protocol_s *pr = protocol_try_lock((uintptr_t)t.udata1, FIO_PR_LOCK_DATA);
+  if (!pr && errno == EWOULDBLOCK)
+    goto reschedule;
+  u.io((uintptr_t)t.udata1, pr, t.udata2);
+  protocol_unlock(pr, FIO_PR_LOCK_DATA);
+  return 0;
+reschedule:
+  fio_queue_push(&fio___io_task_queue, u.t, t.udata1, t.udata2);
+  return 0;
+}
+
+FIO_IFUNC int fio___perform_task(void) {
+  return fio_queue_perform(&fio___task_queue);
+}
+
+/* *****************************************************************************
+Task Queues - Public API
+***************************************************************************** */
+
+/**
+ * Defers a task's execution.
+ *
+ * Tasks are functions of the type `void task(void *, void *)`, they return
+ * nothing (void) and accept two opaque `void *` pointers, user-data 1
+ * (`udata1`) and user-data 2 (`udata2`).
+ *
+ * Returns -1 or error, 0 on success.
+ */
+int fio_defer(void (*task)(void *, void *), void *udata1, void *udata2) {
+  return fio_queue_push(
+      &fio___task_queue, .fn = task, .udata1 = udata1, .udata2 = udata2);
+}
+
+/**
+ * Schedules a protected connection task. The task will run within the
+ * connection's lock.
+ *
+ * If an error ocuurs or the connection is closed before the task can run, the
+ * task wil be called with a NULL protocol pointer, for resource cleanup.
+ */
+int fio_defer_io_task(intptr_t uuid,
+                      void (*task)(intptr_t uuid,
+                                   fio_protocol_s *,
+                                   void *udata),
+                      void *udata) {
+  union {
+    void (*t)(void *, void *);
+    void (*io)(intptr_t, fio_protocol_s *, void *);
+  } u = {.io = task};
+  if (fio_queue_push(&fio___io_task_queue,
+                     .fn = u.t,
+                     .udata1 = (void *)uuid,
+                     .udata2 = udata))
+    goto error;
+  return 0;
+error:
+  task(uuid, NULL, udata);
+  return -1;
+}
+
+/**
+ * Creates a timer to run a task at the specified interval.
+ *
+ * The task will repeat `repetitions` times. If `repetitions` is set to -1, task
+ * will repeat forever.
+ *
+ * If `task` returns a non-zero value, it will stop repeating.
+ *
+ * The `on_finish` handler is always called (even on error).
+ */
+void fio_run_every(size_t milliseconds,
+                   int32_t repetitions,
+                   int (*task)(void *, void *),
+                   void *udata1,
+                   void *udata2,
+                   void (*on_finish)(void *, void *)) {
+  fio_timer_schedule(&fio___timer_tasks,
+                     .fn = task,
+                     .udata1 = udata1,
+                     .udata2 = udata2,
+                     .on_finish = on_finish,
+                     .every = milliseconds,
+                     .repetitions = repetitions);
+}
+
+/**
+ * Performs all deferred tasks.
+ */
+void fio_defer_perform(void) {
+  do {
+    for (size_t flag = 0; flag; flag = 0) {
+      flag |= !fio___perform_task();
+      flag |= !fio___perform_io_task();
+    }
+  } while (fio_timer_push2queue(&fio___task_queue, &fio___timer_tasks, 0));
+}
+
+/** Returns true if there are deferred functions waiting for execution. */
+int fio_defer_has_queue(void) {
+  return fio_queue_count(&fio___task_queue) > 0 ||
+         fio_queue_count(&fio___io_task_queue) > 0;
 }
 
 /* *****************************************************************************
@@ -373,6 +506,64 @@ FIO_IFUNC void fio_uuid_env_obj_call_callback(fio_uuid_env_obj_s o) {
 #define FIO_MAP_KEY_CMP(a, b) fio_str_is_eq(&(a), &(b))
 #include <fio-stl.h>
 
+/** Named arguments for the `fio_uuid_env` function. */
+// typedef struct {
+//   /** A numerical type filter. Defaults to 0. Negative values are reserved.
+//   */ intptr_t type;
+//   /** The name for the link. The name and type uniquely identify the object.
+//   */ fio_str_info_s name;
+//   /** The object being linked to the connection. */
+//   void *data;
+//   /** A callback that will be called once the connection is closed. */
+//   void (*on_close)(void *data);
+//   /** Set to true (1) if the name string's life lives as long as the `env` .
+//   */ uint8_t const_name;
+// } fio_uuid_env_args_s;
+
+/** Named arguments for the `fio_uuid_env_unset` function. */
+// typedef struct {
+//   intptr_t type;
+//   fio_str_info_s name;
+// } fio_uuid_env_unset_args_s;
+
+/**
+ * Links an object to a connection's lifetime / environment.
+ *
+ * The `on_close` callback will be called once the connection has died.
+ *
+ * If the `uuid` is invalid, the `on_close` callback will be called immediately.
+ *
+ * NOTE: the `on_close` callback will be called within a high priority lock.
+ * Long tasks should be deferred so they are performed outside the lock.
+ */
+void fio_uuid_env_set___(void); /* function marker */
+void fio_uuid_env_set FIO_NOOP(intptr_t uuid, fio_uuid_env_args_s);
+
+/**
+ * Un-links an object from the connection's lifetime, so it's `on_close`
+ * callback will NOT be called.
+ *
+ * Returns 0 on success and -1 if the object couldn't be found, setting `errno`
+ * to `EBADF` if the `uuid` was invalid and `ENOTCONN` if the object wasn't
+ * found (wasn't linked).
+ *
+ * NOTICE: a failure likely means that the object's `on_close` callback was
+ * already called!
+ */
+void fio_uuid_env_unset___(void); /* function marker */
+fio_uuid_env_args_s fio_uuid_env_unset FIO_NOOP(intptr_t uuid,
+                                                fio_uuid_env_unset_args_s);
+
+/**
+ * Removes an object from the connection's lifetime / environment, calling it's
+ * `on_close` callback as if the connection was closed.
+ *
+ * NOTE: the `on_close` callback will be called within a high priority lock.
+ * Long tasks should be deferred so they are performed outside the lock.
+ */
+void fio_uuid_env_remove___(void); /* function marker */
+void fio_uuid_env_remove FIO_NOOP(intptr_t uuid, fio_uuid_env_unset_args_s);
+
 /* *****************************************************************************
 Section Start Marker
 
@@ -536,10 +727,10 @@ FIO_IFUNC void fio_mark_time(void) { fio_data->last_cycle = fio_time_mono(); }
 
 #define touchfd(fd) fd_data((fd)).active = fio_data->last_cycle.tv_sec
 
-FIO_IFUNC int uuid_try_lock(intptr_t uuid) {
+FIO_IFUNC int uuid_try_lock(intptr_t uuid, uint8_t lock_group) {
   if (!uuid_is_valid(uuid))
     goto error;
-  if (fio_trylock(&uuid_data(uuid).lock))
+  if (fio_trylock_group(&uuid_data(uuid).lock, lock_group))
     goto would_block;
   if (!uuid_is_still_valid(uuid))
     goto error_locked;
@@ -554,9 +745,9 @@ error:
   return 2;
 }
 
-#define UUID_TRYLOCK(uuid, reschedule_lable, invalid_lable)                    \
+#define UUID_TRYLOCK(uuid, lock_group, reschedule_lable, invalid_lable)        \
   do {                                                                         \
-    switch (uuid_try_lock(uuid)) {                                             \
+    switch (uuid_try_lock(uuid, lock_group)) {                                 \
     case 1:                                                                    \
       goto reschedule_lable;                                                   \
     case 2:                                                                    \
@@ -564,9 +755,9 @@ error:
     }                                                                          \
   } while (0)
 
-#define UUID_LOCK(uuid, invalid_lable)                                         \
+#define UUID_LOCK(uuid, lock_group, invalid_lable)                             \
   do {                                                                         \
-    switch (uuid_try_lock(uuid)) {                                             \
+    switch (uuid_try_lock(uuid, lock_group)) {                                 \
     case 0:                                                                    \
       break;                                                                   \
     case 2:                                                                    \
@@ -575,9 +766,9 @@ error:
     FIO_THREAD_RESCHEDULE();                                                   \
   } while (1)
 
-#define UUID_UNLOCK(uuid)                                                      \
+#define UUID_UNLOCK(uuid, lock_group)                                          \
   do {                                                                         \
-    fio_unlock(&uuid_data(uuid).lock);                                         \
+    fio_unlock_group(&uuid_data(uuid).lock, lock_group);                       \
   } while (0)
 
 FIO_IFUNC void fio_packet_free_all(fio_packet_s *packet);
@@ -709,6 +900,8 @@ size_t fio_local_addr(char *dest, size_t limit) {
   freeaddrinfo(info);
   return 0;
 }
+
+static inline void fio_force_close_in_poll(intptr_t uuid);
 /* *****************************************************************************
 Section Start Marker
 
@@ -856,11 +1049,11 @@ FIO_SFUNC size_t fio_poll(void) {
         } else {
           // no error, then it's an active event(s)
           if (events[i].events & EPOLLOUT) {
-            fio_defer_push_urgent(
+            fio_defer_urgent(
                 deferred_on_ready, (void *)fd2uuid(events[i].data.fd), NULL);
           }
           if (events[i].events & EPOLLIN)
-            fio_defer_push_task(
+            fio_defer(
                 deferred_on_data, (void *)fd2uuid(events[i].data.fd), NULL);
         }
       } // end for loop
@@ -1009,11 +1202,10 @@ FIO_SFUNC size_t fio_poll(void) {
     for (int i = 0; i < active_count; i++) {
       // test for event(s) type
       if (events[i].filter == EVFILT_WRITE) {
-        fio_defer_push_urgent(
+        fio_defer_urgent(
             deferred_on_ready, ((void *)fd2uuid(events[i].udata)), NULL);
       } else if (events[i].filter == EVFILT_READ) {
-        fio_defer_push_task(
-            deferred_on_data, (void *)fd2uuid(events[i].udata), NULL);
+        fio_defer(deferred_on_data, (void *)fd2uuid(events[i].udata), NULL);
       }
       if (events[i].flags & (EV_EOF | EV_ERROR)) {
         fio_force_close_in_poll(fd2uuid(events[i].udata));
@@ -1077,7 +1269,7 @@ static fio_lock_i fio___poll_lock = FIO_LOCK_INIT;
 
 FIO_IFUNC void fio_poll_close(void) {}
 
-FIO_IFUNCc void fio_poll_init(void) {
+FIO_IFUNC void fio_poll_init(void) {
   fio___pollfd = calloc(sizeof(*fio___pollfd), fio_capa());
 }
 
@@ -1156,12 +1348,12 @@ static size_t fio_poll(void) {
       if (list[i].revents & FIO_POLL_WRITE_EVENTS) {
         // FIO_LOG_DEBUG("Poll Write %zu => %p", i, (void *)fd2uuid(i));
         fio_poll_remove_write(i);
-        fio_defer_push_urgent(deferred_on_ready, (void *)fd2uuid(i), NULL);
+        fio_defer_urgent(deferred_on_ready, (void *)fd2uuid(i), NULL);
       }
       if (list[i].revents & FIO_POLL_READ_EVENTS) {
         // FIO_LOG_DEBUG("Poll Read %zu => %p", i, (void *)fd2uuid(i));
         fio_poll_remove_read(i);
-        fio_defer_push_task(deferred_on_data, (void *)fd2uuid(i), NULL);
+        fio_defer(deferred_on_data, (void *)fd2uuid(i), NULL);
       }
       if (list[i].revents & (POLLHUP | POLLERR)) {
         // FIO_LOG_DEBUG("Poll Hangup %zu => %p", i, (void *)fd2uuid(i));
@@ -1536,6 +1728,11 @@ too_high:
   close(fio_uuid2fd(uuid));
 }
 
+static inline void fio_force_close_in_poll(intptr_t uuid) {
+  uuid_data(uuid).close = 2;
+  fio_force_close(uuid);
+}
+
 /* *****************************************************************************
 Section Start Marker
 
@@ -1627,21 +1824,15 @@ union protocol_metadata_union_u {
   protocol_metadata_s meta;
 };
 
-enum fio_protocol_lock_e {
-  FIO_PR_LOCK_TASK = 0,
-  FIO_PR_LOCK_PING = 1,
-  FIO_PR_LOCK_DATA = 2,
-};
-
 /* Macro for accessing the protocol locking / metadata. */
 #define prt_meta(prt) (((union protocol_metadata_union_u *)(&(prt)->rsv))->meta)
 
 /** locks a connection's protocol returns a pointer that need to be unlocked. */
-inline static fio_protocol_s *protocol_try_lock(intptr_t uuid, uint8_t sub) {
-  UUID_TRYLOCK(uuid, would_block, invalid);
+FIO_IFUNC fio_protocol_s *protocol_try_lock(intptr_t uuid, uint8_t sub) {
+  UUID_TRYLOCK(uuid, FIO_UUID_LOCK_PROTOCOL, would_block, invalid);
   fio_protocol_s *pr = uuid_data(uuid).protocol;
   uint8_t attempt = fio_trylock_sublock(&prt_meta(pr).lock, sub);
-  UUID_UNLOCK(uuid);
+  UUID_UNLOCK(uuid, FIO_UUID_LOCK_PROTOCOL);
   if (attempt)
     goto would_block;
   errno = 0;
@@ -1653,7 +1844,7 @@ invalid:
   return NULL;
 }
 /** See `fio_protocol_try_lock` for details. */
-inline static void protocol_unlock(fio_protocol_s *pr, uint8_t sub) {
+FIO_IFUNC void protocol_unlock(fio_protocol_s *pr, uint8_t sub) {
   fio_unlock_sublock(&prt_meta(pr).lock, sub);
 }
 
@@ -1702,12 +1893,12 @@ inline static void protocol_validate(fio_protocol_s *protocol) {
 static int fio_attach__internal(void *uuid_, void *protocol) {
   intptr_t uuid = (intptr_t)uuid_;
   protocol_validate(protocol);
-  UUID_LOCK(uuid, error_invalid_uuid);
+  UUID_LOCK(uuid, FIO_UUID_LOCK_PROTOCOL, error_invalid_uuid);
   fio_protocol_s *old_pr = uuid_data(uuid).protocol;
   uuid_data(uuid).open = 1;
   uuid_data(uuid).protocol = protocol;
   touchfd(fio_uuid2fd(uuid));
-  UUID_UNLOCK(uuid);
+  UUID_UNLOCK(uuid, FIO_UUID_LOCK_PROTOCOL);
   if (old_pr) {
     /* protocol replacement */
     fio_defer(deferred_on_close, (void *)uuid, old_pr);
@@ -1741,6 +1932,36 @@ void fio_attach(intptr_t uuid, fio_protocol_s *protocol) {
 void fio_attach_fd(int fd, fio_protocol_s *protocol) {
   fio_attach__internal((void *)fio_fd2uuid(fd), protocol);
 }
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+                           Read/Write (RW) Hooks
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
 
 /* *****************************************************************************
 Connection Read / Write Hooks, for overriding the system calls
@@ -1794,6 +2015,58 @@ FIO_IFUNC void fio_rw_hook_validate(fio_rw_hook_s *rw_hooks) {
     rw_hooks->cleanup = fio_hooks_default_cleanup;
 }
 
+/**
+ * Replaces an existing read/write hook with another from within a read/write
+ * hook callback.
+ *
+ * Does NOT call any cleanup callbacks.
+ *
+ * Returns -1 on error, 0 on success.
+ */
+int fio_rw_hook_replace_unsafe(intptr_t uuid,
+                               fio_rw_hook_s *rw_hooks,
+                               void *udata) {
+  int replaced = -1;
+  uint8_t was_locked = 0;
+  intptr_t fd = fio_uuid2fd(uuid);
+  fio_rw_hook_validate(rw_hooks);
+  /* protect against some fulishness... but not all of it. */
+  UUID_TRYLOCK(uuid, FIO_UUID_LOCK_RW_HOOKS, reschedule_lable, invalid_lable);
+  was_locked = 1;
+reschedule_lable:
+invalid_lable:
+  was_locked = fio_trylock(&fd_data(fd).lock);
+  if (fd2uuid(fd) == uuid) {
+    fd_data(fd).rw_hooks = rw_hooks;
+    fd_data(fd).rw_udata = udata;
+    replaced = 0;
+  }
+  if (was_locked) {
+    UUID_UNLOCK(uuid, FIO_UUID_LOCK_RW_HOOKS);
+  }
+  return replaced;
+}
+
+/** Sets a socket hook state (a pointer to the struct). */
+int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata) {
+  intptr_t fd = fio_uuid2fd(uuid);
+  fio_rw_hook_validate(rw_hooks);
+  fio_rw_hook_s *old_rw_hooks;
+  void *old_udata;
+  UUID_LOCK(uuid, FIO_UUID_LOCK_RW_HOOKS, invalid_uuid);
+  old_rw_hooks = fd_data(fd).rw_hooks;
+  old_udata = fd_data(fd).rw_udata;
+  fd_data(fd).rw_hooks = rw_hooks;
+  fd_data(fd).rw_udata = udata;
+  UUID_UNLOCK(uuid, FIO_UUID_LOCK_RW_HOOKS);
+  if (old_rw_hooks && old_rw_hooks->cleanup)
+    old_rw_hooks->cleanup(old_udata);
+  return 0;
+invalid_uuid:
+  fio_unlock(&fd_data(fd).lock);
+  rw_hooks->cleanup(udata);
+  return -1;
+}
 /* *****************************************************************************
 
 
@@ -1952,196 +2225,6 @@ static void __attribute__((destructor)) fio___lib_destroy(void) {
 
 
 
-IO Kernal - public API
-
-
-
-
-
-
-
-
-
-
-
-
-***************************************************************************** */
-
-/** The IO task internal wrapper */
-FIO_IFUNC int fio___defer_perform_io_task(void) {
-  fio_queue_task_s t = fio_queue_pop(&fio___io_task_queue);
-  if (!t.fn)
-    return -1;
-  union {
-    void (*t)(void *, void *);
-    void (*io)(intptr_t, fio_protocol_s *, void *);
-  } u = {.t = t.fn};
-  fio_protocol_s *pr = protocol_try_lock((uintptr_t)t.udata1, 0);
-  if (!pr && errno == EWOULDBLOCK)
-    goto reschedule;
-  u.io((uintptr_t)t.udata1, pr, t.udata2);
-  return 0;
-reschedule:
-  fio_queue_push(&fio___io_task_queue, u.t, t.udata1, t.udata2);
-  return 0;
-}
-
-/* *****************************************************************************
-Task Queues - Public API
-***************************************************************************** */
-
-/**
- * Defers a task's execution.
- *
- * Tasks are functions of the type `void task(void *, void *)`, they return
- * nothing (void) and accept two opaque `void *` pointers, user-data 1
- * (`udata1`) and user-data 2 (`udata2`).
- *
- * Returns -1 or error, 0 on success.
- */
-int fio_defer(void (*task)(void *, void *), void *udata1, void *udata2) {
-  return fio_queue_push(
-      &fio___task_queue, .fn = task, .udata1 = udata1, .udata2 = udata2);
-}
-
-/**
- * Schedules a protected connection task. The task will run within the
- * connection's lock.
- *
- * If an error ocuurs or the connection is closed before the task can run, the
- * task wil be called with a NULL protocol pointer, for resource cleanup.
- */
-int fio_defer_io_task(intptr_t uuid,
-                      void (*task)(intptr_t uuid,
-                                   fio_protocol_s *,
-                                   void *udata),
-                      void *udata) {
-  union {
-    void (*t)(void *, void *);
-    void (*io)(intptr_t, fio_protocol_s *, void *);
-  } u = {.io = task};
-  if (fio_queue_push(&fio___io_task_queue,
-                     .fn = u.t,
-                     .udata1 = (void *)uuid,
-                     .udata2 = udata))
-    goto error;
-  return 0;
-error:
-  task(uuid, NULL, udata);
-  return -1;
-}
-
-/**
- * Creates a timer to run a task at the specified interval.
- *
- * The task will repeat `repetitions` times. If `repetitions` is set to -1, task
- * will repeat forever.
- *
- * If `task` returns a non-zero value, it will stop repeating.
- *
- * The `on_finish` handler is always called (even on error).
- */
-void fio_run_every(size_t milliseconds,
-                   int32_t repetitions,
-                   int (*task)(void *, void *),
-                   void *udata1,
-                   void *udata2,
-                   void (*on_finish)(void *, void *)) {
-  fio_timer_schedule(&fio___timer_tasks,
-                     .fn = task,
-                     .udata1 = udata1,
-                     .udata2 = udata2,
-                     .on_finish = on_finish,
-                     .every = milliseconds,
-                     .repetitions = repetitions);
-}
-
-/**
- * Performs all deferred tasks.
- */
-void fio_defer_perform(void) {
-  while (fio_queue_count(&fio___task_queue)) {
-    fio_queue_perform_all(&fio___task_queue);
-    fio_timer_push2queue(&fio___task_queue, &fio___timer_tasks, 0);
-  }
-}
-
-/** Returns true if there are deferred functions waiting for execution. */
-int fio_defer_has_queue(void) {
-  return fio_queue_count(&fio___task_queue) > 0 ||
-         fio_queue_count(&fio___io_task_queue) > 0;
-}
-
-/* *****************************************************************************
-Connection Read / Write Hooks, for overriding the system calls
-***************************************************************************** */
-
-/**
- * Replaces an existing read/write hook with another from within a read/write
- * hook callback.
- *
- * Does NOT call any cleanup callbacks.
- *
- * Returns -1 on error, 0 on success.
- */
-int fio_rw_hook_replace_unsafe(intptr_t uuid,
-                               fio_rw_hook_s *rw_hooks,
-                               void *udata) {
-  int replaced = -1;
-  uint8_t was_locked;
-  intptr_t fd = fio_uuid2fd(uuid);
-  fio_rw_hook_validate(rw_hooks);
-  /* protect against some fulishness... but not all of it. */
-  was_locked = fio_trylock(&fd_data(fd).lock);
-  if (fd2uuid(fd) == uuid) {
-    fd_data(fd).rw_hooks = rw_hooks;
-    fd_data(fd).rw_udata = udata;
-    replaced = 0;
-  }
-  if (!was_locked)
-    fio_unlock(&fd_data(fd).lock);
-  return replaced;
-}
-
-/** Sets a socket hook state (a pointer to the struct). */
-int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata) {
-  intptr_t fd = fio_uuid2fd(uuid);
-  if (!uuid_is_valid(uuid) || !uuid_data(uuid).open)
-    goto invalid_uuid;
-  fio_rw_hook_validate(rw_hooks);
-  fio_rw_hook_s *old_rw_hooks;
-  void *old_udata;
-  fio_lock(&fd_data(fd).lock);
-  if (fd2uuid(fd) != uuid) {
-    goto invalid_uuid;
-  }
-  old_rw_hooks = fd_data(fd).rw_hooks;
-  old_udata = fd_data(fd).rw_udata;
-  fd_data(fd).rw_hooks = rw_hooks;
-  fd_data(fd).rw_udata = udata;
-  fio_unlock(&fd_data(fd).lock);
-  if (old_rw_hooks && old_rw_hooks->cleanup)
-    old_rw_hooks->cleanup(old_udata);
-  return 0;
-invalid_uuid:
-  fio_unlock(&fd_data(fd).lock);
-  if (!rw_hooks->cleanup)
-    rw_hooks->cleanup(udata);
-  return -1;
-}
-/* *****************************************************************************
-
-
-
-
-
-
-
-
-
-
-
-
 Tests
 
 
@@ -2287,7 +2370,7 @@ static void fio___test__defer_io(void) {
     expect.last_uuid = fd2uuid(i);
     fio_defer_io_task(fd2uuid(i), fio___test__defer_io_task, &result);
   }
-  while (!fio___defer_perform_io_task())
+  while (!fio___perform_io_task())
     fprintf(stderr, ".");
   fprintf(stderr, "\n");
   FIO_ASSERT(expect.nulls == result.nulls,
@@ -2312,7 +2395,6 @@ FIO_SFUNC void fio_uuid_env_test_on_close(void *obj) {
   fio_atomic_add((uintptr_t *)obj, 1);
 }
 
-/*
 FIO_SFUNC void fio_uuid_env_test(void) {
   fprintf(stderr, "=== Testing fio_uuid_env\n");
   uintptr_t called = 0;
@@ -2355,7 +2437,6 @@ FIO_SFUNC void fio_uuid_env_test(void) {
       "fio_uuid_env_set overwrite failed - on_close callback wasn't called!");
   fprintf(stderr, "* passed.\n");
 }
-*/
 
 /* *****************************************************************************
 Test Aggragated
@@ -2378,9 +2459,11 @@ void fio_test(void) {
   fprintf(stderr, "===============\n");
   fio___test__defer_io();
   fprintf(stderr, "===============\n");
+  fio_uuid_env_test();
   /* free test data set and return normal data set */
   fio_free(fio_data);
   fio_data = old;
+  fprintf(stderr, "===============\n");
   fprintf(stderr, "Done.\n");
 }
 #endif
