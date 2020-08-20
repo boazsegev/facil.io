@@ -41,6 +41,7 @@ code, pre
 }
 .toc
 {
+    display:none;
     &:after
     {
         content: 'TOC';
