@@ -4,6 +4,7 @@
 
 body
 {
+  font-size: 1.1em;
     &:after
     {
         content: ' ';
@@ -53,7 +54,8 @@ code, pre
 }
 #logo
 {
-    top:0.5em;
+    top:0.2em;
+    left: 4em;
     height: 4em;
     @include border-radius;
     // background-color: rgb(240,240,240);
@@ -146,11 +148,11 @@ input.burger+svg:hover .line4 {
 
 #show_sidebar+svg
 {
-    top: 5em; left:0.4em;
+    top: 1em; right:0.4em;
 }
 #show_nav+svg
 {
-    top: 0.4em; right:0.4em;
+    top: 1em; left:0.4em;
 }
 
 #ruby_lang
@@ -161,7 +163,7 @@ input.burger+svg:hover .line4 {
 {
     display: block;
     width: 100%; height: 100%;
-    padding-top: 9em;
+    padding-top: 4em;
     padding-bottom: 1em;
     z-index: 400;
     position: fixed;
@@ -181,6 +183,7 @@ input.burger+svg:hover .line4 {
     width: 100%;
     height: auto;
     padding: 1em;
+    padding-top: 4em;
     margin: 0;
     padding-bottom: 5em;
     background-color: rgb(240,240,240);
@@ -205,7 +208,7 @@ input.burger+svg:hover .line4 {
             width: 100%;
             margin: 0.5em 0;
             min-width: initial;
-            padding: 0.2em 1em;
+            padding: 1em 1em;
             text-align:center;
             box-sizing: border-box;
         }

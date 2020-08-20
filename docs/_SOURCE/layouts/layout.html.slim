@@ -39,16 +39,16 @@ html
         link href="/assets/logo/facil-io-light.svg" rel="preload" as="image"
     body
         a#logo href='/'
-        input#show_nav type='checkbox' class='burger burger2'
+        input#show_nav type='checkbox' class='burger left'
         svg xmlns='http://www.w3.org/2000/svg' onclick="document.getElementById('show_nav').checked = !document.getElementById('show_nav').checked"
             line class='line1' x1='0' y1='10%' x2='100%' y2='10%'
             line class='line2' x1='0' y1='50%' x2='100%' y2='50%'
             line class='line3' x1='0' y1='50%' x2='100%' y2='50%'
             line class='line4' x1='0' y1='90%' x2='100%' y2='90%'
-        nav#top_nav
+        nav#top_nav onclick="document.getElementById('show_nav').checked = !document.getElementById('show_nav').checked"
             ul
                 li
-                    a href='/0.7.x/index' Latest Docs
+                    a href='/0.8.x/index' Latest Docs
                 li
                     a href='https://github.com/boazsegev/facil.io' target='_blank' Source Code
                 li
@@ -57,13 +57,13 @@ html
         - if !self['sidebar']
            #md_container == yield
         - else
-            input#show_sidebar type='checkbox' class='burger left'
+            input#show_sidebar type='checkbox' class='burger'
             svg xmlns='http://www.w3.org/2000/svg' onclick="document.getElementById('show_sidebar').checked = !document.getElementById('show_sidebar').checked"
                 line class='line1' x1='0' y1='10%' x2='100%' y2='10%'
                 line class='line2' x1='0' y1='50%' x2='100%' y2='50%'
                 line class='line3' x1='0' y1='50%' x2='100%' y2='50%'
                 line class='line4' x1='0' y1='90%' x2='100%' y2='90%'
-            nav#side_bar == self['sidebar']
+            nav#side_bar onclick="document.getElementById('show_sidebar').checked = !document.getElementById('show_sidebar').checked" == self['sidebar']
             #md_container
                 == yield
             a#sign href='/'
@@ -87,8 +87,6 @@ html
                 obj = document.body;
                 obj.className = localStorage.getItem("theme");
                 set_theme_link();
-                obj = document.getElementById("show_nav");
-                obj.checked = false;
                 if(e) e.preventDefault();
             };
             function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
@@ -147,4 +145,11 @@ html
                 var obj = document.getElementById("toc");
                 obj.ontouchstart = function (e) { return true; };
                 obj.onhover = function (e) { return true; };
+                obj.onclick = function (e) {
+                    document.getElementById("toc").style.transform = "translateX(100%)";
+                    setTimeout(function(){
+                    document.getElementById("toc").style.transform = "";
+                    }, 300)
+                    return true;
+                };
             }

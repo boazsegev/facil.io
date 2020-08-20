@@ -39,7 +39,7 @@ X_SENDFILE = 'X-Sendfile'.freeze
 DEFAULT_LAYOUT = "layouts/layout.html.slim"
 DEFAULT_SIDEBAR = "_versions.md"
 # By default, produce Table Oof Contents?
-TOC_IS_DEFAULT = false
+TOC_IS_DEFAULT = true
 
 # # We don't need this, but we might
 # unless File.directory?(STATIC_ROOT)
@@ -345,7 +345,7 @@ end
 
     # Render the markdown
     if(vars['toc'])
-      data = "<div class='toc'>#{MD_RENDERER_TOC.render(data)}</div>#{MD_RENDERER.render(data)}"
+      data = "<div class='toc' id='toc'>#{MD_RENDERER_TOC.render(data)}</div>#{MD_RENDERER.render(data)}"
     else
       data = MD_RENDERER.render(data)
     end
