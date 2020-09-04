@@ -172,7 +172,7 @@ if ENV['RACK_ENV'] == 'production'
         env[PATH_INFO] << '/index.html'.freeze
       end
     end
-    env[PATH_INFO] << ".html" if(File.extname(env[PATH_INFO]) == "")
+    env[PATH_INFO] << ".html" if(File.extname(original_path) == "".freeze)
     # use iodine's X-Sendfile support
     [200, {X_SENDFILE => "#{STATIC_ROOT}#{env[PATH_INFO]}"}, ["".freeze]]
   end
