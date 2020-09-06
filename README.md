@@ -104,6 +104,18 @@ Then add the following line the project's `CMakeLists.txt`
 
     add_subdirectory(facil.io)
 
+### Using `facil.io` with Meson
+
+[facil.io](http://facil.io) is available at [Meson Wrap DB](https://wrapdb.mesonbuild.com/facil).
+
+First, install the wrap file:
+
+    meson wrap install facil
+
+Then add the following line to your project's `meson.build`:
+
+    facil_dep = subproject('facil').get_variable('facil_dep')
+
 ## More Examples
 
 The examples folder includes code examples for a [telnet echo protocol](examples/raw-echo.c), a [Simple Hello World server](examples/raw-http.c), an example for [Websocket pub/sub with (optional) Redis](examples/http-chat.c), etc'.
