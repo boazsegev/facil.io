@@ -6,8 +6,8 @@ Developent Sugar (ignore)
 #define FIOBJ_EXTERN_COMPLETE 1 /* Development inclusion - ignore line */
 #define FIO_VERSION_GUARD       /* Development inclusion - ignore line */
 #include "0003 main api.h"      /* Development inclusion - ignore line */
-#include "0004 overridables.h"  /* Development inclusion - ignore line */
-#include "0005 pubsub.h"        /* Development inclusion - ignore line */
+#include "0004 pubsub.h"        /* Development inclusion - ignore line */
+#include "0005 overridables.h"  /* Development inclusion - ignore line */
 #include "0006 footer.h"        /* Development inclusion - ignore line */
 #endif                          /* Development inclusion - ignore line */
 
@@ -47,14 +47,14 @@ Implementation include statements and Macros
 
 #if !defined(FIO_ENGINE_EPOLL) && !defined(FIO_ENGINE_KQUEUE) &&               \
     !defined(FIO_ENGINE_POLL)
-#if defined(HAVE_KQUEUE)
-#define FIO_ENGINE_KQUEUE 1
-#elif defined(HAVE_EPOLL)
+#if defined(HAVE_EPOLL) || __has_include("sys/epoll.h")
 #define FIO_ENGINE_EPOLL 1
+#elif defined(HAVE_KQUEUE) || __has_include("sys/event.h")
+#define FIO_ENGINE_KQUEUE 1
 #else
 #define FIO_ENGINE_POLL 1
 #endif
-#endif
+#endif /* !defined(FIO_ENGINE_EPOLL) ... */
 
 #ifndef FIO_SOCKET_BUFFER_PER_WRITE
 #define FIO_SOCKET_BUFFER_PER_WRITE (1UL << 16)
@@ -89,8 +89,9 @@ Task Queue
 #define FIO_QUEUE
 #include <fio-stl.h>
 
-FIO_IFUNC int
-fio_defer_urgent(void (*task)(void *, void *), void *udata1, void *udata2);
+FIO_IFUNC int fio_defer_urgent(void (*task)(void *, void *),
+                               void *udata1,
+                               void *udata2);
 
 FIO_IFUNC size_t fio___timer_calc_first_interval(void);
 
@@ -106,7 +107,7 @@ UUID env objects / store
 
 /** An object that can be linked to any facil.io connection (uuid). */
 typedef struct {
-  void *data;
+  void *udata;
   void (*on_close)(void *data);
 } fio_uuid_env_obj_s;
 
@@ -128,11 +129,11 @@ FIO_IFUNC void fio_uuid_env_obj_call_callback(fio_uuid_env_obj_s o) {
   } u;
   u.fn = o.on_close;
   if (o.on_close) {
-    fio_defer_urgent(fio_uuid_env_obj_call_callback_task, u.p, o.data);
+    fio_defer_urgent(fio_uuid_env_obj_call_callback_task, u.p, o.udata);
   }
 }
 
-#define FIO_MAP_NAME               fio___uuid_env
+#define FIO_OMAP_NAME              fio___uuid_env
 #define FIO_MAP_TYPE               fio_uuid_env_obj_s
 #define FIO_MAP_TYPE_DESTROY(o)    fio_uuid_env_obj_call_callback((o))
 #define FIO_MAP_DESTROY_AFTER_COPY 0
@@ -209,6 +210,8 @@ struct fio___data_s {
   uint32_t capa;
   /* The highest active fd with a protocol object */
   uint32_t max_open_fd;
+  /* current process ID */
+  pid_t pid;
   /* parent process ID */
   pid_t parent;
   /* active workers */
@@ -256,15 +259,16 @@ Section Start Marker
 /* *****************************************************************************
 Helpers (declarations)
 ***************************************************************************** */
-FIO_IFUNC int
-fio_defer_urgent(void (*task)(void *, void *), void *udata1, void *udata2);
+FIO_IFUNC int fio_defer_urgent(void (*task)(void *, void *),
+                               void *udata1,
+                               void *udata2);
 
 /* *****************************************************************************
 Forking / Cleanup (declarations)
 ***************************************************************************** */
+static fio_lock_i fio_fork_lock;
 FIO_IFUNC void fio_defer_on_fork(void);
 FIO_IFUNC void fio_state_callback_on_fork(void);
-FIO_IFUNC void fio_pubsub_on_fork(void);
 FIO_IFUNC void fio_state_callback_clear_all(void);
 FIO_IFUNC void fio_state_callback_on_fork(void);
 /* *****************************************************************************
@@ -283,14 +287,15 @@ static void deferred_on_close(void *uuid_, void *pr);
 static void deferred_on_shutdown(void *uuid, void *arg2);
 static void deferred_on_ready(void *uuid, void *arg2);
 static void deferred_on_data(void *uuid, void *arg2);
-static void deferred_ping(void *uuid, void *arg2);
+static void deferred_on_timeout(void *uuid, void *arg2);
 
 /* *****************************************************************************
 Polling / Signals (declarations)
 ***************************************************************************** */
 static inline void fio_force_close_in_poll(intptr_t uuid);
 FIO_IFUNC void fio_poll_close(void);
-static void fio_poll_init(void);
+FIO_IFUNC void fio_poll_init(void);
+FIO_IFUNC void fio_pubsub_init(void);
 FIO_IFUNC void fio_poll_add_read(intptr_t fd);
 FIO_IFUNC void fio_poll_add_write(intptr_t fd);
 FIO_IFUNC void fio_poll_add(intptr_t fd);
@@ -305,6 +310,21 @@ FIO_IFUNC fio_protocol_s *protocol_try_lock(intptr_t uuid, uint8_t sub);
 FIO_IFUNC uint8_t protocol_is_locked(fio_protocol_s *pr, uint8_t sub);
 FIO_IFUNC void protocol_unlock(fio_protocol_s *pr, uint8_t sub);
 inline static void protocol_validate(fio_protocol_s *protocol);
+
+/* *****************************************************************************
+URL to Address
+***************************************************************************** */
+
+typedef struct {
+  char *address;
+  char *port;
+  uint16_t flags;
+} fio___addr_info_s;
+
+/** Converts a URL to an address format for getaddrinfo and fio_sock_open. */
+FIO_SFUNC fio___addr_info_s *fio___addr_info_new(const char *url);
+/** Frees an allocated address information object. */
+FIO_SFUNC void fio___addr_info_free(fio___addr_info_s *addr);
 
 /* *****************************************************************************
 Helper access macors and functions
@@ -354,7 +374,7 @@ error:
 
 FIO_IFUNC int uuid_lock(intptr_t uuid, uint8_t lock_group) {
   int r;
-  while ((r = uuid_try_lock(uuid, lock_group))) {
+  while ((r = uuid_try_lock(uuid, lock_group)) == 1) {
     FIO_THREAD_RESCHEDULE();
   }
   return r;
@@ -449,6 +469,7 @@ FIO_IFUNC int fio_clear_fd(intptr_t fd, uint8_t is_open) {
   fio_rw_hook_s *rw_hooks;
   void *rw_udata;
   fio___uuid_env_s env;
+  uint8_t active = fio_data->active;
   fio_lock_group(&(fd_data(fd).lock), FIO_UUID_LOCK_FULL);
   intptr_t uuid = fd2uuid(fd);
   env = fd_data(fd).env;
@@ -472,10 +493,14 @@ FIO_IFUNC int fio_clear_fd(intptr_t fd, uint8_t is_open) {
   if (protocol && protocol->on_close) {
     fio_defer(deferred_on_close, (void *)uuid, protocol);
   }
-  if (fio_data->max_open_fd < fd && is_open) {
+  if (fio_data->max_open_fd < (uint32_t)fd && is_open) {
     fio_data->max_open_fd = fd;
-  } else {
+  } else if (active) {
     while (fio_data->max_open_fd && !fd_data(fio_data->max_open_fd).open)
+      --fio_data->max_open_fd;
+  } else {
+    while (fio_data->max_open_fd && (!fd_data(fio_data->max_open_fd).open ||
+                                     !fd_data(fio_data->max_open_fd).timeout))
       --fio_data->max_open_fd;
   }
 
@@ -504,57 +529,4 @@ static void fio_tcp_addr_cpy(int fd, int family, struct sockaddr *addrinfo) {
     fd_data(fd).addr_len = 0;
     fd_data(fd).addr[0] = 0;
   }
-}
-
-/* *****************************************************************************
-Destroy the State Machine
-***************************************************************************** */
-
-static void __attribute__((destructor)) fio___data_free(void) {
-  fio_state_callback_force(FIO_CALL_AT_EXIT);
-  fio_state_callback_clear_all();
-  free(fio_data);
-}
-
-/* *****************************************************************************
-Initialize the State Machine
-***************************************************************************** */
-
-static void __attribute__((constructor)) fio___data_new(void) {
-  ssize_t capa = 0;
-  {
-#ifdef _SC_OPEN_MAX
-    capa = sysconf(_SC_OPEN_MAX);
-#elif defined(FOPEN_MAX)
-    capa = FOPEN_MAX;
-#endif
-    // try to maximize limits - collect max and set to max
-    struct rlimit rlim = {.rlim_max = 0};
-    if (getrlimit(RLIMIT_NOFILE, &rlim) == -1) {
-      FIO_LOG_WARNING("`getrlimit` failed in facil.io core initialization.");
-      perror("\terrno:");
-    } else {
-      rlim_t original = rlim.rlim_cur;
-      rlim.rlim_cur = rlim.rlim_max;
-      if (rlim.rlim_cur > FIO_MAX_SOCK_CAPACITY) {
-        rlim.rlim_cur = rlim.rlim_max = FIO_MAX_SOCK_CAPACITY;
-      }
-      while (setrlimit(RLIMIT_NOFILE, &rlim) == -1 && rlim.rlim_cur > original)
-        --rlim.rlim_cur;
-      getrlimit(RLIMIT_NOFILE, &rlim);
-      capa = rlim.rlim_cur;
-      if (capa > 1024) /* leave a slice of room */
-        capa -= 16;
-    }
-  }
-  fio_data = calloc(1, sizeof(*fio_data) + (sizeof(fio_data->info[0]) * capa));
-  FIO_ASSERT_ALLOC(fio_data);
-  fio_data->capa = capa;
-  fio_data->parent = getpid();
-  fio_data->is_master = 1;
-  fio_data->lock = FIO_LOCK_INIT;
-  fio_mark_time();
-  fio_poll_init();
-  fio_state_callback_force(FIO_CALL_ON_INITIALIZE);
-  fio_state_callback_clear(FIO_CALL_ON_INITIALIZE);
 }

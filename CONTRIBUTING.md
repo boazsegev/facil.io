@@ -2,6 +2,22 @@
 
 Thank you for inquiring `facil.io`'s contribution guide. It's people like you and me, that are willing to share our efforts, who help make the world of open source development so inspiring and wonderful.
 
+## TL;DR;
+
+* Play nice.
+
+* Use `clang-format`.
+
+* PRs to the `fio_stl.h` (the facil.io C STL - Simple Type Library) should go to the [facil.io C STL repository](https://github.com/facil-io/cstl).
+
+* PRs to the `fio.h` or `fio.c` files (the facil.io IO Core) should go to the [facil.io IO Core repository](https://github.com/facil-io/io-core).
+
+* All other PRs should go to **the correct version branch** in the [facil.io main framework repository](https://github.com/boazsegev/facil.io).
+
+* Always add a comment in the CHANGELOG to say what you did and credit yourself.
+
+* All copyrights for whatever you contribute will be owned by myself (Boaz Segev) and between us we'll consider them public domain (I don't want to deal with legal discussions).
+
 ## Guidelines 
 
 ### General Guidelines
@@ -24,13 +40,15 @@ Thank you for inquiring `facil.io`'s contribution guide. It's people like you an
 
     * *Succinctly Commented*: Too much commenting is noise (we can read code), but too little and a future maintainer might not understand why the code was written in the first place.
 
+    * *Documented*: document functions using Doxygen style comments, but without Doxygen keywords.
+
 * **Easy to port**:
 
     When possible, code should be portable. This is both true in regards to CPU architecture and in regards to OS and environment.
 
     The project currently has the following limitation that might be addressed in the future:
 
-    * The code requires `kqueue` or `epoll` services from the OS, which means Linux / BSD / macOS.
+    * The code requires `kqueue` or `epoll` services from the OS, which means Linux / BSD / macOS. The code also supports `poll` as a fallback for the rest of the POSIX systems... but this might not work with Windows.
 
     * The code assumes a Unix environment (file naming etc').
 
@@ -38,11 +56,12 @@ Thank you for inquiring `facil.io`'s contribution guide. It's people like you an
 
 * **Easy to compile**:
 
-    The code uses GNU `make` and although we have some CMake support, neither CMake nor `configure` should be required at any point.
+    The code uses GNU `make` and although we have some CMake support, neither CMake nor `configure` should be *required* at any point.
 
 * **Easy to manage**:
 
     See the License section below. Contributions must relinquish ownership of contributed code, so licensing and copyright can be managed without the need to reach out to every contributer.
+
 
 ### Community Guideline - Play Nice
 
@@ -58,15 +77,11 @@ A few pointers about code styling (pun intended).
 
 * Use `clang-format` with the `LLVM` style. It's not always the best, but it will offer uniformity.
 
-    The only changes to the `LLVM` style are that `AllowAllParametersOfDeclarationOnNextLine`, `BinPackArguments`, and `BinPackParameters` are all set to `false`.
+    There some minor changes to the `LLVM` style, so have a look at our `.clang-format` file.
 
-* Initialize all variables during declaration - even if it's redundant.
+* Initialize all variables during declaration.
 
-* Use `goto` to move less-likely code branches to the end of a function's body (specifically, error branches should go to a `goto` label).
-
-    It makes the main body of the function more readable (IMHO) and should help with branch prediction (similar to how `unlikely` might help, but using a different approach).
-
-* Use `goto` before returning from a function when a spinlock / mutex unlock is required (specifically, repetition of the unlock code should be avoided).
+* Use `snake_case` with `readable_names` and avoid CamelCase or VeryLongAndOverlyVerboseNames.
 
 * Use the `fio___` prefix for internal helper functions (note the 3 underscores).
 
@@ -75,6 +90,12 @@ A few pointers about code styling (pun intended).
 * Common practice abbreviations, context-specific abbreviations (when in context) and auto-complete optimizations are preferred **only when readability isn't significantly affected**.
 
 * Function names **should** be as succinct as possible.
+
+* Use `goto` to move less-likely code branches to the end of a function's body (specifically, error branches should go to a `goto` label).
+
+    It makes the main body of the function more readable (IMHO) and could help with branch prediction (similar to how `unlikely` might help, but using a different approach).
+
+* Use `goto` before returning from a function when a spinlock / mutex unlock is required (specifically, repetition of the unlock code should be avoided).
 
 ## License
 
@@ -90,35 +111,13 @@ I discovered GitHub doesn't offer a default CLA (Copyright and Licensing Agreeme
 
 This allows me to circumvent any future licensing concerns and prevent contributors from revoking the license attached to their code.
 
-### Writing Tests
-
-Tests should be written within the source file, next to the code to be tested (if possible).
-
-Test code should only be written when `TEST` is defined (i.e., `#ifdef TEST`).
-
-The test function should be named using the MACRO `FIO_NAME_TEST(lib, feature)` and a function call should be added to the function that runs the tests.
-
-For example:
-
-```c
-/* *****************************************************************************
-Test this feature
-***************************************************************************** */
-#ifdef TEST
-void FIO_NAME_TEST(http, feature)(void) {
-    // ...
-}
-#endif
-
-```
-
 ## A quick run-down
 
 `facil.io` is comprised of the following module "families":
 
 * The Simple Template Library Core (`facil.io` STL):
 
-    The module in comprised of a single file header library `fio-stl.h` that's automatically generated using the [facil.io/cstl repository](https://github.com/facil-io/cstl).
+    The module in comprised of a single file (**amalgamation**) header library `fio-stl.h` that's automatically generated using the [facil.io/cstl repository](https://github.com/facil-io/cstl).
 
     Contributions to this module should be made to the corresponding code slice(s) in the [facil.io/cstl repository](https://github.com/facil-io/cstl).
 
@@ -132,13 +131,13 @@ void FIO_NAME_TEST(http, feature)(void) {
 
     Contributions to this module should be made to the corresponding code slice(s) in the [facil.io/io-core repository](https://github.com/facil-io/io-core).
 
-    The module in comprised of two files: `fio.h` and `fio.c` and uses the `fio-stl.h` file.
+    The module in comprised of two (**amalgamation**) files: `fio.h` and `fio.c` and uses the `fio-stl.h` file.
 
 * `FIOBJ` Extensions:
 
     The core FIOBJ type system is part of the [facil.io C STL](https://github.com/facil-io/cstl). However, this type system is extendable and indeed some network features require the additional type of `FIOBJ_T_IO` (`fiobj_io.h` and `fiobj_io.c`).
 
-    These extensions live in the [facil.io/facil framework repository](https://github.com/facil-io/facil), in the `fiobj` folder.
+    These extensions live in the [facil.io/facil framework repository](https://github.com/facil-io/facil), in the `lib/facil/fiobj` folder.
 
     This module adds features used by the HTTP / WebSockets module, such as the mustache template engine, or the extension that routes large HTTP payloads to temporary files.
 
@@ -171,6 +170,9 @@ These are the features that have been requested so far. Even if any of them are 
 |      Feature      |      assigned      |      remarks                                        |
 |-------------------|--------------------|-----------------------------------------------------|
 |   Documentation   |     🙏 Help 🙏     |                                                     |
+|-------------------|--------------------|-----------------------------------------------------|
+|   Security        |                    |  Some more security features would be nice.         |
+|-------------------|--------------------|-----------------------------------------------------|
 
 ## Notable Contributions
 

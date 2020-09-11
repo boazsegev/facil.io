@@ -1,7 +1,6 @@
 #ifndef TEST
 #define TEST 1
 #endif
-
 #include "fio.c"
 
 int main(int argc, char const *argv[]) {

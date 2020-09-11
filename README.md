@@ -1,6 +1,6 @@
 # facil.io - Core IO C Library
 
-At the core of the [facil.io framework](https://facil.io) are it's [Simple Template Library (C STL)](https://github.com/facil-io/cstl) and this IO Core libraries.
+At the core of the [facil.io framework](https://facil.io) are it's [Simple Template Library (C STL)](https://github.com/facil-io/cstl) and this IO Core library.
 
 The IO Core library follows an evented reactor pattern that allows easy management of sockets (`fd`), events and timers using `epoll`, `kqueue` or `poll`.
 
@@ -14,7 +14,7 @@ Documentation is available in the [(auto-generated) `fio.md` file](fio.md) as we
 
 ### Running Tests
 
-Testing the STL locally is easy using:
+Testing the IO Core library locally is easy using:
 
 ```bash
 make test/core
@@ -23,13 +23,16 @@ make test/core
 The GNU `make` command will compile and run any file in the `tests` folder if it is explicitly listed. i.e.,
 
 ```bash
-make test/cpp         # Test template compilation in a C++ file (no run)... may fail on some compilers
+make test/http        # test an example (insecure) HTTP echo server.
+make test/cpp         # Test template compilation in a C++ file (no run)... may fail on some compilers.
 ```
 
 It is possible to use the same `makefile` to compile source code and static library code. See the makefile for details.
 
 ### Contribution Notice
 
-If you're submitting a PR, make sure to update the corresponding code slice (file) in the `core_slices` folder.
+If you're submitting a PR, make sure to update the corresponding code slice (file) in the `core_slices` folder and add a note in the CHANGELOG.
+
+Note that the master branch is unstable as it gets. Commits may get squashed, the branch may be overwritten (force push), etc'.
 
 Also, contributions are subject to the terms and conditions set in [the facil.io contribution guide](https://github.com/boazsegev/facil.io/CONTRIBUTING.md). 

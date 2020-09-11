@@ -91,8 +91,11 @@ ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s o) {
   } else {
     if (!o.copy && !o.dealloc)
       o.dealloc = free;
-    p = fio_stream_pack_data(
-        (void *)o.data.buf, o.len, o.offset, o.copy, o.dealloc);
+    p = fio_stream_pack_data((void *)o.data.buf,
+                             o.len,
+                             o.offset,
+                             o.copy,
+                             o.dealloc);
   }
   if (!p)
     goto some_error;
@@ -140,15 +143,19 @@ ssize_t fio_flush(intptr_t uuid) {
   size_t len = FIO_SOCKET_BUFFER_PER_WRITE;
   ssize_t w = 0;
   ssize_t fl = 0;
-  UUID_LOCK(uuid, FIO_UUID_LOCK_RW_HOOKS_WRITE | FIO_UUID_LOCK_STREAM, some_error);
+  UUID_LOCK(uuid,
+            FIO_UUID_LOCK_RW_HOOKS_WRITE | FIO_UUID_LOCK_STREAM,
+            some_error);
 
   fio_stream_read(&uuid_data(uuid).stream, &buf, &len);
   UUID_UNLOCK(uuid, FIO_UUID_LOCK_STREAM);
 
   fl = uuid_data(uuid).rw_hooks->flush(uuid, uuid_data(uuid).rw_udata);
   if (len)
-    w = uuid_data(uuid).rw_hooks->write(
-        uuid, uuid_data(uuid).rw_udata, buf, len);
+    w = uuid_data(uuid).rw_hooks->write(uuid,
+                                        uuid_data(uuid).rw_udata,
+                                        buf,
+                                        len);
 
   if (w && w > 0) {
     UUID_LOCK(uuid, FIO_UUID_LOCK_STREAM, some_error);
@@ -157,8 +164,8 @@ ssize_t fio_flush(intptr_t uuid) {
   }
 
   UUID_UNLOCK(uuid, FIO_UUID_LOCK_RW_HOOKS_WRITE);
-  if(fl > 0 || w > 0) {
-   touchfd(fio_uuid2fd(uuid));
+  if (fl > 0 || w > 0) {
+    touchfd(fio_uuid2fd(uuid));
   }
 
   if (fl > 0 || fio_stream_any(&uuid_data(uuid).stream))
@@ -223,7 +230,7 @@ void fio_uuid_env_set FIO_NOOP(intptr_t uuid, fio_uuid_env_args_s args) {
   uint64_t hash =
       fio_risky_hash(args.name.buf, args.name.len, (uint64_t)uuid + args.type);
   fio_str_s key = FIO_STR_INIT;
-  fio_uuid_env_obj_s obj = {.data = args.data, .on_close = args.on_close};
+  fio_uuid_env_obj_s obj = {.udata = args.udata, .on_close = args.on_close};
   fio_uuid_env_obj_s old = {0};
   if (args.const_name) {
     fio_str_init_const(&key, args.name.buf, args.name.len);
@@ -234,12 +241,12 @@ void fio_uuid_env_set FIO_NOOP(intptr_t uuid, fio_uuid_env_args_s args) {
   fio___uuid_env_set(&uuid_data(uuid).env, hash, key, obj, &old);
   UUID_UNLOCK(uuid, FIO_UUID_LOCK_ENV);
   if (old.on_close)
-    old.on_close(old.data);
+    old.on_close(old.udata);
   return;
 invalid_uuid:
   fio_str_destroy(&key);
   if (args.on_close)
-    args.on_close(args.data);
+    args.on_close(args.udata);
 }
 
 /**
@@ -281,8 +288,9 @@ void fio_uuid_env_remove___(void); /* function marker */
 void fio_uuid_env_remove FIO_NOOP(intptr_t uuid,
                                   fio_uuid_env_unset_args_s args) {
   {
-    uint64_t hash = fio_risky_hash(
-        args.name.buf, args.name.len, (uint64_t)uuid + args.type);
+    uint64_t hash = fio_risky_hash(args.name.buf,
+                                   args.name.len,
+                                   (uint64_t)uuid + args.type);
     fio_uuid_env_obj_s old = {0};
     fio_str_s key;
     fio_str_init_const(&key, args.name.buf, args.name.len);
@@ -290,7 +298,7 @@ void fio_uuid_env_remove FIO_NOOP(intptr_t uuid,
     fio___uuid_env_remove(&uuid_data(uuid).env, hash, key, &old);
     UUID_UNLOCK(uuid, FIO_UUID_LOCK_ENV);
     if (old.on_close)
-      old.on_close(old.data);
+      old.on_close(old.udata);
     return;
   invalid_uuid:
     fio_str_destroy(&key);
@@ -312,27 +320,29 @@ FIO_SFUNC void FIO_NAME_TEST(io, env)(void) {
   uintptr_t called = 0;
   uintptr_t removed = 0;
   uintptr_t overwritten = 0;
-  intptr_t uuid = fio_socket(
-      NULL, "8765", FIO_SOCKET_TCP | FIO_SOCKET_SERVER | FIO_SOCKET_NONBLOCK);
+  intptr_t uuid =
+      fio_socket(NULL,
+                 "8765",
+                 FIO_SOCKET_TCP | FIO_SOCKET_SERVER | FIO_SOCKET_NONBLOCK);
   FIO_ASSERT(uuid != -1, "fio_uuid_env_test failed to create a socket!");
   fio_uuid_env_set(uuid,
-                   .data = &called,
+                   .udata = &called,
                    .on_close = FIO_NAME_TEST(io, env_on_close),
                    .type = 1);
   FIO_ASSERT(called == 0,
              "fio_uuid_env_set failed - on_close callback called too soon!");
   fio_uuid_env_set(uuid,
-                   .data = &removed,
+                   .udata = &removed,
                    .on_close = FIO_NAME_TEST(io, env_on_close),
                    .type = 0);
   fio_uuid_env_set(uuid,
-                   .data = &overwritten,
+                   .udata = &overwritten,
                    .on_close = FIO_NAME_TEST(io, env_on_close),
                    .type = 0,
                    .name.buf = "abcdefghijklmnopqrstuvwxyz",
                    .name.len = 26);
   fio_uuid_env_set(uuid,
-                   .data = &overwritten,
+                   .udata = &overwritten,
                    .on_close = FIO_NAME_TEST(io, env_on_close),
                    .type = 0,
                    .name.buf = "abcdefghijklmnopqrstuvwxyz",
@@ -365,21 +375,53 @@ Socket / Connection Functions
 
 ***************************************************************************** */
 
+/** Converts a URL to an address format for getaddrinfo and fio_sock_open. */
+FIO_SFUNC fio___addr_info_s *fio___addr_info_new(const char *url) {
+  fio___addr_info_s *i = NULL;
+  size_t len = strlen(url);
+  i = fio_malloc(sizeof(*i) + len + 1);
+  FIO_ASSERT_ALLOC(i);
+  char *s = (char *)(i + 1);
+  memcpy(s, url, len + 1);
+  fio_url_s u = fio_url_parse(s, len);
+  if (u.host.buf || u.port.buf) {
+    i->address = u.host.buf;
+    i->port = u.port.buf;
+    if (u.host.buf)
+      u.host.buf[u.host.len] = 0;
+    if (u.port.buf)
+      u.port.buf[u.port.len] = 0;
+    if (u.scheme.buf && (u.scheme.buf[0] | 32) == 'u' &&
+        (u.scheme.buf[0] | 32) == 'd' && (u.scheme.buf[0] | 32) == 'p')
+      i->flags = FIO_SOCK_UDP;
+    else
+      i->flags = FIO_SOCK_TCP;
+  } else if (u.path.buf) {
+    i->flags = FIO_SOCK_UNIX;
+    i->address = u.path.buf + 1;
+    u.path.buf[u.path.len] = 0;
+    i->port = NULL;
+  } else {
+    fio_free(i);
+    i = NULL;
+  }
+  return i;
+}
+/** Frees an allocated address information object. */
+FIO_SFUNC void fio___addr_info_free(fio___addr_info_s *addr) { fio_free(addr); }
+
 /**
  * `fio_fd2uuid` takes an existing file decriptor `fd` and returns it's active
  * `uuid`.
  *
- * If the file descriptor was closed, __it will be registered as open__.
- *
  * If the file descriptor was closed directly (not using `fio_close`) or the
- * closure event hadn't been processed, a false positive will be possible. This
- * is not an issue, since the use of an invalid fd will result in the registry
- * being updated and the fd being closed.
+ * closure event hadn't been processed, a false positive is possible, in which
+ * case the `uuid` might not be valid for long.
  *
  * Returns -1 on error. Returns a valid socket (non-random) UUID.
  */
 intptr_t fio_fd2uuid(int fd) {
-  if (fd < 0 || (uint32_t)fd >= fio_data->capa)
+  if (fd < 0 || (uint32_t)fd >= fio_data->capa || !fd_data(fd).open)
     return -1;
   return fd2uuid(fd);
 }
@@ -405,7 +447,7 @@ intptr_t fio_fd2uuid(int fd) {
  * The following flags control the type and behavior of the socket:
  *
  * - FIO_SOCKET_SERVER - (default) server mode (may call `listen`).
- * - FIO_SOCKET_CLIENT - client mode (calls `connect).
+ * - FIO_SOCKET_CLIENT - client mode (calls `connect`).
  * - FIO_SOCKET_NONBLOCK - sets the socket to non-blocking mode.
  * - FIO_SOCKET_TCP - TCP/IP socket (default).
  * - FIO_SOCKET_UDP - UDP socket.
@@ -420,8 +462,9 @@ intptr_t fio_fd2uuid(int fd) {
  * Note: UDP server sockets can't use `fio_read` or `fio_write` since they are
  * connectionless.
  */
-intptr_t
-fio_socket(const char *address, const char *port, fio_socket_flags_e flags) {
+intptr_t fio_socket(const char *address,
+                    const char *port,
+                    fio_socket_flags_e flags) {
   int fd = fio_sock_open(address, port, flags);
   if (fd == -1)
     return -1;
@@ -460,12 +503,15 @@ fio_socket(const char *address, const char *port, fio_socket_flags_e flags) {
  * `fio_attach`.
  */
 intptr_t fio_accept(intptr_t srv_uuid) {
+  intptr_t client = -1;
   struct sockaddr_in6 addrinfo[2]; /* grab a slice of stack (aligned) */
   socklen_t addrlen = sizeof(addrinfo);
-  int client;
 
-  if (!uuid_is_valid(srv_uuid))
-    return -1;
+  if (!uuid_is_valid(srv_uuid)) {
+    FIO_LOG_ERROR("fio_accept called with an invalid UUID %p",
+                  (void *)srv_uuid);
+    return client;
+  }
 
 #ifdef SOCK_NONBLOCK
   client = accept4(fio_uuid2fd(srv_uuid),
@@ -473,20 +519,27 @@ intptr_t fio_accept(intptr_t srv_uuid) {
                    &addrlen,
                    SOCK_NONBLOCK | SOCK_CLOEXEC);
   if (client <= 0)
-    return -1;
+    return client;
 #else
   client = accept(fio_uuid2fd(srv_uuid), (struct sockaddr *)addrinfo, &addrlen);
   if (client <= 0)
     return -1;
-  if (fio_set_non_block(client) == -1) {
+  if (fio_sock_set_non_block(client) == -1) {
     close(client);
-    return -1;
+    FIO_LOG_ERROR("fio_accept couldn't set fd %d to non-bloccking state: %s",
+                  client,
+                  strerror(errno));
+    client = -1;
+    return client;
   }
 #endif
 
   if ((uint32_t)client >= fio_data->capa) {
     close(client);
-    return -1;
+    FIO_LOG_ERROR("fio_accept capacity overflow, closing connection at %d",
+                  client);
+    client = -1;
+    return client;
   }
 
   // avoid the TCP delay algorithm.
@@ -521,8 +574,9 @@ intptr_t fio_accept(intptr_t srv_uuid) {
                      ((struct sockaddr *)addrinfo)->sa_family,
                      (struct sockaddr *)addrinfo);
   }
-
-  return fd2uuid(client);
+  client = fd2uuid(client);
+  FIO_LOG_DEBUG("fio_accept accepted a new connection at %p", (void *)client);
+  return client;
 }
 
 /**
@@ -647,7 +701,7 @@ fio_str_info_s fio_peer_addr(intptr_t uuid) {
  *
  * If the returned value == limit - 1, the result might have been truncated.
  *
- * If 0 is returned, an erro might have occured (see `errno`) and the contents
+ * If 0 is returned, an error might have occurred (see `errno`) and the contents
  * of `dest` is undefined.
  */
 size_t fio_local_addr(char *dest, size_t limit) {
@@ -682,8 +736,10 @@ size_t fio_local_addr(char *dest, size_t limit) {
 Connection Read / Write Hooks, for overriding the system calls
 ***************************************************************************** */
 
-static ssize_t
-fio_hooks_default_read(intptr_t uuid, void *udata, void *buf, size_t count) {
+static ssize_t fio_hooks_default_read(intptr_t uuid,
+                                      void *udata,
+                                      void *buf,
+                                      size_t count) {
   return read(fio_uuid2fd(uuid), buf, count);
   (void)(udata);
 }

@@ -57,7 +57,7 @@ NOTE: this file is auto-generated from: https://github.com/facil-io/io-core
  *
  * - Callbacks are protected using one of two connection bound locks -
  *   `FIO_PR_LOCK_TASK` for most tasks and `FIO_PR_LOCK_WRITE` for `on_ready`
- *   and `ping` tasks.
+ *   and `on_timeout` tasks.
  *
  * - User data is assumed to be stored in the protocol object using C style
  *   inheritance.

@@ -7,8 +7,6 @@
 /* *****************************************************************************
 IO reactor's work
 ***************************************************************************** */
-static fio_lock_i fio_fork_lock;
-
 static __thread volatile uint8_t fio___was_idle = 0;
 
 FIO_SFUNC void fio___review_timeouts(void *at, void *arg2) {
@@ -20,7 +18,7 @@ FIO_SFUNC void fio___review_timeouts(void *at, void *arg2) {
         fd_data(fd).timeout ? ((size_t)fd_data(fd).timeout * 1000) : 255000U;
     if (fd_data(fd).open && lim + (size_t)fd_data(fd).active <= now) {
       const intptr_t uuid = fd2uuid(fd);
-      fio_defer(deferred_ping, (void *)uuid, NULL);
+      fio_defer(deferred_on_timeout, (void *)uuid, NULL);
     }
     ++fd;
   }
@@ -83,7 +81,7 @@ FIO_SFUNC void fio___worker_cycle(void) {
   while (fio_data->active) {
     fio___perform_tasks_and_poll();
   }
-  FIO_LOG_INFO("(%d) starting shutdown sequence", getpid());
+  FIO_LOG_INFO("(%d) starting shutdown sequence", fio_getpid());
   fio_state_callback_force(FIO_CALL_ON_SHUTDOWN);
   for (size_t i = 0; i <= fio_data->max_open_fd; ++i) {
     /* test for and call shutdown callback + possible close callback */
@@ -91,9 +89,19 @@ FIO_SFUNC void fio___worker_cycle(void) {
       fio_defer(deferred_on_shutdown, (void *)fd2uuid(i), NULL);
     }
   }
+  if (fio_data->max_open_fd + 1 < fio_data->capa)
+    fio_clear_fd(fio_data->max_open_fd + 1, 0);
   while (fio_data->max_open_fd) {
     fio___perform_tasks_and_poll();
   }
+  /* test for possible lingering connections (on_shutdown == 255) */
+  for (size_t i = 0; i < fio_data->capa; ++i) {
+    if (fd_data(i).open || fd_data(i).protocol) {
+      fio_close(fd2uuid(i));
+    }
+  }
+  fio_defer_perform();
+
 done:
   if (threads) {
     /* join threads */
@@ -105,6 +113,7 @@ done:
   }
 
   fio_state_callback_force(FIO_CALL_ON_FINISH);
+  fio_defer_perform();
 }
 
 /* *****************************************************************************
@@ -113,6 +122,9 @@ Sentinal tasks for worker processes
 
 static void fio_sentinel_task(void *arg1, void *arg2);
 static void *fio_sentinel_worker_thread(void *arg) {
+#if !DEBUG
+restart:
+#endif
   errno = 0;
   pid_t child = fio_fork();
   /* release fork lock. */
@@ -131,7 +143,9 @@ static void *fio_sentinel_worker_thread(void *arg) {
     if (fio_data->active) { /* !WIFEXITED(status) || WEXITSTATUS(status) */
       if (!WIFEXITED(status) || WEXITSTATUS(status)) {
         FIO_LOG_FATAL("Child worker (%d) crashed. Stopping services.", child);
+        fio_lock(&fio_fork_lock);
         fio_state_callback_force(FIO_CALL_ON_CHILD_CRUSH);
+        fio_unlock(&fio_fork_lock);
       } else {
         FIO_LOG_FATAL("Child worker (%d) shutdown. Stopping services.", child);
       }
@@ -149,12 +163,12 @@ static void *fio_sentinel_worker_thread(void *arg) {
         FIO_LOG_WARNING("Child worker (%d) shutdown. Respawning worker.",
                         (int)child);
       }
-      fio_defer(fio_sentinel_task, NULL, NULL);
-      fio_unlock(&fio_fork_lock);
+      goto restart;
     }
 #endif
   } else {
-    FIO_LOG_INFO("worker process %d spawned.", getpid());
+    FIO_LOG_INFO("worker process %d spawned.", fio_getpid());
+    FIO_ASSERT_DEBUG(!fio_is_master(), "A worker process must NOT be a master");
     fio___worker_cycle();
     exit(0);
   }
@@ -192,32 +206,39 @@ void fio_start____(void);
  */
 void fio_start FIO_NOOP(struct fio_start_args args) {
   fio_expected_concurrency(&args.threads, &args.workers);
+  fio_signal_handler_setup();
   fio_data->threads = args.threads;
   fio_data->workers = args.workers;
   fio_data->need_review = 1;
-  fio_state_callback_force(FIO_CALL_PRE_START);
-  fio_signal_handler_setup();
-  FIO_LOG_INFO("\n\t Starting facil.io in %s mode."
-               "\n\t Worker(s):  %d"
-               "\n\t Threads(s): %d"
-               "\n\t Capacity:   %zu"
-               "\n\t Root PID:   %zu",
-               fio_data->workers ? "cluster" : "single processes",
-               fio_data->workers,
-               fio_data->threads,
-               (size_t)fio_data->capa,
-               (size_t)fio_data->parent);
   fio_data->active = 1;
-  if (args.workers) {
-    for (int i = 0; i < args.workers; ++i) {
-      fio_sentinel_task(NULL, NULL);
+  fio_state_callback_force(FIO_CALL_PRE_START);
+  if (fio_data->active) {
+    FIO_LOG_INFO("\n\t Starting facil.io in %s mode."
+                 "\n\t Engine:     %s"
+                 "\n\t Worker(s):  %d"
+                 "\n\t Threads(s): %d"
+                 "\n\t Capacity:   %zu (max fd)"
+                 "\n\t Root PID:   %zu",
+                 fio_data->workers ? "cluster" : "single processes",
+                 fio_engine(),
+                 fio_data->workers,
+                 fio_data->threads,
+                 (size_t)fio_data->capa,
+                 (size_t)fio_data->parent);
+#if HAVE_OPENSSL
+    FIO_LOG_INFO("linked to OpenSSL %s", OpenSSL_version(0));
+#endif
+    if (args.workers) {
+      for (int i = 0; i < args.workers; ++i) {
+        fio_sentinel_task(NULL, NULL);
+      }
+      /* this starts with the worker flag off */
+      fio___worker_cycle();
+    } else {
+      fio_data->is_worker = 1;
+      fio_data->is_master = 1;
+      fio___worker_cycle();
     }
-    /* this starts with the worker flag off */
-    fio___worker_cycle();
-  } else {
-    fio_data->is_worker = 1;
-    fio_data->is_master = 1;
-    fio___worker_cycle();
   }
   fio_signal_handler_reset();
 }
@@ -394,6 +415,13 @@ pid_t fio_master_pid(void) {
   return fio_data->parent;
 }
 
+/** Returns the current process pid. */
+pid_t fio_getpid(void) {
+  if (!fio_data)
+    return getpid();
+  return fio_data->pid;
+}
+
 /* *****************************************************************************
 
 
@@ -412,7 +440,7 @@ pid_t fio_master_pid(void) {
 
 ***************************************************************************** */
 
-volatile uint8_t fio_signal_children_flag = 0;
+static volatile uint8_t fio___signal_children_flag = 0;
 
 /*
  * Zombie Reaping
@@ -441,12 +469,24 @@ void fio_reap_children(void) {
 }
 
 #if !FIO_DISABLE_HOT_RESTART
-static void fio___sig_handler_hot_restart(int sig, void *ignr_) {
+static void fio___sig_handler_hot_restart(int sig, void *flag);
+static int reset_monitoring_task(void *a_, void *b_) {
+  (void)a_;
+  (void)b_;
+  fio_signal_monitor(SIGUSR1, fio___sig_handler_hot_restart, NULL);
+  return 0;
+}
+
+static void fio___sig_handler_hot_restart(int sig, void *flag) {
   (void)(sig);
-  (void)ignr_;
-  fio_signal_children_flag = 1;
+  fio___signal_children_flag = 1;
   if (!fio_is_master())
     fio_stop();
+  else if (!flag) {
+    fio_signal_monitor(SIGUSR1, fio___sig_handler_hot_restart, (void *)1);
+    fio_run_every(100, 1, reset_monitoring_task, NULL, NULL, NULL);
+    kill(0, SIGUSR1);
+  }
 }
 #endif
 
@@ -455,14 +495,17 @@ static void fio___sig_handler_stop(int sig, void *ignr_) {
   (void)ignr_;
   if (!fio_data->active) {
     if (fio_data->max_open_fd) {
-      FIO_LOG_WARNING("Server exit eas signaled (again?) while server is "
+      FIO_LOG_WARNING("Server exit was signaled (again?) while server is "
                       "shutting down.\n          Pushing things...");
       fio_data->max_open_fd = 0;
     } else {
-      FIO_LOG_FATAL("Server exit eas signaled while server not running.");
+      FIO_LOG_FATAL("Server exit was signaled while server not running.");
       exit(-1);
     }
   }
+#if !FIO_DISABLE_HOT_RESTART
+  kill(0, SIGUSR1);
+#endif
   fio_stop();
 }
 
@@ -523,13 +566,19 @@ typedef struct {
 } fio___state_task_s;
 
 #define FIO_ATOMIC
-#define FIO_MAP_NAME           fio_state_tasks
+#define FIO_OMAP_NAME          fio_state_tasks
 #define FIO_MAP_TYPE           fio___state_task_s
 #define FIO_MAP_TYPE_CMP(a, b) (a.func == b.func && a.arg == b.arg)
 #include <fio-stl.h>
 
 static fio_state_tasks_s fio_state_tasks_array[FIO_CALL_NEVER];
 static fio_lock_i fio_state_tasks_array_lock[FIO_CALL_NEVER + 1];
+
+FIO_IFUNC uint64_t fio___state_callback_hash(void (*func)(void *), void *arg) {
+  uint64_t hash = (uint64_t)(uintptr_t)func + (uint64_t)(uintptr_t)arg;
+  hash = fio_risky_ptr((void *)(uintptr_t)hash);
+  return hash;
+}
 
 FIO_IFUNC void fio_state_callback_clear_all(void) {
   for (size_t i = 0; i < FIO_CALL_NEVER; ++i) {
@@ -547,9 +596,9 @@ FIO_IFUNC void fio_state_callback_on_fork(void) {
 void fio_state_callback_add(callback_type_e e,
                             void (*func)(void *),
                             void *arg) {
-  if ((uintptr_t)e > FIO_CALL_NEVER)
+  if ((uintptr_t)e >= FIO_CALL_NEVER)
     return;
-  uint64_t hash = (uint64_t)func ^ (uint64_t)arg;
+  uint64_t hash = fio___state_callback_hash(func, arg);
   fio_lock(fio_state_tasks_array_lock + (uintptr_t)e);
   fio_state_tasks_set(fio_state_tasks_array + (uintptr_t)e,
                       hash,
@@ -570,7 +619,7 @@ int fio_state_callback_remove(callback_type_e e,
   if ((uintptr_t)e >= FIO_CALL_NEVER)
     return -1;
   int ret;
-  uint64_t hash = (uint64_t)func ^ (uint64_t)arg;
+  uint64_t hash = fio___state_callback_hash(func, arg);
   fio_lock(fio_state_tasks_array_lock + (uintptr_t)e);
   ret = fio_state_tasks_remove(fio_state_tasks_array + (uintptr_t)e,
                                hash,
@@ -598,10 +647,11 @@ void fio_state_callback_clear(callback_type_e e) {
  * remove other callbacks for the same event).
  */
 void fio_state_callback_force(callback_type_e e) {
-  if ((uintptr_t)e > FIO_CALL_NEVER)
+  if ((uintptr_t)e >= FIO_CALL_NEVER)
     return;
   fio___state_task_s *ary = NULL;
   size_t len = 0;
+
   /* copy task queue */
   fio_lock(fio_state_tasks_array_lock + (uintptr_t)e);
   if (fio_state_tasks_array[e].w) {
@@ -614,33 +664,21 @@ void fio_state_callback_force(callback_type_e e) {
     }
   }
   fio_unlock(fio_state_tasks_array_lock + (uintptr_t)e);
+
   /* perform copied tasks */
-  switch (e) {
-  case FIO_CALL_ON_INITIALIZE: /* fallthrough */
-  case FIO_CALL_PRE_START:     /* fallthrough */
-  case FIO_CALL_BEFORE_FORK:   /* fallthrough */
-  case FIO_CALL_AFTER_FORK:    /* fallthrough */
-  case FIO_CALL_IN_CHILD:      /* fallthrough */
-  case FIO_CALL_IN_MASTER:     /* fallthrough */
-  case FIO_CALL_ON_START:      /* fallthrough */
-  case FIO_CALL_ON_IDLE:       /* fallthrough */
+  if (e <= FIO_CALL_ON_IDLE) {
     /* perform tasks in order */
     for (size_t i = 0; i < len; ++i) {
       ary[i].func(ary[i].arg);
     }
-    break;
-  case FIO_CALL_ON_SHUTDOWN:     /* fallthrough */
-  case FIO_CALL_ON_FINISH:       /* fallthrough */
-  case FIO_CALL_ON_PARENT_CRUSH: /* fallthrough */
-  case FIO_CALL_ON_CHILD_CRUSH:  /* fallthrough */
-  case FIO_CALL_AT_EXIT:         /* fallthrough */
-  case FIO_CALL_NEVER:           /* fallthrough */
+  } else {
     /* perform tasks in reverse */
     while (len--) {
       ary[len].func(ary[len].arg);
     }
-    break;
   }
+
+  /* cleanup */
   fio_free(ary);
 }
 
@@ -662,8 +700,8 @@ FIO_SFUNC void fio___test__state_callbacks__task(void *udata) {
   FIO_ASSERT(!(p->num & mask),
              "fio_state_tasks order error on bit %d (%p | %p) %s",
              (int)p->bit,
-             (void *)p->num,
-             (void *)mask,
+             (void *)(uintptr_t)p->num,
+             (void *)(uintptr_t)mask,
              (p->rev ? "reversed" : ""));
   p->num |= (uint64_t)1ULL << p->bit;
   p->bit += 1;
@@ -685,8 +723,9 @@ FIO_SFUNC void FIO_NAME_TEST(io, state)(void) {
   } data = {0, 0, 0};
   /* state tests for build up tasks */
   for (size_t i = 0; i < 24; ++i) {
-    fio_state_callback_add(
-        FIO_CALL_ON_IDLE, fio___test__state_callbacks__task, &data);
+    fio_state_callback_add(FIO_CALL_ON_IDLE,
+                           fio___test__state_callbacks__task,
+                           &data);
   }
   fio_state_callback_force(FIO_CALL_ON_IDLE);
   FIO_ASSERT(data.num = (((uint64_t)1ULL << 24) - 1),
@@ -697,8 +736,9 @@ FIO_SFUNC void FIO_NAME_TEST(io, state)(void) {
   data.bit = 0;
   data.rev = 1;
   for (size_t i = 0; i < 24; ++i) {
-    fio_state_callback_add(
-        FIO_CALL_ON_SHUTDOWN, fio___test__state_callbacks__task, &data);
+    fio_state_callback_add(FIO_CALL_ON_SHUTDOWN,
+                           fio___test__state_callbacks__task,
+                           &data);
   }
   fio_state_callback_force(FIO_CALL_ON_SHUTDOWN);
   FIO_ASSERT(data.num = (((uint64_t)1ULL << 24) - 1),
@@ -774,10 +814,13 @@ FIO_IFUNC void fio_defer_on_fork(void) {
   fio___defer_clear_io_queue();
 }
 
-FIO_IFUNC int
-fio_defer_urgent(void (*task)(void *, void *), void *udata1, void *udata2) {
-  return fio_queue_push_urgent(
-      &fio___task_queue, .fn = task, .udata1 = udata1, .udata2 = udata2);
+FIO_IFUNC int fio_defer_urgent(void (*task)(void *, void *),
+                               void *udata1,
+                               void *udata2) {
+  return fio_queue_push_urgent(&fio___task_queue,
+                               .fn = task,
+                               .udata1 = udata1,
+                               .udata2 = udata2);
 }
 
 /** The IO task internal wrapper */
@@ -819,16 +862,18 @@ Task Queues - Public API
  * Returns -1 or error, 0 on success.
  */
 int fio_defer(void (*task)(void *, void *), void *udata1, void *udata2) {
-  return fio_queue_push(
-      &fio___task_queue, .fn = task, .udata1 = udata1, .udata2 = udata2);
+  return fio_queue_push(&fio___task_queue,
+                        .fn = task,
+                        .udata1 = udata1,
+                        .udata2 = udata2);
 }
 
 /**
  * Schedules a protected connection task. The task will run within the
  * connection's lock.
  *
- * If an error ocuurs or the connection is closed before the task can run, the
- * task wil be called with a NULL protocol pointer, for resource cleanup.
+ * If an error occurs or the connection is closed before the task can run, the
+ * task will be called with a NULL protocol pointer, for resource cleanup.
  */
 int fio_defer_io_task(intptr_t uuid,
                       void (*task)(intptr_t uuid,
@@ -905,8 +950,9 @@ typedef struct {
 } fio___test__defer_io_s;
 
 /** defer IO test task */
-static void
-fio___test__defer_io_task(intptr_t uuid, fio_protocol_s *pr, void *udata) {
+static void fio___test__defer_io_task(intptr_t uuid,
+                                      fio_protocol_s *pr,
+                                      void *udata) {
   fio___test__defer_io_s *i = udata;
   if (pr)
     ++(i->with_value);

@@ -138,13 +138,13 @@ endif
 
 # Tests are performed unless the value is empty / missing
 
-TEST4POLL:=1      # HAVE_KQUEUE / HAVE_EPOLL / HAVE_POLL
+TEST4POLL:=       # HAVE_KQUEUE / HAVE_EPOLL / HAVE_POLL
 TEST4SOCKET:=1    # --- adds linker flags, not compilation flags
-TEST4SSL:=1       # HAVE_OPENSSL / HAVE_BEARSSL + HAVE_S2N
-TEST4SENDFILE:=1  # HAVE_SENDFILE
-TEST4TM_ZONE:=1   # HAVE_TM_TM_ZONE
-TEST4ZLIB:=1      # HAVE_ZLIB
-TEST4PG:=1        # HAVE_POSTGRESQL
+TEST4SSL:=        # HAVE_OPENSSL / HAVE_BEARSSL + HAVE_S2N
+TEST4SENDFILE:=   # HAVE_SENDFILE
+TEST4TM_ZONE:=    # HAVE_TM_TM_ZONE
+TEST4ZLIB:=       # HAVE_ZLIB
+TEST4PG:=         # HAVE_POSTGRESQL
 TEST4ENDIAN:=1    # __BIG_ENDIAN__=?
 
 #############################################################################

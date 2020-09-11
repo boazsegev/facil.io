@@ -129,7 +129,7 @@ static inline void fio_alpn_destroy(alpn_s *obj) {
   fio_str_destroy(&obj->name);
 }
 
-#define FIO_MAP_NAME                 fio___tls_alpn_list
+#define FIO_OMAP_NAME                fio___tls_alpn_list
 #define FIO_MAP_TYPE                 alpn_s
 #define FIO_MAP_TYPE_INVALID         ((alpn_s){.udata_tls = NULL})
 #define FIO_MAP_TYPE_INVALID_SIMPLE  1
@@ -220,8 +220,9 @@ FIO_IFUNC void fio___tls_alpn_select___task(void *t_, void *ignr_) {
 }
 
 /** Schedules the ALPN protocol callback. */
-FIO_IFUNC void
-fio___tls_alpn_select(alpn_s *alpn, intptr_t uuid, void *udata_connection) {
+FIO_IFUNC void fio___tls_alpn_select(alpn_s *alpn,
+                                     intptr_t uuid,
+                                     void *udata_connection) {
   if (!alpn || !alpn->on_selected)
     return;
   alpn_task_s *t = fio_malloc(sizeof(*t));
@@ -304,8 +305,10 @@ typedef struct {
  * Note: facil.io library functions MUST NEVER be called by any r/w hook, or a
  * deadlock might occur.
  */
-static ssize_t
-fio_tls_read(intptr_t uuid, void *udata, void *buf, size_t count) {
+static ssize_t fio_tls_read(intptr_t uuid,
+                            void *udata,
+                            void *buf,
+                            size_t count) {
   ssize_t ret = read(fio_uuid2fd(uuid), buf, count);
   if (ret > 0) {
     FIO_LOG_DEBUG("Read %zd bytes from %p", ret, (void *)uuid);
@@ -355,8 +358,10 @@ static ssize_t fio_tls_flush(intptr_t uuid, void *udata) {
  * Note: facil.io library functions MUST NEVER be called by any r/w hook, or a
  * deadlock might occur.
  */
-static ssize_t
-fio_tls_write(intptr_t uuid, void *udata, const void *buf, size_t count) {
+static ssize_t fio_tls_write(intptr_t uuid,
+                             void *udata,
+                             const void *buf,
+                             size_t count) {
   tls_buffer_s *tlsbuf = udata;
   size_t can_copy = TLS_BUFFER_LENGTH - tlsbuf->len;
   if (can_copy > count)
@@ -394,8 +399,9 @@ static void fio_tls_cleanup(void *udata) {
   tls_buffer_s *tlsbuf = udata;
   /* make sure the ALPN callback was called, just in case cleanup is required */
   if (!tlsbuf->alpn_ok) {
-    fio___tls_alpn_select(
-        fio___tls_alpn_default(tlsbuf->tls), -1, NULL /* ALPN udata */);
+    fio___tls_alpn_select(fio___tls_alpn_default(tlsbuf->tls),
+                          -1,
+                          NULL /* ALPN udata */);
   }
   fio_tls_free(tlsbuf->tls); /* manage reference count */
   fio_free(udata);
@@ -427,8 +433,10 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata) {
   return 1;
 }
 
-static ssize_t
-fio_tls_read4handshake(intptr_t uuid, void *udata, void *buf, size_t count) {
+static ssize_t fio_tls_read4handshake(intptr_t uuid,
+                                      void *udata,
+                                      void *buf,
+                                      size_t count) {
   FIO_LOG_DEBUG("TLS handshake from read %p", (void *)uuid);
   if (fio_tls_handshake(uuid, udata))
     return fio_tls_read(uuid, udata, buf, count);
@@ -480,8 +488,9 @@ static inline void fio_tls_attach2uuid(intptr_t uuid,
   /* common implementation (TODO) */
   tls_buffer_s *connection_data = fio_malloc(sizeof(*connection_data));
   FIO_ASSERT_ALLOC(connection_data);
-  fio_rw_hook_set(
-      uuid, &FIO_TLS_HANDSHAKE_HOOKS, connection_data); /* 32Kb buffer */
+  fio_rw_hook_set(uuid,
+                  &FIO_TLS_HANDSHAKE_HOOKS,
+                  connection_data); /* 32Kb buffer */
   fio___tls_alpn_select(fio___tls_alpn_default(tls), uuid, udata);
   connection_data->alpn_ok = 1;
 }
@@ -563,8 +572,9 @@ void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls,
   fio___tls_build_context(tls);
   return;
 file_missing:
-  FIO_LOG_FATAL(
-      "TLS certificate file missing for either %s or %s or both.", key, cert);
+  FIO_LOG_FATAL("TLS certificate file missing for either %s or %s or both.",
+                key,
+                cert);
   exit(-1);
 }
 
@@ -658,13 +668,10 @@ void FIO_TLS_WEAK fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata) {
  * The `udata` is an opaque user data pointer that is passed along to the
  * protocol selected (if any protocols were added using `fio_tls_alpn_add`).
  */
-void FIO_TLS_WEAK fio_tls_connect(intptr_t uuid,
-                                  fio_tls_s *tls,
-                                  const char *server_sni,
-                                  void *udata) {
+void FIO_TLS_WEAK fio_tls_connect(intptr_t uuid, fio_tls_s *tls, void *udata) {
   REQUIRE_TLS_LIBRARY();
   fio_tls_attach2uuid(uuid, tls, udata, 0);
-  (void)server_sni; /* TODO: handle SNI */
+  /* TODO?: handle SNI */
 }
 
 #endif /* Library compiler flags */

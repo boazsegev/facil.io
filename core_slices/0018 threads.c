@@ -21,7 +21,9 @@ void fio_on_fork(void) {
     fio_data->lock = FIO_LOCK_INIT;
     fio_data->is_master = 0;
     fio_data->is_worker = 1;
+    fio_data->pid = getpid();
   }
+  fio_unlock(&fio_fork_lock);
   fio_defer_on_fork();
   fio_malloc_after_fork();
   fio_state_callback_on_fork();
@@ -41,8 +43,6 @@ void fio_on_fork(void) {
       }
     }
   }
-  fio_pubsub_on_fork();
-  fio_defer_perform();
 }
 
 /**
@@ -63,11 +63,13 @@ int fio_fork(void) {
     fio_on_fork();
     fio_state_callback_force(FIO_CALL_AFTER_FORK);
     fio_state_callback_force(FIO_CALL_IN_CHILD);
+    fio_defer_perform();
     return child;
   }
   /* child == number, this is the master process */
   fio_state_callback_force(FIO_CALL_AFTER_FORK);
   fio_state_callback_force(FIO_CALL_IN_MASTER);
+  fio_defer_perform();
   return child;
 }
 

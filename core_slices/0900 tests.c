@@ -24,6 +24,8 @@ void fio_test(void) {
   FIO_NAME_TEST(io, rw_hooks)();
   fprintf(stderr, "===============\n");
   FIO_NAME_TEST(io, sock)();
+  fprintf(stderr, "===============\n");
+  FIO_NAME_TEST(io, postoffice)();
 
   /* free test data set and return normal data set */
   fio_free(fio_data);

@@ -2,6 +2,8 @@
 Language: Cpp
 BasedOnStyle: LLVM
 AllowAllParametersOfDeclarationOnNextLine: false
+AllowAllArgumentsOnNextLine: false
+PenaltyReturnTypeOnItsOwnLine: 1000
 BinPackArguments: false
 BinPackParameters: false
 AlignConsecutiveMacros: true

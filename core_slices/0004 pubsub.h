@@ -26,12 +26,14 @@ typedef struct fio_pubsub_engine_s fio_pubsub_engine_s;
 extern fio_pubsub_engine_s *FIO_PUBSUB_DEFAULT;
 /** Used to publish the message to all clients in the cluster. */
 #define FIO_PUBSUB_CLUSTER ((fio_pubsub_engine_s *)1)
-/** Used to publish the message only within the current process. */
-#define FIO_PUBSUB_PROCESS ((fio_pubsub_engine_s *)2)
+/** TODO: Used to publish the message only within the current machine. */
+#define FIO_PUBSUB_LOCAL ((fio_pubsub_engine_s *)2)
 /** Used to publish the message except within the current process. */
 #define FIO_PUBSUB_SIBLINGS ((fio_pubsub_engine_s *)3)
+/** Used to publish the message only within the current process. */
+#define FIO_PUBSUB_PROCESS ((fio_pubsub_engine_s *)4)
 /** Used to publish the message exclusively to the root / master process. */
-#define FIO_PUBSUB_ROOT ((fio_pubsub_engine_s *)4)
+#define FIO_PUBSUB_ROOT ((fio_pubsub_engine_s *)5)
 
 /** Message structure, with an integer filter as well as a channel filter. */
 typedef struct fio_msg_s {
@@ -62,7 +64,7 @@ typedef struct fio_msg_s {
    * The actual message.
    *
    * NOTE: the channel and msg strings should be considered immutable. The .capa
-   * field might be used for internal data.
+   * field is reserved for internal data and must NOT be used.
    **/
   fio_str_info_s msg;
   /** The `udata1` argument associated with the subscription. */
@@ -74,12 +76,14 @@ typedef struct fio_msg_s {
 } fio_msg_s;
 
 /**
- * Pattern matching callback type - should return 0 unless channel matches
- * pattern.
+ * The pattern matching callback used for pattern matching.
+ *
+ * Returns 1 on a match or 0 if the string does not match the pattern.
+ *
+ * By default, the value is set to `fio_glob_match` (see facil.io's C STL).
  */
-typedef int (*fio_match_fn)(fio_str_info_s pattern, fio_str_info_s channel);
-
-extern fio_match_fn FIO_MATCH_GLOB;
+extern uint8_t (*FIO_PUBSUB_PATTERN_MATCH)(fio_str_info_s pattern,
+                                           fio_str_info_s channel);
 
 /**
  * Possible arguments for the fio_subscribe method.
@@ -97,6 +101,9 @@ typedef struct {
    *
    * Subscriptions can either require a match by filter or match by channel.
    * This will match the subscription by filter.
+   *
+   * Filer channels are cluster bound, are NOT forwarded to engines and can be
+   * used for inter process communication (IPC).
    */
   int32_t filter;
   /**
@@ -108,18 +115,6 @@ typedef struct {
    * will be received.
    */
   fio_str_info_s channel;
-  /**
-   * The the `match` function allows pattern matching for channel names.
-   *
-   * When using a match function, the channel name is considered to be a pattern
-   * and each pub/sub message (a message where filter == 0) will be tested
-   * against that pattern.
-   *
-   * Using pattern subscriptions extensively could become a performance concern,
-   * since channel names are tested against each distinct pattern rather than
-   * leveraging a hashmap for possible name matching.
-   */
-  fio_match_fn match;
   /**
    * A connection (if any) to which the subscription should be bound.
    *
@@ -136,19 +131,21 @@ typedef struct {
   void *udata1;
   /** The udata values are ignored and made available to the callback. */
   void *udata2;
+  /** If set, the string is treated as a pattern*/
+  uint8_t is_pattern;
 } subscribe_args_s;
 
 /** Publishing and on_message callback arguments. */
 typedef struct fio_publish_args_s {
   /** The pub/sub engine that should be used to forward this message. */
   fio_pubsub_engine_s const *engine;
-  /** A unique message type. Negative values are reserved, 0 == pub/sub. */
+  /** A numeral / internal chunnel. Negative values are reserved. */
   int32_t filter;
-  /** The pub/sub target channnel. */
+  /** The target named channnel. Only published when filter == 0. */
   fio_str_info_s channel;
-  /** The pub/sub message. */
+  /** The message body / content. */
   fio_str_info_s message;
-  /** flag indicating if the message is JSON data or binary/text. */
+  /** A flag indicating if the message is JSON data or not. */
   uint8_t is_json;
 } fio_publish_args_s;
 
@@ -160,7 +157,7 @@ typedef struct fio_publish_args_s {
  *
  * Note: since ownership of the subscription is transferred to a connection's
  * UUID when the subscription is linked to a connection, the caller will not
- * receive a link to the subscription object.
+ * receive a link to the subscription object. NULL is returned instead.
  *
  * See `subscribe_args_s` for details.
  */
@@ -254,68 +251,129 @@ void fio_publish(fio_publish_args_s args);
 /** for backwards compatibility */
 #define pubsub_publish fio_publish
 
-/** Finds the message's metadata by it's type ID. Returns the data or NULL. */
-void *fio_message_metadata(fio_msg_s *msg, intptr_t type_id);
-
 /**
  * Defers the current callback, so it will be called again for the message.
+ *
+ * After calling this function, the `msg` object must NOT be accessted.
  */
 void fio_message_defer(fio_msg_s *msg);
 
 /* *****************************************************************************
- * Cluster / Pub/Sub Middleware and Extensions ("Engines")
+ * Message metadata (advance usage API)
  **************************************************************************** */
 
-/** Contains message metadata, set by message extensions. */
-typedef struct fio_msg_metadata_s fio_msg_metadata_s;
-struct fio_msg_metadata_s {
-  /**
-   * The type ID should be used to identify the metadata's actual structure.
-   *
-   * Negative ID values are reserved for internal use.
-   */
-  intptr_t type_id;
-  /**
-   * This method will be called by facil.io to cleanup the metadata resources.
-   *
-   * Don't alter / call this method, this data is reserved.
-   */
-  void (*on_finish)(fio_msg_s *msg, void *metadata);
-  /** The pointer to be disclosed to the `fio_message_metadata` function. */
-  void *metadata;
-};
+/**
+ * The number of different metadata callbacks that can be attached.
+ *
+ * Effects performance.
+ *
+ * The default value should be enough for the following metadata objects:
+ * - WebSocket server headers.
+ * - WebSocket client (header + masked message copy).
+ * - EventSource (SSE) encoded named channel and message.
+ */
+#ifndef FIO_PUBSUB_METADATA_LIMIT
+#define FIO_PUBSUB_METADATA_LIMIT 4
+#endif
+
+/**
+ * Finds the message's metadata by it's ID. Returns the data or NULL.
+ *
+ * The ID is the value returned by fio_message_metadata_callback_set.
+ *
+ * Note: numeral channels don't have metadata attached.
+ */
+void *fio_message_metadata(fio_msg_s *msg, int id);
 
 /**
  * Pub/Sub Metadata callback type.
  */
-typedef fio_msg_metadata_s (*fio_msg_metadata_fn)(fio_str_info_s ch,
-                                                  fio_str_info_s msg,
-                                                  uint8_t is_json);
+typedef void *(*fio_msg_metadata_fn)(fio_str_info_s ch,
+                                     fio_str_info_s msg,
+                                     uint8_t is_json);
 
 /**
- * It's possible to attach metadata to facil.io pub/sub messages (filter == 0)
+ * It's possible to attach metadata to facil.io named messages (filter == 0)
  * before they are published.
  *
  * This allows, for example, messages to be encoded as network packets for
  * outgoing protocols (i.e., encoding for WebSocket transmissions), improving
  * performance in large network based broadcasting.
  *
- * The callback should return a valid metadata object. If the `.metadata` field
- * returned is NULL than the result will be ignored.
+ * Up to `FIO_PUBSUB_METADATA_LIMIT` metadata callbacks can be attached.
  *
- * To remove a callback, set the `enable` flag to false (`0`).
+ * The callback should return a `void *` pointer.
+ *
+ * To remove a callback, call `fio_message_metadata_remove` with the returned
+ * value.
  *
  * The cluster messaging system allows some messages to be flagged as JSON and
  * this flag is available to the metadata callback.
+ *
+ * Returns a positive number on success (the metadata ID) or zero (0) on
+ * failure.
  */
-void fio_message_metadata_callback_set(fio_msg_metadata_fn callback,
-                                       int enable);
+int fio_message_metadata_add(fio_msg_metadata_fn builder,
+                             void (*cleanup)(void *));
+
+/**
+ * Removed the metadata callback.
+ *
+ * Removal might be delayed if live metatdata exists.
+ */
+void fio_message_metadata_remove(int id);
+/* *****************************************************************************
+ * Message data duplication and defferal (advance usage API)
+ **************************************************************************** */
+
+/**
+ * Message content data type (opaque, read only).
+ *
+ * Subscription messages are all based on a single letter that all subscribers
+ * read (if it's "subject" matches their interests).
+ *
+ * This is type containing the raw letter data, which is network encoded.
+ */
+typedef struct fio_letter_s fio_letter_s;
+
+/** Letter informatioin, as returned from the `fio_letter_info` function. */
+typedef struct {
+  fio_str_info_s header;
+  fio_str_info_s body;
+} fio_letter_info_s;
+
+/**
+ * Increases a message's reference count, returning the published "letter".
+ *
+ * This is performed by reference, the value MUST be considered read-only.
+ *
+ * Note: subscription messages are all based on a single letter that all
+ *       subscribers read (if its "subject" matches their interests).
+ *       Letter objects are achitecture agnostice, and may be sent on the net.
+ */
+fio_letter_s *fio_message_dup(fio_msg_s *msg);
+
+/** Increases a letter's reference count by reference (for read-only access). */
+fio_letter_s *fio_letter_dup(fio_letter_s *msg);
+
+/** Decreseas a letter's referencce count and possibly frees its data. */
+void fio_letter_free(fio_letter_s *letter);
+
+/** Returns the total length of the letter. */
+size_t fio_letter_len(fio_letter_s *letter);
+
+/** Returns all information about the fio_letter_s object. Read Only! */
+fio_letter_info_s fio_letter_info(fio_letter_s *letter);
+
+/* *****************************************************************************
+ * Cluster / Pub/Sub Middleware and Extensions ("Engines")
+ **************************************************************************** */
 
 /**
  * facil.io can be linked with external Pub/Sub services using "engines".
  *
- * Only unfiltered messages and subscriptions (where filter == 0) will be
- * forwarded to external Pub/Sub services.
+ * Only named messages and subscriptions (where filter == 0) will be forwarded
+ * to these "engines".
  *
  * Engines MUST provide the listed function pointers and should be attached
  * using the `fio_pubsub_attach` function.
@@ -328,9 +386,13 @@ void fio_message_metadata_callback_set(fio_msg_metadata_fn callback,
  * i.e.:
  *
  *       pubsub_publish(
- *           .engine = FIO_PROCESS_ENGINE,
+ *           .engine = FIO_PUBSUB_CLUSTER,
  *           .channel = channel_name,
  *           .message = msg_body );
+ *
+ * Since only the master process guarantes to be subscribed to all the channels
+ * in the cluster, it is recommended that engines only use the master process to
+ * communicate with a pub/sub backend.
  *
  * IMPORTANT: The `subscribe` and `unsubscribe` callbacks are called from within
  *            an internal lock. They MUST NEVER call pub/sub functions except by
@@ -340,11 +402,11 @@ struct fio_pubsub_engine_s {
   /** Should subscribe channel. Failures are ignored. */
   void (*subscribe)(const fio_pubsub_engine_s *eng,
                     fio_str_info_s channel,
-                    fio_match_fn match);
+                    uint8_t is_pattern);
   /** Should unsubscribe channel. Failures are ignored. */
   void (*unsubscribe)(const fio_pubsub_engine_s *eng,
                       fio_str_info_s channel,
-                      fio_match_fn match);
+                      uint8_t is_pattern);
   /** Should publish a message through the engine. Failures are ignored. */
   void (*publish)(const fio_pubsub_engine_s *eng,
                   fio_str_info_s channel,
@@ -386,3 +448,17 @@ void fio_pubsub_reattach(fio_pubsub_engine_s *eng);
 
 /** Returns true (1) if the engine is attached to the system. */
 int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);
+
+/* *****************************************************************************
+ * TODO: clusterfy the local network using UDP broadcasting for node discovery.
+ **************************************************************************** */
+
+/**
+ * Broadcasts to the local machine on `port` in order to auto-detect and connect
+ * to peers, creating a cluster that shares all pub/sub messages.
+ *
+ * Retruns -1 on error (i.e., not called from the root/master process).
+ *
+ * Returns 0 on success.
+ */
+int fio_pubsub_clusterfy(const char *port, fio_tls_s *tls);

@@ -1,3 +1,224 @@
+/* *****************************************************************************
+Copyright: Boaz Segev, 2019-2020
+License: ISC / MIT (choose your license)
+
+Feel free to copy, use and enjoy according to the license provided.
+********************************************************************************
+
+********************************************************************************
+NOTE: this file is auto-generated from: https://github.com/facil-io/io-core
+***************************************************************************** */
+#ifndef H_FACIL_IO_H
+#define H_FACIL_IO_H
+
+/* *****************************************************************************
+ * Table of contents (find by subject):
+ * =================
+ * Helper and compile time settings (MACROs)
+ *
+ * Connection Callback (Protocol) Management
+ * Listening to Incoming Connections
+ * Connecting to remote servers as a client
+ * Starting the IO reactor and reviewing it's state
+ * Socket / Connection Functions
+ * Connection Read / Write Hooks, for overriding the system calls
+ * Concurrency overridable functions
+ * Connection Task scheduling
+ * Event / Task scheduling
+ * Startup / State Callbacks (fork, start up, idle, etc')
+ * TLS Support (weak functions, to bea overriden by library wrapper)
+ * Lower Level API - for special circumstances, use with care under
+ *
+ * Pub/Sub / Cluster Messages API
+ * Cluster Messages and Pub/Sub
+ * Cluster / Pub/Sub Middleware and Extensions ("Engines")
+ *
+ * SipHash
+ * SHA-1
+ * SHA-2
+ *
+ *
+ *
+ * Quick Overview
+ * ==============
+ *
+ * The core IO library follows an evented design and uses callbacks for IO
+ * events. Using the API described in the Connection Callback (Protocol)
+ * Management section:
+ *
+ * - Each connection / socket, is identified by a process unique number
+ *   (`uuid`).
+ *
+ * - Connections are assigned protocol objects (`fio_protocol_s`) using the
+ *   `fio_attach` function.
+ *
+ * - The callbacks in the protocol object are called whenever an IO event
+ *   occurs.
+ *
+ * - Callbacks are protected using one of two connection bound locks -
+ *   `FIO_PR_LOCK_TASK` for most tasks and `FIO_PR_LOCK_WRITE` for `on_ready`
+ *   and `on_timeout` tasks.
+ *
+ * - User data is assumed to be stored in the protocol object using C style
+ *   inheritance.
+ *
+ * Reading and writing operations use an internal user-land buffer and they
+ * never fail... unless, the client is so slow that they appear to be attacking
+ * the network layer (slowloris), the connection was lost due to other reasons
+ * or the system is out of memory.
+ *
+ * Because the framework is evented, there's API that offers easy event and task
+ * scheduling, including timers etc'. Also, connection events can be
+ * rescheduled, allowing connections to behave like state-machines.
+ *
+ * The core library includes Pub/Sub (publish / subscribe) services which offer
+ * easy IPC (inter process communication) in a network friendly API. Pub/Sub
+ * services can be extended to synchronize with external databases such as
+ * Redis.
+ *
+ **************************************************************************** */
+/* *****************************************************************************
+0001 macros.h
+***************************************************************************** */
+
+/* *****************************************************************************
+Compilation Macros
+***************************************************************************** */
+
+#ifndef FIO_MAX_SOCK_CAPACITY
+/**
+ * The maximum number of connections per worker process.
+ */
+#define FIO_MAX_SOCK_CAPACITY 262144
+#endif
+
+#ifndef FIO_CPU_CORES_LIMIT
+/**
+ * If facil.io detects more CPU cores than the number of cores stated in the
+ * FIO_CPU_CORES_LIMIT, it will assume an error and cap the number of cores
+ * detected to the assigned limit.
+ *
+ * This is only relevant to automated values, when running facil.io with zero
+ * threads and processes, which invokes a large matrix of workers and threads
+ * (see {facil_run})
+ *
+ * The default auto-detection cap is set at 8 cores. The number is arbitrary
+ * (historically the number 7 was used after testing `malloc` race conditions on
+ * a MacBook Pro).
+ *
+ * This does NOT effect manually set (non-zero) worker/thread values.
+ */
+#define FIO_CPU_CORES_LIMIT 64
+#endif
+
+#ifndef FIO_PUBSUB_SUPPORT
+/**
+ * If true (1), compiles the facil.io pub/sub API.
+ */
+#define FIO_PUBSUB_SUPPORT 1
+#endif
+
+#ifndef FIO_TLS_PRINT_SECRET
+/* If true, the master key secret SHOULD be printed using FIO_LOG_DEBUG */
+#define FIO_TLS_PRINT_SECRET 0
+#endif
+
+#ifndef FIO_WEAK_TLS
+/* If true, the weak-function TLS implementation will always be compiled. */
+#define FIO_WEAK_TLS 0
+#endif
+
+#ifndef FIO_TLS_IGNORE_MISSING_ERROR
+/* If true, a no-op TLS implementation will be enabled (for debugging). */
+#define FIO_TLS_IGNORE_MISSING_ERROR 0
+#endif
+
+#ifndef FIO_TLS_TIMEOUT
+/* The default timeout for TLS connections (protocol assignment deferred) */
+#define FIO_TLS_TIMEOUT 4
+#endif
+
+/* *****************************************************************************
+Import STL
+***************************************************************************** */
+#ifndef FIO_LOG_LENGTH_LIMIT
+/**
+ * Since logging uses stack memory rather than dynamic allocation, it's memory
+ * usage must be limited to avoid exploding the stack. The following sets the
+ * memory used for a logging event.
+ */
+#define FIO_LOG_LENGTH_LIMIT 2048
+#endif
+
+/* Backwards support for version 0.7.x memory allocator behavior */
+#ifdef FIO_OVERRIDE_MALLOC
+#warning FIO_OVERRIDE_MALLOC is deprecated, use FIO_MALLOC_OVERRIDE_SYSTEM
+#define FIO_MALLOC_OVERRIDE_SYSTEM
+#elif defined(FIO_FORCE_MALLOC)
+#warning FIO_MALLOC_FORCE_SYSTEM is deprecated, use FIO_FORCE_MALLOC
+#define FIO_MALLOC_FORCE_SYSTEM
+#endif
+
+/* let it run once without side-effects, to prevent self-inclusion CLI errors */
+#define FIO_LOG
+#define FIO_EXTERN
+#include "fio-stl.h"
+
+#define FIO_RISKY_HASH 1
+#include "fio-stl.h"
+
+/* Enable CLI extension before enabling the custom memory allocator. */
+#define FIO_MALLOC_TMP_USE_SYSTEM
+#define FIO_EXTERN
+#define FIO_CLI
+#include "fio-stl.h"
+
+/* Enable custom memory allocator. */
+#define FIO_EXTERN
+#define FIO_MALLOC
+#include "fio-stl.h"
+
+/* Enable required extensions and FIOBJ types. */
+#define FIO_EXTERN
+#define FIO_ATOMIC
+#define FIO_LOCK
+#define FIO_BITWISE
+#define FIO_ATOL
+#define FIO_NTOL
+#define FIO_RAND
+#define FIO_TIME
+#define FIO_GLOB_MATCH
+#define FIO_URL
+#include "fio-stl.h"
+#define FIOBJ_EXTERN
+#define FIOBJ_MALLOC
+#define FIO_FIOBJ
+#include "fio-stl.h"
+
+#include <limits.h>
+#include <signal.h>
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <unistd.h>
+
+#if defined(__FreeBSD__)
+#include <netinet/in.h>
+#include <sys/socket.h>
+#endif
+
+/* *****************************************************************************
+C++ extern start
+***************************************************************************** */
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+/* C++ keyword was deprecated */
+#ifndef register
+#define register
+#endif
+#endif
 /* ************************************************************************** */
 #ifndef FIO_MAX_SOCK_CAPACITY /* Development inclusion - ignore line */
 #include "0002 includes.h"    /* Development inclusion - ignore line */
@@ -1122,3 +1343,903 @@ int fio_rw_hook_replace_unsafe(intptr_t uuid,
 
 /** The default Read/Write hooks used for system Read/Write (udata == NULL). */
 extern const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS;
+/* ************************************************************************** */
+#ifndef FIO_MAX_SOCK_CAPACITY /* Development inclusion - ignore line */
+#include "0003 main api.h"    /* Development inclusion - ignore line */
+#endif                        /* Development inclusion - ignore line */
+/* ************************************************************************** */
+
+/* *****************************************************************************
+ * Pub/Sub / Cluster Messages API
+ *
+ * Facil supports a message oriented API for use for Inter Process Communication
+ * (IPC), publish/subscribe patterns, horizontal scaling and similar use-cases.
+ *
+ **************************************************************************** */
+
+/* *****************************************************************************
+ * Cluster Messages and Pub/Sub
+ **************************************************************************** */
+
+/** An opaque subscription type. */
+typedef struct subscription_s subscription_s;
+
+/** A pub/sub engine data structure. See details later on. */
+typedef struct fio_pubsub_engine_s fio_pubsub_engine_s;
+
+/** The default engine (settable). Initial default is FIO_PUBSUB_CLUSTER. */
+extern fio_pubsub_engine_s *FIO_PUBSUB_DEFAULT;
+/** Used to publish the message to all clients in the cluster. */
+#define FIO_PUBSUB_CLUSTER ((fio_pubsub_engine_s *)1)
+/** TODO: Used to publish the message only within the current machine. */
+#define FIO_PUBSUB_LOCAL ((fio_pubsub_engine_s *)2)
+/** Used to publish the message except within the current process. */
+#define FIO_PUBSUB_SIBLINGS ((fio_pubsub_engine_s *)3)
+/** Used to publish the message only within the current process. */
+#define FIO_PUBSUB_PROCESS ((fio_pubsub_engine_s *)4)
+/** Used to publish the message exclusively to the root / master process. */
+#define FIO_PUBSUB_ROOT ((fio_pubsub_engine_s *)5)
+
+/** Message structure, with an integer filter as well as a channel filter. */
+typedef struct fio_msg_s {
+  /** A unique message type. Negative values are reserved, 0 == pub/sub. */
+  int32_t filter;
+  /**
+   * A channel name, allowing for pub/sub patterns.
+   *
+   * NOTE: the channel and msg strings should be considered immutable. The .capa
+   * field might be used for internal data.
+   */
+  fio_str_info_s channel;
+  /**
+   * A connection (if any) to which the subscription belongs.
+   *
+   * The connection uuid 0 marks an un-bound (non-connection related)
+   * subscription.
+   */
+  intptr_t uuid;
+  /**
+   * The connection's protocol (if any).
+   *
+   * If the subscription is bound to a connection, the protocol will be locked
+   * using a task lock and will be available using this pointer.
+   */
+  fio_protocol_s *pr;
+  /**
+   * The actual message.
+   *
+   * NOTE: the channel and msg strings should be considered immutable. The .capa
+   * field is reserved for internal data and must NOT be used.
+   **/
+  fio_str_info_s msg;
+  /** The `udata1` argument associated with the subscription. */
+  void *udata1;
+  /** The `udata1` argument associated with the subscription. */
+  void *udata2;
+  /** flag indicating if the message is JSON data or binary/text. */
+  uint8_t is_json;
+} fio_msg_s;
+
+/**
+ * The pattern matching callback used for pattern matching.
+ *
+ * Returns 1 on a match or 0 if the string does not match the pattern.
+ *
+ * By default, the value is set to `fio_glob_match` (see facil.io's C STL).
+ */
+extern uint8_t (*FIO_PUBSUB_PATTERN_MATCH)(fio_str_info_s pattern,
+                                           fio_str_info_s channel);
+
+/**
+ * Possible arguments for the fio_subscribe method.
+ *
+ * NOTICE: passing protocol objects to the `udata` is not safe. This is because
+ * protocol objects might be destroyed or invalidated according to both network
+ * events (socket closure) and internal changes (i.e., `fio_attach` being
+ * called). The preferred way is to add the `uuid` to the `udata` field and call
+ * `fio_protocol_try_lock`.
+ */
+typedef struct {
+  /**
+   * If `filter` is set, all messages that match the filter's numerical value
+   * will be forwarded to the subscription's callback.
+   *
+   * Subscriptions can either require a match by filter or match by channel.
+   * This will match the subscription by filter.
+   *
+   * Filer channels are cluster bound, are NOT forwarded to engines and can be
+   * used for inter process communication (IPC).
+   */
+  int32_t filter;
+  /**
+   * If `channel` is set, all messages where `filter == 0` and the channel is an
+   * exact match will be forwarded to the subscription's callback.
+   *
+   * Subscriptions can either require a match by filter or match by channel.
+   * This will match the subscription by channel (only messages with no `filter`
+   * will be received.
+   */
+  fio_str_info_s channel;
+  /**
+   * A connection (if any) to which the subscription should be bound.
+   *
+   * The connection uuid 0 isn't a valid uuid for subscriptions.
+   */
+  intptr_t uuid;
+  /**
+   * The callback will be called for each message forwarded to the subscription.
+   */
+  void (*on_message)(fio_msg_s *msg);
+  /** An optional callback for when a subscription is fully canceled. */
+  void (*on_unsubscribe)(void *udata1, void *udata2);
+  /** The udata values are ignored and made available to the callback. */
+  void *udata1;
+  /** The udata values are ignored and made available to the callback. */
+  void *udata2;
+  /** If set, the string is treated as a pattern*/
+  uint8_t is_pattern;
+} subscribe_args_s;
+
+/** Publishing and on_message callback arguments. */
+typedef struct fio_publish_args_s {
+  /** The pub/sub engine that should be used to forward this message. */
+  fio_pubsub_engine_s const *engine;
+  /** A numeral / internal chunnel. Negative values are reserved. */
+  int32_t filter;
+  /** The target named channnel. Only published when filter == 0. */
+  fio_str_info_s channel;
+  /** The message body / content. */
+  fio_str_info_s message;
+  /** A flag indicating if the message is JSON data or not. */
+  uint8_t is_json;
+} fio_publish_args_s;
+
+/**
+ * Subscribes to either a filter OR a channel (never both).
+ *
+ * Returns a subscription pointer on success or NULL on failure. Returns NULL on
+ * success when the subscription is bound to a connnection's uuid.
+ *
+ * Note: since ownership of the subscription is transferred to a connection's
+ * UUID when the subscription is linked to a connection, the caller will not
+ * receive a link to the subscription object. NULL is returned instead.
+ *
+ * See `subscribe_args_s` for details.
+ */
+subscription_s *fio_subscribe(subscribe_args_s args);
+
+/**
+ * Subscribes to either a filter OR a channel (never both).
+ *
+ * Returns a subscription pointer on success or NULL on failure. Returns NULL on
+ * success when the subscription is bound to a connnection's uuid.
+ *
+ * Note: since ownership of the subscription is transferred to a connection's
+ * UUID when the subscription is linked to a connection, the caller will not
+ * receive a link to the subscription object.
+ *
+ * See `subscribe_args_s` for details.
+ */
+#define fio_subscribe(...) fio_subscribe((subscribe_args_s){__VA_ARGS__})
+
+/**
+ * Cancels an existing subscriptions - actual effects might be delayed, for
+ * example, if the subscription's callback is running in another thread.
+ */
+void fio_unsubscribe(subscription_s *subscription);
+
+/**
+ * Cancels an existing subscriptions that was bound to a connection's UUID. See
+ * `fio_subscribe` and `fio_unsubscribe` for more details.
+ *
+ * Accepts the same arguments as `fio_subscribe`, except the `udata` and
+ * callback details are ignored (no need to provide `udata` or callback
+ * details).
+ */
+void fio_unsubscribe_uuid(subscribe_args_s args);
+
+/**
+ * Cancels an existing subscriptions that was bound to a connection's UUID. See
+ * `fio_subscribe` and `fio_unsubscribe` for more details.
+ *
+ * Accepts the same arguments as `fio_subscribe`, except the `udata` and
+ * callback details are ignored (no need to provide `udata` or callback
+ * details).
+ */
+#define fio_unsubscribe_uuid(...)                                              \
+  fio_unsubscribe_uuid((subscribe_args_s){__VA_ARGS__})
+
+/**
+ * This helper returns a temporary String with the subscription's channel (or a
+ * string representing the filter).
+ *
+ * To keep the string beyond the lifetime of the subscription, copy the string.
+ */
+fio_str_info_s fio_subscription_channel(subscription_s *subscription);
+
+/**
+ * Publishes a message to the relevant subscribers (if any).
+ *
+ * See `fio_publish_args_s` for details.
+ *
+ * By default the message is sent using the FIO_PUBSUB_CLUSTER engine (all
+ * processes, including the calling process).
+ *
+ * To limit the message only to other processes (exclude the calling process),
+ * use the FIO_PUBSUB_SIBLINGS engine.
+ *
+ * To limit the message only to the calling process, use the
+ * FIO_PUBSUB_PROCESS engine.
+ *
+ * To publish messages to the pub/sub layer, the `.filter` argument MUST be
+ * equal to 0 or missing.
+ */
+void fio_publish(fio_publish_args_s args);
+/**
+ * Publishes a message to the relevant subscribers (if any).
+ *
+ * See `fio_publish_args_s` for details.
+ *
+ * By default the message is sent using the FIO_PUBSUB_CLUSTER engine (all
+ * processes, including the calling process).
+ *
+ * To limit the message only to other processes (exclude the calling process),
+ * use the FIO_PUBSUB_SIBLINGS engine.
+ *
+ * To limit the message only to the calling process, use the
+ * FIO_PUBSUB_PROCESS engine.
+ *
+ * To publish messages to the pub/sub layer, the `.filter` argument MUST be
+ * equal to 0 or missing.
+ */
+#define fio_publish(...) fio_publish((fio_publish_args_s){__VA_ARGS__})
+/** for backwards compatibility */
+#define pubsub_publish fio_publish
+
+/**
+ * Defers the current callback, so it will be called again for the message.
+ *
+ * After calling this function, the `msg` object must NOT be accessted.
+ */
+void fio_message_defer(fio_msg_s *msg);
+
+/* *****************************************************************************
+ * Message metadata (advance usage API)
+ **************************************************************************** */
+
+/**
+ * The number of different metadata callbacks that can be attached.
+ *
+ * Effects performance.
+ *
+ * The default value should be enough for the following metadata objects:
+ * - WebSocket server headers.
+ * - WebSocket client (header + masked message copy).
+ * - EventSource (SSE) encoded named channel and message.
+ */
+#ifndef FIO_PUBSUB_METADATA_LIMIT
+#define FIO_PUBSUB_METADATA_LIMIT 4
+#endif
+
+/**
+ * Finds the message's metadata by it's ID. Returns the data or NULL.
+ *
+ * The ID is the value returned by fio_message_metadata_callback_set.
+ *
+ * Note: numeral channels don't have metadata attached.
+ */
+void *fio_message_metadata(fio_msg_s *msg, int id);
+
+/**
+ * Pub/Sub Metadata callback type.
+ */
+typedef void *(*fio_msg_metadata_fn)(fio_str_info_s ch,
+                                     fio_str_info_s msg,
+                                     uint8_t is_json);
+
+/**
+ * It's possible to attach metadata to facil.io named messages (filter == 0)
+ * before they are published.
+ *
+ * This allows, for example, messages to be encoded as network packets for
+ * outgoing protocols (i.e., encoding for WebSocket transmissions), improving
+ * performance in large network based broadcasting.
+ *
+ * Up to `FIO_PUBSUB_METADATA_LIMIT` metadata callbacks can be attached.
+ *
+ * The callback should return a `void *` pointer.
+ *
+ * To remove a callback, call `fio_message_metadata_remove` with the returned
+ * value.
+ *
+ * The cluster messaging system allows some messages to be flagged as JSON and
+ * this flag is available to the metadata callback.
+ *
+ * Returns a positive number on success (the metadata ID) or zero (0) on
+ * failure.
+ */
+int fio_message_metadata_add(fio_msg_metadata_fn builder,
+                             void (*cleanup)(void *));
+
+/**
+ * Removed the metadata callback.
+ *
+ * Removal might be delayed if live metatdata exists.
+ */
+void fio_message_metadata_remove(int id);
+/* *****************************************************************************
+ * Message data duplication and defferal (advance usage API)
+ **************************************************************************** */
+
+/**
+ * Message content data type (opaque, read only).
+ *
+ * Subscription messages are all based on a single letter that all subscribers
+ * read (if it's "subject" matches their interests).
+ *
+ * This is type containing the raw letter data, which is network encoded.
+ */
+typedef struct fio_letter_s fio_letter_s;
+
+/** Letter informatioin, as returned from the `fio_letter_info` function. */
+typedef struct {
+  fio_str_info_s header;
+  fio_str_info_s body;
+} fio_letter_info_s;
+
+/**
+ * Increases a message's reference count, returning the published "letter".
+ *
+ * This is performed by reference, the value MUST be considered read-only.
+ *
+ * Note: subscription messages are all based on a single letter that all
+ *       subscribers read (if its "subject" matches their interests).
+ *       Letter objects are achitecture agnostice, and may be sent on the net.
+ */
+fio_letter_s *fio_message_dup(fio_msg_s *msg);
+
+/** Increases a letter's reference count by reference (for read-only access). */
+fio_letter_s *fio_letter_dup(fio_letter_s *msg);
+
+/** Decreseas a letter's referencce count and possibly frees its data. */
+void fio_letter_free(fio_letter_s *letter);
+
+/** Returns the total length of the letter. */
+size_t fio_letter_len(fio_letter_s *letter);
+
+/** Returns all information about the fio_letter_s object. Read Only! */
+fio_letter_info_s fio_letter_info(fio_letter_s *letter);
+
+/* *****************************************************************************
+ * Cluster / Pub/Sub Middleware and Extensions ("Engines")
+ **************************************************************************** */
+
+/**
+ * facil.io can be linked with external Pub/Sub services using "engines".
+ *
+ * Only named messages and subscriptions (where filter == 0) will be forwarded
+ * to these "engines".
+ *
+ * Engines MUST provide the listed function pointers and should be attached
+ * using the `fio_pubsub_attach` function.
+ *
+ * Engines should disconnect / detach, before being destroyed, by using the
+ * `fio_pubsub_detach` function.
+ *
+ * When an engine received a message to publish, it should call the
+ * `pubsub_publish` function with the engine to which the message is forwarded.
+ * i.e.:
+ *
+ *       pubsub_publish(
+ *           .engine = FIO_PUBSUB_CLUSTER,
+ *           .channel = channel_name,
+ *           .message = msg_body );
+ *
+ * Since only the master process guarantes to be subscribed to all the channels
+ * in the cluster, it is recommended that engines only use the master process to
+ * communicate with a pub/sub backend.
+ *
+ * IMPORTANT: The `subscribe` and `unsubscribe` callbacks are called from within
+ *            an internal lock. They MUST NEVER call pub/sub functions except by
+ *            exiting the lock using `fio_defer`.
+ */
+struct fio_pubsub_engine_s {
+  /** Should subscribe channel. Failures are ignored. */
+  void (*subscribe)(const fio_pubsub_engine_s *eng,
+                    fio_str_info_s channel,
+                    uint8_t is_pattern);
+  /** Should unsubscribe channel. Failures are ignored. */
+  void (*unsubscribe)(const fio_pubsub_engine_s *eng,
+                      fio_str_info_s channel,
+                      uint8_t is_pattern);
+  /** Should publish a message through the engine. Failures are ignored. */
+  void (*publish)(const fio_pubsub_engine_s *eng,
+                  fio_str_info_s channel,
+                  fio_str_info_s msg,
+                  uint8_t is_json);
+};
+
+/**
+ * Attaches an engine, so it's callback can be called by facil.io.
+ *
+ * The `subscribe` callback will be called for every existing channel.
+ *
+ * NOTE: the root (master) process will call `subscribe` for any channel in any
+ * process, while all the other processes will call `subscribe` only for their
+ * own channels. This allows engines to use the root (master) process as an
+ * exclusive subscription process.
+ */
+void fio_pubsub_attach(fio_pubsub_engine_s *engine);
+
+/** Detaches an engine, so it could be safely destroyed. */
+void fio_pubsub_detach(fio_pubsub_engine_s *engine);
+
+/**
+ * Engines can ask facil.io to call the `subscribe` callback for all active
+ * channels.
+ *
+ * This allows engines that lost their connection to their Pub/Sub service to
+ * resubscribe all the currently active channels with the new connection.
+ *
+ * CAUTION: This is an evented task... try not to free the engine's memory while
+ * resubscriptions are under way...
+ *
+ * NOTE: the root (master) process will call `subscribe` for any channel in any
+ * process, while all the other processes will call `subscribe` only for their
+ * own channels. This allows engines to use the root (master) process as an
+ * exclusive subscription process.
+ */
+void fio_pubsub_reattach(fio_pubsub_engine_s *eng);
+
+/** Returns true (1) if the engine is attached to the system. */
+int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);
+
+/* *****************************************************************************
+ * TODO: clusterfy the local network using UDP broadcasting for node discovery.
+ **************************************************************************** */
+
+/**
+ * Broadcasts to the local machine on `port` in order to auto-detect and connect
+ * to peers, creating a cluster that shares all pub/sub messages.
+ *
+ * Retruns -1 on error (i.e., not called from the root/master process).
+ *
+ * Returns 0 on success.
+ */
+int fio_pubsub_clusterfy(const char *port, fio_tls_s *tls);
+/* *****************************************************************************
+Copyright: Boaz Segev, 2019-2020
+License: ISC / MIT (choose your license)
+
+Feel free to copy, use and enjoy according to the license provided.
+********************************************************************************
+0800 threads.h
+***************************************************************************** */
+#ifndef FIO_MAX_SOCK_CAPACITY /* Development inclusion - ignore line */
+#include "0003 main api.h"    /* Development inclusion - ignore line */
+#endif                        /* Development inclusion - ignore line */
+/* *****************************************************************************
+Concurrency overridable functions
+
+These functions can be overridden so as to adjust for different environments.
+***************************************************************************** */
+/**
+ * OVERRIDE THIS to replace the default `fork` implementation.
+ *
+Behaves like the system's `fork`.... but calls the correct state callbacks.
+ *
+ * NOTE: When overriding, remember to call the proper state callbacks and call
+ * fio_on_fork in the child process before calling any state callback or other
+ * functions.
+ */
+FIO_WEAK int fio_fork(void);
+
+/**
+ * OVERRIDE THIS to replace the default pthread implementation.
+ *
+ * Accepts a pointer to a function and a single argument that should be executed
+ * within a new thread.
+ *
+ * The function should allocate memory for the thread object and return a
+ * pointer to the allocated memory that identifies the thread.
+ *
+ * On error NULL should be returned.
+ */
+FIO_WEAK void *fio_thread_new(void *(*thread_func)(void *), void *arg);
+
+/**
+ * OVERRIDE THIS to replace the default pthread implementation.
+ *
+ * Frees the memory associated with a thread identifier (allows the thread to
+ * run it's course, just the identifier is freed).
+ */
+FIO_WEAK void fio_thread_free(void *p_thr);
+
+/**
+ * OVERRIDE THIS to replace the default pthread implementation.
+ *
+ * Accepts a pointer returned from `fio_thread_new` (should also free any
+ * allocated memory) and joins the associated thread.
+ *
+ * Return value is ignored.
+ */
+FIO_WEAK int fio_thread_join(void *p_thr);
+
+/**
+ * When overrriding fio_fork, call this callback in the child process before
+ * calling any other function. The `pid` must be the value of the child's
+ * process ID.
+ */
+void fio_on_fork(void);
+
+/* *****************************************************************************
+TLS Support (weak functions, to be overriden by library wrapper)
+***************************************************************************** */
+
+/**
+ * Creates a new SSL/TLS context / settings object with a default certificate
+ * (if any).
+ *
+ * If no server name is provided and no private key and public certificate are
+ * provided, an empty TLS object will be created, (maybe okay for clients).
+ *
+ * If a server name is provided, but no certificate is attached, an anonymous
+ * (self-signed) certificate will be initialized.
+ *
+ *      fio_tls_s * tls = fio_tls_new("www.example.com",
+ *                                    "public_key.pem",
+ *                                    "private_key.pem", NULL );
+ */
+FIO_WEAK fio_tls_s *fio_tls_new(const char *server_name,
+                                const char *public_cert_file,
+                                const char *private_key_file,
+                                const char *pk_password);
+
+/**
+ * Increase the reference count for the TLS object.
+ *
+ * Decrease with `fio_tls_destroy`.
+ */
+FIO_WEAK void fio_tls_dup(fio_tls_s *tls);
+
+/**
+ * Destroys the SSL/TLS context / settings object and frees any related
+ * resources / memory.
+ */
+FIO_WEAK void fio_tls_free(fio_tls_s *tls);
+
+/**
+ * Adds a certificate to the SSL/TLS context / settings object.
+ *
+ * SNI support is implementation / library specific, but SHOULD be provided.
+ *
+ * If a server name is provided, but no certificate is attached, an anonymous
+ * (self-signed) certificate will be initialized.
+ *
+ *      fio_tls_cert_add(tls, "www.example.com",
+ *                            "public_key.pem",
+ *                            "private_key.pem", NULL );
+ */
+FIO_WEAK void fio_tls_cert_add(fio_tls_s *,
+                               const char *server_name,
+                               const char *public_cert_file,
+                               const char *private_key_file,
+                               const char *pk_password);
+
+/**
+ * Adds an ALPN protocol callback to the SSL/TLS context.
+ *
+ * The first protocol added will act as the default protocol to be selected.
+ *
+ * The `on_selected` callback should accept the `uuid`, the user data pointer
+ * passed to either `fio_tls_accept` or `fio_tls_connect` (here:
+ * `udata_connetcion`) and the user data pointer passed to the
+ * `fio_tls_alpn_add` function (`udata_tls`).
+ *
+ * The `on_cleanup` callback will be called when the TLS object is destroyed (or
+ * `fio_tls_alpn_add` is called again with the same protocol name). The
+ * `udata_tls` argument will be passed along, as is, to the callback (if set).
+ *
+ * Except for the `tls` and `protocol_name` arguments, all arguments can be
+ * NULL.
+ */
+FIO_WEAK void fio_tls_alpn_add(fio_tls_s *tls,
+                               const char *protocol_name,
+                               void (*on_selected)(intptr_t uuid,
+                                                   void *udata_connection,
+                                                   void *udata_tls),
+                               void *udata_tls,
+                               void (*on_cleanup)(void *udata_tls));
+
+/**
+ * Adds a certificate to the "trust" list, which automatically adds a peer
+ * verification requirement.
+ *
+ * Note, when the fio_tls_s object is used for server connections, this will
+ * limit connections to clients that connect using a trusted certificate.
+ *
+ *      fio_tls_trust(tls, "google-ca.pem" );
+ */
+FIO_WEAK void fio_tls_trust(fio_tls_s *, const char *public_cert_file);
+
+/* *****************************************************************************
+TLS Support - non-user functions (called by the facil.io library)
+***************************************************************************** */
+
+/**
+ * Returns the number of registered ALPN protocol names.
+ *
+ * This could be used when deciding if protocol selection should be delegated to
+ * the ALPN mechanism, or whether a protocol should be immediately assigned.
+ *
+ * If no ALPN protocols are registered, zero (0) is returned.
+ */
+FIO_WEAK uintptr_t fio_tls_alpn_count(fio_tls_s *tls);
+
+/**
+ * Establishes an SSL/TLS connection as an SSL/TLS Server, using the specified
+ * context / settings object.
+ *
+ * The `uuid` should be a socket UUID that is already connected to a peer (i.e.,
+ * the result of `fio_accept`).
+ *
+ * The `udata` is an opaque user data pointer that is passed along to the
+ * protocol selected (if any protocols were added using `fio_tls_alpn_add`).
+ */
+FIO_WEAK void fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata);
+
+/**
+ * Establishes an SSL/TLS connection as an SSL/TLS Client, using the specified
+ * context / settings object.
+ *
+ * The `uuid` should be a socket UUID that is already connected to a peer (i.e.,
+ * one received by a `fio_connect` specified callback `on_connect`).
+ *
+ * The `udata` is an opaque user data pointer that is passed along to the
+ * protocol selected (if any protocols were added using `fio_tls_alpn_add`).
+ */
+FIO_WEAK void fio_tls_connect(intptr_t uuid, fio_tls_s *tls, void *udata);
+
+/* *****************************************************************************
+Mark weakness
+***************************************************************************** */
+
+#pragma weak fio_fork
+#pragma weak fio_thread_new
+#pragma weak fio_thread_free
+#pragma weak fio_thread_join
+
+#pragma weak fio_tls_new
+#pragma weak fio_tls_dup
+#pragma weak fio_tls_free
+#pragma weak fio_tls_cert_add
+#pragma weak fio_tls_alpn_add
+#pragma weak fio_tls_trust
+#pragma weak fio_tls_alpn_count
+#pragma weak fio_tls_accept
+#pragma weak fio_tls_connect
+/* *****************************************************************************
+
+
+
+
+
+
+
+                              Hash Functions and Friends
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/* *****************************************************************************
+SipHash
+***************************************************************************** */
+
+/**
+ * A SipHash variation (2-4).
+ */
+uint64_t
+fio_siphash24(const void *buf, size_t len, uint64_t key1, uint64_t key2);
+
+/**
+ * A SipHash 1-3 variation.
+ */
+uint64_t
+fio_siphash13(const void *buf, size_t len, uint64_t key1, uint64_t key2);
+
+/**
+ * The Hashing function used by dynamic facil.io objects.
+ *
+ * Currently implemented using SipHash 1-3.
+ */
+#define fio_siphash(buf, len, k1, k2) fio_siphash13((buf), (len), (k1), (k2))
+
+/* *****************************************************************************
+SHA-1
+***************************************************************************** */
+
+/**
+SHA-1 hashing container - you should ignore the contents of this struct.
+
+The `sha1_s` type will contain all the sha1 data required to perform the
+hashing, managing it's encoding. If it's stack allocated, no freeing will be
+required.
+
+Use, for example:
+
+    fio_sha1_s sha1;
+    fio_sha1_init(&sha1);
+    fio_sha1_write(&sha1,
+                  "The quick brown fox jumps over the lazy dog", 43);
+    char *hashed_result = fio_sha1_result(&sha1);
+*/
+typedef struct {
+  uint64_t len;
+  uint8_t buf[64];
+  union {
+    uint32_t i[5];
+    unsigned char str[21];
+  } digest;
+} fio_sha1_s;
+
+/**
+Initialize or reset the `sha1` object. This must be performed before hashing
+data using sha1.
+*/
+fio_sha1_s fio_sha1_init(void);
+/**
+Writes data to the sha1 buffer.
+*/
+void fio_sha1_write(fio_sha1_s *s, const void *data, size_t len);
+/**
+Finalizes the SHA1 hash, returning the Hashed data.
+
+`fio_sha1_result` can be called for the same object multiple times, but the
+finalization will only be performed the first time this function is called.
+*/
+char *fio_sha1_result(fio_sha1_s *s);
+
+/**
+An SHA1 helper function that performs initialiation, writing and finalizing.
+*/
+FIO_IFUNC char *fio_sha1(fio_sha1_s *s, const void *data, size_t len) {
+  *s = fio_sha1_init();
+  fio_sha1_write(s, data, len);
+  return fio_sha1_result(s);
+}
+
+/* *****************************************************************************
+SHA-2
+***************************************************************************** */
+
+/**
+SHA-2 function variants.
+
+This enum states the different SHA-2 function variants. placing SHA_512 at the
+beginning is meant to set this variant as the default (in case a 0 is passed).
+*/
+typedef enum {
+  SHA_512 = 1,
+  SHA_512_256 = 3,
+  SHA_512_224 = 5,
+  SHA_384 = 7,
+  SHA_256 = 2,
+  SHA_224 = 4,
+} fio_sha2_variant_e;
+
+/**
+SHA-2 hashing container - you should ignore the contents of this struct.
+
+The `sha2_s` type will contain all the SHA-2 data required to perform the
+hashing, managing it's encoding. If it's stack allocated, no freeing will be
+required.
+
+Use, for example:
+
+    fio_sha2_s sha2;
+    fio_sha2_init(&sha2, SHA_512);
+    fio_sha2_write(&sha2,
+                  "The quick brown fox jumps over the lazy dog", 43);
+    char *hashed_result = fio_sha2_result(&sha2);
+
+*/
+typedef struct {
+  /* notice: we're counting bits, not bytes. max length: 2^128 bits */
+  union {
+    uint8_t bytes[16];
+    uint8_t matrix[4][4];
+    uint32_t words_small[4];
+    uint64_t words[2];
+#if defined(__SIZEOF_INT128__)
+    __uint128_t i;
+#endif
+  } len;
+  uint8_t buf[128];
+  union {
+    uint32_t i32[16];
+    uint64_t i64[8];
+    uint8_t str[65]; /* added 64+1 for the NULL byte.*/
+  } digest;
+  fio_sha2_variant_e type;
+} fio_sha2_s;
+
+/**
+Initialize/reset the SHA-2 object.
+
+SHA-2 is actually a family of functions with different variants. When
+initializing the SHA-2 container, you must select the variant you intend to
+apply. The following are valid options (see the sha2_variant enum):
+
+- SHA_512 (== 0)
+- SHA_384
+- SHA_512_224
+- SHA_512_256
+- SHA_256
+- SHA_224
+
+*/
+fio_sha2_s fio_sha2_init(fio_sha2_variant_e variant);
+/**
+Writes data to the SHA-2 buffer.
+*/
+void fio_sha2_write(fio_sha2_s *s, const void *data, size_t len);
+/**
+Finalizes the SHA-2 hash, returning the Hashed data.
+
+`sha2_result` can be called for the same object multiple times, but the
+finalization will only be performed the first time this function is called.
+*/
+char *fio_sha2_result(fio_sha2_s *s);
+
+/**
+An SHA2 helper function that performs initialiation, writing and finalizing.
+Uses the SHA2 512 variant.
+*/
+FIO_IFUNC char *fio_sha2_512(fio_sha2_s *s, const void *data, size_t len) {
+  *s = fio_sha2_init(SHA_512);
+  fio_sha2_write(s, data, len);
+  return fio_sha2_result(s);
+}
+
+/**
+An SHA2 helper function that performs initialiation, writing and finalizing.
+Uses the SHA2 256 variant.
+*/
+FIO_IFUNC char *fio_sha2_256(fio_sha2_s *s, const void *data, size_t len) {
+  *s = fio_sha2_init(SHA_256);
+  fio_sha2_write(s, data, len);
+  return fio_sha2_result(s);
+}
+
+/**
+An SHA2 helper function that performs initialiation, writing and finalizing.
+Uses the SHA2 384 variant.
+*/
+FIO_IFUNC char *fio_sha2_384(fio_sha2_s *s, const void *data, size_t len) {
+  *s = fio_sha2_init(SHA_384);
+  fio_sha2_write(s, data, len);
+  return fio_sha2_result(s);
+}
+
+/* *****************************************************************************
+Testing
+***************************************************************************** */
+#ifdef TEST
+void fio_test(void);
+#else
+#define fio_test()
+#endif
+
+/* *****************************************************************************
+C++ extern end
+***************************************************************************** */
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
+#endif /* H_FACIL_IO_H */

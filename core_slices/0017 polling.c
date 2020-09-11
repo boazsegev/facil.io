@@ -31,6 +31,11 @@ static inline void fio_force_close_in_poll(intptr_t uuid) {
   fio_force_close(uuid);
 }
 
+#ifndef FIO_POLL_MAX_EVENTS
+/* The number of events to collect with each call to epoll or kqueue. */
+#define FIO_POLL_MAX_EVENTS 96
+#endif
+
 /* *****************************************************************************
 Start Section
 ***************************************************************************** */
@@ -56,7 +61,7 @@ FIO_IFUNC void fio_poll_close(void) {
   }
 }
 
-static void fio_poll_init(void) {
+FIO_IFUNC void fio_poll_init(void) {
   fio_poll_close();
   for (int i = 0; i < 3; ++i) {
     evio_fd[i] = epoll_create1(EPOLL_CLOEXEC);
@@ -103,14 +108,16 @@ FIO_IFUNC int fio___poll_add2(int fd, uint32_t events, int ep_fd) {
 }
 
 FIO_IFUNC void fio_poll_add_read(intptr_t fd) {
-  fio___poll_add2(
-      fd, (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT), evio_fd[1]);
+  fio___poll_add2(fd,
+                  (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                  evio_fd[1]);
   return;
 }
 
 FIO_IFUNC void fio_poll_add_write(intptr_t fd) {
-  fio___poll_add2(
-      fd, (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT), evio_fd[2]);
+  fio___poll_add2(fd,
+                  (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                  evio_fd[2]);
   return;
 }
 
@@ -119,8 +126,9 @@ FIO_IFUNC void fio_poll_add(intptr_t fd) {
                       (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
                       evio_fd[1]) == -1)
     return;
-  fio___poll_add2(
-      fd, (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT), evio_fd[2]);
+  fio___poll_add2(fd,
+                  (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                  evio_fd[2]);
   return;
 }
 
@@ -150,12 +158,14 @@ FIO_SFUNC size_t fio_poll(void) {
         } else {
           // no error, then it's an active event(s)
           if (events[i].events & EPOLLOUT) {
-            fio_defer_urgent(
-                deferred_on_ready, (void *)fd2uuid(events[i].data.fd), NULL);
+            fio_defer_urgent(deferred_on_ready,
+                             (void *)fd2uuid(events[i].data.fd),
+                             NULL);
           }
           if (events[i].events & EPOLLIN)
-            fio_defer(
-                deferred_on_data, (void *)fd2uuid(events[i].data.fd), NULL);
+            fio_defer(deferred_on_data,
+                      (void *)fd2uuid(events[i].data.fd),
+                      NULL);
         }
       } // end for loop
       total += active_count;
@@ -296,8 +306,9 @@ FIO_SFUNC size_t fio_poll(void) {
     for (int i = 0; i < active_count; i++) {
       // test for event(s) type
       if (events[i].filter == EVFILT_WRITE) {
-        fio_defer_urgent(
-            deferred_on_ready, ((void *)fd2uuid(events[i].udata)), NULL);
+        fio_defer_urgent(deferred_on_ready,
+                         ((void *)fd2uuid(events[i].udata)),
+                         NULL);
       } else if (events[i].filter == EVFILT_READ) {
         fio_defer(deferred_on_data, (void *)fd2uuid(events[i].udata), NULL);
       }
@@ -340,6 +351,10 @@ Section Start Marker
 ***************************************************************************** */
 #elif FIO_ENGINE_POLL
 
+#define FIO_POLL
+#define FIO_POLL_HAS_UDATA_COLLECTION 0
+#include "fio-stl.h"
+
 /**
  * Returns a C string detailing the IO engine selected during compilation.
  *
@@ -347,115 +362,47 @@ Section Start Marker
  */
 char const *fio_engine(void) { return "poll"; }
 
-#define FIO_POLL_READ_EVENTS  (POLLPRI | POLLIN)
-#define FIO_POLL_WRITE_EVENTS (POLLOUT)
-
-static struct pollfd *fio___pollfd;
-static fio_lock_i fio___poll_lock = FIO_LOCK_INIT;
-
-FIO_IFUNC void fio_poll_close(void) {}
-
-FIO_IFUNC void fio_poll_init(void) {
-  fio___pollfd = calloc(sizeof(*fio___pollfd), fio_capa());
+FIO_SFUNC void fio___poll_ev_wrap_data(int fd, void *udata) {
+  intptr_t uuid = fd2uuid(fd);
+  fio_defer(deferred_on_data, (void *)uuid, udata);
+}
+FIO_SFUNC void fio___poll_ev_wrap_ready(int fd, void *udata) {
+  intptr_t uuid = fd2uuid(fd);
+  fio_defer_urgent(deferred_on_ready, (void *)uuid, udata);
+}
+FIO_SFUNC void fio___poll_ev_wrap_close(int fd, void *udata) {
+  intptr_t uuid = fd2uuid(fd);
+  fio_force_close_in_poll(uuid);
+  (void)udata;
 }
 
+static fio_poll_s fio___poll_data = FIO_POLL_INIT(fio___poll_ev_wrap_data,
+                                                  fio___poll_ev_wrap_ready,
+                                                  fio___poll_ev_wrap_close);
+FIO_IFUNC void fio_poll_close(void) { fio_poll_destroy(&fio___poll_data); }
+
+FIO_IFUNC void fio_poll_init(void) {}
+
 FIO_IFUNC void fio_poll_remove_fd(intptr_t fd) {
-  fio___pollfd[fd].fd = -1;
-  fio___pollfd[fd].events = 0;
+  fio_poll_forget(&fio___poll_data, fd);
 }
 
 FIO_IFUNC void fio_poll_add_read(intptr_t fd) {
-  fio___pollfd[fd].fd = (int)fd;
-  fio___pollfd[fd].events |= FIO_POLL_READ_EVENTS;
+  fio_poll_monitor(&fio___poll_data, fd, NULL, POLLIN);
 }
 
 FIO_IFUNC void fio_poll_add_write(intptr_t fd) {
-  fio___pollfd[fd].fd = (int)fd;
-  fio___pollfd[fd].events |= FIO_POLL_WRITE_EVENTS;
+  fio_poll_monitor(&fio___poll_data, fd, NULL, POLLOUT);
 }
 
 FIO_IFUNC void fio_poll_add(intptr_t fd) {
-  fio___pollfd[fd].fd = (int)fd;
-  fio___pollfd[fd].events = FIO_POLL_READ_EVENTS | FIO_POLL_WRITE_EVENTS;
-}
-
-FIO_IFUNC void fio_poll_remove_read(int fd) {
-  fio_lock(&fio___poll_lock);
-  if (fio___pollfd[fd].events & FIO_POLL_WRITE_EVENTS)
-    fio___pollfd[fd].events = FIO_POLL_WRITE_EVENTS;
-  else {
-    fio_poll_remove_fd(fd);
-  }
-  fio_unlock(&fio___poll_lock);
-}
-
-FIO_IFUNC void fio_poll_remove_write(int fd) {
-  fio_lock(&fio___poll_lock);
-  if (fio___pollfd[fd].events & FIO_POLL_READ_EVENTS)
-    fio___pollfd[fd].events = FIO_POLL_READ_EVENTS;
-  else {
-    fio_poll_remove_fd(fd);
-  }
-  fio_unlock(&fio___poll_lock);
+  fio_poll_monitor(&fio___poll_data, fd, NULL, POLLIN | POLLOUT);
 }
 
 /** returns non-zero if events were scheduled, 0 if idle */
 static size_t fio_poll(void) {
-  /* shrink fd poll range */
-  size_t end = fio_data->capa; // max_open_fd might break TLS?
-  size_t start = 0;
-  struct pollfd *list = NULL;
-  fio_lock(&fio___poll_lock);
-  while (start < end && fio___pollfd[start].fd == -1)
-    ++start;
-  while (start < end && fio___pollfd[end - 1].fd == -1)
-    --end;
-  if (start != end) {
-    /* copy poll list for multi-threaded poll */
-    list = fio_malloc(sizeof(struct pollfd) * end);
-    memcpy(list + start,
-           fio___pollfd + start,
-           (sizeof(struct pollfd)) * (end - start));
-  }
-  fio_unlock(&fio___poll_lock);
-
-  int timeout = fio___timer_calc_first_interval();
-  size_t count = 0;
-
-  if (start == end) {
-    FIO_THREAD_WAIT((timeout * 1000000UL));
-  } else if (poll(list + start, end - start, timeout) == -1) {
-    goto finish;
-  }
-  for (size_t i = start; i < end; ++i) {
-    if (list[i].revents) {
-      touchfd(i);
-      ++count;
-      if (list[i].revents & FIO_POLL_WRITE_EVENTS) {
-        // FIO_LOG_DEBUG("Poll Write %zu => %p", i, (void *)fd2uuid(i));
-        fio_poll_remove_write(i);
-        fio_defer_urgent(deferred_on_ready, (void *)fd2uuid(i), NULL);
-      }
-      if (list[i].revents & FIO_POLL_READ_EVENTS) {
-        // FIO_LOG_DEBUG("Poll Read %zu => %p", i, (void *)fd2uuid(i));
-        fio_poll_remove_read(i);
-        fio_defer(deferred_on_data, (void *)fd2uuid(i), NULL);
-      }
-      if (list[i].revents & (POLLHUP | POLLERR)) {
-        // FIO_LOG_DEBUG("Poll Hangup %zu => %p", i, (void *)fd2uuid(i));
-        fio_poll_remove_fd(i);
-        fio_force_close_in_poll(fd2uuid(i));
-      }
-      if (list[i].revents & POLLNVAL) {
-        // FIO_LOG_DEBUG("Poll Invalid %zu => %p", i, (void *)fd2uuid(i));
-        fio_poll_remove_fd(i);
-        fio_clear_fd(i, 0);
-      }
-    }
-  }
-finish:
-  fio_free(list);
-  return count;
+  int timeout_millisec = fio___timer_calc_first_interval();
+  return (size_t)(fio_poll_review(&fio___poll_data, timeout_millisec) > 0);
 }
 
 #endif /* FIO_ENGINE_POLL */

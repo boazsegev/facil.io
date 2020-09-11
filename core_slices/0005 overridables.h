@@ -58,7 +58,8 @@ FIO_WEAK int fio_thread_join(void *p_thr);
 
 /**
  * When overrriding fio_fork, call this callback in the child process before
- * calling any other function.
+ * calling any other function. The `pid` must be the value of the child's
+ * process ID.
  */
 void fio_on_fork(void);
 
@@ -188,10 +189,7 @@ FIO_WEAK void fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata);
  * The `udata` is an opaque user data pointer that is passed along to the
  * protocol selected (if any protocols were added using `fio_tls_alpn_add`).
  */
-FIO_WEAK void fio_tls_connect(intptr_t uuid,
-                              fio_tls_s *tls,
-                              const char *server_sni,
-                              void *udata);
+FIO_WEAK void fio_tls_connect(intptr_t uuid, fio_tls_s *tls, void *udata);
 
 /* *****************************************************************************
 Mark weakness
