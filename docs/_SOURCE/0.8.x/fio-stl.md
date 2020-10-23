@@ -1,8 +1,8 @@
 ---
-title: facil.io - 0.8.x C STL - a Simple Template Library for C
+title: facil.io - C STL - a Simple Template Library for C
 sidebar: 0.8.x/_sidebar.md
 ---
-# {{{title}}}
+# facil.io - C STL - a Simple Template Library for C
 
 At the core of the [facil.io library](https://facil.io) is its powerful Simple Template Library for C (and C++).
 
@@ -14,11 +14,7 @@ In other words, all the common building blocks one could need in a C project are
 
 The header could be included multiple times with different results, creating different types or exposing different functionality.
 
-#### A Lower Level API Notice for facil.io Application Developers
-
->> **This core library is probably not the API most facil.io web application developers need to focus on**.
->>
->> This API is used to power the higher level API offered by the facil.io web framework. If you're developing a facil.io web application, use the higher level API when possible.
+**Note**: facil.io Web Application Developers get many of the features of the C STL through including the `fio.h` header. See the [facil.io IO Core documentation](fio) for more information.
 
 ## Simple Template Library (STL) Overview
 
@@ -30,11 +26,11 @@ The header includes a Simple Template Library for the following common types:
 
 * [Dynamic Arrays](#dynamic-arrays) - defined by `FIO_ARRAY_NAME`
 
-* [Hash Maps / Sets](#maps-hash-maps-sets) - defined by `FIO_MAP_NAME`
+* [Hash Maps / Sets](#hash-tables-and-maps) - defined by `FIO_MAP_NAME`
 
 * [Binary Safe Dynamic Strings](#dynamic-strings) - defined by `FIO_STR_NAME` / `FIO_STR_SMALL`
 
-* [Reference counting / Type wrapper](#reference-counting-type-wrapping) - defined by `FIO_REF_NAME`
+* [Reference counting / Type wrapper](#reference-counting-and-type-wrapping) - defined by `FIO_REF_NAME`
 
 * [Soft / Dynamic Types (FIOBJ)](#fiobj-soft-dynamic-types) - defined by `FIO_FIOBJ`
 
@@ -70,7 +66,11 @@ In addition, the core Simple Template Library (STL) includes helpers for common 
 
 * [Basic Socket / IO Helpers](#basic-socket-io-helpers) - defined by `FIO_SOCK`
 
-* [Custom Memory Allocation](#memory-allocation) - defined by `FIO_MALLOC`
+* [Data Stream Containers](#data-stream-container) - defined by `FIO_STREAM`
+
+* [Signal (pass-through) Monitoring](#signal-monitoring) - defined by `FIO_SIGNAL`
+
+* [Local Memory Allocation](#local-memory-allocation) - defined by `FIO_MEMORY` / `FIO_MALLOC`
 
 ## Testing the Library (`FIO_TEST_CSTL`)
 
@@ -215,14 +215,6 @@ By setting these macros, the memory allocator used by facil.io could be changed 
 
 When facil.io's memory allocator is defined (using `FIO_MALLOC`), **these macros will be automatically overwritten to use the custom memory allocator**. To use a different allocator, you may redefine the macros.
 
-#### `FIO_MEM_CALLOC`
-
-```c
-#define FIO_MEM_CALLOC(size, units) calloc((size), (units))
-```
-
-Allocates size X units of bytes, where all bytes equal zero.
-
 #### `FIO_MEM_REALLOC`
 
 ```c
@@ -230,6 +222,10 @@ Allocates size X units of bytes, where all bytes equal zero.
 ```
 
 Reallocates memory, copying (at least) `copy_len` if necessary.
+
+If `ptr` is `NULL`, behaves like `malloc`.
+
+If `new_size` is 0, behaves like `free`.
 
 #### `FIO_MEM_FREE`
 
@@ -241,7 +237,7 @@ Frees allocated memory.
 
 #### `FIO_MALLOC_TMP_USE_SYSTEM`
 
-When defined, temporarily bypasses the `FIO_MEM_CALLOC` macros and uses the system's `calloc`, `realloc` and `free` functions.
+When defined, temporarily bypasses the `FIO_MEM_REALLOC` macros and uses the system's `realloc` and `free` functions.
 
 ### Naming and Misc. Macros
 
@@ -818,6 +814,77 @@ Performs the operation indicated in constant time.
 
     Tests if `condition` is non-zero (returns `a` / `b`).
 
+#### Simulating SIMD instructions
+
+
+- `fio_has_full_byte32(uint32_t row)`
+
+		Detects a byte where all the bits are set (`255`) within a 4 byte vector.
+
+- `fio_has_zero_byte32(uint32_t row)`
+
+		Detects a byte where no bits are set (0) within a 4 byte vector.
+
+- `fio_has_byte32(uint32_t row, uint8_t byte)`
+
+		Detects if `byte` exists within a 4 byte vector.
+
+- `fio_has_full_byte64(uint64_t row)`
+
+		Detects a byte where all the bits are set (`255`) within an 8 byte vector.
+
+- `fio_has_zero_byte64(uint64_t row)`
+
+		Detects a byte where no bits are set (0) within an 8 byte vector.
+
+- `fio_has_byte64(uint64_t row, uint8_t byte)`
+
+		Detects if `byte` exists within an 8 byte vector.
+
+#### `fio_popcount` and Hemming 
+
+```c
+int fio_popcount(uint64_t n);
+```
+
+Returns the number of set bits in the number `n`.
+
+#### `fio_hemming_dist`
+
+```c
+#define fio_hemming_dist(n1, n2) fio_popcount(((uint64_t)(n1) ^ (uint64_t)(n2)))
+```
+
+Returns the Hemming Distance between the number `n1` and the number `n2`.
+
+Hemming Distance is the number of bits that need to be "flipped" in order for both numbers to be equal.
+
+#### `fio_xmask`
+
+```c
+void fio_xmask(char *buf,
+               size_t len,
+               uint64_t mask);
+```
+
+Masks data using a 64 bit mask.
+
+The function may perform significantly better when the buffer's memory is aligned.
+
+#### `fio_xmask2`
+
+```c
+uint64_t fio_xmask2(char *buf,
+                    size_t len,
+                    uint64_t mask,
+                    uint64_t nonce);
+```
+
+Masks data using a 64 bit mask and a counter mode nonce.
+
+Returns the end state of the mask.
+
+The function may perform significantly better when the buffer's memory is aligned.
 
 -------------------------------------------------------------------------------
 
@@ -856,7 +923,7 @@ This function will produce a 64 bit hash for X bytes of data.
 void fio_risky_mask(char *buf, size_t len, uint64_t key, uint64_t nonce);
 ```
 
-Masks data using a Risky Hash and a counter mode nonce.
+Masks data using a Risky Hash and a counter mode nonce, using `fio_xmask2`.
 
 Used for mitigating memory access attacks when storing "secret" information in memory.
 
@@ -1074,7 +1141,7 @@ The parser allows for streaming data and decouples the parsing process from the 
 
 To use the JSON parser, define `FIO_JSON` before including the `fio-slt.h` file and later define the static callbacks required by the parser (see list of callbacks).
 
-**Note**: the JSON parser and the FIOBJ soft types can't be implemented in the same translation unit, since the FIOBJ soft types already define JSON callbacks and use the JSON parser to provide JSON support.
+**Note**: the FIOBJ soft types already use the JSON parser. For this reason, another JSON parser can't be implemented in the same translation unit as the FIOBJ implementation. To use another JSON parser, implement it in a different C file then  the one where the FIOBJ types are implemented.
 
 #### `JSON_MAX_DEPTH`
 
@@ -1421,47 +1488,55 @@ void run_my_json_minifier(char *json, size_t len) {
 ```
 
 -------------------------------------------------------------------------------
-## Memory Allocation
+## Local Memory Allocation
+
+The facil.io Simple Template Library includes a fast, concurrent, local memory allocator designed for shot-medium object life-spans.
+
+Multiple allocators can be defined using `FIO_MEMORY_NAME` and including `fio-stl.h` multiple times.
+
+The shortcut `FIO_MALLOC` MACRO will define a local memory allocator shared by any facil.io types that are defined after that macro (in multiple `include` space).
+
+### Why Use a Local Memory Allocation?
+
+Using a local memory allocator allows types to [enjoy locality and enhanced performance within their allocation subgroup](https://youtu.be/nZNd5FjSquk).
 
 The facil.io Simple Template Library includes a fast, concurrent, memory allocator designed for shot-medium object life-spans.
 
-It's ideal if all long-term allocations are performed during the start-up phase or using a different memory allocator.
+Multiple allocators can be defined using the `FIO_MEMORY_NAME` macro, allowing different objects types to have different memory allocators, resulting in better cache locality and less contention in multi-threaded programs.
 
-The allocator is very fast and protects against fragmentation issues when used correctly (when abused, fragmentation may increase).
+The facil.io allocator also increases security by zero-ing out the memory earlier and always returning zeroed out memory (see default`FIO_MEMORY_INITIALIZE_ALLOCATIONS`).
 
-Allocated memory is always zeroed out and aligned on a 16 byte boundary.
+Reallocated memory might be filled with junk data after the valid data, but this allocator solves this issue by offering [`fio_realloc2`](#fio_realloc2).
 
-Reallocated memory is always aligned on a 16 byte boundary but it might be filled with junk data after the valid data. This can be minimized to (up to) 16 bytes of junk data by using [`fio_realloc2`](#fio_realloc2).
+Memory allocation overhead is small  ~ 0.006% by default, which is about 1 byte per 16,384 bytes). In addition there's a small per-process overhead for the allocator's state-machine (usually just 1 page / 4Kb per process). 
 
-Memory allocation overhead is ~ 0.05% (1/2048 bytes per byte, or 16 bytes per 32Kb). In addition there's a small per-process overhead for the allocator's state-machine (usually just 1 page / 4Kb per process, unless you have more then 250 CPU cores). 
+However, the allocator is designed for common network scenarios where all long-term allocations are performed during the start-up phase or using a different memory allocator. It's also designed to favor smaller allocations and has a limit on the number of bytes it could handle before passing through to `mmap`.
 
-The memory allocator assumes multiple concurrent allocation/deallocation, short to medium life spans (memory is freed shortly, but not immediately, after it was allocated) and relatively small allocations - anything over `FIO_MEMORY_BLOCK_ALLOC_LIMIT` (192Kb) is forwarded to `mmap`.
-
-The memory allocator can be used in conjuncture with the system's `malloc` to minimize heap fragmentation (long-life objects use `malloc`, short life objects use `fio_malloc`) or as a memory pool for specific objects (when used as static functions in a specific C file).
-
-Long term allocation can use `fio_mmap` to directly allocate memory from the system. The overhead for `fio_mmap` is 16 bytes per allocation (freed with `fio_free`).
+The memory allocator can be used in conjuncture with the system's `malloc` to minimize heap fragmentation (long-life objects use `malloc`, short life objects use `fio_malloc`) or as a memory pool for specific objects.
 
 **Note**: this custom allocator could increase memory fragmentation if long-life allocations are performed periodically (rather than performed during startup). Use [`fio_mmap`](#fio_mmap) or the system's `malloc` for long-term allocations.
 
 ### Memory Allocator Overview
 
-The memory allocator uses `mmap` to collect memory from the system.
+To minimize contention, the memory allocator uses allocation "arenas" that can work independently, allowing a number of threads to allocate memory in parallel with other threads (depending on the number of arenas).
 
-Each allocation collects ~8Mb from the system, aligned on a constant alignment boundary (except direct `mmap` allocation for large `fio_malloc` or `fio_mmap` calls).
+The memory allocator collects "chunks" of memory from the system.
 
-By default, this memory is divided into 256Kb blocks which are added to a doubly linked "free" list (controlled by the `FIO_MEMORY_BLOCK_SIZE_LOG` value, which also controls the alignment).
+Each chunk is divided into "blocks" or used in whole as a "big-blocks".
 
-The allocator utilizes per-CPU arenas / bins to allow for concurrent memory allocations across threads and to minimize lock contention.
+Each block is assigned to an arena. Big block allocations aren't assigned to arenas and can't be performed in parallel.
 
-Each arena / bin collects a single block and allocates "slices" as required by `fio_malloc`/`fio_realloc`.
+Blocks and big-blocks are "sliced" in a similar manner to `sbrk` in order to allocate memory to the user.
 
-The `fio_free` function will return the whole memory block to the free list as a single unit once the whole of the allocations for that block were freed (no small-allocation "free list" and no per-slice meta-data).
+A block (or big-block) is returned to the allocator for reuse only when it's memory was fully freed. A leaked allocation will prevent a block / big-block from being released back to the allocator.
 
-The memory collected from the system (the 8Mb) will be returned to the system once all the memory was both allocated and freed (or during cleanup).
+If all the blocks in a memory chunk were freed, the chunk is either cached or returned to the system, according to the allocator's settings.
 
-To replace the system's `malloc` function family compile with the `FIO_OVERRIDE_MALLOC` defined (`-DFIO_OVERRIDE_MALLOC`).
+This behavior, including the allocator's default alignment, can be tuned / changed using compile-time macros.
 
-It should be possible to use tcmalloc or jemalloc alongside facil.io's allocator. It's also possible to prevent facil.io's custom allocator from compiling by defining `FIO_MALLOC_FORCE_SYSTEM` (`-DFIO_MALLOC_FORCE_SYSTEM`).
+It should be possible to use tcmalloc or jemalloc alongside facil.io's allocator.
+
+It's also possible to prevent facil.io's custom allocator from compiling by defining `FIO_MALLOC_FORCE_SYSTEM` (`-DFIO_MALLOC_FORCE_SYSTEM`).
 
 ### The Memory Allocator's API
 
@@ -1469,7 +1544,7 @@ The functions were designed to be a drop in replacement to the system's memory a
 
 Where some improvement could be made, it was made using an added function name to add improved functionality (such as `fio_realloc2`).
 
-By defining `FIO_MALLOC`, the following functions will be defined:
+**Note**: the prefix `fio` will be different according to the `FIO_MEMORY_NAME` macro, it is used here because this is the prefix defined when using the `FIO_MALLOC` shortcut macro.
 
 #### `fio_malloc`
 
@@ -1477,27 +1552,25 @@ By defining `FIO_MALLOC`, the following functions will be defined:
 void * fio_malloc(size_t size);
 ```
 
-Allocates memory using a per-CPU core block memory pool. Memory is zeroed out.
+Allocates memory of requested size, using the defined alignment (`FIO_MEMORY_ALIGN_LOG`).
 
-Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (defaults to 75% of a memory block, 192Kb) will be redirected to `mmap`, as if `fio_mmap` was called.
+Memory is **always** zeroed out, no need to manually zero the memory after allocation.
+
+Allocations above the allocator's per-arena limit will be redirected to a large allocation chunk if enabled (see `FIO_MEMORY_ENABLE_BIG_ALLOC`).
+
+Allocations above the allocator limit will be redirected to `mmap`, as if `fio_mmap` was called.
+
+**Note**: the prefix `fio` will be different according to the `FIO_MEMORY_NAME` macro, it is used here because this is the prefix defined when using the `FIO_MALLOC` shortcut macro.
 
 #### `fio_calloc`
 
 ```c
-void * fio_calloc(size_t size_per_unit, size_t unit_count);
+void * fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
 ```
 
-Same as calling `fio_malloc(size_per_unit * unit_count)`;
+Same as calling `fio_malloc(size_per_unit * unit_count)`.
 
-Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (defaults to 75% of a memory block, 192Kb) will be redirected to `mmap`, as if `fio_mmap` was called.
-
-#### `fio_free`
-
-```c
-void fio_free(void *ptr);
-```
-
-Frees memory that was allocated using this library.
+**Note**: the prefix `fio` will be different according to the `FIO_MEMORY_NAME` macro, it is used here because this is the prefix defined when using the `FIO_MALLOC` shortcut macro.
 
 #### `fio_realloc`
 
@@ -1505,7 +1578,11 @@ Frees memory that was allocated using this library.
 void * fio_realloc(void *ptr, size_t new_size);
 ```
 
-Re-allocates memory. An attempt to avoid copying the data is made only for big memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
+Re-allocates memory. An attempt to avoid copying the data is made only for memory allocations that are performed directly against the system (sizes over the allocator limit).
+
+**Note**: when reallocating, junk data may be copied onto the new allocation unit. It is better to use `fio_realloc2`.
+
+**Note**: the prefix `fio` will be different according to the `FIO_MEMORY_NAME` macro, it is used here because this is the prefix defined when using the `FIO_MALLOC` shortcut macro.
 
 #### `fio_realloc2`
 
@@ -1513,9 +1590,13 @@ Re-allocates memory. An attempt to avoid copying the data is made only for big m
 void * fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
 ```
 
-Re-allocates memory. An attempt to avoid copying the data is made only for big memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
+Re-allocates memory. An attempt to avoid copying the data is made only for memory allocations that are performed directly against the system (sizes over the allocator limit).
 
-This variation is slightly faster as it might copy less data.
+This variation could be significantly faster as it will copy less data.
+
+This variation also promises that any memory over `copy_length` is zeroed out.
+
+**Note**: the prefix `fio` will be different according to the `FIO_MEMORY_NAME` macro, it is used here because this is the prefix defined when using the `FIO_MALLOC` shortcut macro.
 
 #### `fio_mmap`
 
@@ -1529,6 +1610,25 @@ However, since this allocation will invoke the system call (`mmap`), it will be 
 
 `fio_free` can be used for deallocating the memory.
 
+**Note**: some overhead is added to the `size` allocation (about the same size as the alignment required), in order to store the allocation size information.
+
+**Note**: the prefix `fio` will be different according to the `FIO_MEMORY_NAME` macro, it is used here because this is the prefix defined when using the `FIO_MALLOC` shortcut macro.
+
+#### `fio_free`
+
+```c
+void fio_free(void *ptr);
+```
+
+Frees memory that was allocated using this allocator.
+
+If memory was allocator using a different allocator,behavior is undefined... i.e.: with some bad luck, nothing will happen, not even a memory leak, with some good luck the program will crash and expose the bug.
+
+**Note**: the prefix `fio` will be different according to the `FIO_MEMORY_NAME` macro, it is used here because this is the prefix defined when using the `FIO_MALLOC` shortcut macro.
+
+**Note2**: if `fio_free` is called **after** the allocator had been "destroyed" (cleanup occurred.
+
+
 #### `fio_malloc_after_fork`
 
 ```c
@@ -1539,63 +1639,343 @@ Never fork a multi-threaded process. Doing so might corrupt the memory allocatio
 
 However, if a multi-threaded process, calling this function from the child process would perform a best attempt at mitigating any arising issues (at the expense of possible leaks).
 
-### Memory Allocation Customization Macros
+**Note**: the prefix `fio` will be different according to the `FIO_MEMORY_NAME` macro, it is used here because this is the prefix defined when using the `FIO_MALLOC` shortcut macro.
 
-The following macros allow control over the custom memory allocator performance or behavior.
 
-#### `FIO_MALLOC_FORCE_SYSTEM`
+### Memory Allocator Creation MACROS
 
-If `FIO_MALLOC_FORCE_SYSTEM` is defined, the facil.io memory allocator functions will simply pass requests through to the system's memory allocator (`calloc` / `free`) rather then use the facil.io custom allocator.
+#### `FIO_MALLOC`
 
-#### `FIO_MALLOC_OVERRIDE_SYSTEM`
+This shortcut macros defines a general allocator with the prefix `fio` (i.e., `fio_malloc`, `fio_free`, etc').
 
-If `FIO_MALLOC_OVERRIDE_SYSTEM` is defined, the facil.io memory allocator will replace the system's memory allocator.
+The general allocator settings consume more memory to allow for higher relative performance when using the memory pool as a generic allocator rather than an object specific memory pool.
 
-#### `FIO_MEMORY_BLOCK_SIZE_LOG`
+Some setup macros are automatically defined and the `FIO_MEM_REALLOC` macro family are automatically updated.
 
-Controls the size of a memory block in logarithmic value, 15 == 32Kb, 16 == 64Kb, etc'.
 
-Defaults to 18, resulting in a memory block size of 256Kb and a `FIO_MEMORY_BLOCK_ALLOC_LIMIT` of 192Kb.
+It is similar to using:
+```c
+/* for a general allocator, increase system allocation size to 8Gb */
+#define FIO_MEMORY_SYS_ALLOCATION_SIZE_LOG 23
+/* for a general allocator, increase cache size */
+#define FIO_MEMORY_CACHE_SLOTS 8
+/* set fragmentation cost at 0.5Mb blocks */
+#define FIO_MEMORY_BLOCKS_PER_ALLOCATION_LOG 5
+/* support big allocations using undivided memory chunks */
+#define FIO_MEMORY_ENABLE_BIG_ALLOC 1
+/* secure by default */
+#define FIO_MEMORY_INITIALIZE_ALLOCATIONS 1
 
-Lower values improve fragmentation handling while increasing costs for memory block rotation (per arena) and large size allocations.
+#undef FIO_MEM_REALLOC
+#undef FIO_MEM_FREE
+#undef FIO_MEM_REALLOC_IS_SAFE
 
-Larger values improve allocation speeds.
+/*
+* Set if FIO_MEM_REALLOC copies only what was asked,
+* and the rest of the memory is initialized (as if returned from calloc).
+*/
+#define FIO_MEM_REALLOC_IS_SAFE fio_realloc_is_safe()
 
-The `FIO_MEMORY_BLOCK_SIZE_LOG` limit is 20 (the memory allocator will break at that point).
+/** Reallocates memory, copying (at least) `copy_len` if necessary. */
+#define FIO_MEM_REALLOC(ptr, old_size, new_size, copy_len) fio_realloc2((ptr), (new_size), (copy_len))
+/** Frees allocated memory. */
+#define FIO_MEM_FREE(ptr, size) fio_free((ptr))
+```
 
-#### `FIO_MEMORY_BLOCK_ALLOC_LIMIT`
+**Note**: this macro also (re)defines the `FIO_MEM_REALLOC_IS_SAFE` macro, allowing you to know if `fio_malloc` (and it's feature of memory being zeroed out) is available.
 
-The memory pool allocation size limit. By default, this is 75% of a memory block (see `FIO_MEMORY_BLOCK_SIZE_LOG`).
+#### `FIO_MEMORY_NAME`
+
+**REQUIRED**: the prefix for the memory-pool allocator.
+
+This also automatically updates the temporary memory allocation macros (`FIO_MEM_REALLOC_`, etc') so all types defined in the same `include` statement as the allocator will use this allocator instead of the default allocator assigned using `FIO_MEM_REALLOC` (nothe the `_`).
+
+#### `FIO_MEMORY_ALIGN_LOG`
+
+```c
+#define FIO_MEMORY_ALIGN_LOG 4
+```
+
+Sets the memory allocation alignment log. This starts with 8 byte alignment (value of 3) and accepts values up to 1024 (value of 10).
+
+The default is 4 (16 byte alignment) which is the X64 requirement for SIMD instructions (SSE).
+
+Allocation alignment, if set, **must** be >= 3 and <= 10.
+
+This macro automatically defines the `FIO_MEMORY_ALIGN_SIZE` macro for internal use.
+
+### Memory Allocator Configuration MACROS
+
+The following compile time MACROS can effect the tuning and configuration of the resulting memory allocator.
+
+#### `FIO_MEMORY_INITIALIZE_ALLOCATIONS`
+
+```c
+#define FIO_MEMORY_INITIALIZE_ALLOCATIONS FIO_MEMORY_INITIALIZE_ALLOCATIONS_DEFAULT
+```
+
+If true, all allocations (including `realloc2` but excluding `realloc`) will return initialized memory memory and memory will be zeroed out earlier.
+
+**Note**: when using `realloc` (vs., `realloc2`), the allocator does not know the size of the original allocation or its copy limits, so the memory isn't guaranteed to be initialized unless using `realloc2` which promises that any memory over `copy_len`is initialized.
+
+The default value is controlled by the macro `FIO_MEMORY_INITIALIZE_ALLOCATIONS_DEFAULT`.
+
+#### `FIO_MEMORY_INITIALIZE_ALLOCATIONS_DEFAULT`
+
+```c
+/* secure by default */
+#define FIO_MEMORY_INITIALIZE_ALLOCATIONS_DEFAULT 1
+```
+
+Controls the default behavior for facil.io memory allocators (see `FIO_MEMORY_INITIALIZE_ALLOCATIONS`).
+
+To increase performance, at the expense of the improved security and features provided by an allocator that zeros out memory early and often, set this value to 0.
+
+#### `FIO_MEMORY_SYS_ALLOCATION_SIZE_LOG`
+
+```c
+#define FIO_MEMORY_SYS_ALLOCATION_SIZE_LOG 21
+```
+
+The logarithmic size of a single allocatiion "chunk" (16 blocks).
+
+Limited to >=17 and <=24.
+
+By default 22, which is a \~2Mb allocation per system call, resulting in a maximum allocation size of 131Kb.
+
+This macro automatically defines the `FIO_MEMORY_SYS_ALLOCATION_SIZE` macro for internal use.
+
+#### `FIO_MEMORY_CACHE_SLOTS`
+
+```c
+#define FIO_MEMORY_CACHE_SLOTS 4
+```
+
+The number of system allocation "chunks" to cache even if they are not in use.
+
+
+#### `FIO_MEMORY_BLOCKS_PER_ALLOCATION_LOG`
+
+```c
+#define FIO_MEMORY_BLOCKS_PER_ALLOCATION_LOG 2 /* 8 blocks per allocation */
+```
+
+The number of blocks per system allocation.
+
+More blocks protect against fragmentation and improve memory leak detection, but lower the maximum number of bytes that can be allocated without reverting to large allocations (see `FIO_MEMORY_ENABLE_BIG_ALLOC`) or `fio_mmap`.
+
+**Range**: 0-4
+
+**Recommended**: depends on object allocation sizes, usually 1 or 2.
+
+#### `FIO_MEMORY_ENABLE_BIG_ALLOC`
+
+```c
+#define FIO_MEMORY_ENABLE_BIG_ALLOC 1
+```
+
+Uses a whole system allocation to support bigger allocations.
+
+Using big allocations could increase fragmentation costs for large long-life objects and decrease the chance of a memory-leak detection.
+
+However, if there are no bugs in the system and objects have shot/medium lifespans, this could increase performance for larger allocations as it could avoid system calls.
+
+#### `FIO_MEMORY_ARENA_COUNT`
+
+```c
+#define FIO_MEMORY_ARENA_COUNT -1
+```
+
+Memory arenas mitigate thread contention while using more memory.
+
+Note that at some point arenas are statistically irrelevant (except when benchmarking contention in multi-core machines).
+
+Zero / negative values will result in dynamic selection based on CPU core count.
+
+#### `FIO_MEMORY_ARENA_COUNT_FALLBACK`
+
+```c
+#define FIO_MEMORY_ARENA_COUNT_FALLBACK 8
+```
+
+Used when the dynamic arena count calculations fails.
+
+**Note**: relevant if `FIO_MEMORY_ARENA_COUNT` is zero/negative, since dynamic arena calculation is performed using CPU core calculation.
 
 #### `FIO_MEMORY_ARENA_COUNT_MAX`
 
-Sets the maximum number of memory arenas to initialize. Defaults to 64.
-
-The custom memory allocator will initialize as many arenas as the CPU cores detected, but no more than `FIO_MEMORY_ARENA_COUNT_MAX`.
-
-When set to `0` the number of arenas will always match the maximum number of detected CPU cores.
-
-#### `FIO_MEMORY_ARENA_COUNT_DEFAULT`
-
-The default number of memory arenas to initialize when CPU core detection fails or isn't available. Defaults to `5`.
-
-Normally, facil.io tries to initialize as many memory allocation arenas as the number of CPU cores. This value will only be used if core detection isn't available or fails.
-
-### Memory Allocation Status Macros
-
-#### `FIO_MEM_INTERNAL_MALLOC`
-
-Set to 0 when `fio_malloc` routes to the system allocator (`calloc(size, 1)`) or set to 1 when using the facil.io allocator.
-
-This is mostly relevant when calling `fio_realloc2`, since the system allocator might return memory with junk data while the facil.io memory allocator returns memory that was zeroed out.
-
-#### `FIO_MEMORY_BLOCK_SIZE`
-
 ```c
-#define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << FIO_MEMORY_BLOCK_SIZE_LOG)
+#define FIO_MEMORY_ARENA_COUNT_MAX 32
 ```
 
-The resulting memory block size, depends on `FIO_MEMORY_BLOCK_SIZE_LOG`.
+Defines the maximum number of arenas to allocate when using dynamic arena calculation.
+
+**Note**: relevant if `FIO_MEMORY_ARENA_COUNT` is zero/negative, since dynamic arena calculation is performed using CPU core calculation.
+
+#### `FIO_MEMORY_USE_PTHREAD_MUTEX`
+
+```c
+/*
+* If arena count isn't linked to the CPU count, threads might busy-spin.
+* It is better to slow wait than fast busy spin when the work in the lock is longer...
+* and system allocations are performed inside arena locks.
+*/
+#if FIO_MEMORY_ARENA_COUNT > 0
+#define FIO_MEMORY_USE_PTHREAD_MUTEX 1
+#else
+#define FIO_MEMORY_USE_PTHREAD_MUTEX 0
+#endif
+```
+
+If true, uses a `pthread mutex` instead of a `fio_lock_i` spinlock.
+
+#### `FIO_MEMORY_WARMUP`
+
+```c
+#define FIO_MEMORY_WARMUP 0
+```
+
+If set to a number, will allocate memory on startup to the number of arenas indicated.
+
+It is usually better to avoid this unless using a single arena.
+
+#### `FIO_MEMORY_USE_FIO_MEMSET`
+
+```c
+#define FIO_MEMORY_USE_FIO_MEMSET 0
+```
+
+If true, uses a facil.io custom implementation for an 8 byte aligned `memset`.
+
+It's recommended to avoid this unless a compiler / system doesn't have its own optimized implementation for zeroing out pages.
+
+#### `FIO_MEMORY_USE_FIO_MEMCOPY`
+
+```c
+#define FIO_MEMORY_USE_FIO_MEMCOPY 1
+```
+
+If true, uses a facil.io custom implementation for an 8 byte aligned `memcpy`.
+
+Since the memory is known to be aligned, it's sometimes faster to use the facil.io aligned implementation that the system's generic implementation.
+
+#### `FIO_MEM_PAGE_ALLOC`, `FIO_MEM_PAGE_REALLOC` and `FIO_MEM_PAGE_FREE`
+
+```c
+#define FIO_MEM_PAGE_ALLOC(pages, alignment_log)                               \
+  FIO_MEM_PAGE_ALLOC_def_func((pages), (alignment_log))
+
+#define FIO_MEM_PAGE_REALLOC(ptr, old_pages, new_pages, alignment_log)         \
+  FIO_MEM_PAGE_REALLOC_def_func((ptr), (old_pages), (new_pages), (alignment_log))
+
+#define FIO_MEM_PAGE_FREE(ptr, pages)                                          \
+  FIO_MEM_PAGE_FREE_def_func((ptr), (pages))
+```
+
+These MACROS, when all of them are defined, allow the memory allocator to collect memory from the system using an alternative method.
+
+This allows the allocator to be used in situations where `mmap` is unavailable.
+
+**Note:** the alignment property for the allocated memory is essential and may me quite large (see `FIO_MEMORY_SYS_ALLOCATION_SIZE_LOG`).
+
+### Debugging the allocator
+
+The following functions will also be defined per-allocator. However, they should be considered experimental and unstable as they are linked to the allocator's internal workings.
+
+#### `fio_malloc_sys_alloc_size`
+
+```c
+size_t fio_malloc_sys_alloc_size(void);
+```
+
+Returns the allocation size used when allocating memory from the system.
+
+#### `fio_malloc_block_size`
+
+```c
+size_t fio_malloc_block_size(void);
+```
+
+Returns the block size used for allocations. Blocks are slices of system allocations used for allocating memory to the user.
+
+#### `fio_malloc_cache_slots`
+
+```c
+size_t fio_malloc_cache_slots(void);
+```
+
+Returns the number of cache slots. Cache slots prevent memory chunks from being returned to the system, assuming that the memory will be needed again by the user.
+
+#### `fio_malloc_alignment`
+
+```c
+size_t fio_malloc_alignment(void);
+```
+
+Returns the allocation alignment set for the allocator.
+
+#### `fio_malloc_alignment_log`
+
+```c
+size_t fio_malloc_alignment_log(void);
+```
+
+Returns the allocation alignment log set for the allocator.
+
+#### `fio_malloc_alloc_limit`
+
+```c
+size_t fio_malloc_alloc_limit(void);
+```
+
+Returns the per-allocation size limit, after which a call to `mmap` will be used.
+
+#### `fio_malloc_arena_alloc_limit`
+
+```c
+size_t fio_malloc_arena_alloc_limit(void);
+```
+
+Returns the per-allocation size limit for an arena based allocation, after which a big-block allocation or `mmap` will be used.
+
+#### `fio_malloc_print_state`
+
+```c
+void fio_malloc_print_state(void);
+```
+
+Prints information from the allocator's data structure. May be used for debugging.
+
+#### `fio_malloc_print_settings`
+
+```c
+void fio_malloc_print_settings(void);
+```
+
+Prints the settings used to define the allocator.
+
+### Reserved `FIO_MEMORY` related macros
+
+The following are reserved macro names:
+
+* `FIO_ALIGN_NEW`
+
+* `FIO_ALIGN`
+
+* `FIO_MEMORY_ALIGN_SIZE`
+
+* `FIO_MEMORY_ALLOC_LIMIT`
+
+* `FIO_MEMORY_BIG_ALLOC_LIMIT`
+
+* `FIO_MEMORY_BLOCK_ALLOC_LIMIT`
+
+* `FIO_MEMORY_BLOCKS_PER_ALLOCATION`
+
+* `FIO_MEMORY_SYS_ALLOCATION_SIZE`
+
+* `FIO_MALLOC_TMP_USE_SYSTEM`
+
 
 -------------------------------------------------------------------------------
 ## Time Helpers
@@ -1641,6 +2021,15 @@ uint64_t fio_time_milli();
 ```
 
 Returns monotonic time in milliseconds.
+
+
+#### `fio_time2milli`
+
+```c
+uint64_t fio_time2milli(struct timespec t);
+```
+
+Converts a `struct timespec` to milliseconds.
 
 #### `fio_time2gm`
 
@@ -1751,12 +2140,11 @@ Once the object is no longer in use call [`fio_queue_destroy`](#fio_queue_destro
 
 ### Queue API
 
-#### `FIO_QUEUE_INIT(queue)`
+#### `fio_queue_init`
 
 ```c
 /** Used to initialize a fio_queue_s object. */
-#define FIO_QUEUE_INIT(name)                                                   \
-  { .r = &(name).mem, .w = &(name).mem, .lock = FIO_LOCK_INIT }
+void fio_queue_init(fio_queue_s *q);
 ```
 
 #### `fio_queue_destroy`
@@ -1766,6 +2154,17 @@ void fio_queue_destroy(fio_queue_s *q);
 ```
 
 Destroys a queue and reinitializes it, after freeing any used resources.
+
+#### `FIO_QUEUE_STATIC_INIT(queue)`
+
+```c
+#define FIO_QUEUE_STATIC_INIT(queue)                                           \
+  { .r = &(queue).mem, .w = &(queue).mem, .lock = FIO_LOCK_INIT }
+```
+
+May be used to initialize global, static memory, queues.
+
+**Note**: use `fio_queue_init` is possible. This macro resets a whole page of memory to zero whereas `fio_queue_init` only initializes a few bytes of memory which are the only relevant bytes during initialization.
 
 #### `fio_queue_new`
 
@@ -1963,10 +2362,10 @@ If no timer is due (list is empty), returns `(uint64_t)-1`.
 **Note**: Unless manually specified, millisecond timers are relative to  `fio_time_milli()`.
 
 
-#### `fio_timer_clear`
+#### `fio_timer_destroy`
 
 ```c
-void fio_timer_clear(fio_timer_queue_s *timer_queue);
+void fio_timer_destroy(fio_timer_queue_s *timer_queue);
 ```
 
 Clears any waiting timer bound tasks.
@@ -1980,7 +2379,18 @@ This is due to the fact that the tasks may try to reschedule themselves (if they
 -------------------------------------------------------------------------------
 ## CLI (command line interface)
 
-The Simple Template Library includes a CLI parser, since parsing command line arguments is a common task.
+The Simple Template Library includes a CLI parser that provides a simpler API and few more features than the array iteration based `getopt`, such as:
+
+* Auto-generation of the "help" / usage output.
+
+* Argument type testing (String, boolean, and integer types are supported).
+
+* Global Hash map storage and access to the parsed argument values (until `fio_cli_end` is called).
+
+* Support for unnamed options / arguments, including adjustable limits on how many a user may input.
+
+* Array style support and access to unnamed arguments.
+
 
 By defining `FIO_CLI`, the following functions will be defined.
 
@@ -2010,31 +2420,36 @@ The text `NAME` in the description (all capitals) will be replaced with the exec
 
 Command line arguments can be either String, Integer or Boolean. Optionally, extra data could be added to the CLI help output. CLI arguments and information is added using any of the following macros:
 
-* `FIO_CLI_STRING("-arg [-alias] desc.")`
+* `FIO_CLI_STRING("-arg [-alias] [(default_value)] desc.")`
 
-* `FIO_CLI_INT("-arg [-alias] desc.")`
+* `FIO_CLI_INT("-arg [-alias] [(default_value)] desc.")`
 
-* `FIO_CLI_BOOL("-arg [-alias] desc.")`
+* `FIO_CLI_BOOL("-arg [-alias] [(1)] desc.")`
 
 * `FIO_CLI_PRINT_HEADER("header text (printed as a header)")`
 
-* `FIO_CLI_PRINT("raw text line (printed as is)")`
+* `FIO_CLI_PRINT("raw text line (printed as is, with same spacing as arguments)")`
+
+* `FIO_CLI_PRINT_LINE("raw text line (printed as is, no spacing or offset)")`
+
+**Note**: default values may optionally be provided by placing them in parenthesis immediately after the argument name and aliases. Default values that start with `(` must end with `)` (the surrounding parenthesis are ignored). Default values that start with `("` must end with `")` (the surrounding start and end markers are ignored).
 
 ```c
 int main(int argc, char const *argv[]) {
   fio_cli_start(argc, argv, 0, -1,
                 "this is a CLI example for the NAME application.",
                 FIO_CLI_PRINT_HEADER("CLI type validation"),
-                FIO_CLI_STRING("-str -s any data goes here"),
-                FIO_CLI_INT("-int -i numeral data goes here"),
-                FIO_CLI_BOOL("-bool -b flag (boolean) only - no data"),
-                FIO_CLI_PRINT("This test allows for unlimited arguments "
-                              "that will simply pass-through"));
-  if (fio_cli_get("-s"))
+                FIO_CLI_STRING("-str -s (my default str (string\\)) any data goes here"),
+                FIO_CLI_INT("-int -i (42) integer data goes here"),
+                FIO_CLI_BOOL("-bool -b (1) flag (boolean) only - no data"),
+                FIO_CLI_PRINT("This example allows for unlimited arguments "
+                              "that will simply pass-through"),
+                FIO_CLI_PRINT_LINE("We hope you enjoy the NAME example.")
+                );
+  if (fio_cli_get("-s")) /* always true when default value is provided */
     fprintf(stderr, "String: %s\n", fio_cli_get("-s"));
 
-  if (fio_cli_get("-i"))
-    fprintf(stderr, "Integer: %d\n", fio_cli_get_i("-i"));
+  fprintf(stderr, "Integer: %d\n", fio_cli_get_i("-i"));
 
   fprintf(stderr, "Boolean: %d\n", fio_cli_get_i("-b"));
 
@@ -2105,16 +2520,6 @@ void fio_cli_set(char const *name, char const *value);
 ```
 
 Sets a value for the named argument (but **not** it's aliases).
-
-#### `fio_cli_set_default(name, value)`
-
-```c
-#define fio_cli_set_default(name, value)                                       \
-  if (!fio_cli_get((name)))                                                    \
-    fio_cli_set(name, value);
-```
-
-Sets a value for the named argument (but **not** it's aliases) **only if** the argument wasn't set by the user.
 
 -------------------------------------------------------------------------------
 ## Basic Socket / IO Helpers
@@ -2347,6 +2752,423 @@ int fio_sock_open_unix(const char *address, int is_client, int nonblock);
 Creates a new Unix socket and binds it to a local address.
 
 -------------------------------------------------------------------------------
+## Basic IO Polling
+
+IO polling using the portable `poll` POSIX function is another area that's of common need and where many solutions are required.
+
+The facil.io standard library provides a persistent polling container for evented management of small IO (file descriptor) collections using the "one-shot" model.
+
+"One-Shot" means that once a specific even has "fired" (occurred), it will no longer be monitored (unless re-submitted). If the same file desciptor is waiting on multiple event, only those events that occurred will be removed from the monitored collection.
+
+There's no real limit on the number of file descriptors that can be monitored, except possible system limits that the system may impose on the `poll` system call. However, performance will degrade significantly as the ratio between inactive vs. active IO objects being monitored increases.
+
+It is recommended to use a system specific polling "engine" (`epoll` / `kqueue`) if polling thousands of persistent file descriptors.
+
+By defining `FIO_POLL` on a POSIX system, the following functions will be defined.
+
+### `FIO_POLL` API
+
+
+#### `fio_poll_s`
+
+```c
+typedef struct fio_poll_s fio_poll_s;
+```
+
+The `fio_poll_s` type should be considered opaque and should **not** be accessed directly.
+
+#### `FIO_POLL_INIT`
+
+```c
+#define FIO_POLL_INIT(on_data_func, on_ready_func, on_close_func)              \
+  {                                                                            \
+    .settings =                                                                \
+        {                                                                      \
+            .on_data = on_data_func,                                           \
+            .on_ready = on_ready_func,                                         \
+            .on_close = on_close_func,                                         \
+        },                                                                     \
+    .lock = FIO_LOCK_INIT                                                      \
+  }
+```
+
+A `fio_poll_s` object initialization macro.
+
+#### `fio_poll_new`
+
+```c
+fio_poll_s *fio_poll_new(fio_poll_settings_s settings);
+/* named argument support */
+#define fio_poll_new(...) fio_poll_new((fio_poll_settings_s){__VA_ARGS__})
+```
+
+Creates a new polling object / queue.
+
+The settings arguments set the `on_data`, `on_ready` and `on_close` callbacks:
+
+```c
+typedef struct {
+  /** callback for when data is availabl in the incoming buffer. */
+  void (*on_data)(int fd, void *udata);
+  /** callback for when the outgoing buffer allows a call to `write`. */
+  void (*on_ready)(int fd, void *udata);
+  /** callback for closed connections and / or connections with errors. */
+  void (*on_close)(int fd, void *udata);
+} fio_poll_settings_s;
+```
+
+Returns NULL on error (no memory).
+
+#### `fio_poll_free`
+
+```c
+int fio_poll_free(fio_poll_s *p);
+```
+
+Frees the polling object and its resources.
+
+#### `fio_poll_destroy`
+
+```c
+void fio_poll_destroy(fio_poll_s *p);
+```
+
+Destroys the polling object, freeing its resources.
+
+#### `fio_poll_close_and_destroy`
+
+```c
+void fio_poll_close_and_destroy(fio_poll_s *p);
+```
+
+Closes all monitored connections, calling the `on_close` callbacks for all of them.
+
+#### `fio_poll_monitor`
+
+```c
+int fio_poll_monitor(fio_poll_s *p, int fd, void *udata, unsigned short flags);
+```
+
+Adds a file descriptor to be monitored, adds events to be monitored or updates the monitored file's `udata`.
+
+Possible flags are: `POLLIN` and `POLLOUT`. Other flags may be set but might be ignored.
+
+Monitoring mode is always one-shot. If an event if fired, it is removed from the monitoring state.
+
+Returns -1 on error.
+
+#### `fio_poll_review`
+
+```c
+int fio_poll_review(fio_poll_s *p, int timeout);
+```
+
+Reviews if any of the monitored file descriptors has any events.
+
+`timeout` is in milliseconds.
+
+Returns the number of events called.
+
+**Note**:
+
+Polling is thread safe, but has different effects on different threads.
+
+Adding a new file descriptor from one thread while polling in a different thread will not poll that IO untill `fio_poll_review` is called again.
+
+#### `fio_poll_forget`
+
+```c
+void *fio_poll_forget(fio_poll_s *p, int fd);
+```
+
+Stops monitoring the specified file descriptor even if some of it's event's hadn't occurred just yet, returning its `udata` (if any).
+
+### `FIO_POLL` Compile Time Macros
+
+#### `FIO_POLL_HAS_UDATA_COLLECTION`
+
+```c
+#ifndef FIO_POLL_HAS_UDATA_COLLECTION
+#define FIO_POLL_HAS_UDATA_COLLECTION 1
+#endif
+```
+
+When set to true (the default value), the `udata` value is unique per file descriptor, using an array of `udata` values.
+
+When false, a global `udata` is used and it is updated whenever a `udata` value is supplied (`NULL` values are ignored).
+
+#### `FIO_POLL_DEBUG`
+
+If defined before the first time `FIO_POLL` is included, this will add debug messages to the polling logic.
+
+-------------------------------------------------------------------------------
+## Data Stream Container
+
+Data Stream objects solve the issues that could arise when `write` operations don't write all the data (due to OS buffering). 
+
+Data Streams offer a way to store / concat different data sources (static strings, dynamic strings, files) as a single data stream. This allows the data to be easily written to an IO target (socket / pipe / file) using the `write` operation.
+
+By defining the macro `FIO_STREAM`, the following macros and functions will be defined.
+
+#### `fio_stream_s`
+
+```c
+typedef struct {
+  /* do not directly acecss! */
+  fio_stream_packet_s *next;
+  fio_stream_packet_s **pos;
+  uint32_t consumed;
+  uint32_t packets;
+} fio_stream_s;
+```
+
+The `fio_stream_s` type should be considered opaque and only accessed through the following API.
+
+#### `fio_stream_packet_s`
+
+The `fio_stream_packet_s` type should be considered opaque and only accessed through the following API.
+
+This type is used to separate data packing with any updates made to the stream object, allowing data packing to be performed concurrently with stream reading / updating (which requires a lock in multi-threaded applications).
+
+
+#### `FIO_STREAM_INIT(stream)`
+
+```c
+#define FIO_STREAM_INIT(s)                                                     \
+  { .next = NULL, .pos = &(s).next }
+#endif
+```
+
+Object initialization macro.
+
+#### `fio_stream_new`
+
+```c
+fio_stream_s *fio_stream_new(void);
+```
+
+Allocates a new object on the heap and initializes it's memory.
+
+#### `fio_stream_free`
+
+```c
+int fio_stream_free(fio_stream_s *stream);
+```
+
+Frees any internal data AND the object's container!
+
+#### `fio_stream_destroy`
+
+```c
+void fio_stream_destroy(fio_stream_s *stream);
+```
+
+Destroys the object, reinitializing its container.
+
+#### `fio_stream_any`
+
+```c
+uint8_t fio_stream_any(fio_stream_s *stream);
+````
+
+Returns true if there's any data in the stream.
+
+**Note**: this isn't thread safe, but it often doesn't matter if it is.
+
+#### `fio_stream_packets`
+
+```c
+uint32_t fio_stream_packets(fio_stream_s *stream);
+````
+
+Returns the number of packets waiting in the stream.
+
+**Note**: this isn't thread safe, but it often doesn't matter if it is.
+
+### Packing data into the stream
+
+#### `fio_stream_pack_data`
+
+```c
+fio_stream_packet_s *fio_stream_pack_data(void *buf,
+                                          size_t len,
+                                          size_t offset,
+                                          uint8_t copy_buffer,
+                                          void (*dealloc_func)(void *));
+```
+
+Packs data into a `fio_stream_packet_s` container.
+
+Can be performed concurrently with other operations.
+
+#### `fio_stream_pack_fd`
+
+```c
+fio_stream_packet_s * fio_stream_pack_fd(int fd, size_t len, size_t offset, uint8_t keep_open);
+```
+
+Packs a file descriptor into a `fio_stream_packet_s` container. 
+
+#### `fio_stream_add`
+
+```c
+void fio_stream_add(fio_stream_s *stream, fio_stream_packet_s *packet);
+```
+
+Adds a packet to the stream.
+
+**Note**: this isn't thread safe.
+
+#### `fio_stream_pack_free`
+
+```c
+void fio_stream_pack_free(fio_stream_packet_s *packet);
+```
+
+Destroys the `fio_stream_packet_s` - call this ONLY if the packed data was never added to the stream using `fio_stream_add`. 
+
+
+### Reading / Consuming data from the Stream
+
+
+#### `fio_stream_read`
+
+```c
+void fio_stream_read(fio_stream_s *stream, char **buf, size_t *len);
+```
+
+Reads data from the stream (if any), leaving it in the stream.
+
+`buf` MUST point to a buffer with - at least - `len` bytes. This is required in case the packed data is fragmented or references a file and needs to be copied to an available buffer.
+
+On error, or if the stream is empty, `buf` will be set to NULL and `len` will be set to zero.
+
+Otherwise, `buf` may retain the same value or it may point directly to a memory address wiithin the stream's buffer (the original value may be lost) and `len` will be updated to the largest possible value for valid data that can be read from `buf`.
+
+**Note**: this isn't thread safe.
+
+#### `fio_stream_advance`
+
+```c
+void fio_stream_advance(fio_stream_s *stream, size_t len);
+```
+
+Advances the Stream, so the first `len` bytes are marked as consumed.
+
+**Note**: this isn't thread safe.
+
+### Stream configuration
+
+Besides the (recommended) use of a local allocator using the `FIO_MEMORY` or `FIO_MEM_REALLOC` macro families, the following configuration macros are supported:
+
+#### `FIO_STREAM_COPY_PER_PACKET`
+
+When copying data to the stream, large memory sections will be divided into smaller allocations in order to free memory faster and minimize the direct use of `mmap`.
+
+This macro should be set according to the specific allocator limits. By default, it is set to 96Kb (which is neither here nor there).
+
+-------------------------------------------------------------------------------
+
+## Signal Monitoring
+
+OS signal callbacks are very limited in the actions they are allowed to take. In fact, one of the only actions they are allowed to take is to set a volatile atomic flag.
+
+The facil.io STL offers helpers that perform this very common pattern of declaring a flag, watching a signal, setting a flag and (later) calling a callback outside of the signal handler that would handle the actual event.
+
+When defining `FIO_SIGNAL`, the following function are defined.
+
+#### `fio_signal_monitor`
+
+```c
+int fio_signal_monitor(int sig, void (*callback)(int sig, void *), void *udata);
+```
+
+Starts to monitor for the specified signal, setting an optional callback.
+
+If the signal is already being monitored, the callback and `udata` pointers are updated.
+
+**Note**: `udata` stands for "user data", it is an opaque pointer that is simply passed along to the callback.
+
+#### `fio_signal_review`
+
+```c
+int fio_signal_review(void);
+```
+
+Reviews all signals, calling any relevant callbacks.
+
+#### `fio_signal_forget`
+
+```c
+int fio_signal_forget(int sig);
+```
+
+Stops monitoring the specified signal.
+
+-------------------------------------------------------------------------------
+## Globe Matching
+
+By defining the macro `FIO_GLOB_MATCH` the following functions are defined:
+
+#### `fio_glob_match`
+
+```c
+uint8_t fio_glob_match(fio_str_info_s pat, fio_str_info_s str);
+```
+
+This function is a **binary** glob matching helper.
+
+Returns 1 on a match, otherwise returns 0.
+
+The following patterns are recognized:
+
+* `*` - matches any string, including an empty string.
+		
+		i.e., the following patterns will match against the string `"String"`:
+
+    `"*"`
+
+    `"*String*"`
+
+    `"S*ing"`
+
+* `?` - matches any single **byte** (does NOT support UTF-8 characters).
+		
+		i.e., the following patterns will match against the string `"String"`:
+
+    `"?tring"`
+
+    `"Strin?"`
+
+    `"St?ing"`
+
+* `[!...]` or `[^...]` - matches any **byte** that is **not** withing the brackets (does **not** support UTF-8 characters).
+
+    Byte ranges are supported using `'-'` (i.e., `[!0-9]`)
+
+		Use the backslash (`\`) to escape the special `]`, `-` and `\` characters when they are part of the list.
+		
+		i.e., the following patterns will match against the string `"String"`:
+
+    `"[!a-z]tring"`
+
+    `"[^a-z]tring"`
+
+    `"[^F]tring"` (same as `"[!F]tring"`)
+
+* `[...]` - matches any **byte** that **is** withing the brackets (does **not** support UTF-8 characters).
+
+		Use the backslash (`\`) to escape the special `]`, `-` and `\` characters when they are part of the list.
+		
+		i.e., the following patterns will match against the string `"String"`:
+
+    `"[A-Z]tring"`
+
+    `"[sS]tring"`
+
+
+-------------------------------------------------------------------------------
+
 ## Linked Lists
 
 ```c
@@ -2423,7 +3245,7 @@ typedef struct {
 #include "fio-stl.h"
 
 void example(void) {
-  FIO_LIST_HEAD list = FIO_LIST_INIT(list);
+  FIO_LIST_HEAD FIO_LIST_INIT(list);
   for (int i = 0; i < 10; ++i) {
     my_list_s *n = malloc(sizeof(*n));
     n->i = i;
@@ -2476,7 +3298,7 @@ typedef struct {
 
 ```c
 #define FIO_LIST_INIT(obj)                                                     \
-  { .next = &(obj), .prev = &(obj) }
+  (obj) = { .next = &(obj), .prev = &(obj) }
 ```
 
 This macro initializes an uninitialized node (assumes the data in the node is junk). 
@@ -2632,6 +3454,9 @@ For complex types, define any (or all) of the following macros:
 #define FIO_ARRAY_PADDING 4 
 // should the array growth be exponential? (ignores FIO_ARRAY_PADDING)
 #define FIO_ARRAY_EXPONENTIAL 0 
+// optimizes small arrays (mostly tuplets and single item arrays).
+// note: values larger than 1 add a memory allocation cost to the array container
+#define FIO_ARRAY_ENABLE_EMBEDDED 1
 ```
 
 To create the type and helper functions, include the Simple Template Library header.
@@ -2652,8 +3477,8 @@ typedef struct {
 void example(void) {
   ary_s a = FIO_ARRAY_INIT;
   foo_s *p = ary_push(&a, (foo_s){.i = 42});
-  FIO_ARRAY_EACH(&a, pos) { // pos will be a pointer to the element
-    fprintf(stderr, "* [%zu]: %p : %d\n", (size_t)(pos - ary_to_a(&a)), pos->i);
+  FIO_ARRAY_EACH(ary, &a, pos) { // pos will be a pointer to the element
+    fprintf(stderr, "* [%zu]: %p : %d\n", (size_t)(pos - ary2ptr(&a)), (void *)pos, pos->i);
   }
   ary_destroy(&a);
 }
@@ -2885,48 +3710,77 @@ If the callback returns -1, the loop is broken. Any other value is ignored.
 
 Returns the relative "stop" position (number of items processed + starting point).
 
+
+
+#### `ARY_each_next`
+
+```c
+FIO_ARRAY_TYPE ARY_each_next(ARY_s* ary,
+                             FIO_ARRAY_TYPE **first,
+                             FIO_ARRAY_TYPE *pos);
+
+```
+
+Used internally by the `FIO_ARRAY_EACH` macro.
+
+Returns a pointer to the first object if `pos == NULL` and there are objects
+in the array.
+
+Returns a pointer to the (next) object in the array if `pos` and `first` are valid.
+
+Returns `NULL` on error or if the array is empty.
+
+**Note**: 
+The first pointer is automatically set and it allows object insertions and memory effecting functions to be called from within the loop.
+
+If the object in `pos` (or any object before it) were removed, consider passing `pos-1` to the function, to avoid skipping any elements while looping.
+
 #### `FIO_ARRAY_EACH`
 
 ```c
-#define FIO_ARRAY_EACH(array, pos)                                               \
-  if ((array)->ary)                                                            \
-    for (__typeof__((array)->ary) start__tmp__ = (array)->ary,                 \
-                                  pos = ((array)->ary + (array)->start);       \
-         pos < (array)->ary + (array)->end;                                    \
-         (pos = (array)->ary + (pos - start__tmp__) + 1),                      \
-                                  (start__tmp__ = (array)->ary))
+#define FIO_ARRAY_EACH(array_name, array, pos)                                               \
+  for (__typeof__(FIO_NAME2(array_name, ptr)((array)))                             \
+           first___ = NULL,                                                    \
+           pos = FIO_NAME(array_name, each_next)((array), &first___, NULL);    \
+       pos;                                                                    \
+       pos = FIO_NAME(array_name, each_next)((array), &first___, pos))
 ```
 
-Iterates through the list using a `for` loop.
+
+Iterates through the array using a `for` loop.
 
 Access the object with the pointer `pos`. The `pos` variable can be named however you please.
 
-It's possible to edit elements within the loop, but avoid editing the array itself (adding / removing elements). Although I hope it's possible, I wouldn't count on it and it could result in items being skipped or unending loops.
+It is possible to edit the array while iterating, however when deleting `pos`, or objects that are located before `pos`, using the proper array functions, the loop will skip the next item unless `pos` is set to `pos-1`.
+
+**Note**: this macro supports automatic pointer tagging / untagging.
 
 -------------------------------------------------------------------------------
-## Maps - Hash Maps / Sets
+## Hash Tables and Maps
 
 ```c
-#define FIO_STR_SMALL str /* a binary string type */
+/* Create a binary safe String type for Strings that aren't mutated often */
+#define FIO_STR_SMALL str
 #include "fio-stl.h"
-/* a binary safe string based key-value hash map */
-#define FIO_MAP_NAME map
-#define FIO_MAP_TYPE str_s
+
+/* Set the properties for the key-value Hash Map type called `dict_s` */
+#define FIO_UMAP_NAME                dict
+#define FIO_MAP_TYPE                 str_s
 #define FIO_MAP_TYPE_COPY(dest, src) str_init_copy2(&(dest), &(src))
-#define FIO_MAP_TYPE_DESTROY(k) str_destroy(&k)
-#define FIO_MAP_TYPE_CMP(a, b) str_is_eq(&(a), &(b))
-#define FIO_MAP_KEY FIO_MAP_TYPE
-#define FIO_MAP_KEY_COPY FIO_MAP_TYPE_COPY
-#define FIO_MAP_KEY_DESTROY FIO_MAP_TYPE_DESTROY
-#define FIO_MAP_KEY_CMP FIO_MAP_TYPE_CMP
+#define FIO_MAP_TYPE_DESTROY(k)      str_destroy(&k)
+#define FIO_MAP_TYPE_CMP(a, b)       str_is_eq(&(a), &(b))
+#define FIO_MAP_KEY                  FIO_MAP_TYPE
+#define FIO_MAP_KEY_COPY             FIO_MAP_TYPE_COPY
+#define FIO_MAP_KEY_DESTROY          FIO_MAP_TYPE_DESTROY
+#define FIO_MAP_KEY_CMP              FIO_MAP_TYPE_CMP
 #include "fio-stl.h"
 /** set helper for consistent hash values */
-FIO_IFUNC str_s map_set2(map_s *m, str_s key, str_s obj) {
-  return map_set(m, str_hash(&key, (uint64_t)m), key, obj, NULL);
+FIO_IFUNC str_s *dict_set2(dict_s *m, str_s key, str_s obj) {
+  return dict_set_ptr(m, str_hash(&key, (uint64_t)m), key, obj, NULL, 1);
 }
 /** get helper for consistent hash values */
-FIO_IFUNC str_s * map_get2(map_s *m, str_s key, str_s obj) {
-  return map_get_ptr(m, str_hash(&key, (uint64_t)m), str_s key);
+FIO_IFUNC str_s *dict_get2(dict_s *m, str_s key) {
+  return dict_get_ptr(m, str_hash(&key, (uint64_t)m), key);
 }
 ```
 
@@ -2936,30 +3790,33 @@ Hash maps use both a `hash` and a `key` to identify a `value`. The `hash` value 
 
 A hash map without a `key` is known as a Set or a Bag. It uses only a `hash` (often calculated using `value`) to identify the `value` in the Set, sometimes requiring a `value` equality test as well. This approach often promises a collection of unique values (no duplicate values).
 
-Some map implementations support a FIFO limited storage, which could be used for naive limited-space caching (though caching solutions may require a more complex data-storage).
+Some map implementations support a FIFO limited storage, which could be used for naive limited-space caching (though caching solutions may require a more complex data-storage that's slower).
 
-### Map Performance
+### Ordered Maps, Unordered Maps, Indexing and Performance
 
-Memory overhead depends on the settings used to create the Map. By default, the overhead will be 24 bytes for the Map container (on 64bit machines) + 12 bytes per object (hash + index).
+The facil.io library offers both ordered and unordered maps. Unordered maps are often faster and use less memory. If iteration is performed, ordered maps might be better.
 
-For example, assuming a hash map (not a set) with 8 byte keys and 8 byte values, that would add up to 28 bytes per object (`28 * map_capa(map) + 24`).
+Indexing the map allows LRU (least recently used) eviction, but comes at a performance cost in both memory (due to the extra data per object) and speed (due to out of order memory access and increased cache misses).
 
-Seeking time is usually a fast O(1), although partial or full `hash` collisions may increase the cost of the operation.
+Ordered maps are constructed using an ordered Array + an index map that uses 4 or 8 bytes per array index.
 
-Adding, editing and removing items is also a very fast O(1), especially if enough memory was previously reserved. However, memory allocation and copying will slow performance, especially when the map need to grow or requires de-fragmentation.
+Unordered maps are constructed using an unordered Array + an index map that uses 1 byte per array index.
 
-Iteration enjoys memory locality at the expense of an expected cache miss per seeking operation. Maps are implemented using an array and an index map. When the index map is large, a cache miss will occur when reading data from the array.
+Indexing is performed using a linked list that uses 4 or 8 byte index values instead of pointers.
 
-This map implementation has protection features against too many full collisions or non-random hashes. When the map detects a possible "attack", it will start overwriting existing data instead of trying to resolve collisions. This can be adjusted using the `FIO_MAP_MAX_FULL_COLLISIONS` macro.
+In addition, each value stores a copy of the hash data, so hash data doesn't need to be recomputed.
+
+The map implementations have protection features against too many full collisions or non-random hashes. When the map detects a possible "attack", it will start overwriting existing data instead of trying to resolve collisions. This can be adjusted using the `FIO_MAP_MAX_FULL_COLLISIONS` macro.
 
 ### Map Overview 
 
-To create a map, define `FIO_MAP_NAME`.
+To create a map, define `FIO_MAP_NAME` or `FIO_UMAP_NAME` (unordered).
 
 To create a hash map (rather then a set), also define `FIO_MAP_KEY` (containing the key's type).
 
-Other helpful macros to define might include:
+To create an unordered map either use `FIO_UMAP_NAME` or define `FIO_MAP_ORDERED`.
 
+Other helpful macros to define might include:
 
 - `FIO_MAP_TYPE`, which defaults to `void *`
 - `FIO_MAP_TYPE_INVALID`, which defaults to `((FIO_MAP_TYPE){0})`
@@ -2974,15 +3831,19 @@ Other helpful macros to define might include:
 - `FIO_MAP_MAX_FULL_COLLISIONS`, which defaults to `22`
 
 
-- `FIO_MAP_DESTROY_AFTER_COPY` - uses "smart" defaults to decide if to destroy an object after it was copied (when using `set` / `remove` / `pop` with a pointer to contain `old` object)
-- `FIO_MAP_TYPE_DISCARD(obj)` - Handles discarded element data (i.e., insert without overwrite in a Set).
-- `FIO_MAP_KEY_DISCARD(obj)` - Handles discarded element data (i.e., when overwriting an existing value in a hash map).
-- `FIO_MAP_MAX_ELEMENTS` - The maximum number of elements allowed before removing old data (FIFO).
-- `FIO_MAP_MAX_SEEK` -  The maximum number of bins to rotate when (partial/full) collisions occur. Limited to a maximum of 255 and should be higher than `FIO_MAP_MAX_FULL_COLLISIONS`. By default `96`.
+- `FIO_MAP_DESTROY_AFTER_COPY`, uses "smart" defaults to decide if to destroy an object after it was copied (when using `set` / `remove` / `pop` with a pointer to contain `old` object).
+- `FIO_MAP_TYPE_DISCARD(obj)`, handles discarded element data (i.e., insert without overwrite in a Set).
+- `FIO_MAP_KEY_DISCARD(obj)`, handles discarded element data (i.e., when overwriting an existing value in a hash map).
+- `FIO_MAP_MAX_ELEMENTS`, the maximum number of elements allowed before removing old data (FIFO).
+- `FIO_MAP_EVICT_LRU`, if set to true (1), the `evict` method and the `FIO_MAP_MAX_ELEMENTS` macro will evict members based on the Least Recently Used object.
+- `FIO_MAP_MAX_SEEK` , the maximum number of bins to rotate when (partial/full) collisions occur. Limited to a maximum of 255 and should be higher than `FIO_MAP_MAX_FULL_COLLISIONS/4`, by default `17`.
 
+- `FIO_MAP_HASH`, defaults to `uint64_t`, may be set to `uint32_t` if hash data is 32 bit wide.
+- `FIO_MAP_HASH_FN`, replace the cached `hash` for unordered maps with a re-hash calculation. This is good if the caching is dirt cheap but can only be used with unordered maps since the ordered maps double the cached hash with a "hole" marker.
+- `FIO_MAP_BIG`, if defined, the maximum theoretical capacity increases to `(1 << 64) -1`.
 To limit the number of elements in a map (FIFO, ignoring last access time), allowing it to behave similarly to a simple caching primitive, define: `FIO_MAP_MAX_ELEMENTS`.
 
-if `FIO_MAP_MAX_ELEMENTS` is `0`, then the theoretical maximum number of elements should be: `(1 << 32) - 1`. In practice, the safe limit should be calculated as `1 << 31`.
+If `FIO_MAP_MAX_ELEMENTS` is `0`, then the theoretical maximum number of elements should be: `(1 << 32) - 1`. In practice, the safe limit should be calculated as `1 << 31` or `1 << 30`. The same is true for `FIO_MAP_BIG`, only relative to 64 bits.
 
 Example:
 
@@ -3071,6 +3932,22 @@ Inserts an object to the hash map, returning the new object.
 
 If `old` is given, existing data will be copied to that location.
 
+#### `MAP_set_ptr` (hash map)
+
+```c
+FIO_MAP_TYPE *MAP_set(FIO_MAP_PTR m,
+                      FIO_MAP_HASH hash,
+                      FIO_MAP_KEY key,
+                      FIO_MAP_TYPE obj,
+                      FIO_MAP_TYPE *old,
+                      uint8_t overwrite);
+```
+
+
+Inserts an object to the hash map, returning the new object.
+
+If `old` is given, existing data will be copied to that location unless `overwrite` is false (in which case, old data isn't overwritten).
+
 #### `MAP_remove` (hash map)
 
 ```c
@@ -3123,16 +4000,28 @@ If `old` is given, existing data will be copied to that location.
 #### `MAP_set` (set)
 
 ```c
-void MAP_set(FIO_MAP_PTR m,
-             FIO_MAP_HASH hash,
-             FIO_MAP_TYPE obj,
-             FIO_MAP_TYPE *old);
+FIO_MAP_TYPE MAP_set(FIO_MAP_PTR m,
+                     FIO_MAP_HASH hash,
+                     FIO_MAP_TYPE obj,
+                     FIO_MAP_TYPE *old);
 ```
 
 Inserts an object to the hash map, returning the new object.
 
 If `old` is given, existing data will be copied to that location.
 
+#### `MAP_set_ptr` (set)
+
+```c
+FIO_MAP_TYPE *MAP_set(FIO_MAP_PTR m,
+                      FIO_MAP_HASH hash,
+                      FIO_MAP_TYPE obj,
+                      FIO_MAP_TYPE *old);
+```
+
+Inserts an object to the hash map, returning the new object.
+
+If `old` is given, existing data will be copied to that location unless `overwrite` is false (in which case, old data isn't overwritten).
 
 #### `MAP_remove` (set)
 
@@ -3146,6 +4035,34 @@ Removes an object from the hash map.
 If `old` is given, existing data will be copied to that location.
 
 Returns 0 on success or -1 if the object couldn't be found.
+
+#### `MAP_clear`
+
+```c
+void MAP_clear(MAP_PTR m);
+```
+
+Removes all elements from the Map without freeing the memory used.
+
+Similar to calling:
+
+```c
+size_t capa_was = MAP_capa(m);
+MAP_destroy(m);
+MAP_reserve(m, capa_was);
+```
+
+#### `MAP_evict` (set)
+
+```c
+int MAP_evict(FIO_MAP_PTR m, size_t number_of_elements);
+```
+
+Evicts (removed) `number_of_elements` from the Map.
+
+Eviction is FIFO based (First In First Out) unless FIO_MAP_EVICT_LRU is defined, in which case the Least Recently Used element will be evicted.
+
+Returns 0 on success or -1 on error (i.e., element number bigger than existing element count).
 
 ### Hash Map / Set - API (common)
 
@@ -3192,10 +4109,8 @@ Rehashes the Hash Map / Set. Usually this is performed automatically, no need to
 #### `MAP_each_next`
 
 ```c
-MAP_each_s * MAP_each_next(FIO_MAP_PTR m, MAP_each_s * pos);
+MAP_each_s * MAP_each_next(FIO_MAP_PTR m, MAP_each_s ** first, MAP_each_s * pos);
 ```
-
-
 
 Returns a pointer to the (next) object's information in the map.
 
@@ -3219,9 +4134,11 @@ Returns NULL if `pos` was the last object or no object exist.
 
 **Note**:
 
-Behavior is undefined if `pos` is invalid.
+If `pos` is invalid or `NULL`, a pointer to the first object will be returned.
 
-The value of `pos` may become invalid if an object is added to the Map after the value of `pos` was retrieved. However, object removal and replacement (same key and hash value) are safe (will not invalidate `pos`).
+The value of `first` is required and used to revalidate `pos` in cases where object insertion or memory changes occurred while iterating.
+
+The value of `first` is set automatically by the function. Manually changing this value may result in unexpected behavior such as the loop restarting, terminating early, skipping some objects, reiterating some objects or exploding the screen.
 
 #### `MAP_each`
 
@@ -3252,18 +4169,17 @@ Only available within an `each` loop.
 
 _Note: For sets, returns the hash value, for hash maps, returns the key value._
 
-#### `FIO_MAP_EACH2`
+#### `FIO_MAP_EACH`
 
 ```c
-#define FIO_MAP_EACH2(map_type, map_p, pos)                                    \
+#define FIO_MAP_EACH(map_type, map_p, pos)                                    \
   for (FIO_NAME(map_type, each_s) *pos =                                       \
            FIO_NAME(map_type, each_next)(map_p, NULL);                         \
        pos;                                                                    \
        pos = FIO_NAME(map_type, each_next)(map_p, pos))
 ```
 
-A macro for a `for` loop that iterates over all the Map's objects (in
-order).
+A macro for a `for` loop that iterates over all the Map's objects (in order).
 
 Use this macro for small Hash Maps / Sets.
 
@@ -3281,29 +4197,6 @@ To access the object information, use:
 - `pos->obj` to access the object's data.
 
    For Hash Maps, use `pos->obj.key` and `pos->obj.value`.
-
-#### `FIO_MAP_EACH`
-
-```c
-#define FIO_MAP_EACH(map_, pos_)                                               \
-  for (__typeof__((map_)->map) prev__ = NULL,                                  \
-                               pos_ = (map_)->map + (map_)->head;              \
-       (map_)->head != (uint32_t)-1 &&                                         \
-       (prev__ == NULL || pos_ != (map_)->map + (map_)->head);                 \
-       (prev__ = pos_), pos_ = (map_)->map + pos_->next)
-```
-
-A macro for a `for` loop that iterates over all the Map's objects (in order).
-
-Use this macro for small Hash Maps / Sets.
-
-`map` is a pointer to the Hash Map / Set variable and `pos` is a temporary variable name to be created for iteration.
-
-`pos->hash` is the hashing value and `pos->obj` is the object's data.
-
-For hash maps, use `pos->obj.key` and `pos->obj.value` to access the stored data.
-
-_Note: this macro doesn't work with pointer tagging_.
 
 -------------------------------------------------------------------------------
 ## Dynamic Strings
@@ -3391,7 +4284,7 @@ void example(void) {
   }
   for (size_t i = 0; i < 10; ++i) {
     /* allow each task to hold a reference to the object */
-    fio_queue_push(&queue, .fn = example_task, .udata1 = fio_str_up_ref(str));
+    fio_queue_push(&queue, .fn = example_task, .udata1 = fio_str_dup(str));
   }
   fio_str_free(str);             /* decreases reference count */
   fio_queue_perform_all(&queue); /* performs all tasks */
@@ -3482,7 +4375,7 @@ The core type, created by the macro, is the `STR_s` type - where `STR` is replac
 void hello(void){
   my_str_s msg = FIO_STR_INIT;
   my_str_write(&msg, "Hello World", 11);
-  printf("%s\n", my_str_data(&msg));
+  printf("%s\n", my_str2ptr(&msg));
   my_str_destroy(&msg);
 }
 ```
@@ -3576,7 +4469,7 @@ This macro allows the container to be initialized with existing data.
 ```
 The `capacity` value should exclude the space required for the NUL character (if exists).
 
-Memory should be dynamically allocated using the same allocator selected for the String type (see `FIO_MALLOC` / `FIO_MEM_CALLOC` / `FIO_MEM_FREE`).
+Memory should be dynamically allocated using the same allocator selected for the String type (see `FIO_MALLOC` / `FIO_MEM_REALLOC` / `FIO_MEM_FREE`).
 
 #### `FIO_STR_INIT_STATIC`
 
@@ -3672,7 +4565,7 @@ char * STR_detach(FIO_STR_PTR s);
 
 Returns a C string with the existing data, **re-initializing** the String.
 
-The returned C string is **always dynamic** and **must be freed** using the same memory allocator assigned to the type (i.e., `free` or `fio_free`, see [`FIO_MALLOC`](#memory-allocation), [`FIO_MEM_CALLOC`](#FIO_MEM_CALLOC) and [`FIO_MALLOC_TMP_USE_SYSTEM`](#FIO_MALLOC_TMP_USE_SYSTEM))
+The returned C string is **always dynamic** and **must be freed** using the same memory allocator assigned to the type (i.e., `free` or `fio_free`, see [`FIO_MALLOC`](#local-memory-allocation), [`FIO_MEM_REALLOC`](#FIO_MEM_REALLOC) and [`FIO_MALLOC_TMP_USE_SYSTEM`](#FIO_MALLOC_TMP_USE_SYSTEM))
 
 **Note**: the String data is removed from the container, but the container is **not** freed.
 
@@ -3981,7 +4874,7 @@ fio_str_info_s STR_write_unescape(FIO_STR_PTR s,
 Writes an escaped data into the string after unescaping the data.
 
 -------------------------------------------------------------------------------
-## Reference Counting / Type Wrapping
+## Reference Counting and Type Wrapping
 
 ```c
 #define FIO_STR_SMALL fio_str
@@ -3993,16 +4886,77 @@ Writes an escaped data into the string after unescaping the data.
 If the `FIO_REF_NAME` macro is defined, then reference counting helpers can be
 defined for any named type.
 
-By default, `FIO_REF_TYPE` will equal `FIO_REF_NAME_s`, using the naming
-convention in this library.
+**Note**: requires the atomic operations to be defined (`FIO_ATOMIC`).
 
-In addition, the `FIO_REF_METADATA` macro can be defined with any type, allowing
-metadata to be attached and accessed using the helper function
-`FIO_REF_metadata(object)`.
+### Reference Counting Type Macros
 
-If the `FIO_REF_CONSTRUCTOR_ONLY` macro is defined, the reference counter constructor (`TYPE_new`) will be the only constructor function.  When set, the reference counting functions will use `X_new` and `X_free`. Otherwise (assuming `X_new` and `X_free` are already defined), the reference counter will define `X_new2` and `X_free2` instead.
+The following setup Macros are supported when setting up the reference counting type helpers:
 
-Note: requires the atomic operations to be defined (`FIO_ATOMIC`).
+#### `FIO_REF_TYPE`
+
+```c
+#define FIO_REF_TYPE FIO_NAME(FIO_REF_NAME, s)
+```
+
+The type to be wrapped and reference counted by the `FIO_REF_NAME` wrapper API.
+
+By default, `FIO_REF_TYPE` will equal `FIO_REF_NAME_s`, using the naming convention in this library.
+
+#### `FIO_REF_INIT`
+
+```c
+#define FIO_REF_INIT(obj) (obj) = (FIO_REF_TYPE){0}
+```
+
+Sets up the default object initializer.
+
+By default initializes the object's memory to zero.
+
+If `FIO_REF_FLEX_TYPE` is defined, the variable `members` may be used during initialization. It's value is the same as the value passed on to the `REF_new` function.
+
+#### `FIO_REF_DESTROY`
+
+```c
+#define FIO_REF_DESTROY(obj)
+```
+
+Sets up the default object cleanup. By default does nothing.
+
+#### `FIO_REF_CONSTRUCTOR_ONLY`
+
+By default, the reference counter generator will generate the `new2`, `free2` and `dup2` functions.
+
+However, f the `FIO_REF_CONSTRUCTOR_ONLY` macro is defined, the reference counter will name these functions as `new`, `free` and `dup` instead, making them the type's only and primary constructor / destructor.
+
+#### `FIO_REF_FLEX_TYPE`
+
+If the `FIO_REF_FLEX_TYPE` macro is defined, the constructor will allocate a enough memory for both the type and a `FIO_REF_FLEX_TYPE` array consisting of the specified amount of members (as passed to the constructor's `member` argument).
+
+This allows reference objects structures to include a flexible array of type `FIO_REF_FLEX_TYPE` at the end of the `struct`.
+
+The `members` variable passed to the constructor will also be available to the `FIO_REF_INIT` macro.
+
+#### `FIO_REF_METADATA`
+
+If defined, should be type that will be available as "meta data".
+
+A pointer to this type sill be available using the `REF_metadata` function and will allow "hidden" data to be accessible even though it isn't part of the observable object.
+
+#### `FIO_REF_METADATA_INIT`
+
+```c
+#define FIO_REF_METADATA_INIT(meta) (meta) = (FIO_REF_TYPE){0}
+```
+
+Sets up object's meta-data initialization (if any). Be default initializes the meta-data object's memory to zero.
+
+#### `FIO_REF_METADATA_DESTROY`
+
+```c
+#define FIO_REF_METADATA_DESTROY(meta)
+```
+
+### Reference Counting Generated Functions
 
 Reference counting adds the following functions:
 
@@ -4010,8 +4964,14 @@ Reference counting adds the following functions:
 
 ```c
 FIO_REF_TYPE * REF_new2(void)
+// or, if FIO_REF_FLEX_TYPE is defined:
+FIO_REF_TYPE * REF_new2(size_t members)
+
+
 // or, if FIO_REF_CONSTRUCTOR_ONLY is defined
-FIO_REF_TYPE * REF_new(void)
+FIO_REF_TYPE * REF_new(void) 
+FIO_REF_TYPE * REF_new(size_t members) // for FIO_REF_FLEX_TYPE
+
 ```
 
 Allocates a new reference counted object, initializing it using the
@@ -4020,10 +4980,10 @@ Allocates a new reference counted object, initializing it using the
 If `FIO_REF_METADATA` is defined, than the metadata is initialized using the
 `FIO_REF_METADATA_INIT(metadata)` macro.
 
-#### `REF_up_ref`
+#### `REF_dup`
 
 ```c
-FIO_REF_TYPE * REF_up_ref(FIO_REF_TYPE * object)
+FIO_REF_TYPE * REF_dup(FIO_REF_TYPE * object)
 ```
 
 Increases an object's reference count (an atomic operation, thread-safe).
@@ -4031,9 +4991,9 @@ Increases an object's reference count (an atomic operation, thread-safe).
 #### `REF_free` / `REF_free2`
 
 ```c
-void REF_free2(FIO_REF_TYPE * object)
+int REF_free2(FIO_REF_TYPE * object)
 // or, if FIO_REF_CONSTRUCTOR_ONLY is defined
-void REF_free(FIO_REF_TYPE * object)
+int REF_free(FIO_REF_TYPE * object)
 ```
 
 Frees an object or decreases it's reference count (an atomic operation,
@@ -4059,12 +5019,15 @@ inlined function.
 
 ```c
 #define FIO_FIOBJ
+#define FIOBJ_MALLOC /* an optional local memory allocator for FIOBJ types */
 #include "fio-stl.h"
 ```
 
 The facil.io library includes a dynamic type system that makes it a easy to handle mixed-type tasks, such as JSON object construction.
 
 This soft type system included in the facil.io STL, it is based on the Core types mentioned above and it shares their API (Dynamic Strings, Dynamic Arrays, and Hash Maps).
+
+The soft type system also offers an (optional) * [Local Memory allocator](#local-memory-allocation) for improved performance when defined with the `FIOBJ_MALLOC` macro defined.
 
 The `FIOBJ` API offers type generic functions in addition to the type specific API. An objects underlying type is easily identified using `FIOBJ_TYPE(obj)` or `FIOBJ_TYPE_IS(obj, type)`.
 
@@ -4236,9 +5199,11 @@ This function is **recursive** and could cause a **stack explosion** error.
 
 In addition, recursive object structures may produce unexpected results (for example, objects are always freed).
 
-The `FIOBJ_MAX_NESTING` nesting limit doesn't apply to `fiobj_free` since implementing the limit will always result in a memory leak.
+The `FIOBJ_MAX_NESTING` nesting limit doesn't apply to `fiobj_free`, making it possible to "expload" the stack if misused.
 
 This places the responsibility on the user / developer, not to exceed the maximum nesting limit (or errors may occur).
+
+When accepting external data, consider using the JSON parser, as it protects against this issue, offering a measure of safety against external data attacks.
 
 ### `FIOBJ` Common Functions
 
@@ -4762,11 +5727,13 @@ In addition, all the functions documented above as `MAP_x`, are defined as `fiob
 
 Parsing, editing and outputting JSON in C can be easily accomplished using `FIOBJ` types.
 
-There are [faster alternatives as well as slower alternatives out there](json_performance.html) (i.e., the [Qajson4c library](https://github.com/DeHecht/qajson4c) is a wonderful alternative for embedded systems).
-
-However, `facil.io` offers the added benefit of complete parsing from JSON to object. This allows the result to be manipulated, updated, sliced or merged with ease. This is in contrast to some parsers that offer a mid-way structure or lazy (delayed) parsing for types such as `true`, `false` and Numbers.
+`facil.io` offers the added benefit of complete parsing from JSON to object. This allows the result to be manipulated, updated, sliced or merged with ease. This is in contrast to some parsers that offer a mid-way structures or lazy (delayed) parsing for types such as `true`, `false` and Numbers.
 
 `facil.io` also offers the added benefit of complete formatting from a framework wide object type (`FIOBJ`) to JSON, allowing the same soft type system to be used throughout the project (rather than having a JSON dedicated type system).
+
+This is in addition to `facil.io` support to some JSON extensions such as comments, both C style (both `//` and `/* ... */` and bash style (`#`).
+
+However, there are [faster alternatives as well as slower alternatives out there](json_performance.html) (i.e., the [Qajson4c library](https://github.com/DeHecht/qajson4c) is a wonderful alternative for embedded systems).
 
 #### `fiobj2json`
 

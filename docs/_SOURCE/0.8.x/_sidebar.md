@@ -23,10 +23,10 @@
 
 ### [Core IO Library](/0.8.x/fio)
 
-* [Protocol Management](/0.8.x/fio#connection-protocol-management)
-* [Running the IO reactor](/0.8.x/fio#running-facil-io)
-* [Connection Functions](/0.8.x/fio#socket-connection-functions)
-* [Event / Task Scheduling](/0.8.x/fio#event-task-scheduling)
+* [Protocol Management](/0.8.x/fio#connection-callback-protocol-management)
+* [Running the IO reactor](/0.8.x/fio#starting-the-io-reactor-and-reviewing-it-s-state)
+* [Connection Functions](/0.8.x/fio#socket-connection-read-write-functions)
+* [Event / Task Scheduling](/0.8.x/fio#event-and-task-scheduling)
 * [Pub/Sub Services](/0.8.x/fio#pub-sub-services)
 * [Compilation Macros](/0.8.x/fio#version-and-compilation-related-macros)
 * [Weak Functions](/0.8.x/fio#weak-functions)
