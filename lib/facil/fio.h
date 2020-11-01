@@ -2539,8 +2539,9 @@ FIO_FUNC inline uint64_t fio_risky_hash(const void *data_, size_t len,
   uint64_t result = fio_lrot64(v0, 17) + fio_lrot64(v1, 13) +
                     fio_lrot64(v2, 47) + fio_lrot64(v3, 57);
 
-  len ^= (len << 33);
-  result += len;
+  uint64_t len64 = len;
+  len64 ^= (len64 << 33);
+  result += len64;
 
   result += v0 * RISKY_PRIME_1;
   result ^= fio_lrot64(result, 13);

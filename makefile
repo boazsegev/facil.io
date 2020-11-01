@@ -70,6 +70,9 @@ INCLUDE= ./
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
 FLAGS:=
 
+# we use sendfile64() and off_t
+override FLAGS += _FILE_OFFSET_BITS=64
+
 # c compiler
 ifndef CC
 	CC=gcc
