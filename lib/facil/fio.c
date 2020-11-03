@@ -6371,7 +6371,7 @@ static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
 #endif
   char buf[8] = {0};
   if (ch->match) {
-    fio_u2str64(buf, (uint64_t)ch->match);
+    fio_u2str64(buf, (uintptr_t)ch->match);
     msg.data = buf;
     msg.len = sizeof(ch->match);
   }

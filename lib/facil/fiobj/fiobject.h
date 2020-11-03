@@ -554,11 +554,13 @@ FIO_INLINE uint64_t fiobj_obj2hash(const FIOBJ o) {
   if (!FIOBJ_IS_ALLOCATED(o))
     return (uint64_t)o;
   fio_str_info_s s = fiobj_obj2cstr(o);
-  return FIO_HASH_FN(s.data, s.len, &fiobj_each2, &fiobj_free_complex_object);
+  return FIO_HASH_FN(s.data, s.len, (uintptr_t)&fiobj_each2,
+                     (uintptr_t)&fiobj_free_complex_object);
 }
 
 FIO_INLINE uint64_t fiobj_hash_string(const void *data, size_t len) {
-  return FIO_HASH_FN(data, len, &fiobj_each2, &fiobj_free_complex_object);
+  return FIO_HASH_FN(data, len, (uintptr_t)&fiobj_each2,
+                     (uintptr_t)&fiobj_free_complex_object);
 }
 
 /**

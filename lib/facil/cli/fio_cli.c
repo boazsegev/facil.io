@@ -50,7 +50,7 @@ typedef struct {
 #define AVOID_MACRO
 
 #define FIO_CLI_HASH_VAL(s)                                                    \
-  fio_risky_hash((s).data, (s).len, (uint64_t)fio_cli_start)
+  fio_risky_hash((s).data, (s).len, (uintptr_t)fio_cli_start)
 
 /* *****************************************************************************
 CLI Parsing
