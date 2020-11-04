@@ -23,6 +23,12 @@
 <li>
 <ul>
 <li>
+<a href="#v-0-7-5-2020-05-18">v. 0.7.5 (2020-05-18)</a>
+</li>
+<li>
+<a href="#v-0-7-4">v. 0.7.4</a>
+</li>
+<li>
 <a href="#v-0-7-3">v. 0.7.3</a>
 </li>
 <li>
@@ -274,11 +280,29 @@
 </ul>
 </div><h1 id="change-log">Change Log</h1>
 
+<h3 id="v-0-7-5-2020-05-18">v. 0.7.5 (2020-05-18)</h3>
+
+<p><strong>Security</strong>: backport the 0.8.x HTTP/1.1 parser and it&#39;s security updates to the 0.7.x version branch. This fixes a request smuggling attack vector and Transfer Encoding attack vector that were exposed by Sam Sanoop from <a href="https://snyk.io">the Snyk Security team (snyk.io)</a>. The parser was updated to deal with these potential issues.</p>
+
+<p><strong>Fix</strong>: (<code>http</code>) fixes an issue with date calculation by backporting code from the 0.8.x branch.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) call less signal handlers during shutdown.</p>
+
+<h3 id="v-0-7-4">v. 0.7.4</h3>
+
+<p><strong>Fix</strong>: (<code>http</code>) fixes an issue and improves support for <code>chunked</code> encoded payloads. Credit to Ian Ker-Seymer ( @ianks ) for exposing this, writing tests  (for the Ruby wrapper) and opening both the issue boazsegev/iodine#87 and the PR boazsegev/iodine#88.</p>
+
+<p><strong>Fix</strong>: (<code>http</code>) requests will fail when the path contains a dangling <code>?</code> (empty query). Credit to @adam12 for exposing this and opening issue boazsegev/iodine#86.</p>
+
 <h3 id="v-0-7-3">v. 0.7.3</h3>
 
-<p><strong>Fix</strong>: (<code>fio</code>) fixes an issue where timer cleanup wasn&#39;t performed after <code>fio_stop</code> (or SIGINT/SIGTERM). No a &quot;clean slate&quot; will be provided if <code>fio_start</code> is called more then once. Note: this may <strong>break previous behavior</strong>, which should be considered undocumented and unexpected behavior. (this fax <strong>may</strong> be deferred to version 0.8.x, still undecided). Credit to @fbrausse for opening issue #72. </p>
+<p><strong>Fix</strong>: (<code>http</code>) fixes a security issue in the static file name resolution logic, where a maliciously encoded request could invoke an arbitrary response.</p>
 
-<p><strong>Fix</strong>: (<code>fio</code>) fixes an issue where timer cleanup would be performed after the <code>AT_EXIT</code> state callbacks. Now the timer cleanup callbacks will be performed <strong>before</strong> the <code>AT_EXIT</code> callback (as they should). (See issue #72).</p>
+<p><strong>Fix</strong>: (<code>fio</code>) fixes an issue where setting a different value to <code>FIO_SLOWLORIS_LIMIT</code> was being ignored.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>, <code>fiobj</code>) improved C++ compatibility. Credit to Joey (@joeyhoek) for PR #76.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fixes an issue where timer cleanup wasn&#39;t performed after <code>fio_stop</code> (or SIGINT/SIGTERM). No a &quot;clean slate&quot; will be provided if <code>fio_start</code> is called more then once. Note: this may <strong>break previous behavior</strong>, which should be considered undocumented and unexpected behavior. (this fax <strong>may</strong> be deferred to version 0.8.x, still undecided). Credit to @fbrausse for opening issue #72. </p>
 
 <p><strong>Fix</strong>: (<code>fio</code>) fixes an issue where timer cleanup would be performed after the <code>AT_EXIT</code> state callbacks. Now the timer cleanup callbacks will be performed <strong>before</strong> the <code>AT_EXIT</code> callback (as they should). (See issue #72).</p>
 
@@ -1356,7 +1380,6 @@
     $('body')[0].className = localStorage.getItem("theme");
     set_theme_link();
     $('#show_nav').attr('checked', false);
-    return false;
 };
 function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
 function on_sidebar_link(e) {

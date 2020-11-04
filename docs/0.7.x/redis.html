@@ -110,7 +110,7 @@
 <h3 id="connection-management">Connection Management</h3>
 
 <h4 id="redis_engine_create"><code>redis_engine_create</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">redis_engine_create</span><span class="p">(</span><span class="k">struct</span> <span class="n">redis_engine_create_args</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="nf">redis_engine_create</span><span class="p">(</span><span class="k">struct</span> <span class="n">redis_engine_create_args</span><span class="p">);</span>
 <span class="cp">#define redis_engine_create(...)                                               \
   redis_engine_create((struct redis_engine_create_args){__VA_ARGS__})
 </span></code></pre></div>
@@ -150,14 +150,14 @@
 <p><strong>Note</strong>: The Redis engine can only be initialized <em>before</em> facil.io starts up, during the setup stage within the root process. Attempting to initialize a Redis engine while the application is running might not work (and requires a hot restart for any child processes).</p>
 
 <h4 id="redis_engine_destroy"><code>redis_engine_destroy</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">redis_engine_destroy</span><span class="p">(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">engine</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">redis_engine_destroy</span><span class="p">(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">engine</span><span class="p">);</span>
 </code></pre></div>
 <p>Detaches and destroys a Redis Pub/Sub engine from facil.io.</p>
 
 <h3 id="sending-redis-database-commands">Sending Redis Database Commands</h3>
 
 <h4 id="redis_engine_send"><code>redis_engine_send</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">redis_engine_send</span><span class="p">(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">engine</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">redis_engine_send</span><span class="p">(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">engine</span><span class="p">,</span>
                            <span class="n">FIOBJ</span> <span class="n">command</span><span class="p">,</span>
                            <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">callback</span><span class="p">)(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">e</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">reply</span><span class="p">,</span>
                                             <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">),</span>
@@ -180,7 +180,7 @@
 <p>The parser was originally coded in order keep the licensing scheme simple and avoid a debate about MIT licensing vs. BSD-3-clause requirements.</p>
 
 <h4 id="resp_parse"><code>resp_parse</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">size_t</span> <span class="n">resp_parse</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">size_t</span> <span class="nf">resp_parse</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span>
                          <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">,</span>
                          <span class="kt">size_t</span> <span class="n">length</span><span class="p">);</span>
 </code></pre></div>
@@ -190,32 +190,32 @@
 
 <ul>
 <li><p><code>resp_on_message</code> - a local static callback, called when the RESP message was completely parsed.</p>
-<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_message</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="nf">resp_on_message</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_number</code> - a local static callback, called when a Number object is parsed.</p>
-<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_number</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">num</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="nf">resp_on_number</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">num</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_okay</code> - a local static callback, called when a OK message is received.</p>
-<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_okay</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="nf">resp_on_okay</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_null</code> - a local static callback, called when NULL is received.</p>
-<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_null</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="nf">resp_on_null</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_start_string</code> - a local static callback, called when a String should be allocated.</p>
 
 <p><code>str_len</code> is the expected number of bytes that will fill the final string object, without any NUL byte marker (the string might be binary).</p>
 
 <p>If this function returns any value besides 0, parsing is stopped.</p>
-<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_start_string</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">str_len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="nf">resp_on_start_string</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">str_len</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_string_chunk</code> - a local static callback, called as String objects are streamed. </p>
-<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_string_chunk</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="nf">resp_on_string_chunk</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_end_string</code> - a local static callback, called when a String object had finished streaming. </p>
-<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_end_string</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="nf">resp_on_end_string</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_err_msg</code> - a local static callback, called an error message is received. </p>
-<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_err_msg</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="nf">resp_on_err_msg</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p>a local static callback, called when an Array should be allocated.</p>
 
@@ -225,10 +225,10 @@ There&#39;s no <code>resp_on_end_array</code> callback since the RESP protocol, 
 <p>However, be aware that a client/server might send nested Arrays in some rare cases.</p>
 
 <p>If this function returns any value besides 0, parsing is stopped.</p>
-<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_start_array</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">array_len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="nf">resp_on_start_array</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">array_len</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>resp_on_parser_error</code> - a local static callback, called when a parser / protocol error occurs. </p>
-<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_parser_error</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">int</span> <span class="nf">resp_on_parser_error</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
 </code></pre></div></li>
 </ul>
 
@@ -256,7 +256,6 @@ There&#39;s no <code>resp_on_end_array</code> callback since the RESP protocol, 
     $('body')[0].className = localStorage.getItem("theme");
     set_theme_link();
     $('#show_nav').attr('checked', false);
-    return false;
 };
 function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
 function on_sidebar_link(e) {

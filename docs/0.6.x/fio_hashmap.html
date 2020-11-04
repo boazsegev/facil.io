@@ -230,7 +230,7 @@ items (freeing their custom keys, if any) and rehashing the Hash Map.</p>
 <p>This function is called automatically when needed, it&#39;s unlikely that you should want to call the function yourself.</p>
 
 <h3 id="fio_hash_each"><code>fio_hash_each</code></h3>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_hash_each</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fio_hash_each</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">,</span>
                      <span class="k">const</span> <span class="kt">size_t</span> <span class="n">start_at</span><span class="p">,</span>
                      <span class="kt">int</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="n">FIO_HASH_KEY_TYPE</span> <span class="n">key</span><span class="p">,</span>
                                  <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">,</span>
@@ -439,7 +439,6 @@ name to be created for iteration.</p>
     $('body')[0].className = localStorage.getItem("theme");
     set_theme_link();
     $('#show_nav').attr('checked', false);
-    return false;
 };
 function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
 function on_sidebar_link(e) {

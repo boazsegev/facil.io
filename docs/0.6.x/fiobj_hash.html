@@ -125,14 +125,14 @@
 <h3 id="hash-creation">Hash Creation</h3>
 
 <h4 id="fiobj_hash_new"><code>fiobj_hash_new</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_hash_new</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_hash_new</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a mutable empty Hash object. Use <code>fiobj_free</code> when done.</p>
 
 <p>Notice that these Hash objects are optimized for smaller collections and retain order of object insertion.</p>
 
 <h4 id="fiobj_hash_new2"><code>fiobj_hash_new2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_hash_new2</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">capa</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_hash_new2</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">capa</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a mutable empty Hash object with an initial capacity of <code>capa</code>. Use <code>fiobj_free</code> when done.</p>
 
@@ -141,26 +141,26 @@
 <h3 id="hash-properties-and-state">Hash properties and state</h3>
 
 <h4 id="fiobj_hash_capa"><code>fiobj_hash_capa</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_hash_capa</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fiobj_hash_capa</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a temporary theoretical Hash map capacity. This could be used for testing performance and memory consumption.</p>
 
 <h4 id="fiobj_hash_count"><code>fiobj_hash_count</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_hash_count</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fiobj_hash_count</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the number of elements in the Hash.</p>
 
 <h3 id="populating-and-managing-the-hash">Populating and Managing the Hash</h3>
 
 <h4 id="fiobj_hash_set"><code>fiobj_hash_set</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fiobj_hash_set</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">key</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fiobj_hash_set</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">key</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
 </code></pre></div>
 <p>Sets a key-value pair in the Hash, duplicating the Symbol and <strong>moving</strong> the ownership of the object to the Hash.</p>
 
 <p>Returns -1 on error.</p>
 
 <h4 id="fiobj_hash_pop"><code>fiobj_hash_pop</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_hash_pop</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="o">*</span><span class="n">key</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_hash_pop</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="o">*</span><span class="n">key</span><span class="p">);</span>
 </code></pre></div>
 <p>Allows the Hash to be used as a stack.</p>
 
@@ -171,7 +171,7 @@
 <p>Returns and object if successful (remember to free).</p>
 
 <h4 id="fiobj_hash_replace"><code>fiobj_hash_replace</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_hash_replace</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">key</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_hash_replace</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">key</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
 </code></pre></div>
 <p>Replaces the value in a key-value pair, returning the old value (and it&#39;s ownership) to the caller.</p>
 
@@ -182,24 +182,24 @@
 <p>Remember to free the returned object.</p>
 
 <h4 id="fiobj_hash_remove"><code>fiobj_hash_remove</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_hash_remove</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">key</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_hash_remove</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">key</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes a key-value pair from the Hash, if it exists, returning the old object (instead of freeing it).</p>
 
 <h4 id="fiobj_hash_remove2"><code>fiobj_hash_remove2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_hash_remove2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="kt">uint64_t</span> <span class="n">key_hash</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_hash_remove2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="kt">uint64_t</span> <span class="n">key_hash</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes a key-value pair from the Hash, if it exists, returning the old object (instead of freeing it).</p>
 
 <h4 id="fiobj_hash_delete"><code>fiobj_hash_delete</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fiobj_hash_delete</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">key</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fiobj_hash_delete</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">key</span><span class="p">);</span>
 </code></pre></div>
 <p>Deletes a key-value pair from the Hash, if it exists, freeing the associated object.</p>
 
 <p>Returns -1 on type error or if the object never existed.</p>
 
 <h4 id="fiobj_hash_delete2"><code>fiobj_hash_delete2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fiobj_hash_delete2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="kt">uint64_t</span> <span class="n">key_hash</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fiobj_hash_delete2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="kt">uint64_t</span> <span class="n">key_hash</span><span class="p">);</span>
 </code></pre></div>
 <p>Deletes a key-value pair from the Hash, if it exists, freeing the associated object.</p>
 
@@ -208,12 +208,12 @@
 <p>Returns -1 on type error or if the object never existed.</p>
 
 <h4 id="fiobj_hash_get"><code>fiobj_hash_get</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_hash_get</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">key</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_hash_get</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">key</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a temporary handle to the object associated with the Symbol, FIOBJ_INVALID if none.</p>
 
 <h4 id="fiobj_hash_get2"><code>fiobj_hash_get2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_hash_get2</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="kt">uint64_t</span> <span class="n">key_hash</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_hash_get2</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="kt">uint64_t</span> <span class="n">key_hash</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a temporary handle to the object associated hashed key value.</p>
 
@@ -224,12 +224,12 @@ variations.</p>
 <p>Returns FIOBJ_INVALID if no object is associated with this hashed key value.</p>
 
 <h4 id="fiobj_hash_haskey"><code>fiobj_hash_haskey</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fiobj_hash_haskey</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">key</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fiobj_hash_haskey</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">key</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns 1 if the key (Symbol) exists in the Hash, even if it&#39;s value is NULL.</p>
 
 <h4 id="fiobj_hash_clear"><code>fiobj_hash_clear</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_hash_clear</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fiobj_hash_clear</span><span class="p">(</span><span class="k">const</span> <span class="n">FIOBJ</span> <span class="n">hash</span><span class="p">);</span>
 </code></pre></div>
 <p>Empties the Hash.</p>
 
@@ -238,7 +238,7 @@ variations.</p>
 <p>Rehashing is usually performed automatically, as needed, and shouldn&#39;t be performed manually unless there is a known reason to do so.</p>
 
 <h4 id="fiobj_hash_rehash"><code>fiobj_hash_rehash</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_hash_rehash</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">h</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fiobj_hash_rehash</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">h</span><span class="p">);</span>
 </code></pre></div>
 <p>Attempts to rehash the Hash Map.</p>
 </div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
@@ -250,7 +250,6 @@ variations.</p>
     $('body')[0].className = localStorage.getItem("theme");
     set_theme_link();
     $('#show_nav').attr('checked', false);
-    return false;
 };
 function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
 function on_sidebar_link(e) {

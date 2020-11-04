@@ -105,36 +105,36 @@
 <h3 id="numbers-api-integers">Numbers API (Integers)</h3>
 
 <h4 id="fiobj_num_new"><code>fiobj_num_new</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_num_new</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">num</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_num_new</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">num</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a Number object. Remember to use <code>fiobj_free</code>.</p>
 
 <h4 id="fiobj_num_tmp"><code>fiobj_num_tmp</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_num_tmp</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">num</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_num_tmp</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">num</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a temporary Number object. Avoid using <code>fiobj_free</code>.</p>
 
 <h3 id="float-api-double">Float API (Double)</h3>
 
 <h4 id="fiobj_float_new"><code>fiobj_float_new</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_float_new</span><span class="p">(</span><span class="kt">double</span> <span class="n">num</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_float_new</span><span class="p">(</span><span class="kt">double</span> <span class="n">num</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a Float object. Remember to use <code>fiobj_free</code>. </p>
 
 <h4 id="fiobj_float_set"><code>fiobj_float_set</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_float_set</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">,</span> <span class="kt">double</span> <span class="n">num</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fiobj_float_set</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">,</span> <span class="kt">double</span> <span class="n">num</span><span class="p">);</span>
 </code></pre></div>
 <p>Mutates a Float object&#39;s value. Effects every object&#39;s reference! </p>
 
 <h4 id="fiobj_float_tmp"><code>fiobj_float_tmp</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_float_tmp</span><span class="p">(</span><span class="kt">double</span> <span class="n">num</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_float_tmp</span><span class="p">(</span><span class="kt">double</span> <span class="n">num</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a temporary Float object. Avoid using <code>fiobj_free</code>.</p>
 
 <h3 id="numerical-helpers-not-fiobj-specific-but-included-as-part-of-the-library">Numerical Helpers: not FIOBJ specific, but included as part of the library</h3>
 
 <h4 id="fio_atol"><code>fio_atol</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int64_t</span> <span class="n">fio_atol</span><span class="p">(</span><span class="kt">char</span> <span class="o">**</span><span class="n">pstr</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int64_t</span> <span class="nf">fio_atol</span><span class="p">(</span><span class="kt">char</span> <span class="o">**</span><span class="n">pstr</span><span class="p">);</span>
 </code></pre></div>
 <p>A helper function that converts between String data to a signed int64_t.</p>
 
@@ -146,12 +146,12 @@ base 2 (binary MSB first) respectively.</p>
 <p>The pointer will be updated to point to the first byte after the number.</p>
 
 <h4 id="fio_atof"><code>fio_atof</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">double</span> <span class="n">fio_atof</span><span class="p">(</span><span class="kt">char</span> <span class="o">**</span><span class="n">pstr</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">double</span> <span class="nf">fio_atof</span><span class="p">(</span><span class="kt">char</span> <span class="o">**</span><span class="n">pstr</span><span class="p">);</span>
 </code></pre></div>
 <p>A helper function that converts between String data to a signed double.</p>
 
 <h4 id="fio_ltoa"><code>fio_ltoa</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_ltoa</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">num</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">base</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fio_ltoa</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">num</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">base</span><span class="p">);</span>
 </code></pre></div>
 <p>A helper function that converts between a signed int64_t to a string.</p>
 
@@ -165,7 +165,7 @@ beginning of the string).</p>
 <p>Returns the number of bytes actually written (excluding the NUL terminator).</p>
 
 <h4 id="fio_ftoa"><code>fio_ftoa</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_ftoa</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="kt">double</span> <span class="n">num</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">base</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fio_ftoa</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="kt">double</span> <span class="n">num</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">base</span><span class="p">);</span>
 </code></pre></div>
 <p>A helper function that converts between a double to a string.</p>
 
@@ -179,14 +179,14 @@ beginning of the string).</p>
 <p>Returns the number of bytes actually written (excluding the NUL terminator).</p>
 
 <h4 id="fio_ltocstr"><code>fio_ltocstr</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cstr_s</span> <span class="n">fio_ltocstr</span><span class="p">(</span><span class="kt">long</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cstr_s</span> <span class="nf">fio_ltocstr</span><span class="p">(</span><span class="kt">long</span><span class="p">);</span>
 </code></pre></div>
 <p>Converts a number to a temporary, thread local, C string object</p>
 
 <p>The <code>fio_str_s</code> object is only valid until the function is called again within the same thread or the thread terminates.</p>
 
 <h4 id="fio_ftocstr"><code>fio_ftocstr</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cstr_s</span> <span class="n">fio_ftocstr</span><span class="p">(</span><span class="kt">double</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cstr_s</span> <span class="nf">fio_ftocstr</span><span class="p">(</span><span class="kt">double</span><span class="p">);</span>
 </code></pre></div>
 <p>Converts a float to a temporary, thread local, C string object</p>
 
@@ -200,7 +200,6 @@ beginning of the string).</p>
     $('body')[0].className = localStorage.getItem("theme");
     set_theme_link();
     $('#show_nav').attr('checked', false);
-    return false;
 };
 function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
 function on_sidebar_link(e) {
