@@ -4,39 +4,7 @@ The following macros effect facil.io's compilation and can be used to validate t
 
 ### Version Macros
 
-The version macros relate the version for both facil.io's core library and it's bundled extensions.
-
-#### `FIO_VERSION_MAJOR`
-
-The major version macro is currently zero (0), since the facil.io library's API should still be considered unstable.
-
-In the future, API breaking changes will cause this number to change.
-
-#### `FIO_VERSION_MINOR`
-
-The minor version normally represents new feature or substantial changes that don't effect existing API.
-
-However, as long as facil.io's major version is zero (0), API breaking changes will cause the minor version (rather than the major version) to change.
-
-#### `FIO_VERSION_PATCH`
-
-The patch version is usually indicative to bug fixes.
-
-However, as long as facil.io's major version is zero (0), new feature or substantial changes will cause the patch version to change.
-
-#### `FIO_VERSION_BETA`
-
-A number representing a pre-release beta version.
-
-This indicates the API might change without notice and effects the `FIO_VERSION_STRING`.
-
-#### `FIO_VERSION_STRING`
-
-This macro translates to facil.io's literal string. It can be used, for example, like this:
-
-```c
-printf("Running facil.io version" FIO_VERSION_STRING "\r\n");
-```
+Currently the version macros are only available for facil.io's STL core library.
 
 ### Compilation Macros
 
@@ -72,14 +40,6 @@ This is only relevant to automated values, when running facil.io with zero threa
 
 This does NOT effect manually set (non-zero) worker/thread values.
 
-#### `FIO_DEFER_THROTTLE_PROGRESSIVE`
-
-The progressive throttling model makes concurrency and parallelism more likely.
-
-Otherwise threads are assumed to be intended for "fallback" in case of slow user code, where a single thread should be active most of the time and other threads are activated only when that single thread is slow to perform. 
-
-By default, `FIO_DEFER_THROTTLE_PROGRESSIVE` is true (1).
-
 #### `FIO_POLL_MAX_EVENTS`
 
 This macro sets the maximum number of IO events facil.io will pre-schedule at the beginning of each cycle, when using `epoll` or `kqueue` (not when using `poll`).
@@ -87,11 +47,3 @@ This macro sets the maximum number of IO events facil.io will pre-schedule at th
 Since this requires stack pre-allocated memory, this number shouldn't be set too high. Reasonable values range from 8 to 160.
 
 The default value is currently 64.
-
-#### `FIO_USE_URGENT_QUEUE`
-
-This macro can be used to disable the priority queue given to outbound IO.
-
-#### `FIO_PUBSUB_SUPPORT`
-
-If true (1), compiles the facil.io pub/sub API. By default, this is true.

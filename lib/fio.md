@@ -1826,86 +1826,6 @@ Return value is ignored.
 
 The facil.io IO core also includes a number or hashing and encoding primitives that are often used in network related applications.
 
-### Base64
-
-#### `fio_base64_encode`
-
-```c
-int fio_base64_encode(char *target, const char *data, int len);
-```
-
-This will encode a byte array (data) of a specified length and place the encoded data into the target byte buffer (target). The target buffer MUST have enough room for the expected data.
-
-Base64 encoding always requires 4 bytes for each 3 bytes. Padding is added if the raw data's length isn't devisable by 3.
-
-Always assume the target buffer should have room enough for (len\*4/3 + 4) bytes.
-
-Returns the number of bytes actually written to the target buffer (including the Base64 required padding and excluding a NULL terminator).
-
-A NULL terminator char is NOT written to the target buffer.
-
-#### `fio_base64url_encode`
-
-```c
-int fio_base64url_encode(char *target, const char *data, int len);
-```
-
-Same as [`fio_base64_encode`](#fio_base64_encode), but using Base64URL encoding.
-
-#### `fio_base64_decode`
-
-```c
-int fio_base64_decode(char *target, char *encoded, int base64_len);
-```
-
-This will decode a Base64 encoded string of a specified length (len) and place the decoded data into the target byte buffer (target).
-
-The target buffer MUST have enough room for 2 bytes in addition to the expected data (NUL byte + padding test).
-
-A NUL byte will be appended to the target buffer. The function will return the number of bytes written to the target buffer (excluding the NUL byte).
-
-If the target buffer is NUL, the encoded string will be destructively edited and the decoded data will be placed in the original string's buffer.
-
-Base64 encoding always requires 4 bytes for each 3 bytes. Padding is added if the raw data's length isn't devisable by 3. Hence, the target buffer should be, at least, `base64_len/4*3 + 3` long.
-
-Returns the number of bytes actually written to the target buffer (excluding the NUL terminator byte).
-
-**Note**:
-
-The decoder is variation agnostic (will decode Base64, Base64 URL and Base64 XML variations) and will attempt it's best to ignore invalid data, (in order to support the MIME Base64 variation in RFC 2045).
-
-This comes at the cost of error checking, so the encoding isn't validated and invalid input might produce surprising results.
-
-
-### SipHash
-
-#### `fio_siphash24`
-
-```c
-uint64_t fio_siphash24(const void *data, size_t len);
-```
-
-A SipHash variation (2-4).
-
-#### `fio_siphash13`
-
-```c
-uint64_t fio_siphash13(const void *data, size_t len);
-```
-
-A SipHash 1-3 variation.
-
-#### `fio_siphash`
-
-```c
-#define fio_siphash(data, length) fio_siphash13((data), (length))
-```
-
-The Hashing function used by dynamic facil.io objects.
-
-Currently implemented using SipHash 1-3.
-
-
 ### SHA-1
 
 SHA-1 example:
@@ -2056,39 +1976,7 @@ The following macros effect facil.io's compilation and can be used to validate t
 
 ### Version Macros
 
-The version macros relate the version for both facil.io's core library and it's bundled extensions.
-
-#### `FIO_VERSION_MAJOR`
-
-The major version macro is currently zero (0), since the facil.io library's API should still be considered unstable.
-
-In the future, API breaking changes will cause this number to change.
-
-#### `FIO_VERSION_MINOR`
-
-The minor version normally represents new feature or substantial changes that don't effect existing API.
-
-However, as long as facil.io's major version is zero (0), API breaking changes will cause the minor version (rather than the major version) to change.
-
-#### `FIO_VERSION_PATCH`
-
-The patch version is usually indicative to bug fixes.
-
-However, as long as facil.io's major version is zero (0), new feature or substantial changes will cause the patch version to change.
-
-#### `FIO_VERSION_BETA`
-
-A number representing a pre-release beta version.
-
-This indicates the API might change without notice and effects the `FIO_VERSION_STRING`.
-
-#### `FIO_VERSION_STRING`
-
-This macro translates to facil.io's literal string. It can be used, for example, like this:
-
-```c
-printf("Running facil.io version" FIO_VERSION_STRING "\r\n");
-```
+Currently the version macros are only available for facil.io's STL core library.
 
 ### Compilation Macros
 
@@ -2124,14 +2012,6 @@ This is only relevant to automated values, when running facil.io with zero threa
 
 This does NOT effect manually set (non-zero) worker/thread values.
 
-#### `FIO_DEFER_THROTTLE_PROGRESSIVE`
-
-The progressive throttling model makes concurrency and parallelism more likely.
-
-Otherwise threads are assumed to be intended for "fallback" in case of slow user code, where a single thread should be active most of the time and other threads are activated only when that single thread is slow to perform. 
-
-By default, `FIO_DEFER_THROTTLE_PROGRESSIVE` is true (1).
-
 #### `FIO_POLL_MAX_EVENTS`
 
 This macro sets the maximum number of IO events facil.io will pre-schedule at the beginning of each cycle, when using `epoll` or `kqueue` (not when using `poll`).
@@ -2139,11 +2019,3 @@ This macro sets the maximum number of IO events facil.io will pre-schedule at th
 Since this requires stack pre-allocated memory, this number shouldn't be set too high. Reasonable values range from 8 to 160.
 
 The default value is currently 64.
-
-#### `FIO_USE_URGENT_QUEUE`
-
-This macro can be used to disable the priority queue given to outbound IO.
-
-#### `FIO_PUBSUB_SUPPORT`
-
-If true (1), compiles the facil.io pub/sub API. By default, this is true.
