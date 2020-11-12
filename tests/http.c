@@ -17,7 +17,11 @@ Note: This is a **TOY** example, no security whatsoever!!!
 ***************************************************************************** */
 
 /* when compiling tests this is easier... */
-#include "../fio.c"
+#ifdef TEST_WITH_LIBRARY
+#include "fio.h"
+#else
+#include "fio.c"
+#endif
 
 /* response string helper */
 #define FIO_STR_NAME str
@@ -87,6 +91,9 @@ int main(int argc, char const *argv[]) {
   fio_start(.threads = fio_cli_get_i("-t"), .workers = fio_cli_get_i("-w"));
   /* cleanup */
   fio_cli_end();
+  FIOBJ a = fiobj_array_new();
+  fiobj_array_compact(a);
+  fiobj_free(a);
   return 0;
 }
 

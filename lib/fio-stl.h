@@ -851,8 +851,8 @@ FIO_LOG_WARNING("number invalid: %d", i); // => WARNING: number invalid: 3
 /**
  * Enables logging macros that avoid heap memory allocations
  */
-#if !defined(H___FIO_LOH___H) && defined(FIO_LOG)
-#define H___FIO_LOH___H
+#if !defined(H___FIO_LOG___H) && (defined(FIO_LOG) || defined(FIO_LEAK_COUNTER))
+#define H___FIO_LOG___H
 
 #if FIO_LOG_LENGTH_LIMIT > 128
 #define FIO_LOG____LENGTH_ON_STACK FIO_LOG_LENGTH_LIMIT
@@ -3047,7 +3047,8 @@ SFUNC uint64_t fio_risky_hash(const void *data_, size_t len, uint64_t seed) {
     data += len & 24;
   }
 
-  uint64_t tmp = (len & 0xFF) << 56; /* add offset information to padding */
+  /* add offset information to padding */
+  uint64_t tmp = ((uint64_t)len & 0xFF) << 56;
   /* leftover bytes */
   switch ((len & 7)) {
   case 7:
@@ -5952,6 +5953,13 @@ Memory Allocation - configuration macros
 NOTE: most configuration values should be a power of 2 or a logarithmic value.
 ***************************************************************************** */
 
+/** FIO_MEMORY_DISABLE diasbles all custom memory allocators. */
+#ifdef FIO_MEMORY_DISABLE
+#ifndef FIO_MALLOC_TMP_USE_SYSTEM
+#define FIO_MALLOC_TMP_USE_SYSTEM 1
+#endif
+#endif
+
 #ifndef FIO_MEMORY_SYS_ALLOCATION_SIZE_LOG
 /**
  * The logarithmic size of a single allocatiion "chunk" (16 blocks).
@@ -6181,11 +6189,11 @@ SFUNC void FIO_NAME(FIO_MEMORY_NAME, malloc_print_settings)(void);
 /* *****************************************************************************
 Temporarily (at least) set memory allocation macros to use this allocator
 ***************************************************************************** */
-#ifndef FIO_MALLOC_TMP_USE_SYSTEM
 #undef FIO_MEM_REALLOC_
 #undef FIO_MEM_FREE_
 #undef FIO_MEM_REALLOC_IS_SAFE_
 
+#ifndef FIO_MALLOC_TMP_USE_SYSTEM
 #define FIO_MEM_REALLOC_(ptr, old_size, new_size, copy_len)                    \
   FIO_NAME(FIO_MEMORY_NAME, realloc2)((ptr), (new_size), (copy_len))
 #define FIO_MEM_FREE_(ptr, size) FIO_NAME(FIO_MEMORY_NAME, free)((ptr))
@@ -6209,9 +6217,9 @@ Memory Allocation - start implementation
 #ifdef FIO_EXTERN_COMPLETE
 /* internal workings start here */
 /* *****************************************************************************
-FIO_MALLOC_FORCE_SYSTEM - use the system allocator
+FIO_MEMORY_DISABLE - use the system allocator
 ***************************************************************************** */
-#ifdef FIO_MALLOC_FORCE_SYSTEM
+#if defined(FIO_MEMORY_DISABLE)
 
 SFUNC void *FIO_ALIGN_NEW FIO_NAME(FIO_MEMORY_NAME, malloc)(size_t size) {
 #if FIO_MEMORY_INITIALIZE_ALLOCATIONS
@@ -6253,7 +6261,7 @@ SFUNC void FIO_NAME_TEST(FIO_NAME(stl, FIO_MEMORY_NAME), mem)(void) {
 }
 #endif /* FIO_TEST_CSTL */
 
-#else /* FIO_MALLOC_FORCE_SYSTEM */
+#else /* FIO_MEMORY_DISABLE */
 /* *****************************************************************************
 
 
@@ -6757,7 +6765,7 @@ Lock type choice
 Allocator debugging helpers
 ***************************************************************************** */
 
-#if DEBUG
+#if defined(DEBUG) || defined(FIO_LEAK_COUNTER)
 /* maximum block allocation count. */
 static size_t FIO_NAME(fio___,
                        FIO_NAME(FIO_MEMORY_NAME, state_chunk_count_max));
@@ -6820,24 +6828,27 @@ static size_t FIO_NAME(fio___, FIO_NAME(FIO_MEMORY_NAME, state_chunk_count));
 
 #define FIO_MEMORY_PRINT_STATS()                                               \
   FIO_LOG_INFO(                                                                \
-      "(fio) Total memory chunks allocated before cleanup %zu\n"               \
-      "          Maximum memory blocks allocated at a single time %zu\n",      \
+      "(" FIO_MACRO2STR(FIO_NAME(                                              \
+          FIO_MEMORY_NAME,                                                     \
+          malloc)) "):\n          "                                            \
+                   "Total memory chunks allocated before cleanup %zu\n"        \
+                   "          Maximum memory blocks allocated at a single "    \
+                   "time %zu",                                                 \
       FIO_NAME(fio___, FIO_NAME(FIO_MEMORY_NAME, state_chunk_count)),          \
       FIO_NAME(fio___, FIO_NAME(FIO_MEMORY_NAME, state_chunk_count_max)))
 #define FIO_MEMORY_PRINT_STATS_END()                                           \
   do {                                                                         \
     if (FIO_NAME(fio___, FIO_NAME(FIO_MEMORY_NAME, state_chunk_count))) {      \
       FIO_LOG_ERROR(                                                           \
-          "(fio) Total memory chunks allocated "                               \
-          "after cleanup (POSSIBLE LEAKS): %zu\n",                             \
-          FIO_NAME(fio___, FIO_NAME(FIO_MEMORY_NAME, state_chunk_count)));     \
-    } else {                                                                   \
-      FIO_LOG_INFO(                                                            \
-          "(fio) Total memory chunks allocated after cleanup: %zu\n",          \
+          "(" FIO_MACRO2STR(                                                   \
+              FIO_NAME(FIO_MEMORY_NAME,                                        \
+                       malloc)) "):\n          "                               \
+                                "Total memory chunks allocated "               \
+                                "after cleanup (POSSIBLE LEAKS): %zu\n",       \
           FIO_NAME(fio___, FIO_NAME(FIO_MEMORY_NAME, state_chunk_count)));     \
     }                                                                          \
   } while (0)
-#else /* DEBUG */
+#else /* defined(DEBUG) || defined(FIO_LEAK_COUNTER) */
 #define FIO_MEMORY_ON_CHUNK_ALLOC(ptr)
 #define FIO_MEMORY_ON_CHUNK_FREE(ptr)
 #define FIO_MEMORY_ON_CHUNK_CACHE(ptr)
@@ -6849,7 +6860,7 @@ static size_t FIO_NAME(fio___, FIO_NAME(FIO_MEMORY_NAME, state_chunk_count));
 #define FIO_MEMORY_ON_BIG_BLOCK_UNSET(ptr)
 #define FIO_MEMORY_PRINT_STATS()
 #define FIO_MEMORY_PRINT_STATS_END()
-#endif /* DEBUG */
+#endif /* defined(DEBUG) || defined(FIO_LEAK_COUNTER) */
 
 /* *****************************************************************************
 
@@ -8226,7 +8237,7 @@ Memory pool cleanup
 #undef FIO_ALIGN_NEW
 #undef FIO_MEMORY_MALLOC_ZERO_POINTER
 
-#endif /* FIO_MALLOC_FORCE_SYSTEM */
+#endif /* FIO_MEMORY_DISABLE */
 #endif /* FIO_EXTERN_COMPLETE */
 #endif /* FIO_MEMORY_NAME */
 
@@ -8296,8 +8307,11 @@ License: ISC / MIT (choose your license)
 Feel free to copy, use and enjoy according to the license provided.
 ***************************************************************************** */
 #ifndef H___FIO_CSTL_INCLUDE_ONCE_H /* Development inclusion - ignore line */
+#define FIO_TIME                    /* Development inclusion - ignore line */
+#define FIO_ATOL                    /* Development inclusion - ignore line */
 #include "000 header.h"             /* Development inclusion - ignore line */
 #include "003 atomics.h"            /* Development inclusion - ignore line */
+#include "006 atol.h"               /* Development inclusion - ignore line */
 #endif                              /* Development inclusion - ignore line */
 /* *****************************************************************************
 
@@ -8379,6 +8393,15 @@ SFUNC size_t fio_time2rfc2109(char *target, time_t time);
  * Usually requires 28 to 29 characters, although this may vary.
  */
 SFUNC size_t fio_time2rfc2822(char *target, time_t time);
+
+/**
+ * Writes a date representation to target in common log format. i.e.,
+ *
+ *         [DD/MMM/yyyy:hh:mm:ss +0000]
+ *
+ * Usually requires 29 characters (includiing square brackes and NUL).
+ */
+SFUNC size_t fio_time2log(char *target, time_t time);
 
 /* *****************************************************************************
 Patch for OSX version < 10.12 from https://stackoverflow.com/a/9781275/4025095
@@ -8734,6 +8757,53 @@ SFUNC size_t fio_time2rfc2822(char *target, time_t time) {
   return pos - target;
 }
 
+/**
+ * Writes a date representation to target in common log format. i.e.,
+ *
+ *         [DD/MMM/yyyy:hh:mm:ss +0000]
+ *
+ * Usually requires 29 characters (includiing square brackes and NUL).
+ */
+SFUNC size_t fio_time2log(char *target, time_t time) {
+  {
+    const struct tm tm = fio_time2gm(time);
+    /* note: day of month is either 1 or 2 digits */
+    char *pos = target;
+    uint16_t tmp;
+    *(pos++) = '[';
+    tmp = tm.tm_mday / 10;
+    *(pos++) = '0' + tmp;
+    *(pos++) = '0' + (tm.tm_mday - (tmp * 10));
+    *(pos++) = '/';
+    *(pos++) = FIO___MONTH_NAMES[tm.tm_mon][0];
+    *(pos++) = FIO___MONTH_NAMES[tm.tm_mon][1];
+    *(pos++) = FIO___MONTH_NAMES[tm.tm_mon][2];
+    *(pos++) = '/';
+    pos += fio_ltoa(pos, tm.tm_year + 1900, 10);
+    *(pos++) = ':';
+    tmp = tm.tm_hour / 10;
+    *(pos++) = '0' + tmp;
+    *(pos++) = '0' + (tm.tm_hour - (tmp * 10));
+    *(pos++) = ':';
+    tmp = tm.tm_min / 10;
+    *(pos++) = '0' + tmp;
+    *(pos++) = '0' + (tm.tm_min - (tmp * 10));
+    *(pos++) = ':';
+    tmp = tm.tm_sec / 10;
+    *(pos++) = '0' + tmp;
+    *(pos++) = '0' + (tm.tm_sec - (tmp * 10));
+    *(pos++) = ' ';
+    *(pos++) = '+';
+    *(pos++) = '0';
+    *(pos++) = '0';
+    *(pos++) = '0';
+    *(pos++) = '0';
+    *(pos++) = ']';
+    *(pos) = 0;
+    return pos - target;
+  }
+}
+
 /* *****************************************************************************
 Time - test
 ***************************************************************************** */
@@ -8805,6 +8875,22 @@ FIO_SFUNC void FIO_NAME_TEST(stl, time)(void) {
                  tm2.tm_wday,
                  buf);
     }
+  }
+  {
+    char buf[48];
+    buf[47] = 0;
+    memset(buf, 'X', 47);
+    fio_time2rfc7231(buf, now);
+    FIO_LOG_DEBUG2("fio_time2rfc7231:   %s", buf);
+    memset(buf, 'X', 47);
+    fio_time2rfc2109(buf, now);
+    FIO_LOG_DEBUG2("fio_time2rfc2109:   %s", buf);
+    memset(buf, 'X', 47);
+    fio_time2rfc2822(buf, now);
+    FIO_LOG_DEBUG2("fio_time2rfc2822:   %s", buf);
+    memset(buf, 'X', 47);
+    fio_time2log(buf, now);
+    FIO_LOG_DEBUG2("fio_time2log:       %s", buf);
   }
   {
     uint64_t start, stop;
@@ -13622,7 +13708,7 @@ void example(void) {
 
 #ifndef FIO_ARRAY_TYPE_CONCAT_COPY
 #define FIO_ARRAY_TYPE_CONCAT_COPY        FIO_ARRAY_TYPE_COPY
-#define FIO_ARRAY_TYPE_CONCAT_COPY_SIMPLE 1
+#define FIO_ARRAY_TYPE_CONCAT_COPY_SIMPLE FIO_ARRAY_TYPE_COPY_SIMPLE
 #endif
 /**
  * The FIO_ARRAY_DESTROY_AFTER_COPY macro should be set if
@@ -13714,18 +13800,18 @@ Dynamic Arrays - API
   { 0 }
 #endif
 
+#ifndef FIO_REF_CONSTRUCTOR_ONLY
+
 /* Allocates a new array object on the heap and initializes it's memory. */
 FIO_IFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, new)(void);
 
-#ifndef FIO_REF_CONSTRUCTOR_ONLY
 /* Frees an array's internal data AND it's container! */
 FIO_IFUNC void FIO_NAME(FIO_ARRAY_NAME, free)(FIO_ARRAY_PTR ary);
-#else
-IFUNC int FIO_NAME(FIO_ARRAY_NAME, free)(FIO_ARRAY_PTR ary);
+
 #endif /* FIO_REF_CONSTRUCTOR_ONLY */
 
 /* Destroys any objects stored in the array and frees the internal state. */
-IFUNC void FIO_NAME(FIO_ARRAY_NAME, destroy)(FIO_ARRAY_PTR ary);
+SFUNC void FIO_NAME(FIO_ARRAY_NAME, destroy)(FIO_ARRAY_PTR ary);
 
 /** Returns the number of elements in the Array. */
 FIO_IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, count)(FIO_ARRAY_PTR ary);
@@ -13755,7 +13841,7 @@ FIO_IFUNC FIO_ARRAY_TYPE *FIO_NAME2(FIO_ARRAY_NAME, ptr)(FIO_ARRAY_PTR ary);
  * Note: the reserved capacity includes existing data. If the requested reserved
  * capacity is equal (or less) then the existing capacity, nothing will be done.
  */
-IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, reserve)(FIO_ARRAY_PTR ary,
+SFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, reserve)(FIO_ARRAY_PTR ary,
                                                  int32_t capa);
 
 /**
@@ -13779,7 +13865,7 @@ SFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, concat)(FIO_ARRAY_PTR dest,
  *
  * Returns a pointer to the new object, or NULL on error.
  */
-IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, set)(FIO_ARRAY_PTR ary,
+SFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, set)(FIO_ARRAY_PTR ary,
                                                     int32_t index,
                                                     FIO_ARRAY_TYPE data,
                                                     FIO_ARRAY_TYPE *old);
@@ -13799,7 +13885,7 @@ FIO_IFUNC FIO_ARRAY_TYPE FIO_NAME(FIO_ARRAY_NAME, get)(FIO_ARRAY_PTR ary,
  * If `start_at` is negative (i.e., -1), than seeking will be performed in
  * reverse, where -1 == last index (-2 == second to last, etc').
  */
-IFUNC int32_t FIO_NAME(FIO_ARRAY_NAME, find)(FIO_ARRAY_PTR ary,
+SFUNC int32_t FIO_NAME(FIO_ARRAY_NAME, find)(FIO_ARRAY_PTR ary,
                                              FIO_ARRAY_TYPE data,
                                              int32_t start_at);
 
@@ -13815,7 +13901,7 @@ IFUNC int32_t FIO_NAME(FIO_ARRAY_NAME, find)(FIO_ARRAY_PTR ary,
  * This action is O(n) where n in the length of the array.
  * It could get expensive.
  */
-IFUNC int FIO_NAME(FIO_ARRAY_NAME, remove)(FIO_ARRAY_PTR ary,
+SFUNC int FIO_NAME(FIO_ARRAY_NAME, remove)(FIO_ARRAY_PTR ary,
                                            int32_t index,
                                            FIO_ARRAY_TYPE *old);
 
@@ -13828,17 +13914,17 @@ IFUNC int FIO_NAME(FIO_ARRAY_NAME, remove)(FIO_ARRAY_PTR ary,
  * This action is O(n) where n in the length of the array.
  * It could get expensive.
  */
-IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, remove2)(FIO_ARRAY_PTR ary,
+SFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, remove2)(FIO_ARRAY_PTR ary,
                                                  FIO_ARRAY_TYPE data);
 
 /** Attempts to lower the array's memory consumption. */
-IFUNC void FIO_NAME(FIO_ARRAY_NAME, compact)(FIO_ARRAY_PTR ary);
+SFUNC void FIO_NAME(FIO_ARRAY_NAME, compact)(FIO_ARRAY_PTR ary);
 
 /**
  * Pushes an object to the end of the Array. Returns a pointer to the new object
  * or NULL on error.
  */
-IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, push)(FIO_ARRAY_PTR ary,
+SFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, push)(FIO_ARRAY_PTR ary,
                                                      FIO_ARRAY_TYPE data);
 
 /**
@@ -13849,7 +13935,7 @@ IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, push)(FIO_ARRAY_PTR ary,
  *
  * Returns -1 on error (Array is empty) and 0 on success.
  */
-IFUNC int FIO_NAME(FIO_ARRAY_NAME, pop)(FIO_ARRAY_PTR ary, FIO_ARRAY_TYPE *old);
+SFUNC int FIO_NAME(FIO_ARRAY_NAME, pop)(FIO_ARRAY_PTR ary, FIO_ARRAY_TYPE *old);
 
 /**
  * Unshifts an object to the beginning of the Array. Returns a pointer to the
@@ -13857,7 +13943,7 @@ IFUNC int FIO_NAME(FIO_ARRAY_NAME, pop)(FIO_ARRAY_PTR ary, FIO_ARRAY_TYPE *old);
  *
  * This could be expensive, causing `memmove`.
  */
-IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, unshift)(FIO_ARRAY_PTR ary,
+SFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, unshift)(FIO_ARRAY_PTR ary,
                                                         FIO_ARRAY_TYPE data);
 
 /**
@@ -13868,7 +13954,7 @@ IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, unshift)(FIO_ARRAY_PTR ary,
  *
  * Returns -1 on error (Array is empty) and 0 on success.
  */
-IFUNC int FIO_NAME(FIO_ARRAY_NAME, shift)(FIO_ARRAY_PTR ary,
+SFUNC int FIO_NAME(FIO_ARRAY_NAME, shift)(FIO_ARRAY_PTR ary,
                                           FIO_ARRAY_TYPE *old);
 
 /**
@@ -14145,7 +14231,7 @@ Dynamic Arrays - implementation
 ***************************************************************************** */
 
 /* Destroys any objects stored in the array and frees the internal state. */
-IFUNC void FIO_NAME(FIO_ARRAY_NAME, destroy)(FIO_ARRAY_PTR ary_) {
+SFUNC void FIO_NAME(FIO_ARRAY_NAME, destroy)(FIO_ARRAY_PTR ary_) {
   FIO_NAME(FIO_ARRAY_NAME, s) *ary =
       (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
   union {
@@ -14176,7 +14262,7 @@ IFUNC void FIO_NAME(FIO_ARRAY_NAME, destroy)(FIO_ARRAY_PTR ary_) {
 }
 
 /** Reserves a minimal capacity for the array. */
-IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, reserve)(FIO_ARRAY_PTR ary_,
+SFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, reserve)(FIO_ARRAY_PTR ary_,
                                                  int32_t capa_) {
   const uint32_t abs_capa =
       (capa_ >= 0) ? (uint32_t)capa_ : (uint32_t)(0 - capa_);
@@ -14288,12 +14374,15 @@ SFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, concat)(FIO_ARRAY_PTR dest_,
       (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(dest_));
   FIO_NAME(FIO_ARRAY_NAME, s) *src =
       (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(src_));
-  if (!dest || !src || src->start == src->end)
+  if (!dest || !src)
+    return dest_;
+  const uint32_t offset = FIO_NAME(FIO_ARRAY_NAME, count)(dest_);
+  const uint32_t added = FIO_NAME(FIO_ARRAY_NAME, count)(src_);
+  const uint32_t total = offset + added;
+  if (!added)
     return dest_;
 
-  const uint32_t offset = FIO_NAME(FIO_ARRAY_NAME, count)(dest_);
-  const uint32_t total = offset + FIO_NAME(FIO_ARRAY_NAME, count)(src_);
-  if (total < offset || total < total - offset)
+  if (total < offset || total + offset < total)
     return NULL; /* item count overflow */
 
   const uint32_t capa = FIO_NAME(FIO_ARRAY_NAME, reserve)(dest_, total);
@@ -14303,28 +14392,29 @@ SFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, concat)(FIO_ARRAY_PTR dest_,
     memmove(dest->ary,
             dest->ary + dest->start,
             (dest->end - dest->start) * sizeof(*dest->ary));
+    dest->start = 0;
+    dest->end = offset;
   }
 #if FIO_ARRAY_TYPE_CONCAT_COPY_SIMPLE
   /* copy data */
   memcpy(FIO_NAME2(FIO_ARRAY_NAME, ptr)(dest_) + offset,
          FIO_NAME2(FIO_ARRAY_NAME, ptr)(src_),
-         FIO_NAME(FIO_ARRAY_NAME, count)(src_));
+         added);
 #else
   {
-    FIO_ARRAY_TYPE *const a = FIO_NAME2(FIO_ARRAY_NAME, ptr)(dest_);
+    FIO_ARRAY_TYPE *const a1 = FIO_NAME2(FIO_ARRAY_NAME, ptr)(dest_);
     FIO_ARRAY_TYPE *const a2 = FIO_NAME2(FIO_ARRAY_NAME, ptr)(src_);
-    const uint32_t to_copy = total - offset;
-    for (uint32_t i = 0; i < to_copy; ++i) {
-      FIO_ARRAY_TYPE_CONCAT_COPY(a[i + offset], a2[i]);
+    for (uint32_t i = 0; i < added; ++i) {
+      FIO_ARRAY_TYPE_CONCAT_COPY(a1[i + offset], a2[i]);
     }
   }
 #endif /* FIO_ARRAY_TYPE_CONCAT_COPY_SIMPLE */
   /* update dest */
   if (!FIO_ARRAY_IS_EMBEDDED(dest)) {
-    dest->end += src->end - src->start;
+    dest->end += added;
     return dest_;
-  }
-  dest->start = total;
+  } else
+    dest->start = total;
   return dest_;
 }
 
@@ -14340,7 +14430,7 @@ SFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, concat)(FIO_ARRAY_PTR dest_,
  *
  * Returns a pointer to the new object, or NULL on error.
  */
-IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, set)(FIO_ARRAY_PTR ary_,
+SFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, set)(FIO_ARRAY_PTR ary_,
                                                     int32_t index,
                                                     FIO_ARRAY_TYPE data,
                                                     FIO_ARRAY_TYPE *old) {
@@ -14486,7 +14576,7 @@ invalid:
  *
  * Returns a pointer to the new object, or NULL on error.
  */
-IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, set)(FIO_ARRAY_PTR ary_,
+SFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, set)(FIO_ARRAY_PTR ary_,
                                                     int32_t index,
                                                     FIO_ARRAY_TYPE data,
                                                     FIO_ARRAY_TYPE *old) {
@@ -14593,7 +14683,7 @@ IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, set)(FIO_ARRAY_PTR ary_,
  * If `start_at` is negative (i.e., -1), than seeking will be performed in
  * reverse, where -1 == last index (-2 == second to last, etc').
  */
-IFUNC int32_t FIO_NAME(FIO_ARRAY_NAME, find)(FIO_ARRAY_PTR ary_,
+SFUNC int32_t FIO_NAME(FIO_ARRAY_NAME, find)(FIO_ARRAY_PTR ary_,
                                              FIO_ARRAY_TYPE data,
                                              int32_t start_at) {
   FIO_ARRAY_TYPE *a = FIO_NAME2(FIO_ARRAY_NAME, ptr)(ary_);
@@ -14632,7 +14722,7 @@ IFUNC int32_t FIO_NAME(FIO_ARRAY_NAME, find)(FIO_ARRAY_PTR ary_,
  *
  * Returns 0 on success and -1 on error.
  */
-IFUNC int FIO_NAME(FIO_ARRAY_NAME, remove)(FIO_ARRAY_PTR ary_,
+SFUNC int FIO_NAME(FIO_ARRAY_NAME, remove)(FIO_ARRAY_PTR ary_,
                                            int32_t index,
                                            FIO_ARRAY_TYPE *old) {
   FIO_ARRAY_TYPE *a = FIO_NAME2(FIO_ARRAY_NAME, ptr)(ary_);
@@ -14700,7 +14790,7 @@ invalid:
  *
  * Returns the number of items removed.
  */
-IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, remove2)(FIO_ARRAY_PTR ary_,
+SFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, remove2)(FIO_ARRAY_PTR ary_,
                                                  FIO_ARRAY_TYPE data) {
   FIO_ARRAY_TYPE *a = FIO_NAME2(FIO_ARRAY_NAME, ptr)(ary_);
   FIO_NAME(FIO_ARRAY_NAME, s) * ary;
@@ -14734,7 +14824,7 @@ IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME, remove2)(FIO_ARRAY_PTR ary_,
 }
 
 /** Attempts to lower the array's memory consumption. */
-IFUNC void FIO_NAME(FIO_ARRAY_NAME, compact)(FIO_ARRAY_PTR ary_) {
+SFUNC void FIO_NAME(FIO_ARRAY_NAME, compact)(FIO_ARRAY_PTR ary_) {
   FIO_PTR_TAG_VALID_OR_RETURN_VOID(ary_);
   FIO_NAME(FIO_ARRAY_NAME, s) *ary =
       (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
@@ -14781,7 +14871,7 @@ re_embed:
 /**
  * Pushes an object to the end of the Array. Returns NULL on error.
  */
-IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, push)(FIO_ARRAY_PTR ary_,
+SFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, push)(FIO_ARRAY_PTR ary_,
                                                      FIO_ARRAY_TYPE data) {
   FIO_NAME(FIO_ARRAY_NAME, s) *ary =
       (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
@@ -14833,7 +14923,7 @@ needs_memory_embedded:
  *
  * Returns -1 on error (Array is empty) and 0 on success.
  */
-IFUNC int FIO_NAME(FIO_ARRAY_NAME, pop)(FIO_ARRAY_PTR ary_,
+SFUNC int FIO_NAME(FIO_ARRAY_NAME, pop)(FIO_ARRAY_PTR ary_,
                                         FIO_ARRAY_TYPE *old) {
   FIO_NAME(FIO_ARRAY_NAME, s) *ary =
       (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
@@ -14878,7 +14968,7 @@ IFUNC int FIO_NAME(FIO_ARRAY_NAME, pop)(FIO_ARRAY_PTR ary_,
  *
  * This could be expensive, causing `memmove`.
  */
-IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, unshift)(FIO_ARRAY_PTR ary_,
+SFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, unshift)(FIO_ARRAY_PTR ary_,
                                                         FIO_ARRAY_TYPE data) {
   FIO_NAME(FIO_ARRAY_NAME, s) *ary =
       (FIO_NAME(FIO_ARRAY_NAME, s) *)(FIO_PTR_UNTAG(ary_));
@@ -14938,7 +15028,7 @@ needs_memory_embed:
  *
  * Returns -1 on error (Array is empty) and 0 on success.
  */
-IFUNC int FIO_NAME(FIO_ARRAY_NAME, shift)(FIO_ARRAY_PTR ary_,
+SFUNC int FIO_NAME(FIO_ARRAY_NAME, shift)(FIO_ARRAY_PTR ary_,
                                           FIO_ARRAY_TYPE *old) {
 
   FIO_NAME(FIO_ARRAY_NAME, s) *ary =
@@ -15027,6 +15117,12 @@ IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME,
 Dynamic Arrays - test
 ***************************************************************************** */
 #ifdef FIO_TEST_CSTL
+
+/* make suer the functions are defined for the testing */
+#ifdef FIO_REF_CONSTRUCTOR_ONLY
+IFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, new)(void);
+IFUNC int FIO_NAME(FIO_ARRAY_NAME, free)(FIO_ARRAY_PTR ary);
+#endif /* FIO_REF_CONSTRUCTOR_ONLY */
 
 #define FIO_ARRAY_TEST_OBJ_SET(dest, val) memset(&(dest), (int)(val), sizeof(o))
 #define FIO_ARRAY_TEST_OBJ_IS(val)                                             \
@@ -15402,12 +15498,13 @@ Dynamic Arrays - cleanup
 #undef FIO_ARRAY_TYPE_INVALID_SIMPLE
 #undef FIO_ARRAY_TYPE_COPY
 #undef FIO_ARRAY_TYPE_COPY_SIMPLE
+#undef FIO_ARRAY_TYPE_CONCAT_COPY
+#undef FIO_ARRAY_TYPE_CONCAT_COPY_SIMPLE
 #undef FIO_ARRAY_TYPE_DESTROY
 #undef FIO_ARRAY_TYPE_DESTROY_SIMPLE
 #undef FIO_ARRAY_DESTROY_AFTER_COPY
 #undef FIO_ARRAY_TYPE_CMP
 #undef FIO_ARRAY_TYPE_CMP_SIMPLE
-#undef FIO_ARRAY_TYPE_CONCAT_COPY
 #undef FIO_ARRAY_PADDING
 #undef FIO_ARRAY_SIZE2WORDS
 #undef FIO_ARRAY_POS2ABS
@@ -15854,12 +15951,12 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, remove)(FIO_MAP_PTR map,
                                          FIO_MAP_TYPE *old);
 
 /** Sets the object only if missing. Otherwise keeps existing value. */
-SFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set_if_missing)(FIO_MAP_PTR map,
-                                                          FIO_MAP_HASH hash,
+FIO_IFUNC FIO_MAP_TYPE FIO_NAME(FIO_MAP_NAME, set_if_missing)(FIO_MAP_PTR map,
+                                                              FIO_MAP_HASH hash,
 #ifdef FIO_MAP_KEY
-                                                          FIO_MAP_KEY key,
+                                                              FIO_MAP_KEY key,
 #endif /* FIO_MAP_KEY */
-                                                          FIO_MAP_TYPE obj);
+                                                              FIO_MAP_TYPE obj);
 
 /** Removes all objects from the map. */
 SFUNC void FIO_NAME(FIO_MAP_NAME, clear)(FIO_MAP_PTR map);
@@ -17790,13 +17887,14 @@ FIO_SFUNC void FIO_NAME_TEST(stl, FIO_MAP_NAME)(void) {
    */
   uint64_t total = 0;
 #ifdef FIO_MAP_KEY
-  fprintf(
-      stderr,
-      "* testing unordered map (hash-map)" FIO_MACRO2STR(FIO_MAP_NAME) "\n");
+  fprintf(stderr,
+          "* testing %s map (hash-map) " FIO_MACRO2STR(FIO_MAP_NAME) "\n",
+          (FIO_MAP_ORDERED ? "ordered  " : "unordered"));
 #define FIO_MAP_TEST_KEY FIO_MAP_KEY
 #else
   fprintf(stderr,
-          "* testing unordered map (set)" FIO_MACRO2STR(FIO_MAP_NAME) "\n");
+          "* testing %s map (set) " FIO_MACRO2STR(FIO_MAP_NAME) "\n",
+          (FIO_MAP_ORDERED ? "ordered  " : "unordered"));
 #define FIO_MAP_TEST_KEY FIO_MAP_TYPE
 #endif
   FIO_NAME(FIO_MAP_NAME, s) m = FIO_MAP_INIT;
@@ -17988,6 +18086,7 @@ Map - cleanup
 #undef FIO_MAP_MAX_FULL_COLLISIONS
 #undef FIO_MAP_MAX_SEEK
 #undef FIO_MAP_EVICT_LRU
+#undef FIO_MAP_SHOULD_OVERWRITE
 
 #undef FIO_MAP_OBJ
 #undef FIO_MAP_OBJ2KEY
@@ -20955,7 +21054,7 @@ Reference Counter (Wrapper) Implementation
 ***************************************************************************** */
 #ifdef FIO_EXTERN_COMPLETE
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(FIO_LEAK_COUNTER)
 static size_t FIO_NAME(FIO_REF_NAME, ___leak_tester);
 #define FIO_REF_ON_ALLOC()                                                     \
   fio_atomic_add(&FIO_NAME(FIO_REF_NAME, ___leak_tester), 1)
@@ -20964,18 +21063,17 @@ static size_t FIO_NAME(FIO_REF_NAME, ___leak_tester);
 static void __attribute__((destructor))
 FIO_NAME(FIO_REF_NAME, ___leak_test)(void) {
   if (FIO_NAME(FIO_REF_NAME, ___leak_tester)) {
-    FIO_LOG_WARNING(
-        "(" FIO_MACRO2STR(FIO_REF_NAME) ") memory leak warning for "
-                                        "type: " FIO_MACRO2STR(
-                                            FIO_REF_TYPE) " - unbalanced "
-                                                          "(%zd) ",
+    FIO_LOG_ERROR(
+        "(" FIO_MACRO2STR(FIO_REF_NAME) "):\n          "
+                                        "%zd memory leak(s) detected for "
+                                        "type: " FIO_MACRO2STR(FIO_REF_TYPE),
         FIO_NAME(FIO_REF_NAME, ___leak_tester));
   }
 }
 #else
 #define FIO_REF_ON_ALLOC()
 #define FIO_REF_ON_FREE()
-#endif
+#endif /* defined(DEBUG) || defined(FIO_LEAK_COUNTER) */
 
 /** Allocates a reference counted object. */
 #ifdef FIO_REF_FLEX_TYPE
@@ -21277,7 +21375,8 @@ Common cleanup
 #undef FIO_MEMORY_NAME /* postponed due to possible use in macros */
 
 /* undefine FIO_EXTERN_COMPLETE only if it was defined locally */
-#if FIO_EXTERN_COMPLETE == 2
+#if defined(FIO_EXTERN_COMPLETE) && FIO_EXTERN_COMPLETE &&                     \
+    FIO_EXTERN_COMPLETE == 2
 #undef FIO_EXTERN_COMPLETE
 #endif
 
@@ -21470,6 +21569,13 @@ Dedicated memory allocator for FIOBJ types? (recommended for locality)
 /* yes, well...*/
 #define FIO_MEMORY_USE_PTHREAD_MUTEX 1
 #endif
+/* make sure functions are exported if requested */
+#ifdef FIOBJ_EXTERN
+#define FIO_EXTERN
+#if defined(FIOBJ_EXTERN_COMPLETE) && !defined(FIO_EXTERN_COMPLETE)
+#define FIO_EXTERN_COMPLETE 2
+#endif
+#endif
 #include __FILE__
 
 #define FIOBJ_MEM_REALLOC(ptr, old_size, new_size, copy_len)                   \
@@ -21487,7 +21593,7 @@ Dedicated memory allocator for FIOBJ types? (recommended for locality)
 /* *****************************************************************************
 Debugging / Leak Detection
 ***************************************************************************** */
-#if (TEST || DEBUG) && !defined(FIOBJ_MARK_MEMORY)
+#if defined(TEST) || defined(DEBUG) || defined(FIO_LEAK_COUNTER)
 #define FIOBJ_MARK_MEMORY 1
 #endif
 
@@ -21555,10 +21661,10 @@ typedef enum {
 #define FIOBJ_INVALID 0
 /** Tests if the object is (probably) a valid FIOBJ */
 #define FIOBJ_IS_INVALID(o)       (((uintptr_t)(o)&7UL) == 0)
-#define FIOBJ_TYPE_CLASS(o)       ((fiobj_class_en)(((uintptr_t)o) & 7UL))
+#define FIOBJ_TYPE_CLASS(o)       ((fiobj_class_en)(((uintptr_t)(o)) & 7UL))
 #define FIOBJ_PTR_TAG(o, klass)   ((uintptr_t)((uintptr_t)(o) | (klass)))
-#define FIOBJ_PTR_UNTAG(o)        ((uintptr_t)((uintptr_t)o & (~7ULL)))
-#define FIOBJ_PTR_TAG_VALIDATE(o) ((uintptr_t)((uintptr_t)o & (7ULL)))
+#define FIOBJ_PTR_UNTAG(o)        ((uintptr_t)((uintptr_t)(o) & (~7ULL)))
+#define FIOBJ_PTR_TAG_VALIDATE(o) ((uintptr_t)((uintptr_t)(o) & (7ULL)))
 /** Returns an objects type. This isn't limited to known types. */
 FIO_IFUNC size_t fiobj_type(FIOBJ o);
 
@@ -21696,6 +21802,13 @@ FIOBJ_EXTERN_OBJ const FIOBJ_class_vtable_s FIOBJ___OBJECT_CLASS_VTBL;
 #define FIO_MEM_REALLOC_         FIOBJ_MEM_REALLOC
 #define FIO_MEM_FREE_            FIOBJ_MEM_FREE
 #define FIO_MEM_REALLOC_IS_SAFE_ FIOBJ_MEM_REALLOC_IS_SAFE
+/* make sure functions are exported if requested */
+#ifdef FIOBJ_EXTERN
+#define FIO_EXTERN
+#if defined(FIOBJ_EXTERN_COMPLETE) && !defined(FIO_EXTERN_COMPLETE)
+#define FIO_EXTERN_COMPLETE 2
+#endif
+#endif
 #include __FILE__
 
 /* *****************************************************************************
@@ -21770,6 +21883,13 @@ FIOBJ Strings
 #define FIO_MEM_REALLOC_         FIOBJ_MEM_REALLOC
 #define FIO_MEM_FREE_            FIOBJ_MEM_FREE
 #define FIO_MEM_REALLOC_IS_SAFE_ FIOBJ_MEM_REALLOC_IS_SAFE
+/* make sure functions are exported if requested */
+#ifdef FIOBJ_EXTERN
+#define FIO_EXTERN
+#if defined(FIOBJ_EXTERN_COMPLETE) && !defined(FIO_EXTERN_COMPLETE)
+#define FIO_EXTERN_COMPLETE 2
+#endif
+#endif
 #include __FILE__
 
 /* Creates a new FIOBJ string object, copying the data to the new string. */
@@ -21898,6 +22018,13 @@ FIOBJ Arrays
 #define FIO_MEM_REALLOC_         FIOBJ_MEM_REALLOC
 #define FIO_MEM_FREE_            FIOBJ_MEM_FREE
 #define FIO_MEM_REALLOC_IS_SAFE_ FIOBJ_MEM_REALLOC_IS_SAFE
+/* make sure functions are exported if requested */
+#ifdef FIOBJ_EXTERN
+#define FIO_EXTERN
+#if defined(FIOBJ_EXTERN_COMPLETE) && !defined(FIO_EXTERN_COMPLETE)
+#define FIO_EXTERN_COMPLETE 2
+#endif
+#endif
 #include __FILE__
 
 /* *****************************************************************************
@@ -21932,6 +22059,13 @@ FIOBJ Hash Maps
 #define FIO_MEM_REALLOC_          FIOBJ_MEM_REALLOC
 #define FIO_MEM_FREE_             FIOBJ_MEM_FREE
 #define FIO_MEM_REALLOC_IS_SAFE_  FIOBJ_MEM_REALLOC_IS_SAFE
+/* make sure functions are exported if requested */
+#ifdef FIOBJ_EXTERN
+#define FIO_EXTERN
+#if defined(FIOBJ_EXTERN_COMPLETE) && !defined(FIO_EXTERN_COMPLETE)
+#define FIO_EXTERN_COMPLETE 2
+#endif
+#endif
 #include __FILE__
 
 /** Calculates an object's hash value for a specific hash map object. */
@@ -23537,7 +23671,7 @@ FIO_SFUNC void FIO_NAME_TEST(stl, fiobj)(void) {
     fiobj_free(removed);
   }
   {
-    fprintf(stderr, "* Testing FIOBJ hash ownership after concat.\n");
+    fprintf(stderr, "* Testing FIOBJ array ownership after concat.\n");
     FIOBJ a1, a2;
     a1 = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
     a2 = FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), new)();
@@ -23724,10 +23858,10 @@ FIO_SFUNC void fio_test_dynamic_types(void);
 /* Common testing values / Macros */
 #define TEST_REPEAT 4096
 
-/* Make sure logging and FIOBJ memory marking are set. */
+/* Make sure logging and memory leak counters are set. */
 #define FIO_LOG
-#ifndef FIOBJ_MARK_MEMORY
-#define FIOBJ_MARK_MEMORY 1
+#ifndef FIO_LEAK_COUNTER
+#define FIO_LEAK_COUNTER 1
 #endif
 #ifndef FIO_FIOBJ
 #define FIO_FIOBJ

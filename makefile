@@ -60,7 +60,7 @@ LIB_PRIVATE_SUBFOLDERS=
 LIB_CONCAT_FOLDER=core_slices
 
 # the path and file name to use when unifying *.c, *.h, and *.md files (without extension).
-LIB_CONCAT_TARGET=fio
+LIB_CONCAT_TARGET=./lib/fio
 
 #############################################################################
 # Test Source Code Folder
@@ -777,7 +777,7 @@ test/db/cpp: | create_tree set_debug_flags___ test_set_test_flag___
 test/lib/db/%: | create_tree set_debug_flags___ test_set_test_flag___ $(LIB_OBJS)
 	$(eval BIN:=$(DEST)/$*)
 	@echo "* Compiling $(TEST_ROOT)/$*.c"
-	@$(CC) -c $(TEST_ROOT)/$*.c -o $(TMP_ROOT)/$*.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION) 
+	@$(CC) -c $(TEST_ROOT)/$*.c -o $(TMP_ROOT)/$*.o -DTEST_WITH_LIBRARY $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION) 
 	@echo "* Linking"
 	@$(CCL) -o $(BIN) $(TMP_ROOT)/$*.o $(LIB_OBJS) $(LINKER_FLAGS) $(OPTIMIZATION)
 	@echo "* Starting test:"
@@ -789,7 +789,7 @@ test/lib/db/%: | create_tree set_debug_flags___ test_set_test_flag___ $(LIB_OBJS
 test/lib/%: | create_tree test_set_test_flag___  $(LIB_OBJS)
 	$(eval BIN:=$(DEST)/$*)
 	@echo "* Compiling $(TEST_ROOT)/$*.c"
-	@$(CC) -c $(TEST_ROOT)/$*.c -o $(TMP_ROOT)/$*.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION) 
+	@$(CC) -c $(TEST_ROOT)/$*.c -o $(TMP_ROOT)/$*.o -DTEST_WITH_LIBRARY $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION) 
 	@echo "* Linking"
 	@$(CCL) -o $(BIN) $(TMP_ROOT)/$*.o $(LIB_OBJS) $(LINKER_FLAGS) $(OPTIMIZATION)
 	@echo "* Starting test:"

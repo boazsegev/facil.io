@@ -13,8 +13,12 @@ Than run:
     ./tmp/client localhost 3000
 
 */
-#include "../fio.c"
-#include "../fio.h"
+/* when compiling tests this is easier... */
+#ifdef TEST_WITH_LIBRARY
+#include "fio.h"
+#else
+#include "fio.c"
+#endif
 
 #define MAX_BYTES_RAPEL_PER_CYCLE 2048
 #define MAX_BYTES_READ_PER_CYCLE  4096

@@ -1,4 +1,10 @@
+/* when compiling tests this is easier... */
+#ifdef TEST_WITH_LIBRARY
+#include "fio.h"
+#else
 #include "fio.c"
+#endif
+
 #define FIO_STR_NAME echo_str
 #include "fio-stl.h"
 

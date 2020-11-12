@@ -155,8 +155,8 @@ Import STL
 #warning FIO_OVERRIDE_MALLOC is deprecated, use FIO_MALLOC_OVERRIDE_SYSTEM
 #define FIO_MALLOC_OVERRIDE_SYSTEM
 #elif defined(FIO_FORCE_MALLOC)
-#warning FIO_MALLOC_FORCE_SYSTEM is deprecated, use FIO_FORCE_MALLOC
-#define FIO_MALLOC_FORCE_SYSTEM
+#warning FIO_FORCE_MALLOC is deprecated, use FIO_MEMORY_DISABLE
+#define FIO_MEMORY_DISABLE
 #endif
 
 /* let it run once without side-effects, to prevent self-inclusion CLI errors */

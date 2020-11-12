@@ -1,6 +1,6 @@
 # facil.io - Core IO C Library
 
-At the core of the [facil.io framework](https://facil.io) are it's [Simple Template Library (C STL)](https://github.com/facil-io/cstl) and this IO Core library.
+At the core of the [facil.io framework](https://facil.io) are it's [Simple Template Library (C STL)](https://github.com/facil-io/cstl) and this IO Core library ([`fio.h`, `fio.c`](./lib)).
 
 The IO Core library follows an evented reactor pattern that allows easy management of sockets (`fd`), events and timers using `epoll`, `kqueue` or `poll`.
 
@@ -10,7 +10,7 @@ The IO Core library also offers [pub/sub services](https://en.wikipedia.org/wiki
 
 ## Documentation
 
-Documentation is available in the [(auto-generated) `fio.md` file](fio.md) as well as [online at facil.io](https://facil.io).
+Documentation is available in the [(auto-generated) `fio.md` file](./lib/fio.md) as well as [online at facil.io](https://facil.io).
 
 ### Running Tests
 

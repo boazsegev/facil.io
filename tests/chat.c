@@ -1,4 +1,9 @@
+/* when compiling tests this is easier... */
+#ifdef TEST_WITH_LIBRARY
+#include "fio.h"
+#else
 #include "fio.c"
+#endif
 #define FIO_STR_NAME             chat_str
 #define FIO_REF_NAME             chat_str
 #define FIO_REF_CONSTRUCTOR_ONLY 1
