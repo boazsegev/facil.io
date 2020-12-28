@@ -152,7 +152,7 @@ FIOBJ fiobj_str_new(const char *str, size_t len) {
 /**
  * Creates a String object. Remember to use `fiobj_free`.
  *
- * It's possible to wrap a previosly allocated memory block in a FIOBJ String
+ * It's possible to wrap a previously allocated memory block in a FIOBJ String
  * object, as long as it was allocated using `fio_malloc`.
  *
  * The ownership of the memory indicated by `str` will "move" to the object and
