@@ -133,7 +133,7 @@ the file descriptors are expected to be shared).</p>
 <p>Returns -1 on error, otherwise returns the number of events handled.</p>
 
 <h3 id="evio_close"><code>evio_close</code></h3>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">evio_close</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">evio_close</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Closes the <code>epoll</code> / <code>kqueue</code> object, releasing it&#39;s resources (important if
 forking!).</p>
@@ -183,7 +183,6 @@ safely ignored.</p>
     $('body')[0].className = localStorage.getItem("theme");
     set_theme_link();
     $('#show_nav').attr('checked', false);
-    return false;
 };
 function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
 function on_sidebar_link(e) {

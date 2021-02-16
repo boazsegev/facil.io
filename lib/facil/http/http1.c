@@ -599,8 +599,7 @@ static int http1_on_query(http1_parser_s *parser, char *query, size_t len) {
   return 0;
 }
 /** called when a the HTTP/1.x version is parsed. */
-static int http1_on_http_version(http1_parser_s *parser, char *version,
-                                 size_t len) {
+static int http1_on_version(http1_parser_s *parser, char *version, size_t len) {
   http1_pr2handle(parser2http(parser)).version = fiobj_str_new(version, len);
   parser2http(parser)->header_size += len;
 /* start counting - occurs on the first line of both requests and responses */
@@ -687,17 +686,7 @@ static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
   if (!p->buf_len)
     return;
   do {
-    i = http1_fio_parser(.parser = &p->parser,
-                         .buffer = p->buf + (org_len - p->buf_len),
-                         .length = p->buf_len, .on_request = http1_on_request,
-                         .on_response = http1_on_response,
-                         .on_method = http1_on_method,
-                         .on_status = http1_on_status, .on_path = http1_on_path,
-                         .on_query = http1_on_query,
-                         .on_http_version = http1_on_http_version,
-                         .on_header = http1_on_header,
-                         .on_body_chunk = http1_on_body_chunk,
-                         .on_error = http1_on_error);
+    i = http1_parse(&p->parser, p->buf + (org_len - p->buf_len), p->buf_len);
     p->buf_len -= i;
     --pipeline_limit;
   } while (i && p->buf_len && pipeline_limit && !p->stop);

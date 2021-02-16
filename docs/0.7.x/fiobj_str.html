@@ -143,12 +143,12 @@
 <h3 id="fiobj-string-initialization">FIOBJ String Initialization</h3>
 
 <h4 id="fiobj_str_new"><code>fiobj_str_new</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">str</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_str_new</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">str</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a String object. Remember to use <code>fiobj_free</code>.</p>
 
 <h4 id="fiobj_str_buf"><code>fiobj_str_buf</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_str_buf</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">capa</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_str_buf</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">capa</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a String object with pre-allocation for Strings up to <code>capa</code> long.</p>
 
@@ -157,7 +157,7 @@
 <p>Remember to use <code>fiobj_free</code>.</p>
 
 <h4 id="fiobj_str_copy"><code>fiobj_str_copy</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kr">inline</span> <span class="n">FIOBJ</span> <span class="n">fiobj_str_copy</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">src</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kr">inline</span> <span class="n">FIOBJ</span> <span class="nf">fiobj_str_copy</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">src</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a copy from an existing String. Remember to use <code>fiobj_free</code>.</p>
 
@@ -168,7 +168,7 @@
 <span class="p">}</span>
 </code></pre></div>
 <h4 id="fiobj_str_move"><code>fiobj_str_move</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_str_move</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">str</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">capacity</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_str_move</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">str</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">capacity</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a String object. Remember to use <code>fiobj_free</code>.</p>
 
@@ -179,38 +179,38 @@
 <p>Note: The original memory MUST be allocated using <code>fio_malloc</code> (NOT the system&#39;s <code>malloc</code>) and it will be freed using <code>fio_free</code>.</p>
 
 <h4 id="fiobj_str_tmp"><code>fiobj_str_tmp</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_str_tmp</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_str_tmp</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a thread-static temporary string. Avoid calling <code>fiobj_dup</code> or <code>fiobj_free</code>.</p>
 
 <h2 id="string-manipulation-and-data">String Manipulation and Data</h2>
 
 <h4 id="fiobj_str_freeze"><code>fiobj_str_freeze</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_str_freeze</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">str</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fiobj_str_freeze</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">str</span><span class="p">);</span>
 </code></pre></div>
 <p>Prevents the String object from being changed.</p>
 
 <p>When a String is used as a key for a Hash, it is automatically frozen to prevent the Hash from becoming broken.</p>
 
 <h4 id="fiobj_str_capa_assert"><code>fiobj_str_capa_assert</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_str_capa_assert</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">str</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">size</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fiobj_str_capa_assert</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">str</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">size</span><span class="p">);</span>
 </code></pre></div>
 <p>Confirms the requested capacity is available and allocates as required.</p>
 
 <p>Returns updated capacity.</p>
 
 <h4 id="fiobj_str_capa"><code>fiobj_str_capa</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_str_capa</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">str</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fiobj_str_capa</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">str</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a String&#39;s capacity, if any. This should include the NUL byte.</p>
 
 <h4 id="fiobj_str_resize"><code>fiobj_str_resize</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_str_resize</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">str</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">size</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fiobj_str_resize</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">str</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">size</span><span class="p">);</span>
 </code></pre></div>
 <p>Resizes a String object, allocating more memory if required.</p>
 
 <h4 id="fiobj_str_compact"><code>fiobj_str_compact</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_str_compact</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">str</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fiobj_str_compact</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">str</span><span class="p">);</span>
 </code></pre></div>
 <p>Performs a best attempt at minimizing memory consumption.</p>
 
@@ -222,12 +222,12 @@
 <p>Alias for <code>fiobj_str_compact</code>.</p>
 
 <h4 id="fiobj_str_clear"><code>fiobj_str_clear</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_str_clear</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">str</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fiobj_str_clear</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">str</span><span class="p">);</span>
 </code></pre></div>
 <p>Empties a String&#39;s data, but keeps the memory used for that data available.</p>
 
 <h4 id="fiobj_str_write"><code>fiobj_str_write</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_str_write</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fiobj_str_write</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes data at the end of the string, resizing the string as required.</p>
 
@@ -241,21 +241,21 @@
 <p>Returns the new length of the String</p>
 
 <h4 id="fiobj_str_printf"><code>fiobj_str_printf</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_str_printf</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">format</span><span class="p">,</span> <span class="p">...);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fiobj_str_printf</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">format</span><span class="p">,</span> <span class="p">...);</span>
 </code></pre></div>
 <p>Writes data at the end of the string using a <code>printf</code> like interface, resizing the string as required.</p>
 
 <p>Returns the new length of the String</p>
 
 <h4 id="fiobj_str_vprintf"><code>fiobj_str_vprintf</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_str_vprintf</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">format</span><span class="p">,</span> <span class="kt">va_list</span> <span class="n">argv</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fiobj_str_vprintf</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">format</span><span class="p">,</span> <span class="kt">va_list</span> <span class="n">argv</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes data at the end of the string using a <code>vprintf</code> like interface, resizing the string as required.</p>
 
 <p>Returns the new length of the String.</p>
 
 <h4 id="fiobj_str_concat"><code>fiobj_str_concat</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_str_concat</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">source</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fiobj_str_concat</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">source</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes data at the end of the string, resizing the string as required.</p>
 
@@ -269,7 +269,7 @@
 <p>Alias for <a href="#fiobj_str_concat"><code>fiobj_str_concat</code></a>.</p>
 
 <h4 id="fiobj_str_readfile"><code>fiobj_str_readfile</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_str_readfile</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">filename</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">start_at</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fiobj_str_readfile</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">filename</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">start_at</span><span class="p">,</span>
                           <span class="kt">intptr_t</span> <span class="n">limit</span><span class="p">);</span>
 </code></pre></div>
 <p>Dumps the contents of <code>filename</code> at the end of the String.</p>
@@ -287,7 +287,7 @@
 <h3 id="hashing">Hashing</h3>
 
 <h4 id="fiobj_str_hash"><code>fiobj_str_hash</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">uint64_t</span> <span class="n">fiobj_str_hash</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">o</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uint64_t</span> <span class="nf">fiobj_str_hash</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">o</span><span class="p">);</span>
 </code></pre></div>
 <p>Calculates a String&#39;s hash value for possible use as a Hash Map key.</p>
 
@@ -305,7 +305,6 @@
     $('body')[0].className = localStorage.getItem("theme");
     set_theme_link();
     $('#show_nav').attr('checked', false);
-    return false;
 };
 function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
 function on_sidebar_link(e) {

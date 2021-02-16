@@ -501,7 +501,7 @@
 <h2 id="listening-to-http-connections">Listening to HTTP Connections</h2>
 
 <h4 id="http_listen"><code>http_listen</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">http_listen</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">port</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">binding</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">http_listen</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">port</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">binding</span><span class="p">,</span>
                      <span class="k">struct</span> <span class="n">http_settings_s</span><span class="p">);</span>
 <span class="n">Listens</span> <span class="n">to</span> <span class="n">HTTP</span> <span class="n">connections</span> <span class="n">at</span> <span class="n">the</span> <span class="n">specified</span> <span class="err">`</span><span class="n">port</span><span class="err">`</span> <span class="n">and</span> <span class="err">`</span><span class="n">binding</span><span class="err">`</span><span class="p">.</span> 
 <span class="cp">#define http_listen(port, binding, ...)                                        \
@@ -509,7 +509,7 @@
 </span></code></pre></div>
 <p>The <code>http_listen</code> function is shadowed by the <code>http_listen</code> MACRO, which allows the function to accept &quot;named arguments&quot;, i.e.:</p>
 <div class="highlight"><pre class="highlight c"><code><span class="cm">/* Assuming we defined the HTTP request handler: */</span>
-<span class="k">static</span> <span class="kt">void</span> <span class="n">on_http_request</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
+<span class="k">static</span> <span class="kt">void</span> <span class="nf">on_http_request</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
 <span class="c1">// ... </span>
 <span class="k">if</span> <span class="p">(</span><span class="n">http_listen</span><span class="p">(</span><span class="s">"3000"</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span>
             <span class="p">.</span><span class="n">on_request</span> <span class="o">=</span> <span class="n">on_http_request</span><span class="p">,</span>
@@ -525,7 +525,7 @@
 
 <p>Callback for normal HTTP requests.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_request</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">request</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_request</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">request</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_request</code>:</p>
 
@@ -533,19 +533,19 @@
 
 <p>Server Sent Events (SSE) / EventSource requests set the <code>requested_protocol</code> string to <code>&quot;sse&quot;</code>. Other protocols (i.e., WebSockets) are represented exactly the same was as the client requested them (be aware or lower case vs. capitalized representations).</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_upgrade</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">request</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">requested_protocol</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_upgrade</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">request</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">requested_protocol</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_request</code>:</p>
 
 <p>This callback is ignored for HTTP server mode and is only called when a response (not a request) is received. On server connections, this would normally indicate a protocol error.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_response</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">response</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_response</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">response</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_finish</code>:</p>
 
 <p>This (optional) callback will be called when the HTTP service closes. The <code>setting</code> pointer will point to the named arguments passed to the <code>http_listen</code> function.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_finish</span><span class="p">(</span><span class="k">struct</span> <span class="n">http_settings_s</span> <span class="o">*</span><span class="n">settings</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_finish</span><span class="p">(</span><span class="k">struct</span> <span class="n">http_settings_s</span> <span class="o">*</span><span class="n">settings</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>udata</code>:</p>
 
@@ -653,7 +653,7 @@
 <h2 id="connecting-to-http-as-a-client">Connecting to HTTP as a Client</h2>
 
 <h4 id="http_connect"><code>http_connect</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">http_connect</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">address</span><span class="p">,</span> <span class="k">struct</span> <span class="n">http_settings_s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">http_connect</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">address</span><span class="p">,</span> <span class="k">struct</span> <span class="n">http_settings_s</span><span class="p">);</span>
 <span class="cp">#define http_connect(address, ...)                                             \
   http_connect((address), (struct http_settings_s){__VA_ARGS__})
 </span></code></pre></div>
@@ -798,12 +798,12 @@
 <h3 id="connection-information">Connection Information</h3>
 
 <h4 id="http_settings"><code>http_settings</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="k">struct</span> <span class="n">http_settings_s</span> <span class="o">*</span><span class="n">http_settings</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">struct</span> <span class="n">http_settings_s</span> <span class="o">*</span><span class="nf">http_settings</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the settings used to setup the connection or NULL on error.</p>
 
 <h4 id="http_peer_addr"><code>http_peer_addr</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">http_peer_addr</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="nf">http_peer_addr</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the direct address of the connected peer (most possibly an intermediary / proxy server).</p>
 
@@ -812,21 +812,21 @@
 <h3 id="setting-headers-and-cookies">Setting Headers and Cookies</h3>
 
 <h4 id="http_set_header"><code>http_set_header</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_set_header</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">name</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">value</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_set_header</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">name</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">value</span><span class="p">);</span>
 </code></pre></div>
 <p>Sets an outgoing header, taking ownership of the value object, but NOT the name object (so name objects could be reused in future responses).</p>
 
 <p>Returns -1 on error and 0 on success.</p>
 
 <h4 id="http_set_header2"><code>http_set_header2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_set_header2</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">name</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">value</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_set_header2</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">name</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">value</span><span class="p">);</span>
 </code></pre></div>
 <p>Sets an outgoing header, copying the data.</p>
 
 <p>Returns -1 on error and 0 on success.</p>
 
 <h4 id="http_set_cookie"><code>http_set_cookie</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_set_cookie</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="n">http_cookie_args_s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_set_cookie</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="n">http_cookie_args_s</span><span class="p">);</span>
 <span class="cp">#define http_set_cookie(http___handle, ...)                                    \
   http_set_cookie((http___handle), (http_cookie_args_s){__VA_ARGS__})
 </span></code></pre></div>
@@ -915,14 +915,14 @@
 <h3 id="sending-a-response-request">Sending a Response / Request</h3>
 
 <h4 id="http_finish"><code>http_finish</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">http_finish</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">http_finish</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
 </code></pre></div>
 <p>Sends the response headers for a header only response.</p>
 
 <p><strong>Important</strong>: After this function is called, the <code>http_s</code> object is no longer valid.</p>
 
 <h4 id="http_send_body"><code>http_send_body</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_send_body</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_send_body</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">);</span>
 </code></pre></div>
 <p>Sends the response headers and body.</p>
 
@@ -934,7 +934,7 @@ freed by the calling function.</p>
 <p><strong>Important</strong>: After this function is called, the <code>http_s</code> object is no longer valid.</p>
 
 <h4 id="http_sendfile"><code>http_sendfile</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_sendfile</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="kt">int</span> <span class="n">fd</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">offset</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_sendfile</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="kt">int</span> <span class="n">fd</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">offset</span><span class="p">);</span>
 </code></pre></div>
 <p>Sends the response headers and the specified file (the response&#39;s body).</p>
 
@@ -945,7 +945,7 @@ freed by the calling function.</p>
 <p><strong>Important</strong>: After this function is called, the <code>http_s</code> object is no longer valid.</p>
 
 <h4 id="http_sendfile2"><code>http_sendfile2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_sendfile2</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">prefix</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">prefix_len</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_sendfile2</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">prefix</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">prefix_len</span><span class="p">,</span>
                    <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">encoded</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">encoded_len</span><span class="p">);</span>
 </code></pre></div>
 <p>Sends the response headers and the specified file (the response&#39;s body).</p>
@@ -961,7 +961,7 @@ freed by the calling function.</p>
 <p><strong>Important</strong>: After this function is called, the <code>http_s</code> object is no longer valid.</p>
 
 <h4 id="http_send_error"><code>http_send_error</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_send_error</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">error_code</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_send_error</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">error_code</span><span class="p">);</span>
 </code></pre></div>
 <p>Sends an HTTP error response.</p>
 
@@ -976,14 +976,14 @@ freed by the calling function.</p>
 <p><strong>Note</strong>: HTTP/2 isn&#39;t implemented yet and these functions will simply fail.</p>
 
 <h4 id="http_push_data"><code>http_push_data</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_push_data</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">mime_type</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_push_data</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">length</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">mime_type</span><span class="p">);</span>
 </code></pre></div>
 <p>Pushes a data response when supported (HTTP/2 only).</p>
 
 <p>Returns -1 on error and 0 on success.</p>
 
 <h4 id="http_push_file"><code>http_push_file</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_push_file</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">filename</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">mime_type</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_push_file</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">filename</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">mime_type</span><span class="p">);</span>
 </code></pre></div>
 <p>Pushes a file response when supported (HTTP/2 only).</p>
 
@@ -994,7 +994,7 @@ freed by the calling function.</p>
 <h3 id="rescheduling-the-http-event">Rescheduling the HTTP event</h3>
 
 <h4 id="http_pause"><code>http_pause</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">http_pause</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="n">http_pause_handle_s</span> <span class="o">*</span><span class="n">http</span><span class="p">));</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">http_pause</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="n">http_pause_handle_s</span> <span class="o">*</span><span class="n">http</span><span class="p">));</span>
 </code></pre></div>
 <p>Pauses the request / response handling and INVALIDATES the current <code>http_s</code> handle (no <code>http</code> functions can be called).</p>
 
@@ -1005,7 +1005,7 @@ freed by the calling function.</p>
 <p>Note: the current <code>http_s</code> handle will become invalid once this function is called and it&#39;s data might be deallocated, invalid or used by a different thread.</p>
 
 <h4 id="http_resume"><code>http_resume</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">http_resume</span><span class="p">(</span><span class="n">http_pause_handle_s</span> <span class="o">*</span><span class="n">http</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">),</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">http_resume</span><span class="p">(</span><span class="n">http_pause_handle_s</span> <span class="o">*</span><span class="n">http</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">),</span>
                  <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">fallback</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">));</span>
 </code></pre></div>
 <p>Resumes a request / response handling within a task and INVALIDATES the current <code>http_s</code> handle.</p>
@@ -1019,12 +1019,12 @@ freed by the calling function.</p>
 <p>Note: the current <code>http_s</code> handle will become invalid once this function is called and it&#39;s data might be deallocated, invalidated or used by a different thread.</p>
 
 <h4 id="http_paused_udata_get"><code>http_paused_udata_get</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">http_paused_udata_get</span><span class="p">(</span><span class="n">http_pause_handle_s</span> <span class="o">*</span><span class="n">http</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="nf">http_paused_udata_get</span><span class="p">(</span><span class="n">http_pause_handle_s</span> <span class="o">*</span><span class="n">http</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the <code>udata</code> associated with the paused opaque handle </p>
 
 <h4 id="http_paused_udata_set"><code>http_paused_udata_set</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">http_paused_udata_set</span><span class="p">(</span><span class="n">http_pause_handle_s</span> <span class="o">*</span><span class="n">http</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="nf">http_paused_udata_set</span><span class="p">(</span><span class="n">http_pause_handle_s</span> <span class="o">*</span><span class="n">http</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div>
 <p>Sets the <code>udata</code> associated with the paused opaque handle, returning the old value.</p>
 
@@ -1037,7 +1037,7 @@ freed by the calling function.</p>
 <p>This allows an application to convert a String data such as <code>&quot;user[name]=Joe&quot;</code> to a nested Hash Map, where the <code>params</code> Hash Map&#39;s key <code>user</code> maps to a nested Hash Map with the key <code>name</code> (and the value <code>&quot;Joe&quot;</code>, as described by <a href="#http_add2hash"><code>http_add2hash</code></a>)).</p>
 
 <h4 id="http_parse_body"><code>http_parse_body</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_parse_body</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_parse_body</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
 </code></pre></div>
 <p>Attempts to decode the request&#39;s body using the <a href="#http_add2hash"><code>http_add2hash</code></a> scheme.</p>
 
@@ -1056,7 +1056,7 @@ freed by the calling function.</p>
 <p>If the <code>multipart/form-data</code> type contains JSON files, they will NOT be parsed (they will behave like any other file, with <code>data</code>, <code>type</code> and <code>filename</code> keys assigned). This allows non-object JSON data (such as array) to be handled by the app.</p>
 
 <h4 id="http_parse_query"><code>http_parse_query</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">http_parse_query</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">http_parse_query</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
 </code></pre></div>
 <p>Parses the query part of an HTTP request/response. Uses <a href="#http_add2hash"><code>http_add2hash</code></a>.</p>
 
@@ -1064,12 +1064,12 @@ freed by the calling function.</p>
 body is a JSON object that doesn&#39;t have a Hash Map at it&#39;s root.</p>
 
 <h4 id="http_parse_cookies"><code>http_parse_cookies</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">http_parse_cookies</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">is_url_encoded</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">http_parse_cookies</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">is_url_encoded</span><span class="p">);</span>
 </code></pre></div>
 <p>Parses any Cookie / Set-Cookie headers, using the <a href="#http_add2hash"><code>http_add2hash</code></a> scheme. </p>
 
 <h4 id="http_add2hash"><code>http_add2hash</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_add2hash</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">name_len</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">value</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_add2hash</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">name_len</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">value</span><span class="p">,</span>
                   <span class="kt">size_t</span> <span class="n">value_len</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">encoded</span><span class="p">);</span>
 </code></pre></div>
 <p>Adds a named parameter to the hash, converting a string to an object and resolving nesting references and URL decoding if required. i.e.:</p>
@@ -1085,7 +1085,7 @@ body is a JSON object that doesn&#39;t have a Hash Map at it&#39;s root.</p>
 <p>Note: names can&#39;t begin with <code>&quot;[&quot;</code> or end with <code>&quot;]&quot;</code> as these are reserved characters.</p>
 
 <h4 id="http_add2hash2"><code>http_add2hash2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_add2hash2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">name_len</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">value</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_add2hash2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">name_len</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">value</span><span class="p">,</span>
                    <span class="kt">uint8_t</span> <span class="n">encoded</span><span class="p">);</span>
 </code></pre></div>
 <p>Same as <a href="#http_add2hash"><code>http_add2hash</code></a>, using an existing object.</p>
@@ -1093,12 +1093,12 @@ body is a JSON object that doesn&#39;t have a Hash Map at it&#39;s root.</p>
 <h3 id="miscellaneous-http-helpers">Miscellaneous HTTP Helpers</h3>
 
 <h4 id="http_status2str"><code>http_status2str</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">http_status2str</span><span class="p">(</span><span class="kt">uintptr_t</span> <span class="n">status</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="nf">http_status2str</span><span class="p">(</span><span class="kt">uintptr_t</span> <span class="n">status</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a human readable string representing the HTTP status number. </p>
 
 <h4 id="http_hijack"><code>http_hijack</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">http_hijack</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="o">*</span><span class="n">leftover</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">http_hijack</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="o">*</span><span class="n">leftover</span><span class="p">);</span>
 </code></pre></div>
 <p>Hijacks the socket away from the HTTP protocol and away from facil.io.</p>
 
@@ -1113,13 +1113,13 @@ body is a JSON object that doesn&#39;t have a Hash Map at it&#39;s root.</p>
 <p><strong>WARNING</strong>: this isn&#39;t a good way to handle HTTP connections, especially as HTTP/2 enters the picture. To implement Server Sent Events consider calling <a href="#http_upgrade2sse"><code>http_upgrade2sse</code></a> instead.</p>
 
 <h4 id="http_req2str"><code>http_req2str</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">http_req2str</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">http_req2str</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a String object representing the unparsed HTTP request (HTTP version
 is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.</p>
 
 <h4 id="http_write_log"><code>http_write_log</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">http_write_log</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">http_write_log</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes a log line to <code>stderr</code> about the request / response object.</p>
 
@@ -1130,7 +1130,7 @@ is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.</p>
 <h3 id="websocket-upgrade-from-http-server">WebSocket Upgrade From HTTP (Server)</h3>
 
 <h4 id="http_upgrade2ws"><code>http_upgrade2ws</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_upgrade2ws</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">http</span><span class="p">,</span> <span class="n">websocket_settings_s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_upgrade2ws</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">http</span><span class="p">,</span> <span class="n">websocket_settings_s</span><span class="p">);</span>
 <span class="cp">#define http_upgrade2ws(http, ...)                                             \
   http_upgrade2ws((http), (websocket_settings_s){__VA_ARGS__})
 </span></code></pre></div>
@@ -1145,7 +1145,7 @@ is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.</p>
 
 <p>The (optional) <code>on_open</code> callback will be called once the WebSocket connection is established and before is is registered with <code>facil</code>, so no <code>on_message</code> events are raised before <code>on_open</code> returns.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_open</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_open</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_message</code>:</p>
 
@@ -1153,7 +1153,7 @@ is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.</p>
 
 <p>The data received points to the WebSocket&#39;s message buffer and it will be overwritten once the function exits (it cannot be saved for later, but it can be copied).</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_message</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">msg</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">is_text</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_message</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">msg</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">is_text</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_ready</code>:</p>
 
@@ -1161,13 +1161,13 @@ is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.</p>
 
 <p>If the socket&#39;s buffer is never used, the callback is never called.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_ready</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_ready</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_shutdown</code>:</p>
 
 <p>The (optional) on_shutdown callback will be called if a WebSocket connection is still open while the server is shutting down (called before <code>on_close</code>).</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_shutdown</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_shutdown</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_close</code>:</p>
 
@@ -1175,7 +1175,7 @@ is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.</p>
 
 <p>The <code>udata</code> is the user data as set during the upgrade or using the <code>websocket_udata_set</code> function.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_close</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_close</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>udata</code>:</p>
 
@@ -1202,7 +1202,7 @@ is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.</p>
 <h3 id="websocket-connections-client">WebSocket Connections (Client)</h3>
 
 <h4 id="websocket_connect"><code>websocket_connect</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">websocket_connect</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">url</span><span class="p">,</span> <span class="n">websocket_settings_s</span> <span class="n">settings</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">websocket_connect</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">url</span><span class="p">,</span> <span class="n">websocket_settings_s</span> <span class="n">settings</span><span class="p">);</span>
 <span class="cp">#define websocket_connect(url, ...)                                        \
   websocket_connect((address), (websocket_settings_s){__VA_ARGS__})
 </span></code></pre></div>
@@ -1219,19 +1219,19 @@ is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.</p>
 <h3 id="websocket-connection-management-write-close">WebSocket Connection Management (write / close)</h3>
 
 <h4 id="websocket_write"><code>websocket_write</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">websocket_write</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">msg</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">is_text</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">websocket_write</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">msg</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">is_text</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes data to the WebSocket. Returns -1 on failure (0 on success).</p>
 
 <h4 id="websocket_close"><code>websocket_close</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">websocket_close</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">websocket_close</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
 </code></pre></div>
 <p>Closes a WebSocket connection. */</p>
 
 <h3 id="websocket-pub-sub">WebSocket Pub/Sub</h3>
 
 <h4 id="websocket_subscribe"><code>websocket_subscribe</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">uintptr_t</span> <span class="n">websocket_subscribe</span><span class="p">(</span><span class="k">struct</span> <span class="n">websocket_subscribe_s</span> <span class="n">args</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uintptr_t</span> <span class="nf">websocket_subscribe</span><span class="p">(</span><span class="k">struct</span> <span class="n">websocket_subscribe_s</span> <span class="n">args</span><span class="p">);</span>
 <span class="cp">#define websocket_subscribe(, ...)                                       \
   websocket_subscribe((struct websocket_subscribe_s){.ws = ws_handle, __VA_ARGS__})
 </span></code></pre></div>
@@ -1257,14 +1257,14 @@ is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.</p>
 
 <p>If missing, Data is directly written to the WebSocket connection.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_message</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">,</span>
+<span class="kt">void</span> <span class="nf">on_message</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">,</span>
              <span class="n">fio_str_info_s</span> <span class="n">msg</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_unsubscribe</code>:</p>
 
 <p>An optional callback to be called after the subscription was canceled. This should be used for any required cleanup.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_unsubscribe</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_unsubscribe</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>match</code>:</p>
 
@@ -1272,7 +1272,7 @@ is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.</p>
 
 <p>Note that only the <code>FIO_MATCH_GLOB</code> matching function (or NULL for no pattern matching) is safe to use with the Redis extension.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">int</span> <span class="n">foo_bar_match_fn</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">);</span>
+<span class="kt">int</span> <span class="nf">foo_bar_match_fn</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">);</span>
 <span class="c1">// type:</span>
 <span class="n">fio_match_fn</span> <span class="n">match</span><span class="p">;</span>
 </code></pre></div></li>
@@ -1307,7 +1307,7 @@ is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.</p>
 <p>All subscriptions are automatically canceled and freed once the WebSocket is closed.</p>
 
 <h4 id="websocket_unsubscribe"><code>websocket_unsubscribe</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">websocket_unsubscribe</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">subscription_id</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">websocket_unsubscribe</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">subscription_id</span><span class="p">);</span>
 </code></pre></div>
 <p>Unsubscribes from a channel.</p>
 
@@ -1317,7 +1317,7 @@ is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.</p>
 only use this function to unsubscribe while the WebSocket is open.</p>
 
 <h4 id="websocket_optimize4broadcasts"><code>websocket_optimize4broadcasts</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">websocket_optimize4broadcasts</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">type</span><span class="p">,</span> <span class="kt">int</span> <span class="n">enable</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">websocket_optimize4broadcasts</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">type</span><span class="p">,</span> <span class="kt">int</span> <span class="n">enable</span><span class="p">);</span>
 </code></pre></div>
 <p>Enables (or disables) any of the following broadcast optimizations:</p>
 
@@ -1345,33 +1345,33 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 <h3 id="websocket-data">WebSocket Data</h3>
 
 <h4 id="websocket_udata_get"><code>websocket_udata_get</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">websocket_udata_get</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="nf">websocket_udata_get</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the opaque user data associated with the WebSocket.</p>
 
 <h4 id="websocket_udata_set"><code>websocket_udata_set</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">websocket_udata_set</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="nf">websocket_udata_set</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div>
 <p>Sets the opaque user data associated with the WebSocket.</p>
 
 <p>Returns the old value, if any.</p>
 
 <h4 id="websocket_uuid"><code>websocket_uuid</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">websocket_uuid</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">websocket_uuid</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the underlying socket UUID.</p>
 
 <p>This is only relevant for collecting the protocol object from outside of WebSocket events, as the socket shouldn&#39;t be written to.</p>
 
 <h4 id="websocket_is_client"><code>websocket_is_client</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">uint8_t</span> <span class="n">websocket_is_client</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uint8_t</span> <span class="nf">websocket_is_client</span><span class="p">(</span><span class="n">ws_s</span> <span class="o">*</span><span class="n">ws</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns 1 if the WebSocket connection is in Client mode (connected to a remote server) and 0 if the connection is in Server mode (a connection established using facil.io&#39;s HTTP server).</p>
 
 <h3 id="websocket-helpers">WebSocket Helpers</h3>
 
 <h4 id="websocket_attach"><code>websocket_attach</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">websocket_attach</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">http_settings_s</span> <span class="o">*</span><span class="n">http_settings</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">websocket_attach</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">http_settings_s</span> <span class="o">*</span><span class="n">http_settings</span><span class="p">,</span>
                       <span class="n">websocket_settings_s</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">length</span><span class="p">);</span>
 </code></pre></div>
 <p>Used <strong>internally</strong>: attaches the WebSocket protocol to the uuid.</p>
@@ -1381,7 +1381,7 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 <h3 id="eventsource-sse-connection-management">EventSource (SSE) Connection Management</h3>
 
 <h4 id="http_upgrade2sse"><code>http_upgrade2sse</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_upgrade2sse</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="n">http_sse_s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_upgrade2sse</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">h</span><span class="p">,</span> <span class="n">http_sse_s</span><span class="p">);</span>
 <span class="cp">#define http_upgrade2sse(h, ...)                                               \
   http_upgrade2sse((h), (http_sse_s){__VA_ARGS__})
 </span></code></pre></div>
@@ -1408,7 +1408,7 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 
 <p>The <code>http_sse_s</code> pointer passed to the callback contains a copy of the named arguments passed to the <code>http_upgrade2sse</code> function.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_open</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_open</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_ready</code>:</p>
 
@@ -1418,7 +1418,7 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 
 <p>The <code>http_sse_s</code> pointer passed to the callback contains a copy of the named arguments passed to the <code>http_upgrade2sse</code> function.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_ready</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_ready</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_shutdown</code>:</p>
 
@@ -1426,7 +1426,7 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 
 <p>The <code>http_sse_s</code> pointer passed to the callback contains a copy of the named arguments passed to the <code>http_upgrade2sse</code> function.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_shutdown</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_shutdown</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_close</code>:</p>
 
@@ -1434,7 +1434,7 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 
 <p>The <code>udata</code> passed to the <code>http_upgrade2sse</code> function is available through the <code>http_sse_s</code> pointer (<code>sse-&gt;udata</code>).</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_close</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_close</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>udata</code>:</p>
 
@@ -1445,19 +1445,19 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 </ul>
 
 <h4 id="http_sse_set_timout"><code>http_sse_set_timout</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">http_sse_set_timout</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">timeout</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">http_sse_set_timout</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">timeout</span><span class="p">);</span>
 </code></pre></div>
 <p>Sets the ping interval for SSE connections.</p>
 
 <h4 id="http_sse_close"><code>http_sse_close</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_sse_close</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_sse_close</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
 </code></pre></div>
 <p>Closes an EventSource (SSE) connection.</p>
 
 <h3 id="eventsource-sse-pub-sub">EventSource (SSE) Pub/Sub</h3>
 
 <h4 id="http_sse_subscribe"><code>http_sse_subscribe</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">uintptr_t</span> <span class="n">http_sse_subscribe</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uintptr_t</span> <span class="nf">http_sse_subscribe</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">,</span>
                              <span class="k">struct</span> <span class="n">http_sse_subscribe_args</span> <span class="n">args</span><span class="p">);</span>
 <span class="cp">#define http_sse_subscribe(sse, ...)                                           \
   http_sse_subscribe((sse), (struct http_sse_subscribe_args){__VA_ARGS__})
@@ -1486,7 +1486,7 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 
 <p>If missing, Data is directly written to the HTTP connection.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_message</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">,</span>
+<span class="kt">void</span> <span class="nf">on_message</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">,</span>
              <span class="n">fio_str_info_s</span> <span class="n">msg</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_unsubscribe</code>:</p>
@@ -1495,7 +1495,7 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 
 <p>If missing, Data is directly written to the HTTP connection.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_unsubscribe</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_unsubscribe</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>match</code>:</p>
 
@@ -1503,7 +1503,7 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 
 <p>Note that only the <code>FIO_MATCH_GLOB</code> matching function (or NULL for no pattern matching) is safe to use with the Redis extension.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">int</span> <span class="n">foo_bar_match_fn</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">);</span>
+<span class="kt">int</span> <span class="nf">foo_bar_match_fn</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">);</span>
 <span class="c1">// type:</span>
 <span class="n">fio_match_fn</span> <span class="n">match</span><span class="p">;</span>
 </code></pre></div></li>
@@ -1518,14 +1518,14 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 <p>Returns a subscription ID on success and 0 on failure.</p>
 
 <h4 id="http_sse_unsubscribe"><code>http_sse_unsubscribe</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">http_sse_unsubscribe</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">subscription</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">http_sse_unsubscribe</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">,</span> <span class="kt">uintptr_t</span> <span class="n">subscription</span><span class="p">);</span>
 </code></pre></div>
 <p>Cancels a subscription and invalidates the subscription object.</p>
 
 <h3 id="writing-to-the-eventsource-sse-connection">Writing to the EventSource (SSE) Connection</h3>
 
 <h4 id="http_sse_write"><code>http_sse_write</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">http_sse_write</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">,</span> <span class="k">struct</span> <span class="n">http_sse_write_args</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">http_sse_write</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">,</span> <span class="k">struct</span> <span class="n">http_sse_write_args</span><span class="p">);</span>
 <span class="cp">#define http_sse_write(sse, ...)                                               \
   http_sse_write((sse), (struct http_sse_write_args){__VA_ARGS__})
 </span></code></pre></div>
@@ -1567,19 +1567,19 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 <h3 id="eventsource-sse-helpers">EventSource (SSE) Helpers</h3>
 
 <h4 id="http_sse2uuid"><code>http_sse2uuid</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">http_sse2uuid</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">http_sse2uuid</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
 </code></pre></div>
 <p>Get the connection&#39;s UUID (for <code>fio_defer_io_task</code>, pub/sub, etc&#39;).</p>
 
 <h4 id="http_sse_dup"><code>http_sse_dup</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">http_sse_dup</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">http_sse_s</span> <span class="o">*</span><span class="nf">http_sse_dup</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
 </code></pre></div>
 <p>Duplicates an SSE handle by reference, remember to http_sse_free.</p>
 
 <p>Returns the same object (increases a reference count, no allocation is made). </p>
 
 <h4 id="http_sse_free"><code>http_sse_free</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">http_sse_free</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">http_sse_free</span><span class="p">(</span><span class="n">http_sse_s</span> <span class="o">*</span><span class="n">sse</span><span class="p">);</span>
 </code></pre></div>
 <p>Frees an SSE handle by reference (decreases the reference count).</p>
 
@@ -1598,7 +1598,7 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 <p>It is recommended (and assumed) that all the calls to <code>http_mimetype_register</code> are performed during the setup stage (before calling <code>fio_start</code>).</p>
 
 <h4 id="http_mimetype_register"><code>http_mimetype_register</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">http_mimetype_register</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">file_ext</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">file_ext_len</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">http_mimetype_register</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">file_ext</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">file_ext_len</span><span class="p">,</span>
                             <span class="n">FIOBJ</span> <span class="n">mime_type_str</span><span class="p">);</span>
 </code></pre></div>
 <p>Registers a Mime-Type to be associated with a file extension, taking ownership of the <code>mime_type_str</code> String (use <code>fiobj_dup</code> to keep a copy).</p>
@@ -1606,14 +1606,14 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 <p>File extension names should exclude the dot (<code>&#39;.&#39;</code>) marking the beginning of the extension. i.e., use <code>&quot;jpg&quot;</code>, <code>&quot;html&quot;</code>, etc&#39; (<strong>not</strong> <code>&quot;.jpg&quot;</code>).</p>
 
 <h4 id="http_mimetype_find"><code>http_mimetype_find</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">http_mimetype_find</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">file_ext</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">file_ext_len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">http_mimetype_find</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">file_ext</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">file_ext_len</span><span class="p">);</span>
 </code></pre></div>
 <p>Finds the mime-type associated with the file extension, returning a String on success and FIOBJ_INVALID on failure.</p>
 
 <p>Remember to call <code>fiobj_free</code>.</p>
 
 <h4 id="http_mimetype_find2"><code>http_mimetype_find2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">http_mimetype_find2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">url</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">http_mimetype_find2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">url</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the mime-type associated with the URL or the default mime-type for
 HTTP.</p>
@@ -1621,14 +1621,14 @@ HTTP.</p>
 <p>Remember to call <code>fiobj_free</code>.</p>
 
 <h4 id="http_mimetype_clear"><code>http_mimetype_clear</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">http_mimetype_clear</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">http_mimetype_clear</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Clears the Mime-Type registry (it will be empty after this call). </p>
 
 <h3 id="time-date-helpers">Time / Date Helpers</h3>
 
 <h4 id="http_gmtime"><code>http_gmtime</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">http_gmtime</span><span class="p">(</span><span class="kt">time_t</span> <span class="n">timer</span><span class="p">,</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">tmbuf</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="nf">http_gmtime</span><span class="p">(</span><span class="kt">time_t</span> <span class="n">timer</span><span class="p">,</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">tmbuf</span><span class="p">);</span>
 </code></pre></div>
 <p>A faster (yet less localized) alternative to <code>gmtime_r</code>.</p>
 
@@ -1637,7 +1637,7 @@ HTTP.</p>
 <p>Falls back to <code>gmtime_r</code> for dates before epoch.</p>
 
 <h3 id="http_date2rfc7231"><code>http_date2rfc7231</code></h3>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">http_date2rfc7231</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">tmbuf</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">http_date2rfc7231</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">tmbuf</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes an RFC 7231 date representation (HTTP date format) to the <code>target</code> buffer.</p>
 
@@ -1651,17 +1651,17 @@ it&#39;s a super funky year, 32 bytes is about 3 more than you need).</p>
 <p>Alias for <a href="#http_date2rfc7231"><code>http_date2rfc7231</code></a>.</p>
 
 <h4 id="http_date2rfc2109"><code>http_date2rfc2109</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">http_date2rfc2109</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">tmbuf</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">http_date2rfc2109</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">tmbuf</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes an RFC 2109 date representation to the <code>target</code> buffer. See <a href="#http_date2rfc7231"><code>http_date2rfc7231</code></a>.</p>
 
 <h4 id="http_date2rfc2822"><code>http_date2rfc2822</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">http_date2rfc2822</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">tmbuf</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">http_date2rfc2822</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">tmbuf</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes an RFC 2822 date representation to the <code>target</code> buffer. See <a href="#http_date2rfc7231"><code>http_date2rfc7231</code></a>.</p>
 
 <h4 id="http_time2str"><code>http_time2str</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">http_time2str</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">const</span> <span class="kt">time_t</span> <span class="n">t</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">http_time2str</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">const</span> <span class="kt">time_t</span> <span class="n">t</span><span class="p">);</span>
 </code></pre></div>
 <p>Prints Unix time to a HTTP time formatted string.</p>
 
@@ -1670,22 +1670,22 @@ it&#39;s a super funky year, 32 bytes is about 3 more than you need).</p>
 <h3 id="url-string-decoding">URL String Decoding</h3>
 
 <h4 id="http_decode_url_unsafe"><code>http_decode_url_unsafe</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">ssize_t</span> <span class="n">http_decode_url_unsafe</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">url_data</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">ssize_t</span> <span class="nf">http_decode_url_unsafe</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">url_data</span><span class="p">);</span>
 </code></pre></div>
 <p>Decodes a URL encoded string, <strong>no</strong> buffer overflow protection. </p>
 
 <h4 id="http_decode_url"><code>http_decode_url</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">ssize_t</span> <span class="n">http_decode_url</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">url_data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">length</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">ssize_t</span> <span class="nf">http_decode_url</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">url_data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">length</span><span class="p">);</span>
 </code></pre></div>
 <p>Decodes a URL encoded string (query / form data), <strong>no</strong> buffer overflow protection.</p>
 
 <h4 id="http_decode_path_unsafe"><code>http_decode_path_unsafe</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">ssize_t</span> <span class="n">http_decode_path_unsafe</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">url_data</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">ssize_t</span> <span class="nf">http_decode_path_unsafe</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">url_data</span><span class="p">);</span>
 </code></pre></div>
 <p>Decodes the &quot;path&quot; part of a request, <strong>no</strong> buffer overflow protection. </p>
 
 <h4 id="http_decode_path"><code>http_decode_path</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">ssize_t</span> <span class="n">http_decode_path</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">url_data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">length</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">ssize_t</span> <span class="nf">http_decode_path</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">url_data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">length</span><span class="p">);</span>
 </code></pre></div>
 <p>Decodes the &quot;path&quot; part of an HTTP request, no buffer overflow protection.</p>
 
@@ -1800,7 +1800,6 @@ it&#39;s a super funky year, 32 bytes is about 3 more than you need).</p>
     $('body')[0].className = localStorage.getItem("theme");
     set_theme_link();
     $('#show_nav').attr('checked', false);
-    return false;
 };
 function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
 function on_sidebar_link(e) {

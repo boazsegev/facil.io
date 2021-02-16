@@ -1,10 +1,28 @@
 # Change Log
 
+### v. 0.7.5 (2020-05-18)
+
+**Security**: backport the 0.8.x HTTP/1.1 parser and it's security updates to the 0.7.x version branch. This fixes a request smuggling attack vector and Transfer Encoding attack vector that were exposed by Sam Sanoop from [the Snyk Security team (snyk.io)](https://snyk.io). The parser was updated to deal with these potential issues.
+
+**Fix**: (`http`) fixes an issue with date calculation by backporting code from the 0.8.x branch.
+
+**Fix**: (`fio`) call less signal handlers during shutdown.
+
+### v. 0.7.4
+
+**Fix**: (`http`) fixes an issue and improves support for `chunked` encoded payloads. Credit to Ian Ker-Seymer ( @ianks ) for exposing this, writing tests  (for the Ruby wrapper) and opening both the issue boazsegev/iodine#87 and the PR boazsegev/iodine#88.
+
+**Fix**: (`http`) requests will fail when the path contains a dangling `?` (empty query). Credit to @adam12 for exposing this and opening issue boazsegev/iodine#86.
+
 ### v. 0.7.3
 
-**Fix**: (`fio`) fixes an issue where timer cleanup wasn't performed after `fio_stop` (or SIGINT/SIGTERM). No a "clean slate" will be provided if `fio_start` is called more then once. Note: this may **break previous behavior**, which should be considered undocumented and unexpected behavior. (this fax **may** be deferred to version 0.8.x, still undecided). Credit to @fbrausse for opening issue #72. 
+**Fix**: (`http`) fixes a security issue in the static file name resolution logic, where a maliciously encoded request could invoke an arbitrary response.
 
-**Fix**: (`fio`) fixes an issue where timer cleanup would be performed after the `AT_EXIT` state callbacks. Now the timer cleanup callbacks will be performed **before** the `AT_EXIT` callback (as they should). (See issue #72).
+**Fix**: (`fio`) fixes an issue where setting a different value to `FIO_SLOWLORIS_LIMIT` was being ignored.
+
+**Fix**: (`fio`, `fiobj`) improved C++ compatibility. Credit to Joey (@joeyhoek) for PR #76.
+
+**Fix**: (`fio`) fixes an issue where timer cleanup wasn't performed after `fio_stop` (or SIGINT/SIGTERM). No a "clean slate" will be provided if `fio_start` is called more then once. Note: this may **break previous behavior**, which should be considered undocumented and unexpected behavior. (this fax **may** be deferred to version 0.8.x, still undecided). Credit to @fbrausse for opening issue #72. 
 
 **Fix**: (`fio`) fixes an issue where timer cleanup would be performed after the `AT_EXIT` state callbacks. Now the timer cleanup callbacks will be performed **before** the `AT_EXIT` callback (as they should). (See issue #72).
 

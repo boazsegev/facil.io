@@ -1206,21 +1206,21 @@ to new connections after a file descriptor is &quot;recycled&quot; by the OS.</p
 <span class="p">};</span>
 </code></pre></div>
 <h4 id="fio_protocol_s-on_data"><code>fio_protocol_s-&gt;on_data</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">on_data</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">on_data</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
 </code></pre></div>
 <p>Called when a data is available.</p>
 
 <p>The function is called under the protocol&#39;s main lock (<code>FIO_PR_LOCK_TASK</code>), safeguarding the connection against collisions (the function will not run concurrently with itself for the same connection.</p>
 
 <h4 id="fio_protocol_s-on_ready"><code>fio_protocol_s-&gt;on_ready</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">on_ready</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">on_ready</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
 </code></pre></div>
 <p>Called once all pending <a href="#fio_write"><code>fio_write</code></a> calls are finished.</p>
 
 <p>For new connections this callback is also called once a connection was established and the connection can be written to.</p>
 
 <h4 id="fio_protocol_s-on_shutdown"><code>fio_protocol_s-&gt;on_shutdown</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">uint8_t</span> <span class="n">on_shutdown</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uint8_t</span> <span class="nf">on_shutdown</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
 </code></pre></div>
 <p>Called when the server is shutting down, immediately before closing the connection.</p>
 
@@ -1233,12 +1233,12 @@ to new connections after a file descriptor is &quot;recycled&quot; by the OS.</p
 <p>If the <code>on_shutdown</code> returns 255, the socket is ignored and it will be abruptly terminated when all other sockets have finished their graceful shutdown procedure.</p>
 
 <h4 id="fio_protocol_s-on_close"><code>fio_protocol_s-&gt;on_close</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">uint8_t</span> <span class="n">on_close</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uint8_t</span> <span class="nf">on_close</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
 </code></pre></div>
 <p>Called when the connection was closed, but will not run concurrently with other callbacks.</p>
 
 <h4 id="fio_protocol_s-ping"><code>fio_protocol_s-&gt;ping</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">uint8_t</span> <span class="n">ping</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uint8_t</span> <span class="nf">ping</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
 </code></pre></div>
 <p>Called when a connection&#39;s timeout was reached.</p>
 
@@ -1257,7 +1257,7 @@ to new connections after a file descriptor is &quot;recycled&quot; by the OS.</p
 <p>Detaching is also possible by attaching a NULL protocol (used for &quot;hijacking&quot; the socket from <code>facil.io</code>).</p>
 
 <h4 id="fio_attach"><code>fio_attach</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_attach</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_attach</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
 </code></pre></div>
 <p>Attaches (or updates) a protocol object to a connection&#39;s uuid.</p>
 
@@ -1270,7 +1270,7 @@ to new connections after a file descriptor is &quot;recycled&quot; by the OS.</p
 <p><strong>Note</strong>: before attaching a file descriptor that was created outside of facil.io&#39;s library, make sure it is set to non-blocking mode (see <a href="#fio_set_non_block"><code>fio_set_non_block</code></a>). facil.io file descriptors are all non-blocking and it will assumes this is the case for the attached fd.</p>
 
 <h4 id="fio_attach_fd"><code>fio_attach_fd</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_attach_fd</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_attach_fd</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
 </code></pre></div>
 <p>Attaches (or updates) a protocol object to a file descriptor (fd).</p>
 
@@ -1283,7 +1283,7 @@ to new connections after a file descriptor is &quot;recycled&quot; by the OS.</p
 <p>On error, the new protocol&#39;s <code>on_close</code> callback will be called immediately.</p>
 
 <h4 id="fio_capa"><code>fio_capa</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_capa</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fio_capa</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the maximum number of open files facil.io can handle per worker process.</p>
 
@@ -1295,22 +1295,22 @@ to new connections after a file descriptor is &quot;recycled&quot; by the OS.</p
 yet or that it&#39;s resources were already released.</p>
 
 <h4 id="fio_timeout_set"><code>fio_timeout_set</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_timeout_set</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">timeout</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_timeout_set</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">timeout</span><span class="p">);</span>
 </code></pre></div>
 <p>Sets a timeout for a specific connection (only when running and valid).</p>
 
 <h4 id="fio_timeout_get"><code>fio_timeout_get</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">uint8_t</span> <span class="n">fio_timeout_get</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uint8_t</span> <span class="nf">fio_timeout_get</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
 </code></pre></div>
 <p>Gets a timeout for a specific connection. Returns 0 if none.</p>
 
 <h4 id="fio_touch"><code>fio_touch</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_touch</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_touch</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
 </code></pre></div>
 <p>&quot;Touches&quot; a socket connection, resetting it&#39;s timeout counter.</p>
 
 <h4 id="fio_force_event"><code>fio_force_event</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_force_event</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="k">enum</span> <span class="n">fio_io_event</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_force_event</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="k">enum</span> <span class="n">fio_io_event</span><span class="p">);</span>
 </code></pre></div>
 <p>Schedules an IO event, even if it did not occur.</p>
 
@@ -1323,7 +1323,7 @@ yet or that it&#39;s resources were already released.</p>
 </ul>
 
 <h4 id="fio_suspend"><code>fio_suspend</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_suspend</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_suspend</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
 </code></pre></div>
 <p>Temporarily prevents <code>on_data</code> events from firing.</p>
 
@@ -1440,7 +1440,7 @@ The main function (listens to the `echo` connections and handles CLI)
 <span class="p">}</span>
 </code></pre></div>
 <h4 id="fio_listen"><code>fio_listen</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">fio_listen</span><span class="p">(</span><span class="k">struct</span> <span class="n">fio_listen_args</span> <span class="n">args</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">fio_listen</span><span class="p">(</span><span class="k">struct</span> <span class="n">fio_listen_args</span> <span class="n">args</span><span class="p">);</span>
 <span class="cp">#define fio_listen(...) fio_listen((struct fio_listen_args){__VA_ARGS__})
 </span></code></pre></div>
 <p>The <code>fio_listen</code> function is shadowed by the <code>fio_listen</code> MACRO, which allows the function to accept &quot;named arguments&quot;, as shown above in the example code:</p>
@@ -1458,7 +1458,7 @@ The main function (listens to the `echo` connections and handles CLI)
 
 <p>The callback should accept the new connection&#39;s uuid and a void pointer (the optional <code>udata</code> pointer one passed to <code>fio_listen</code>)</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_open</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_open</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>port</code>:</p>
 
@@ -1488,13 +1488,13 @@ The main function (listens to the `echo` connections and handles CLI)
 
 <p>A callback to be called when the server starts (or a worker process is re-spawned), allowing for further initialization, such as timed event scheduling or VM initialization.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_start</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_start</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_finish</code>:</p>
 
 <p>A callback to be called for every process once the listening socket is closed.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_finish</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_finish</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 </ul>
 
@@ -1503,7 +1503,7 @@ The main function (listens to the `echo` connections and handles CLI)
 <p>Establishing a client connection is about as easy as setting up a listening socket, and follows, give or take, the same procedure.</p>
 
 <h4 id="fio_connect"><code>fio_connect</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">fio_connect</span><span class="p">(</span><span class="k">struct</span> <span class="n">fio_connect_args</span> <span class="n">args</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">fio_connect</span><span class="p">(</span><span class="k">struct</span> <span class="n">fio_connect_args</span> <span class="n">args</span><span class="p">);</span>
 <span class="cp">#define fio_connect(...) fio_connect((struct fio_connect_args){__VA_ARGS__})
 </span></code></pre></div>
 <p>The <code>fio_connect</code> function is shadowed by the <code>fio_connect</code> MACRO, which allows the function to accept &quot;named arguments&quot;, similar to <a href="#fio_listen">`fio_listen</a>.</p>
@@ -1529,7 +1529,7 @@ The main function (listens to the `echo` connections and handles CLI)
 
 <p>The callback should accept the new connection&#39;s uuid and a void pointer (the optional <code>udata</code> pointer one passed to <code>fio_connect</code>)</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_connect</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_connect</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_connect</code>:</p>
 
@@ -1537,7 +1537,7 @@ The main function (listens to the `echo` connections and handles CLI)
 
 <p>The callback should accept the attempted connection&#39;s uuid (might be -1) and a void pointer (the optional <code>udata</code> pointer one passed to <code>fio_connect</code>)</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_connect</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_connect</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>udata</code>:</p>
 
@@ -1562,7 +1562,7 @@ The main function (listens to the `echo` connections and handles CLI)
 <h3 id="url-parsing">URL Parsing</h3>
 
 <h4 id="fio_url_parse"><code>fio_url_parse</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_url_s</span> <span class="n">fio_url_parse</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">url</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">length</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_url_s</span> <span class="nf">fio_url_parse</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">url</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">length</span><span class="p">);</span>
 </code></pre></div>
 <p>Parses the URI returning it&#39;s components and their lengths - no decoding
 performed, doesn&#39;t accept decoded URIs.</p>
@@ -1625,7 +1625,7 @@ performed, doesn&#39;t accept decoded URIs.</p>
 <h3 id="manual-protocol-locking">Manual Protocol Locking</h3>
 
 <h4 id="fio_protocol_try_lock"><code>fio_protocol_try_lock</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">fio_protocol_try_lock</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="k">enum</span> <span class="n">fio_protocol_lock_e</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_protocol_s</span> <span class="o">*</span><span class="nf">fio_protocol_try_lock</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="k">enum</span> <span class="n">fio_protocol_lock_e</span><span class="p">);</span>
 </code></pre></div>
 <p>This function allows out-of-task access to a connection&#39;s <code>fio_protocol_s</code> object by attempting to acquire a locked pointer.</p>
 
@@ -1648,7 +1648,7 @@ data from the protocol&#39;s data structure.</p></li>
 <p>On error, consider calling <code>fio_defer</code> or <code>fio_defer_io_task</code> instead of busy waiting. Busy waiting SHOULD be avoided whenever possible.</p>
 
 <h4 id="fio_protocol_unlock"><code>fio_protocol_unlock</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_protocol_unlock</span><span class="p">(</span><span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">pr</span><span class="p">,</span> <span class="k">enum</span> <span class="n">fio_protocol_lock_e</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_protocol_unlock</span><span class="p">(</span><span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">pr</span><span class="p">,</span> <span class="k">enum</span> <span class="n">fio_protocol_lock_e</span><span class="p">);</span>
 </code></pre></div>
 <p>Don&#39;t unlock what you didn&#39;t lock with <code>fio_protocol_try_lock</code>... see <a href="#fio_protocol_try_lock"><code>fio_protocol_try_lock</code></a> for details.</p>
 
@@ -1659,7 +1659,7 @@ data from the protocol&#39;s data structure.</p></li>
 <p>In cluster mode (when running more than a single process), a crashed worker process will be automatically re-spawned and &quot;hot restart&quot; is enabled (using the USR1 signal).</p>
 
 <h4 id="fio_start"><code>fio_start</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_start</span><span class="p">(</span><span class="k">struct</span> <span class="n">fio_start_args</span> <span class="n">args</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_start</span><span class="p">(</span><span class="k">struct</span> <span class="n">fio_start_args</span> <span class="n">args</span><span class="p">);</span>
 <span class="cp">#define fio_start(...) fio_start((struct fio_start_args){__VA_ARGS__})
 </span></code></pre></div>
 <p>Starts the facil.io event loop. This function will return after facil.io is done (after shutdown).</p>
@@ -1693,13 +1693,13 @@ data from the protocol&#39;s data structure.</p></li>
 <p>If the other option (i.e. <code>.workers</code> when setting <code>.threads</code>) is zero, it will be automatically updated to reflect the option&#39;s absolute value. i.e.: if .threads == -2 and .workers == 0, than facil.io will run 2 worker processes with (cores/2) threads per process.</p>
 
 <h4 id="fio_stop"><code>fio_stop</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_stop</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_stop</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Attempts to stop the facil.io application. This only works within the Root
 process. A worker process will simply re-spawn itself (hot-restart).</p>
 
 <h4 id="fio_expected_concurrency"><code>fio_expected_concurrency</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_expected_concurrency</span><span class="p">(</span><span class="kt">int16_t</span> <span class="o">*</span><span class="n">threads</span><span class="p">,</span> <span class="kt">int16_t</span> <span class="o">*</span><span class="n">workers</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_expected_concurrency</span><span class="p">(</span><span class="kt">int16_t</span> <span class="o">*</span><span class="n">threads</span><span class="p">,</span> <span class="kt">int16_t</span> <span class="o">*</span><span class="n">workers</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the number of expected threads / processes to be used by facil.io.</p>
 
@@ -1709,14 +1709,14 @@ processes values passed to <code>fio_start</code>.</p>
 <p>The data in the pointers will be overwritten with the result.</p>
 
 <h4 id="fio_is_running"><code>fio_is_running</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int16_t</span> <span class="n">fio_is_running</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int16_t</span> <span class="nf">fio_is_running</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the number of worker processes if facil.io is running (1 is returned when in single process mode, otherwise the number of workers).</p>
 
 <p>Returns 0 if facil.io isn&#39;t running or is winding down (during shutdown).</p>
 
 <h4 id="fio_is_worker"><code>fio_is_worker</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_is_worker</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_is_worker</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns 1 if the current process is a worker process or a single process.</p>
 
@@ -1725,18 +1725,18 @@ processes values passed to <code>fio_start</code>.</p>
 <p><strong>Note</strong>: When cluster mode is off, the root process is also the worker process. This means that single process instances don&#39;t automatically re-spawn after critical errors.</p>
 
 <h4 id="fio_parent_pid"><code>fio_parent_pid</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">pid_t</span> <span class="n">fio_parent_pid</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">pid_t</span> <span class="nf">fio_parent_pid</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns facil.io&#39;s parent (root) process pid.</p>
 
 <h4 id="fio_reap_children"><code>fio_reap_children</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_reap_children</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_reap_children</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Initializes zombie reaping for the process. Call before <code>fio_start</code> to enable
 global zombie reaping.</p>
 
 <h4 id="fio_signal_handler_reset"><code>fio_signal_handler_reset</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_signal_handler_reset</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_signal_handler_reset</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Resets any existing signal handlers, restoring their state to before they were set by facil.io.</p>
 
@@ -1745,12 +1745,12 @@ global zombie reaping.</p>
 <p>This function will be called automatically by facil.io whenever facil.io stops.</p>
 
 <h4 id="fio_last_tick"><code>fio_last_tick</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="k">struct</span> <span class="n">timespec</span> <span class="n">fio_last_tick</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">struct</span> <span class="n">timespec</span> <span class="nf">fio_last_tick</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the last time facil.io reviewed any pending IO events.</p>
 
 <h4 id="fio_engine"><code>fio_engine</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">fio_engine</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="nf">fio_engine</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a C string detailing the IO engine selected during compilation.</p>
 
@@ -1761,7 +1761,7 @@ global zombie reaping.</p>
 <h3 id="creating-closing-and-testing-sockets">Creating, closing and testing sockets</h3>
 
 <h4 id="fio_socket"><code>fio_socket</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">fio_socket</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">address</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">port</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">is_server</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">fio_socket</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">address</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">port</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">is_server</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a TCP/IP or Unix socket and returns it&#39;s unique identifier.</p>
 
@@ -1778,7 +1778,7 @@ global zombie reaping.</p>
 <p><strong>Note</strong>: facil.io uses unique identifiers to protect sockets from collisions. However these identifiers can be converted to the underlying file descriptor using the <a href="#fio_uuid2fd"><code>fio_uuid2fd</code></a> macro.</p>
 
 <h4 id="fio_accept"><code>fio_accept</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">fio_accept</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">srv_uuid</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">fio_accept</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">srv_uuid</span><span class="p">);</span>
 </code></pre></div>
 <p><code>fio_accept</code> accepts a new socket connection from a server socket - see the server flag on <a href="#fio_socket"><code>fio_socket</code></a>.</p>
 
@@ -1787,33 +1787,33 @@ global zombie reaping.</p>
 <p><strong>Note</strong>: this function does NOT attach the socket to the IO reactor - see <a href="#fio_attach"><code>fio_attach</code></a>.</p>
 
 <h4 id="fio_is_valid"><code>fio_is_valid</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_is_valid</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_is_valid</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns 1 if the uuid refers to a valid and open, socket.</p>
 
 <p>Returns 0 if not.</p>
 
 <h4 id="fio_is_closed"><code>fio_is_closed</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_is_closed</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_is_closed</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns 1 if the uuid is invalid or the socket is flagged to be closed.</p>
 
 <p>Returns 0 if the socket is valid, open and isn&#39;t flagged to be closed.</p>
 
 <h4 id="fio_close"><code>fio_close</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_close</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_close</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
 </code></pre></div>
 <p><code>fio_close</code> marks the connection for disconnection once all the data was sent. The actual disconnection will be managed by the <a href="#fio_flush"><code>fio_flush</code></a> function.</p>
 
 <p><a href="#fio_flash"><code>fio_flash</code></a> will be automatically scheduled.</p>
 
 <h4 id="fio_force_close"><code>fio_force_close</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_force_close</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_force_close</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
 </code></pre></div>
 <p><code>fio_force_close</code> closes the connection immediately, without adhering to any protocol restrictions and without sending any remaining data in the connection buffer.</p>
 
 <h4 id="fio_set_non_block"><code>fio_set_non_block</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_set_non_block</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_set_non_block</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">);</span>
 </code></pre></div>
 <p>Sets a socket to non blocking state.</p>
 
@@ -1825,7 +1825,7 @@ global zombie reaping.</p>
 <p>Call this function before attaching an <code>fd</code> that was created outside of facil.io.</p>
 
 <h4 id="fio_peer_addr"><code>fio_peer_addr</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">fio_peer_addr</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="nf">fio_peer_addr</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the information available about the socket&#39;s peer address.</p>
 
@@ -1845,7 +1845,7 @@ global zombie reaping.</p>
 <h3 id="reading-writing">Reading / Writing</h3>
 
 <h4 id="fio_read"><code>fio_read</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">ssize_t</span> <span class="n">fio_read</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">count</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">ssize_t</span> <span class="nf">fio_read</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">count</span><span class="p">);</span>
 </code></pre></div>
 <p><code>fio_read</code> attempts to read up to count bytes from the socket into the buffer starting at <code>buffer</code>.</p>
 
@@ -1860,7 +1860,7 @@ global zombie reaping.</p>
 <p>Data might be available in the kernel&#39;s buffer while it is not available to be read using <code>fio_read</code> (i.e., when using a transport layer, such as TLS, with Read/Write hooks).</p>
 
 <h4 id="fio_write2"><code>fio_write2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">ssize_t</span> <span class="n">fio_write2_fn</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_write_args_s</span> <span class="n">options</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">ssize_t</span> <span class="nf">fio_write2_fn</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_write_args_s</span> <span class="n">options</span><span class="p">);</span>
 <span class="cp">#define fio_write2(uuid, ...)                                                  \
  fio_write2_fn(uuid, (fio_write_args_s){__VA_ARGS__})
 </span></code></pre></div>
@@ -1928,7 +1928,7 @@ global zombie reaping.</p>
 <p>On error, -1 will be returned. Otherwise returns 0.</p>
 
 <h4 id="fio_write"><code>fio_write</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">ssize_t</span> <span class="n">fio_write</span><span class="p">(</span><span class="k">const</span> <span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">ssize_t</span> <span class="nf">fio_write</span><span class="p">(</span><span class="k">const</span> <span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">,</span>
                          <span class="k">const</span> <span class="kt">size_t</span> <span class="n">length</span><span class="p">);</span>
 </code></pre></div>
 <p><code>fio_write</code> copies <code>legnth</code> data from the buffer and schedules the data to
@@ -1950,7 +1950,7 @@ be sent over the socket.</p>
 <span class="p">}</span>
 </code></pre></div>
 <h4 id="fio_sendfile"><code>fio_sendfile</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="k">static</span> <span class="kt">ssize_t</span> <span class="n">fio_sendfile</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">source_fd</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="k">static</span> <span class="kt">ssize_t</span> <span class="nf">fio_sendfile</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">source_fd</span><span class="p">,</span>
                                    <span class="kt">off_t</span> <span class="n">offset</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">length</span><span class="p">);</span>
 </code></pre></div>
 <p>Sends data from a file as if it were a single atomic packet (sends up to <code>length</code> bytes or until EOF is reached).</p>
@@ -1971,12 +1971,12 @@ be sent over the socket.</p>
 <span class="p">}</span>
 </code></pre></div>
 <h4 id="fio_pending"><code>fio_pending</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_pending</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fio_pending</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the number of <code>fio_write</code> calls that are waiting in the connection&#39;s queue and haven&#39;t been processed.</p>
 
 <h4 id="fio_flush"><code>fio_flush</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">ssize_t</span> <span class="n">fio_flush</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">ssize_t</span> <span class="nf">fio_flush</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
 </code></pre></div>
 <p><code>fio_flush</code> attempts to write any remaining data in the internal buffer to the underlying file descriptor and closes the underlying file descriptor once if it&#39;s marked for closure (and all the data was sent).</p>
 
@@ -1993,7 +1993,7 @@ be sent over the socket.</p>
 <p>Blocks until all the data was flushed from the buffer.</p>
 
 <h4 id="fio_flush_all"><code>fio_flush_all</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_flush_all</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fio_flush_all</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p><code>fio_flush_all</code> attempts flush all the open connections.</p>
 
@@ -2005,7 +2005,7 @@ be sent over the socket.</p>
 <p>Convert between a facil.io connection&#39;s identifier (uuid) and system&#39;s fd.</p>
 
 <h4 id="fio_fd2uuid"><code>fio_fd2uuid</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">fio_fd2uuid</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="nf">fio_fd2uuid</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">);</span>
 </code></pre></div>
 <p><code>fio_fd2uuid</code> takes an existing file decriptor <code>fd</code> and returns it&#39;s active <code>uuid</code>.</p>
 
@@ -2024,7 +2024,7 @@ be sent over the socket.</p>
 <p>This is can be useful and is used internally by the <code>fio_subscribe</code> function to attach subscriptions to connections (when requested).</p>
 
 <h4 id="fio_uuid_link"><code>fio_uuid_link</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_uuid_link</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">on_close</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">));</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_uuid_link</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">on_close</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">));</span>
 </code></pre></div>
 <p>Links an object to a connection&#39;s lifetime, calling the <code>on_close</code> callback once the connection has died.</p>
 
@@ -2033,7 +2033,7 @@ be sent over the socket.</p>
 <p><strong>Note</strong>: the <code>on_close</code> callback will be called with high priority. Long tasks should be deferred using <a href="#fio_defer"><code>fio_defer</code></a>.</p>
 
 <h4 id="fio_uuid_unlink"><code>fio_uuid_unlink</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_uuid_unlink</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_uuid_unlink</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">);</span>
 </code></pre></div>
 <p>Un-links an object from the connection&#39;s lifetime, so it&#39;s <code>on_close</code> callback will NOT be called.</p>
 
@@ -2087,7 +2087,7 @@ be sent over the socket.</p>
 </ul>
 
 <h4 id="fio_rw_hook_set"><code>fio_rw_hook_set</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_rw_hook_set</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_rw_hook_s</span> <span class="o">*</span><span class="n">rw_hooks</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_rw_hook_set</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_rw_hook_s</span> <span class="o">*</span><span class="n">rw_hooks</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div>
 <p>Sets a connection&#39;s hook callback object (<code>fio_rw_hook_s</code>).</p>
 
@@ -2096,7 +2096,7 @@ be sent over the socket.</p>
 <p>If the function fails, than the <code>cleanup</code> callback will be called before the function returns.</p>
 
 <h4 id="fio_rw_hook_replace_unsafe"><code>fio_rw_hook_replace_unsafe</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_rw_hook_replace_unsafe</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_rw_hook_s</span> <span class="o">*</span><span class="n">rw_hooks</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_rw_hook_replace_unsafe</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_rw_hook_s</span> <span class="o">*</span><span class="n">rw_hooks</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div>
 <p>Replaces an existing read/write hook with another from within a read/write hook callback.</p>
 
@@ -2126,7 +2126,7 @@ be sent over the socket.</p>
 <h3 id="the-task-queue-functions">The Task Queue Functions</h3>
 
 <h4 id="fio_defer"><code>fio_defer</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_defer</span><span class="p">(</span><span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="p">),</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata1</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata2</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_defer</span><span class="p">(</span><span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="p">),</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata1</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata2</span><span class="p">);</span>
 </code></pre></div>
 <p>Defers a task&#39;s execution.</p>
 
@@ -2137,19 +2137,19 @@ be sent over the socket.</p>
 <p>Returns -1 or error, 0 on success.</p>
 
 <h4 id="fio_defer_perform"><code>fio_defer_perform</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_defer_perform</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_defer_perform</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Performs all deferred tasks.</p>
 
 <h4 id="fio_defer_has_queue"><code>fio_defer_has_queue</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_defer_has_queue</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_defer_has_queue</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns true if there are deferred functions waiting for execution.</p>
 
 <h3 id="timer-functions">Timer Functions</h3>
 
 <h4 id="fio_run_every"><code>fio_run_every</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_run_every</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">milliseconds</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">repetitions</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">),</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_run_every</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">milliseconds</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">repetitions</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">),</span>
                  <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">on_finish</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">));</span>
 </code></pre></div>
 <p>Creates a timer to run a task at the specified interval.</p>
@@ -2168,7 +2168,7 @@ will repeat forever.</p>
 <p>Connection tasks are performed within one of the connection&#39;s locks (<code>FIO_PR_LOCK_TASK</code>, <code>FIO_PR_LOCK_WRITE</code>, <code>FIO_PR_LOCK_STATE</code>), assuring a measure of safety.</p>
 
 <h4 id="fio_defer_io_task"><code>fio_defer_io_task</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_defer_io_task</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_defer_iotask_args_s</span> <span class="n">args</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_defer_io_task</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_defer_iotask_args_s</span> <span class="n">args</span><span class="p">);</span>
 <span class="cp">#define fio_defer_io_task(uuid, ...)                                           \
  fio_defer_connection_task((uuid), (fio_defer_iotask_args_s){__VA_ARGS__})
 </span></code></pre></div>
@@ -2187,13 +2187,13 @@ will repeat forever.</p>
 
 <p>The task (function) to be performed. The tasks accepts the connection&#39;s <code>uuid</code>, a pointer to the protocol object and the opaque <code>udata</code> pointer passed to <code>fio_defer_io_task</code>.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// Callback example:</span>
-<span class="kt">void</span> <span class="n">task</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">task</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>fallback</code>:</p>
 
 <p>A fallback task (function) to be performed in cases where the <code>uuid</code> isn&#39;t valid by the time the task should be executed. The fallback task accepts the connection&#39;s <code>uuid</code> and the opaque <code>udata</code> pointer passed to <code>fio_defer_io_task</code>.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// Callback example:</span>
-<span class="kt">void</span> <span class="n">fallback</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">fallback</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>udata</code>:</p>
 
@@ -2248,21 +2248,21 @@ will repeat forever.</p>
 <p>Idling callbacks are scheduled rather than performed during the event, so they might be performed out of order or concurrently when running in multi-threaded mode.</p>
 
 <h4 id="fio_state_callback_add"><code>fio_state_callback_add</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_state_callback_add</span><span class="p">(</span><span class="n">callback_type_e</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">func</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">),</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_state_callback_add</span><span class="p">(</span><span class="n">callback_type_e</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">func</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">),</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
 </code></pre></div>
 <p>Adds a callback to the list of callbacks to be called for the event.</p>
 
 <p>Callbacks will be called using logical order for build-up and tear-down, according to the event&#39;s context.</p>
 
 <h4 id="fio_state_callback_remove"><code>fio_state_callback_remove</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_state_callback_remove</span><span class="p">(</span><span class="n">callback_type_e</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">func</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">),</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_state_callback_remove</span><span class="p">(</span><span class="n">callback_type_e</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">func</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">),</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes a callback from the list of callbacks to be called for the event.</p>
 
 <p>Callbacks will be called using logical order for build-up and tear-down, according to the event&#39;s context.</p>
 
 <h4 id="fio_state_callback_force"><code>fio_state_callback_force</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_state_callback_force</span><span class="p">(</span><span class="n">callback_type_e</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_state_callback_force</span><span class="p">(</span><span class="n">callback_type_e</span><span class="p">);</span>
 </code></pre></div>
 <p>Forces all the existing callbacks to run, as if the event occurred.</p>
 
@@ -2271,7 +2271,7 @@ will repeat forever.</p>
 <p>During an event, changes to the callback list are ignored (callbacks can&#39;t remove other callbacks for the same event).</p>
 
 <h4 id="fio_state_callback_clear"><code>fio_state_callback_clear</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_state_callback_clear</span><span class="p">(</span><span class="n">callback_type_e</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_state_callback_clear</span><span class="p">(</span><span class="n">callback_type_e</span><span class="p">);</span>
 </code></pre></div>
 <p>Clears all the existing callbacks for the event (doesn&#39;t effect a currently firing event).</p>
 
@@ -2282,13 +2282,13 @@ will repeat forever.</p>
 <h3 id="subscription-control">Subscription Control</h3>
 
 <h4 id="fio_subscribe"><code>fio_subscribe</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">subscription_s</span> <span class="o">*</span><span class="n">fio_subscribe</span><span class="p">(</span><span class="n">subscribe_args_s</span> <span class="n">args</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">subscription_s</span> <span class="o">*</span><span class="nf">fio_subscribe</span><span class="p">(</span><span class="n">subscribe_args_s</span> <span class="n">args</span><span class="p">);</span>
 <span class="cp">#define fio_subscribe(...) fio_subscribe((subscribe_args_s){__VA_ARGS__})
 </span></code></pre></div>
 <p>This function subscribes to either a numerical &quot;filter&quot; or a named channel (but not both).</p>
 
 <p>The <code>fio_subscribe</code> function is shadowed by the <code>fio_subscribe</code> MACRO, which allows the function to accept &quot;named arguments&quot;, as shown in the following example:</p>
-<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">void</span> <span class="n">my_message_handler</span><span class="p">(</span><span class="n">fio_msg_s</span> <span class="o">*</span><span class="n">msg</span><span class="p">);</span> 
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kt">void</span> <span class="nf">my_message_handler</span><span class="p">(</span><span class="n">fio_msg_s</span> <span class="o">*</span><span class="n">msg</span><span class="p">);</span> 
 <span class="c1">//...</span>
 <span class="n">subscription_s</span> <span class="o">*</span> <span class="n">s</span> <span class="o">=</span> <span class="n">fio_subscribe</span><span class="p">(.</span><span class="n">channel</span> <span class="o">=</span> <span class="p">{.</span><span class="n">data</span><span class="o">=</span><span class="s">"name"</span><span class="p">,</span> <span class="p">.</span><span class="n">len</span> <span class="o">=</span> <span class="mi">4</span><span class="p">},</span>
                                    <span class="p">.</span><span class="n">on_message</span> <span class="o">=</span> <span class="n">my_message_handler</span><span class="p">);</span>
@@ -2322,9 +2322,9 @@ will repeat forever.</p>
 
 <p>This is significantly slower, as no Hash Map can be used to locate a match - each message published to a channel will be tested for a match against each pattern.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">int</span> <span class="n">foo_bar_match_fn</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">);</span>
+<span class="kt">int</span> <span class="nf">foo_bar_match_fn</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">);</span>
 <span class="c1">// type:</span>
-<span class="k">typedef</span> <span class="kt">int</span> <span class="p">(</span><span class="o">*</span><span class="n">fio_match_fn</span><span class="p">)(</span><span class="n">fio_str_info_s</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">);</span>
+<span class="k">typedef</span> <span class="nf">int</span> <span class="p">(</span><span class="o">*</span><span class="n">fio_match_fn</span><span class="p">)(</span><span class="n">fio_str_info_s</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">);</span>
 <span class="n">fio_match_fn</span> <span class="n">match</span><span class="p">;</span>
 <span class="k">extern</span> <span class="n">fio_match_fn</span> <span class="n">FIO_MATCH_GLOB</span><span class="p">;</span>
 </code></pre></div></li>
@@ -2332,7 +2332,7 @@ will repeat forever.</p>
 
 <p>The callback will be called for each message forwarded to the subscription.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// callback example:</span>
-<span class="kt">void</span> <span class="n">on_message</span><span class="p">(</span><span class="n">fio_msg_s</span> <span class="o">*</span><span class="n">msg</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">on_message</span><span class="p">(</span><span class="n">fio_msg_s</span> <span class="o">*</span><span class="n">msg</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>on_unsubscribe</code>:</p>
 
@@ -2376,7 +2376,7 @@ will repeat forever.</p>
 <p><strong>Note (2)</strong>: passing protocol object pointers to the <code>udata</code> is not safe, since protocol objects might be destroyed or invalidated due to either network events (socket closure) or internal changes (i.e., <code>fio_attach</code> being called). The preferred way is to add the <code>uuid</code> to the <code>udata</code> field and call <a href="#fio_protocol_try_lock"><code>fio_protocol_try_lock</code></a> to access the protocol object.</p>
 
 <h4 id="fio_subscription_channel"><code>fio_subscription_channel</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">fio_subscription_channel</span><span class="p">(</span><span class="n">subscription_s</span> <span class="o">*</span><span class="n">subscription</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="nf">fio_subscription_channel</span><span class="p">(</span><span class="n">subscription_s</span> <span class="o">*</span><span class="n">subscription</span><span class="p">);</span>
 </code></pre></div>
 <p>This helper returns a temporary String with the subscription&#39;s channel (or a binary
 string representing the filter).</p>
@@ -2384,14 +2384,14 @@ string representing the filter).</p>
 <p>To keep the string beyond the lifetime of the subscription, copy the string.</p>
 
 <h4 id="fio_message_defer"><code>fio_message_defer</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_message_defer</span><span class="p">(</span><span class="n">fio_msg_s</span> <span class="o">*</span><span class="n">msg</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_message_defer</span><span class="p">(</span><span class="n">fio_msg_s</span> <span class="o">*</span><span class="n">msg</span><span class="p">);</span>
 </code></pre></div>
 <p>Defers the subscription&#39;s callback handler, so the subscription will be called again for the same message.</p>
 
 <p>A classic use case allows facil.io to handle other events while waiting on a lock / mutex to become available in a multi-threaded environment.</p>
 
 <h4 id="fio_unsubscribe"><code>fio_unsubscribe</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_unsubscribe</span><span class="p">(</span><span class="n">subscription_s</span> <span class="o">*</span><span class="n">subscription</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_unsubscribe</span><span class="p">(</span><span class="n">subscription_s</span> <span class="o">*</span><span class="n">subscription</span><span class="p">);</span>
 </code></pre></div>
 <p>Cancels an existing subscription.</p>
 
@@ -2402,7 +2402,7 @@ string representing the filter).</p>
 <h3 id="publishing-messages">Publishing messages</h3>
 
 <h4 id="fio_publish"><code>fio_publish</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_publish</span><span class="p">(</span><span class="n">fio_publish_args_s</span> <span class="n">args</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_publish</span><span class="p">(</span><span class="n">fio_publish_args_s</span> <span class="n">args</span><span class="p">);</span>
 </code></pre></div>
 <p>This function publishes a message to either a numerical &quot;filter&quot; or a named channel (but not both).</p>
 
@@ -2477,20 +2477,20 @@ performance in large network based broadcasting.</p>
 <p><strong>Note</strong>: filter based messages are considered internal. They aren&#39;t shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks.</p>
 
 <h4 id="fio_message_metadata"><code>fio_message_metadata</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">fio_message_metadata</span><span class="p">(</span><span class="n">fio_msg_s</span> <span class="o">*</span><span class="n">msg</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">type_id</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="nf">fio_message_metadata</span><span class="p">(</span><span class="n">fio_msg_s</span> <span class="o">*</span><span class="n">msg</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">type_id</span><span class="p">);</span>
 </code></pre></div>
 <p>Finds the message&#39;s meta-data by the meta-data&#39;s type ID. Returns the data or NULL.</p>
 
 <h4 id="fio_message_metadata_callback_set"><code>fio_message_metadata_callback_set</code></h4>
 <div class="highlight"><pre class="highlight c"><code><span class="c1">// The function:</span>
-<span class="kt">void</span> <span class="n">fio_message_metadata_callback_set</span><span class="p">(</span><span class="n">fio_msg_metadata_fn</span> <span class="n">callback</span><span class="p">,</span>
+<span class="kt">void</span> <span class="nf">fio_message_metadata_callback_set</span><span class="p">(</span><span class="n">fio_msg_metadata_fn</span> <span class="n">callback</span><span class="p">,</span>
                                       <span class="kt">int</span> <span class="n">enable</span><span class="p">);</span>
 <span class="c1">// The callback type:</span>
-<span class="k">typedef</span> <span class="n">fio_msg_metadata_s</span> <span class="p">(</span><span class="o">*</span><span class="n">fio_msg_metadata_fn</span><span class="p">)(</span><span class="n">fio_str_info_s</span> <span class="n">ch</span><span class="p">,</span>
+<span class="k">typedef</span> <span class="nf">fio_msg_metadata_s</span> <span class="p">(</span><span class="o">*</span><span class="n">fio_msg_metadata_fn</span><span class="p">)(</span><span class="n">fio_str_info_s</span> <span class="n">ch</span><span class="p">,</span>
                                                  <span class="n">fio_str_info_s</span> <span class="n">msg</span><span class="p">,</span>
                                                  <span class="kt">uint8_t</span> <span class="n">is_json</span><span class="p">);</span>
 <span class="c1">// Example callback</span>
-<span class="n">fio_msg_metadata_s</span> <span class="n">foo_metadata</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">ch</span><span class="p">,</span>
+<span class="n">fio_msg_metadata_s</span> <span class="nf">foo_metadata</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">ch</span><span class="p">,</span>
                                 <span class="n">fio_str_info_s</span> <span class="n">msg</span><span class="p">,</span>
                                 <span class="kt">uint8_t</span> <span class="n">is_json</span><span class="p">);</span>
 </code></pre></div>
@@ -2538,7 +2538,7 @@ performance in large network based broadcasting.</p>
     <span class="p">.</span><span class="n">message</span> <span class="o">=</span> <span class="p">{</span><span class="mi">0</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="s">"data"</span><span class="p">}</span> <span class="p">);</span>
 </code></pre></div>
 <h4 id="fio_pubsub_attach"><code>fio_pubsub_attach</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_pubsub_attach</span><span class="p">(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">engine</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_pubsub_attach</span><span class="p">(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">engine</span><span class="p">);</span>
 </code></pre></div>
 <p>Attaches an engine, so it&#39;s callbacks can be called by facil.io.</p>
 
@@ -2548,17 +2548,17 @@ performance in large network based broadcasting.</p>
 
 <ul>
 <li><p><code>subscribe</code> - Should subscribe channel. Failures are ignored.</p>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">subscribe</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">eng</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">subscribe</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">eng</span><span class="p">,</span>
                <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">,</span>
                <span class="n">fio_match_fn</span> <span class="n">match</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>unsubscribe</code> - Should unsubscribe channel. Failures are ignored.</p>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">unsubscribe</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">eng</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">unsubscribe</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">eng</span><span class="p">,</span>
                  <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">,</span>
                  <span class="n">fio_match_fn</span> <span class="n">match</span><span class="p">);</span>
 </code></pre></div></li>
 <li><p><code>publish</code> - Should publish a message through the engine. Failures are ignored.</p>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">publish</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">eng</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">publish</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">eng</span><span class="p">,</span>
             <span class="n">fio_str_info_s</span> <span class="n">channel</span><span class="p">,</span>
             <span class="n">fio_str_info_s</span> <span class="n">msg</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">is_json</span><span class="p">);</span>
 </code></pre></div></li>
@@ -2569,12 +2569,12 @@ performance in large network based broadcasting.</p>
 <p><strong>IMPORTANT</strong>: The <code>subscribe</code> and <code>unsubscribe</code> callbacks are called from within an internal lock. They MUST NEVER call pub/sub functions except by exiting the lock using <code>fio_defer</code>.</p>
 
 <h4 id="fio_pubsub_detach"><code>fio_pubsub_detach</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_pubsub_detach</span><span class="p">(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">engine</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_pubsub_detach</span><span class="p">(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">engine</span><span class="p">);</span>
 </code></pre></div>
 <p>Detaches an engine, so it could be safely destroyed.</p>
 
 <h4 id="fio_pubsub_reattach"><code>fio_pubsub_reattach</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_pubsub_reattach</span><span class="p">(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">eng</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_pubsub_reattach</span><span class="p">(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">eng</span><span class="p">);</span>
 </code></pre></div>
 <p>Engines can ask facil.io to call the <code>subscribe</code> callback for all active channels.</p>
 
@@ -2587,7 +2587,7 @@ performance in large network based broadcasting.</p>
 <p><strong>IMPORTANT</strong>: The <code>subscribe</code> and <code>unsubscribe</code> callbacks are called from within an internal lock. They MUST NEVER call pub/sub functions except by exiting the lock using <code>fio_defer</code>.</p>
 
 <h4 id="fio_pubsub_is_attached"><code>fio_pubsub_is_attached</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_pubsub_is_attached</span><span class="p">(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">engine</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_pubsub_is_attached</span><span class="p">(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">engine</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns true (1) if the engine is attached to the system.</p>
 
@@ -2656,24 +2656,24 @@ performance in large network based broadcasting.</p>
 <p>Allocations above <code>FIO_MEMORY_BLOCK_ALLOC_LIMIT</code> (16Kb bytes when using the default 32Kb blocks) will be redirected to <code>mmap</code>, as if <code>fio_mmap</code> was called.</p>
 
 <h4 id="fio_free"><code>fio_free</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_free</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">ptr</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_free</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">ptr</span><span class="p">);</span>
 </code></pre></div>
 <p>Frees memory that was allocated using this library.</p>
 
 <h4 id="fio_realloc"><code>fio_realloc</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">fio_realloc</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">ptr</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">new_size</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="nf">fio_realloc</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">ptr</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">new_size</span><span class="p">);</span>
 </code></pre></div>
 <p>Re-allocates memory. An attempt to avoid copying the data is made only for big
 memory allocations (larger than <code>FIO_MEMORY_BLOCK_ALLOC_LIMIT</code>).</p>
 
 <h4 id="fio_realloc2"><code>fio_realloc2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">fio_realloc2</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">ptr</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">new_size</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">copy_length</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="nf">fio_realloc2</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">ptr</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">new_size</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">copy_length</span><span class="p">);</span>
 </code></pre></div>
 <p>Re-allocates memory. An attempt to avoid copying the data is made only for big
 memory allocations (larger than <code>FIO_MEMORY_BLOCK_ALLOC_LIMIT</code>).</p>
 
 <p>This variation is slightly faster as it might copy less data.</p>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">fio_mmap</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">size</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="nf">fio_mmap</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">size</span><span class="p">);</span>
 </code></pre></div>
 <p>Allocates memory directly using <code>mmap</code>, this is prefered for objects that
 both require almost a page of memory (or more) and expect a long lifetime.</p>
@@ -2723,41 +2723,41 @@ be inherently slower.</p>
 <div class="highlight"><pre class="highlight c"><code><span class="n">fio_ls_s</span> <span class="n">my_list</span> <span class="o">=</span> <span class="n">FIO_LS_INIT</span><span class="p">(</span><span class="n">my_list</span><span class="p">);</span>
 </code></pre></div>
 <h4 id="fio_ls_push"><code>fio_ls_push</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">fio_ls_push</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_ls_s</span> <span class="o">*</span><span class="nf">fio_ls_push</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">);</span>
 </code></pre></div>
 <p>Adds an object to the list&#39;s head.</p>
 
 <p>Returns a pointer to the object&#39;s position (can be used in <code>fio_ls_remove</code>).</p>
 
 <h4 id="fio_ls_unshift"><code>fio_ls_unshift</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">fio_ls_unshift</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_ls_s</span> <span class="o">*</span><span class="nf">fio_ls_unshift</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">);</span>
 </code></pre></div>
 <p>Adds an object to the list&#39;s tail.</p>
 
 <p>Returns a pointer to the object&#39;s position (can be used in <code>fio_ls_remove</code>).</p>
 
 <h4 id="fio_ls_pop"><code>fio_ls_pop</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="o">*</span><span class="n">fio_ls_pop</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="o">*</span><span class="nf">fio_ls_pop</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes an object from the list&#39;s head.</p>
 
 <h4 id="fio_ls_shift"><code>fio_ls_shift</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="o">*</span><span class="n">fio_ls_shift</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="o">*</span><span class="nf">fio_ls_shift</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes an object from the list&#39;s tail.</p>
 
 <h4 id="fio_ls_remove"><code>fio_ls_remove</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="o">*</span><span class="n">fio_ls_remove</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">node</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="o">*</span><span class="nf">fio_ls_remove</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">node</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes a node from the list, returning the contained object.</p>
 
 <h4 id="fio_ls_is_empty"><code>fio_ls_is_empty</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="n">fio_ls_is_empty</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="nf">fio_ls_is_empty</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
 </code></pre></div>
 <p>Tests if the list is empty.</p>
 
 <h4 id="fio_ls_any"><code>fio_ls_any</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="n">fio_ls_any</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="nf">fio_ls_any</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
 </code></pre></div>
 <p>Tests if the list is NOT empty (contains any nodes).</p>
 
@@ -2780,37 +2780,37 @@ be inherently slower.</p>
 <p>It can be initialized using the <a href="#FIO_LS_INIT"><code>FIO_LS_INIT</code></a> macro (see above).</p>
 
 <h4 id="fio_ls_embd_push"><code>fio_ls_embd_push</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="n">fio_ls_embd_push</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">node</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="nf">fio_ls_embd_push</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">node</span><span class="p">);</span>
 </code></pre></div>
 <p>Adds a node to the list&#39;s head.</p>
 
 <h4 id="fio_ls_embd_unshift"><code>fio_ls_embd_unshift</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="n">fio_ls_embd_unshift</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">node</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="nf">fio_ls_embd_unshift</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">node</span><span class="p">);</span>
 </code></pre></div>
 <p>Adds a node to the list&#39;s tail.</p>
 
 <h4 id="fio_ls_embd_pop"><code>fio_ls_embd_pop</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">fio_ls_embd_pop</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="nf">fio_ls_embd_pop</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes a node from the list&#39;s head.</p>
 
 <h4 id="fio_ls_embd_shift"><code>fio_ls_embd_shift</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">fio_ls_embd_shift</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="nf">fio_ls_embd_shift</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes a node from the list&#39;s tail.</p>
 
 <h4 id="fio_ls_embd_remove"><code>fio_ls_embd_remove</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">fio_ls_embd_remove</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">node</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="nf">fio_ls_embd_remove</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">node</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes a node from the containing node.</p>
 
 <h4 id="fio_ls_embd_is_empty"><code>fio_ls_embd_is_empty</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="n">fio_ls_embd_is_empty</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="nf">fio_ls_embd_is_empty</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
 </code></pre></div>
 <p>Tests if the list is empty.</p>
 
 <h4 id="fio_ls_embd_any"><code>fio_ls_embd_any</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="n">fio_ls_embd_any</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="nf">fio_ls_embd_any</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
 </code></pre></div>
 <p>Tests if the list is NOT empty (contains any nodes).</p>
 
@@ -2911,7 +2911,7 @@ be inherently slower.</p>
 <p>This macro allows the container to be initialized with existing static data, that shouldn&#39;t be freed.</p>
 
 <h4 id="fio_str_new2"><code>fio_str_new2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">fio_str_new2</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="nf">fio_str_new2</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Allocates a new fio_str_s object on the heap and initializes it.</p>
 
@@ -2920,7 +2920,7 @@ be inherently slower.</p>
 <p><strong>Note</strong>: This makes the allocation and reference counting logic more intuitive.</p>
 
 <h4 id="fio_str_new_copy2"><code>fio_str_new_copy2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">fio_str_new_copy2</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">src</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="nf">fio_str_new_copy2</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">src</span><span class="p">);</span>
 </code></pre></div>
 <p>Allocates a new fio_str_s object on the heap, initializes it and copies the
 original (<code>src</code>) string into the new string.</p>
@@ -2928,7 +2928,7 @@ original (<code>src</code>) string into the new string.</p>
 <p>Use <code>fio_str_free2</code> to free the new string&#39;s data and it&#39;s container.</p>
 
 <h4 id="fio_str_dup"><code>fio_str_dup</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">fio_str_dup</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="nf">fio_str_dup</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Adds a references to the current String object and returns itself.</p>
 
@@ -2937,7 +2937,7 @@ original (<code>src</code>) string into the new string.</p>
 <p>The originals&#39; String container should remain in scope (if on the stack) or remain allocated (if on the heap) until all the references were freed using <code>fio_str_free</code> / <code>fio_str_free2</code> or discarded.</p>
 
 <h4 id="fio_str_free"><code>fio_str_free</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="n">fio_str_free</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="nf">fio_str_free</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Frees the String&#39;s resources and reinitializes the container.</p>
 
@@ -2948,14 +2948,14 @@ separately using <code>free</code> or <code>fio_free</code>.</p>
 references (see fio_str_dup).</p>
 
 <h4 id="fio_str_free2"><code>fio_str_free2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_str_free2</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_str_free2</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Frees the String&#39;s resources AS WELL AS the container.</p>
 
 <p>Note: the container is freed using <code>fio_free</code>, make sure <code>fio_malloc</code> was used to allocate it.</p>
 
 <h4 id="fio_str_send_free2"><code>fio_str_send_free2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">ssize_t</span> <span class="n">fio_str_send_free2</span><span class="p">(</span><span class="k">const</span> <span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">ssize_t</span> <span class="nf">fio_str_send_free2</span><span class="p">(</span><span class="k">const</span> <span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span>
                                   <span class="k">const</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">str</span><span class="p">);</span>
 </code></pre></div>
 <p><code>fio_str_send_free2</code> sends the fio_str_s using <code>fio_write2</code>, freeing both the String and the container once the data was sent.</p>
@@ -2963,7 +2963,7 @@ references (see fio_str_dup).</p>
 <p>As the naming indicates, the String is assumed to have been allocated using <code>fio_str_new2</code> or <code>fio_malloc</code>.</p>
 
 <h4 id="fio_str_detach"><code>fio_str_detach</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kt">char</span> <span class="o">*</span><span class="n">fio_str_detach</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kt">char</span> <span class="o">*</span><span class="nf">fio_str_detach</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a C string with the existing data, clearing the <code>fio_str_s</code> object&#39;s String.</p>
 
@@ -2985,17 +2985,17 @@ references (see fio_str_dup).</p>
 <p>Using this approach is safer than accessing the String data directly, since the short Strings behave differently than long strings and the <code>fio_str_s</code> structure fields are only valid for long strings.</p>
 
 <h4 id="fio_str_info"><code>fio_str_info</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_info_s</span> <span class="n">fio_str_info</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_info_s</span> <span class="nf">fio_str_info</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the String&#39;s complete state (capacity, length and pointer). </p>
 
 <h4 id="fio_str_len"><code>fio_str_len</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">fio_str_len</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">size_t</span> <span class="nf">fio_str_len</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the String&#39;s length in bytes.</p>
 
 <h4 id="fio_str_data"><code>fio_str_data</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">char</span> <span class="o">*</span><span class="n">fio_str_data</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">char</span> <span class="o">*</span><span class="nf">fio_str_data</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a pointer (<code>char *</code>) to the String&#39;s content.</p>
 
@@ -3005,12 +3005,12 @@ references (see fio_str_dup).</p>
 <p>Returns a byte pointer (<code>uint8_t *</code>) to the String&#39;s unsigned content.</p>
 
 <h4 id="fio_str_capa"><code>fio_str_capa</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">fio_str_capa</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">size_t</span> <span class="nf">fio_str_capa</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the String&#39;s existing capacity (total used &amp; available memory).</p>
 
 <h4 id="fio_str_resize"><code>fio_str_resize</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_info_s</span> <span class="n">fio_str_resize</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">size</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_info_s</span> <span class="nf">fio_str_resize</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">size</span><span class="p">);</span>
 </code></pre></div>
 <p>Sets the new String size without reallocating any memory (limited by existing capacity).</p>
 
@@ -3024,7 +3024,7 @@ references (see fio_str_dup).</p>
 <p>Clears the string (retaining the existing capacity).</p>
 
 <h4 id="fio_str_hash"><code>fio_str_hash</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">uint64_t</span> <span class="n">fio_str_hash</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uint64_t</span> <span class="nf">fio_str_hash</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the String&#39;s Risky Hash (see <a href="#fio_risky_hash"><code>fio_risky_hash</code></a>).</p>
 
@@ -3033,7 +3033,7 @@ references (see fio_str_dup).</p>
 <p>NOTE: the hashing function might be changed at any time without notice. It wasn&#39;t cryptographically analyzed and safety against malicious data can&#39;t be guaranteed. Use <a href="#fio_siphash13"><code>fio_siphash13</code></a> or <a href="#fio_siphash24"><code>fio_siphash24</code></a> when hashing data from external sources.</p>
 
 <h4 id="fio_risky_hash"><code>fio_risky_hash</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kr">inline</span> <span class="kt">uintptr_t</span> <span class="n">fio_risky_hash</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">,</span> <span class="kt">uint64_t</span> <span class="n">seed</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">static</span> <span class="kr">inline</span> <span class="kt">uintptr_t</span> <span class="nf">fio_risky_hash</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">,</span> <span class="kt">uint64_t</span> <span class="n">seed</span><span class="p">);</span>
 </code></pre></div>
 <p>Computes a facil.io <a href="riskyhash">Risky Hash</a> - modeled after the amazing <a href="https://github.com/Cyan4973/xxHash">xxHash</a> (which has a BSD license) and named &quot;Risky Hash&quot; because writing your own hashing function is a risky business, full of pitfalls and hours of testing...</p>
 
@@ -3046,14 +3046,14 @@ references (see fio_str_dup).</p>
 <h3 id="string-api-memory-management">String API - Memory management</h3>
 
 <h4 id="fio_str_compact"><code>fio_str_compact</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_str_compact</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_str_compact</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Performs a best attempt at minimizing memory consumption.</p>
 
 <p>Actual effects depend on the underlying memory allocator and it&#39;s implementation. Not all allocators will free any memory.</p>
 
 <h4 id="fio_str_capa_assert"><code>fio_str_capa_assert</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">fio_str_capa_assert</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">needed</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="nf">fio_str_capa_assert</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">needed</span><span class="p">);</span>
 </code></pre></div>
 <p>Requires the String to have at least <code>needed</code> capacity (including existing data).</p>
 
@@ -3062,17 +3062,17 @@ references (see fio_str_dup).</p>
 <h3 id="string-api-utf-8-state">String API - UTF-8 State</h3>
 
 <h4 id="fio_str_utf8_valid"><code>fio_str_utf8_valid</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_str_utf8_valid</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fio_str_utf8_valid</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns 1 if the String is UTF-8 valid and 0 if not.</p>
 
 <h4 id="fio_str_utf8_len"><code>fio_str_utf8_len</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_str_utf8_len</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fio_str_utf8_len</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the String&#39;s length in UTF-8 characters.</p>
 
 <h4 id="fio_str_utf8_select"><code>fio_str_utf8_select</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_str_utf8_select</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="o">*</span><span class="n">pos</span><span class="p">,</span> <span class="kt">size_t</span> <span class="o">*</span><span class="n">len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_str_utf8_select</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="o">*</span><span class="n">pos</span><span class="p">,</span> <span class="kt">size_t</span> <span class="o">*</span><span class="n">len</span><span class="p">);</span>
 </code></pre></div>
 <p>Takes a UTF-8 character selection information (UTF-8 position and length) and updates the same variables so they reference the raw byte slice information.</p>
 
@@ -3094,19 +3094,19 @@ references (see fio_str_dup).</p>
 <h3 id="string-api-content-manipulation-and-review">String API - Content Manipulation and Review</h3>
 
 <h4 id="fio_str_write"><code>fio_str_write</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_info_s</span> <span class="n">fio_str_write</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">src</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_info_s</span> <span class="nf">fio_str_write</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">src</span><span class="p">,</span>
                                     <span class="kt">size_t</span> <span class="n">src_len</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes data at the end of the String (similar to <code>fio_str_insert</code> with the argument <code>pos == -1</code>).</p>
 
 <h4 id="fio_str_write_i"><code>fio_str_write_i</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_info_s</span> <span class="n">fio_str_write_i</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">num</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_info_s</span> <span class="nf">fio_str_write_i</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">num</span><span class="p">);</span>
 
 </code></pre></div>
 <p>Writes a number at the end of the String using normal base 10 notation.</p>
 
 <h4 id="fio_str_concat"><code>fio_str_concat</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_info_s</span> <span class="n">fio_str_concat</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">fio_str_info_s</span> <span class="nf">fio_str_concat</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span>
                                      <span class="n">fio_str_s</span> <span class="k">const</span> <span class="o">*</span><span class="n">src</span><span class="p">);</span>
 </code></pre></div>
 <p>Appens the <code>src</code> String to the end of the <code>dest</code> String.</p>
@@ -3119,7 +3119,7 @@ references (see fio_str_dup).</p>
 <p>Alias for <a href="#fio_str_concat"><code>fio_str_concat</code></a>.</p>
 
 <h4 id="fio_str_replace"><code>fio_str_replace</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">fio_str_replace</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">start_pos</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="nf">fio_str_replace</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">start_pos</span><span class="p">,</span>
                                <span class="kt">size_t</span> <span class="n">old_len</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">src</span><span class="p">,</span>
                                <span class="kt">size_t</span> <span class="n">src_len</span><span class="p">);</span>
 </code></pre></div>
@@ -3132,7 +3132,7 @@ references (see fio_str_dup).</p>
 <p>If <code>src_len == 0</code> than <code>src</code> will be ignored and the data marked for replacement will be erased.</p>
 
 <h4 id="fio_str_vprintf"><code>fio_str_vprintf</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">fio_str_vprintf</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">format</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="nf">fio_str_vprintf</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">format</span><span class="p">,</span>
                                <span class="kt">va_list</span> <span class="n">argv</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes to the String using a vprintf like interface.</p>
@@ -3140,14 +3140,14 @@ references (see fio_str_dup).</p>
 <p>Data is written to the end of the String.</p>
 
 <h4 id="fio_str_printf"><code>fio_str_printf</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">fio_str_printf</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">format</span><span class="p">,</span> <span class="p">...);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="nf">fio_str_printf</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">format</span><span class="p">,</span> <span class="p">...);</span>
 </code></pre></div>
 <p>Writes to the String using a printf like interface.</p>
 
 <p>Data is written to the end of the String.</p>
 
 <h4 id="fio_str_readfile"><code>fio_str_readfile</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="n">fio_str_readfile</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">filename</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_str_info_s</span> <span class="nf">fio_str_readfile</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">filename</span><span class="p">,</span>
                              <span class="kt">intptr_t</span> <span class="n">start_at</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">limit</span><span class="p">);</span>
 </code></pre></div>
 <p>Opens the file <code>filename</code> and pastes it&#39;s contents (or a slice ot it) at the
@@ -3159,12 +3159,12 @@ the EOF position, NULL is returned in the state&#39;s <code>data</code> field.</
 <p>Works on POSIX only.</p>
 
 <h4 id="fio_str_freeze"><code>fio_str_freeze</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="n">fio_str_freeze</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="nf">fio_str_freeze</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Prevents further manipulations to the String&#39;s content.</p>
 
 <h4 id="fio_str_iseq"><code>fio_str_iseq</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="n">fio_str_iseq</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">str1</span><span class="p">,</span> <span class="k">const</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">str2</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="nf">fio_str_iseq</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">str1</span><span class="p">,</span> <span class="k">const</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">str2</span><span class="p">);</span>
 </code></pre></div>
 <p>Binary comparison returns <code>1</code> if both strings are equal and <code>0</code> if not.</p>
 
@@ -3248,7 +3248,7 @@ the EOF position, NULL is returned in the state&#39;s <code>data</code> field.</
 
 <h4 id="fio_ary_invalid"><code>FIO_ARY_INVALID</code></h4>
 <div class="highlight"><pre class="highlight c"><code><span class="cp">#if !defined(FIO_ARY_INVALID)
-</span><span class="k">static</span> <span class="n">FIO_ARY_TYPE</span> <span class="k">const</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s___const_invalid_object</span><span class="p">);</span>
+</span><span class="k">static</span> <span class="n">FIO_ARY_TYPE</span> <span class="k">const</span> <span class="nf">FIO_NAME</span><span class="p">(</span><span class="n">s___const_invalid_object</span><span class="p">);</span>
 <span class="cp">#define FIO_ARY_INVALID FIO_NAME(s___const_invalid_object)
 #endif
 </span></code></pre></div>
@@ -3317,7 +3317,7 @@ i.e., if <code>FIO_SET_NAME</code> is <code>foo</code> than <code>FIO_SET_NAME(s
 <h3 id="array-initialization-and-state">Array Initialization and State</h3>
 
 <h4 id="fio_ary_name-s"><code>FIO_ARY_NAME(s)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
 <span class="k">struct</span> <span class="nf">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="p">{</span>
   <span class="kt">size_t</span> <span class="n">start</span><span class="p">;</span>       <span class="cm">/* first index where data was already written */</span>
   <span class="kt">size_t</span> <span class="n">end</span><span class="p">;</span>         <span class="cm">/* next spot to write at tail */</span>
@@ -3336,17 +3336,17 @@ i.e., if <code>FIO_SET_NAME</code> is <code>foo</code> than <code>FIO_SET_NAME(s
 <p>Initializes the Array.</p>
 
 <h4 id="fio_ary_name-free"><code>FIO_ARY_NAME(free)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">free</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">free</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
 </code></pre></div>
 <p>Frees the array&#39;s internal data.</p>
 
 <h4 id="fio_ary_name-count"><code>FIO_ARY_NAME(count)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">count</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">size_t</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">count</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the number of elements in the Array.</p>
 
 <h4 id="fio_ary_name-capa"><code>FIO_ARY_NAME(capa)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">capa</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">size_t</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">capa</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the current, temporary, array capacity (it&#39;s dynamic).</p>
 
@@ -3355,14 +3355,14 @@ i.e., if <code>FIO_SET_NAME</code> is <code>foo</code> than <code>FIO_SET_NAME(s
 <h3 id="array-data-management">Array data management</h3>
 
 <h4 id="fio_ary_name-concat"><code>FIO_ARY_NAME(concat)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">concat</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">dest</span><span class="p">,</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">src</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">concat</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">dest</span><span class="p">,</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">src</span><span class="p">);</span>
 </code></pre></div>
 <p>Adds all the items in the <code>src</code> Array to the end of the <code>dest</code> Array.</p>
 
 <p>The <code>src</code> Array remain untouched.</p>
 
 <h4 id="fio_ary_name-set"><code>FIO_ARY_NAME(set)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">set</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">index</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">set</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">index</span><span class="p">,</span>
                                    <span class="n">FIO_ARY_TYPE</span> <span class="n">data</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
 </code></pre></div>
 <p>Sets <code>index</code> to the value in <code>data</code>.</p>
@@ -3374,7 +3374,7 @@ last element).</p>
 to by <code>old</code> before the copy in the Array is destroyed.</p>
 
 <h4 id="fio_ary_name-get"><code>FIO_ARY_NAME(get)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="n">FIO_ARY_TYPE</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">get</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">index</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="n">FIO_ARY_TYPE</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">get</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">index</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the value located at <code>index</code> (no copying is peformed).</p>
 
@@ -3382,12 +3382,12 @@ to by <code>old</code> before the copy in the Array is destroyed.</p>
 last element).</p>
 
 <h4 id="fio_ary_name-find"><code>FIO_ARY_NAME(find)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">intptr_t</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">find</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="n">data</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">intptr_t</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">find</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="n">data</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the index of the object or -1 if the object wasn&#39;t found.</p>
 
 <h4 id="fio_ary_name-remove"><code>FIO_ARY_NAME(remove)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">index</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">index</span><span class="p">,</span>
                                      <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes an object from the array, <strong>moving</strong> all the other objects to prevent
@@ -3399,7 +3399,7 @@ before the data in the array is destroyed.</p>
 <p>Returns 0 on success and -1 on error.</p>
 
 <h4 id="fio_ary_name-remove2"><code>FIO_ARY_NAME(remove2)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">remove2</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="n">data</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">remove2</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="n">data</span><span class="p">,</span>
                                       <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes an object from the array, if it exists, MOVING all the other objects
@@ -3409,17 +3409,17 @@ to prevent &quot;holes&quot; in the data.</p>
 removed.</p>
 
 <h4 id="fio_ary_name-to_a"><code>FIO_ARY_NAME(to_a)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">to_a</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">to_a</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a pointer to the C array containing the objects.</p>
 
 <h4 id="fio_ary_name-push"><code>FIO_ARY_NAME(push)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">push</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="n">data</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">push</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="n">data</span><span class="p">);</span>
 </code></pre></div>
 <p>Pushes an object to the end of the Array. Returns -1 on error.</p>
 
 <h4 id="fio_ary_name-pop"><code>FIO_ARY_NAME(pop)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">pop</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">pop</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes an object from the end of the Array.</p>
 
@@ -3429,14 +3429,14 @@ before the data in the array is destroyed.</p>
 <p>Returns -1 on error (Array is empty) and 0 on success.</p>
 
 <h4 id="fio_ary_name-unshift"><code>FIO_ARY_NAME(unshift)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">unshift</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="n">data</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">unshift</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="n">data</span><span class="p">);</span>
 </code></pre></div>
 <p>Unshifts an object to the beginning of the Array. Returns -1 on error.</p>
 
 <p>This could be expensive, causing <code>memmove</code>.</p>
 
 <h4 id="fio_ary_name-shift"><code>FIO_ARY_NAME(shift)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">shift</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">shift</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes an object from the beginning of the Array.</p>
 
@@ -3446,7 +3446,7 @@ before the data in the array is destroyed.</p>
 <p>Returns -1 on error (Array is empty) and 0 on success.</p>
 
 <h4 id="fio_ary_name-each"><code>FIO_ARY_NAME(each)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">each</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">start_at</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">size_t</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">each</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">start_at</span><span class="p">,</span>
                                       <span class="kt">int</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="n">FIO_ARY_TYPE</span> <span class="n">pt</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">),</span>
                                       <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
 </code></pre></div>
@@ -3461,7 +3461,7 @@ user pointer.</p>
 the starting point.</p>
 
 <h4 id="fio_ary_name-compact"><code>FIO_ARY_NAME(compact)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">compact</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="nf">FIO_ARY_NAME</span><span class="p">(</span><span class="n">compact</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes any FIO_ARY_TYPE_INVALID object from an Array (NULL pointers by
 default), keeping all other data in the array.</p>
@@ -3707,7 +3707,7 @@ be defined. i.e.:</p>
 <p>Initializes the Set or the Hash Map.</p>
 
 <h4 id="fio_set_name-free"><code>FIO_SET_NAME(free)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">free</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">free</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre></div>
 <p>Frees all the objects in the Hash Map / Set and deallocates any internal resources.</p>
 
@@ -3717,7 +3717,7 @@ be defined. i.e.:</p>
 
 <h4 id="fio_set_name-find-hash-map"><code>FIO_SET_NAME(find)</code> (Hash Map)</h4>
 <div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span>
-   <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">find</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
+   <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">find</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                   <span class="n">FIO_SET_KEY_TYPE</span> <span class="n">key</span><span class="p">);</span>
 </code></pre></div>
 <p>Locates an object in the Hash Map, if it exists.</p>
@@ -3725,7 +3725,7 @@ be defined. i.e.:</p>
 <p><strong>Note</strong>: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
 
 <h4 id="fio_set_name-insert-hash-map"><code>FIO_SET_NAME(insert)</code> (Hash Map)</h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">insert</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">insert</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
                              <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                              <span class="n">FIO_SET_KEY_TYPE</span> <span class="n">key</span><span class="p">,</span>
                              <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">,</span>
@@ -3740,7 +3740,7 @@ be defined. i.e.:</p>
 <p><strong>Note</strong>: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
 
 <h4 id="fio_set_name-remove-hash-map"><code>FIO_SET_NAME(remove)</code> (Hash Map)</h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
                      <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                      <span class="n">FIO_SET_KEY_TYPE</span> <span class="n">key</span>
                      <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
@@ -3759,7 +3759,7 @@ be defined. i.e.:</p>
 
 <h4 id="fio_set_name-find-set"><code>FIO_SET_NAME(find)</code> (Set)</h4>
 <div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span>
-   <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">find</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
+   <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">find</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                   <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">);</span>
 </code></pre></div>
 <p>Locates an object in the Set, if it exists.</p>
@@ -3768,7 +3768,7 @@ be defined. i.e.:</p>
 
 <h4 id="fio_set_name-insert-set"><code>FIO_SET_NAME(insert)</code> (Set)</h4>
 <div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span>
-   <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">insert</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
+   <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">insert</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                     <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">);</span>
 </code></pre></div>
 <p>Inserts an object to the Set only if it&#39;s missing, rehashing if required, returning the new (or old) object&#39;s pointer.</p>
@@ -3778,7 +3778,7 @@ be defined. i.e.:</p>
 <p><strong>Note</strong>: This is the function&#39;s pure Set variant (no <code>FIO_SET_KEY_TYPE</code>).</p>
 
 <h4 id="fio_set_name-overwrite-set"><code>FIO_SET_NAME(overwrite)</code> (Set)</h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">overwrite</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span> <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">overwrite</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
                                              <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                                              <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">,</span>
                                              <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
@@ -3790,7 +3790,7 @@ be defined. i.e.:</p>
 <p><strong>Note</strong>: This function doesn&#39;t exist when <code>FIO_SET_KEY_TYPE</code> is defined.</p>
 
 <h4 id="fio_set_name-remove-set"><code>FIO_SET_NAME(remove)</code> (Set)</h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
                              <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                              <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">,</span>
                              <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
@@ -3806,31 +3806,31 @@ be defined. i.e.:</p>
 <h3 id="set-hash-map-data">Set / Hash Map Data</h3>
 
 <h4 id="fio_set_name-last"><code>FIO_SET_NAME(last)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">FIO_SET_TYPE</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">last</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="n">FIO_SET_TYPE</span> <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">last</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre></div>
 <p>Allows a peak at the Set&#39;s last element.</p>
 
 <p>Remember that objects might be destroyed if the Set is altered (<code>FIO_SET_OBJ_DESTROY</code> / <code>FIO_SET_KEY_DESTROY</code>).</p>
 
 <h4 id="fio_set_name-pop"><code>FIO_SET_NAME(pop)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">pop</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">pop</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre></div>
 <p>Allows the Hash to be momentarily used as a stack, destroying the last object added (<code>FIO_SET_OBJ_DESTROY</code> / <code>FIO_SET_KEY_DESTROY</code>).</p>
 
 <h4 id="fio_set_name-count"><code>FIO_SET_NAME(count)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">count</span><span class="p">)(</span><span class="k">const</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">size_t</span> <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">count</span><span class="p">)(</span><span class="k">const</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the number of object currently in the Set.</p>
 
 <h4 id="fio_set_name-capa"><code>FIO_SET_NAME(capa)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">capa</span><span class="p">)(</span><span class="k">const</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">size_t</span> <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">capa</span><span class="p">)(</span><span class="k">const</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a temporary theoretical Set capacity.</p>
 
 <p>This could be used for testing performance and memory consumption.</p>
 
 <h4 id="fio_set_name-capa_require"><code>FIO_SET_NAME(capa_require)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">capa_require</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">size_t</span> <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">capa_require</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
                                      <span class="kt">size_t</span> <span class="n">min_capa</span><span class="p">);</span>
 </code></pre></div>
 <p>Requires that a Set contains the minimal requested theoretical capacity.</p>
@@ -3838,19 +3838,19 @@ be defined. i.e.:</p>
 <p>Returns the actual (temporary) theoretical capacity.</p>
 
 <h4 id="fio_set_name-is_fragmented"><code>FIO_SET_NAME(is_fragmented)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">is_fragmented</span><span class="p">)(</span><span class="k">const</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">size_t</span> <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">is_fragmented</span><span class="p">)(</span><span class="k">const</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns non-zero if the Set is fragmented (more than 50% holes).</p>
 
 <h4 id="fio_set_name-compact"><code>FIO_SET_NAME(compact)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">compact</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">size_t</span> <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">compact</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre></div>
 <p>Attempts to minimize memory usage by removing empty spaces caused by deleted items and rehashing the Set.</p>
 
 <p>Returns the updated Set capacity.</p>
 
 <h4 id="fio_set_name-rehash"><code>FIO_SET_NAME(rehash)</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">rehash</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">FIO_SET_NAME</span><span class="p">(</span><span class="n">rehash</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre></div>
 <p>Forces a rehashing of the Set.</p>
 
@@ -3915,36 +3915,36 @@ be defined. i.e.:</p>
 <span class="cp">#define FIO_LOCK_INIT 0
 </span></code></pre></div>
 <h4 id="fio_trylock"><code>fio_trylock</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="n">fio_trylock</span><span class="p">(</span><span class="n">fio_lock_i</span> <span class="o">*</span><span class="n">lock</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="nf">fio_trylock</span><span class="p">(</span><span class="n">fio_lock_i</span> <span class="o">*</span><span class="n">lock</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns 0 if the lock was acquired and non-zero on failure.</p>
 
 <h4 id="fio_lock"><code>fio_lock</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="n">fio_lock</span><span class="p">(</span><span class="n">fio_lock_i</span> <span class="o">*</span><span class="n">lock</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="nf">fio_lock</span><span class="p">(</span><span class="n">fio_lock_i</span> <span class="o">*</span><span class="n">lock</span><span class="p">);</span>
 </code></pre></div>
 <p>Busy waits for the lock - CAREFUL, <code>fio_trylock</code> should be preferred.</p>
 
 <h4 id="fio_is_locked"><code>fio_is_locked</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="n">fio_is_locked</span><span class="p">(</span><span class="n">fio_lock_i</span> <span class="o">*</span><span class="n">lock</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="nf">fio_is_locked</span><span class="p">(</span><span class="n">fio_lock_i</span> <span class="o">*</span><span class="n">lock</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the current lock&#39;s state (non 0 == Busy).</p>
 
 <h4 id="fio_unlock"><code>fio_unlock</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="n">fio_unlock</span><span class="p">(</span><span class="n">fio_lock_i</span> <span class="o">*</span><span class="n">lock</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">int</span> <span class="nf">fio_unlock</span><span class="p">(</span><span class="n">fio_lock_i</span> <span class="o">*</span><span class="n">lock</span><span class="p">);</span>
 </code></pre></div>
 <p>Releases a lock. Returns non-zero if the lock was previously locked.</p>
 
 <p><strong>Note</strong>: Releasing an un-acquired will break the lock and could cause it&#39;s protection to fail. Make sure to only release the lock if it was previously acquired by the same &quot;owner&quot;.</p>
 
 <h4 id="fio_reschedule_thread"><code>fio_reschedule_thread</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="n">fio_reschedule_thread</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="nf">fio_reschedule_thread</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Reschedules a thread (used as part of the <code>fio_lock</code> busy wait logic).</p>
 
 <p>Implemented using <code>nanosleep</code>, which seems to be the most effective and efficient thread rescheduler.</p>
 
 <h4 id="fio_throttle_thread"><code>fio_throttle_thread</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="n">fio_throttle_thread</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">nano_sec</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">void</span> <span class="nf">fio_throttle_thread</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">nano_sec</span><span class="p">);</span>
 </code></pre></div>
 <p>A blocking throttle using <code>nanosleep</code>.</p>
 
@@ -4048,7 +4048,7 @@ be defined. i.e.:</p>
 <h3 id="strings-to-numbers">Strings to Numbers</h3>
 
 <h4 id="fio_atol"><code>fio_atol</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int64_t</span> <span class="n">fio_atol</span><span class="p">(</span><span class="kt">char</span> <span class="o">**</span><span class="n">pstr</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int64_t</span> <span class="nf">fio_atol</span><span class="p">(</span><span class="kt">char</span> <span class="o">**</span><span class="n">pstr</span><span class="p">);</span>
 </code></pre></div>
 <p>Converts between String data to a signed <code>int64_t</code>.</p>
 
@@ -4059,7 +4059,7 @@ be defined. i.e.:</p>
 <p>The most significant difference between this function and <code>strtol</code> (aside of API design and speed), is the added support for binary representations.</p>
 
 <h4 id="fio_atof"><code>fio_atof</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">double</span> <span class="n">fio_atof</span><span class="p">(</span><span class="kt">char</span> <span class="o">**</span><span class="n">pstr</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">double</span> <span class="nf">fio_atof</span><span class="p">(</span><span class="kt">char</span> <span class="o">**</span><span class="n">pstr</span><span class="p">);</span>
 </code></pre></div>
 <p>A helper function that converts between String data to a signed double.</p>
 
@@ -4068,7 +4068,7 @@ be defined. i.e.:</p>
 <h3 id="numbers-to-strings">Numbers to Strings</h3>
 
 <h4 id="fio_ltoa"><code>fio_ltoa</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_ltoa</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">num</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">base</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fio_ltoa</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">num</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">base</span><span class="p">);</span>
 </code></pre></div>
 <p>A helper function that writes a signed int64_t to a string.</p>
 
@@ -4079,7 +4079,7 @@ be defined. i.e.:</p>
 <p>Returns the number of bytes actually written (excluding the NUL terminator).</p>
 
 <h4 id="fio_ftoa"><code>fio_ftoa</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_ftoa</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="kt">double</span> <span class="n">num</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">base</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fio_ftoa</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="kt">double</span> <span class="n">num</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">base</span><span class="p">);</span>
 </code></pre></div>
 <p>A helper function that converts between a double to a string.</p>
 
@@ -4096,19 +4096,19 @@ terminator).</p>
 <h3 id="random-data-generation">Random data Generation</h3>
 
 <h4 id="fio_rand64"><code>fio_rand64</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">uint64_t</span> <span class="n">fio_rand64</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uint64_t</span> <span class="nf">fio_rand64</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns 64 psedo-random bits. Probably not cryptographically safe.</p>
 
 <h4 id="fio_rand_bytes"><code>fio_rand_bytes</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_rand_bytes</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">length</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_rand_bytes</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">length</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes <code>length</code> bytes of psedo-random bits to the target buffer. Probably not cryptographically safe.</p>
 
 <h3 id="base64">Base64</h3>
 
 <h4 id="fio_base64_encode"><code>fio_base64_encode</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_base64_encode</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">int</span> <span class="n">len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_base64_encode</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">int</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div>
 <p>This will encode a byte array (data) of a specified length and place the encoded data into the target byte buffer (target). The target buffer MUST have enough room for the expected data.</p>
 
@@ -4121,12 +4121,12 @@ terminator).</p>
 <p>A NULL terminator char is NOT written to the target buffer.</p>
 
 <h4 id="fio_base64url_encode"><code>fio_base64url_encode</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_base64url_encode</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">int</span> <span class="n">len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_base64url_encode</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">int</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div>
 <p>Same as <a href="#fio_base64_encode"><code>fio_base64_encode</code></a>, but using Base64URL encoding.</p>
 
 <h4 id="fio_base64_decode"><code>fio_base64_decode</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_base64_decode</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">encoded</span><span class="p">,</span> <span class="kt">int</span> <span class="n">base64_len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_base64_decode</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">target</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">encoded</span><span class="p">,</span> <span class="kt">int</span> <span class="n">base64_len</span><span class="p">);</span>
 </code></pre></div>
 <p>This will decode a Base64 encoded string of a specified length (len) and place the decoded data into the target byte buffer (target).</p>
 
@@ -4149,12 +4149,12 @@ terminator).</p>
 <h3 id="siphash">SipHash</h3>
 
 <h4 id="fio_siphash24"><code>fio_siphash24</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">uint64_t</span> <span class="n">fio_siphash24</span><span class="p">(</span><span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uint64_t</span> <span class="nf">fio_siphash24</span><span class="p">(</span><span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div>
 <p>A SipHash variation (2-4).</p>
 
 <h4 id="fio_siphash13"><code>fio_siphash13</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">uint64_t</span> <span class="n">fio_siphash13</span><span class="p">(</span><span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">uint64_t</span> <span class="nf">fio_siphash13</span><span class="p">(</span><span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div>
 <p>A SipHash 1-3 variation.</p>
 
@@ -4175,7 +4175,7 @@ terminator).</p>
 <span class="kt">char</span> <span class="o">*</span><span class="n">hashed_result</span> <span class="o">=</span> <span class="n">fio_sha1_result</span><span class="p">(</span><span class="o">&amp;</span><span class="n">sha1</span><span class="p">);</span>
 </code></pre></div>
 <h4 id="fio_sha1_init"><code>fio_sha1_init</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_sha1_s</span> <span class="n">fio_sha1_init</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_sha1_s</span> <span class="nf">fio_sha1_init</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Initializes or resets the <code>fio_sha1_s</code> object. This must be performed before hashing data using SHA-1.</p>
 
@@ -4195,12 +4195,12 @@ hashing, managing it&#39;s encoding. If it&#39;s stack allocated, no freeing wil
 required.</p>
 
 <h4 id="fio_sha1_write"><code>fio_sha1_write</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_sha1_write</span><span class="p">(</span><span class="n">fio_sha1_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_sha1_write</span><span class="p">(</span><span class="n">fio_sha1_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes data to the sha1 buffer.</p>
 
 <h4 id="fio_sha1_result"><code>fio_sha1_result</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">char</span> <span class="o">*</span><span class="n">fio_sha1_result</span><span class="p">(</span><span class="n">fio_sha1_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">char</span> <span class="o">*</span><span class="nf">fio_sha1_result</span><span class="p">(</span><span class="n">fio_sha1_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Finalizes the SHA1 hash, returning the Hashed data.</p>
 
@@ -4216,7 +4216,7 @@ required.</p>
 <span class="kt">char</span> <span class="o">*</span><span class="n">hashed_result</span> <span class="o">=</span> <span class="n">fio_sha2_result</span><span class="p">(</span><span class="o">&amp;</span><span class="n">sha2</span><span class="p">);</span>
 </code></pre></div>
 <h4 id="fio_sha2_init"><code>fio_sha2_init</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">fio_sha2_s</span> <span class="n">fio_sha2_init</span><span class="p">(</span><span class="n">fio_sha2_variant_e</span> <span class="n">variant</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_sha2_s</span> <span class="nf">fio_sha2_init</span><span class="p">(</span><span class="n">fio_sha2_variant_e</span> <span class="n">variant</span><span class="p">);</span>
 </code></pre></div>
 <p>Initializes / resets the SHA-2 object.</p>
 
@@ -4234,19 +4234,19 @@ required.</p>
 <p>The <code>fio_sha2_s</code> structure&#39;s content should be ignored.</p>
 
 <h4 id="fio_sha2_write"><code>fio_sha2_write</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_sha2_write</span><span class="p">(</span><span class="n">fio_sha2_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_sha2_write</span><span class="p">(</span><span class="n">fio_sha2_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div>
 <p>Writes data to the SHA-2 buffer.</p>
 
 <h4 id="fio_sha2_result"><code>fio_sha2_result</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">char</span> <span class="o">*</span><span class="n">fio_sha2_result</span><span class="p">(</span><span class="n">fio_sha2_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">char</span> <span class="o">*</span><span class="nf">fio_sha2_result</span><span class="p">(</span><span class="n">fio_sha2_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
 </code></pre></div>
 <p>Finalizes the SHA-2 hash, returning the Hashed data.</p>
 
 <p><code>sha2_result</code> can be called for the same object multiple times, but the finalization will only be performed the first time this function is called.</p>
 
 <h4 id="fio_sha2_512"><code>fio_sha2_512</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">char</span> <span class="o">*</span><span class="n">fio_sha2_512</span><span class="p">(</span><span class="n">fio_sha2_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">char</span> <span class="o">*</span><span class="nf">fio_sha2_512</span><span class="p">(</span><span class="n">fio_sha2_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span>
                           <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div>
 <p>A SHA-2 helper function that performs initialization, writing and finalizing.</p>
@@ -4254,7 +4254,7 @@ required.</p>
 <p>Uses the SHA2 512 variant.</p>
 
 <h4 id="fio_sha2_256"><code>fio_sha2_256</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">char</span> <span class="o">*</span><span class="n">fio_sha2_256</span><span class="p">(</span><span class="n">fio_sha2_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">char</span> <span class="o">*</span><span class="nf">fio_sha2_256</span><span class="p">(</span><span class="n">fio_sha2_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span>
                           <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div>
 <p>A SHA-2 helper function that performs initialization, writing and finalizing.</p>
@@ -4262,7 +4262,7 @@ required.</p>
 <p>Uses the SHA2 256 variant.</p>
 
 <h4 id="fio_sha2_256"><code>fio_sha2_256</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">char</span> <span class="o">*</span><span class="n">fio_sha2_384</span><span class="p">(</span><span class="n">fio_sha2_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kr">inline</span> <span class="kt">char</span> <span class="o">*</span><span class="nf">fio_sha2_384</span><span class="p">(</span><span class="n">fio_sha2_s</span> <span class="o">*</span><span class="n">s</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span>
                           <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
 </code></pre></div>
 <p>A SHA-2 helper function that performs initialization, writing and finalizing.</p>
@@ -4440,7 +4440,7 @@ required.</p>
 <h3 id="forking">Forking</h3>
 
 <h4 id="fio_fork"><code>fio_fork</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_fork</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_fork</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>OVERRIDE THIS to replace the default <code>fork</code> implementation.</p>
 
@@ -4451,7 +4451,7 @@ required.</p>
 <h3 id="thread-creation">Thread Creation</h3>
 
 <h4 id="fio_thread_new"><code>fio_thread_new</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">fio_thread_new</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">(</span><span class="o">*</span><span class="n">thread_func</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">),</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="nf">fio_thread_new</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">(</span><span class="o">*</span><span class="n">thread_func</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">),</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
 </code></pre></div>
 <p>OVERRIDE THIS to replace the default <code>pthread</code> implementation.</p>
 
@@ -4466,7 +4466,7 @@ pointer to the allocated memory that identifies the thread.</p>
 <p>The default implementation returns a <code>pthread_t *</code>.</p>
 
 <h4 id="fio_thread_free"><code>fio_thread_free</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_thread_free</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">p_thr</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fio_thread_free</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">p_thr</span><span class="p">);</span>
 </code></pre></div>
 <p>OVERRIDE THIS to replace the default <code>pthread</code> implementation.</p>
 
@@ -4474,7 +4474,7 @@ pointer to the allocated memory that identifies the thread.</p>
 run it&#39;s course, just the identifier is freed).</p>
 
 <h4 id="fio_thread_join"><code>fio_thread_join</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_thread_join</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">p_thr</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fio_thread_join</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">p_thr</span><span class="p">);</span>
 </code></pre></div>
 <p>OVERRIDE THIS to replace the default <code>pthread</code> implementation.</p>
 
@@ -4491,7 +4491,6 @@ allocated memory) and joins the associated thread.</p>
     $('body')[0].className = localStorage.getItem("theme");
     set_theme_link();
     $('#show_nav').attr('checked', false);
-    return false;
 };
 function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
 function on_sidebar_link(e) {

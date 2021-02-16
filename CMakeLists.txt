@@ -21,7 +21,6 @@ set(facil.io_SOURCES
   lib/facil/http/http1.c
   lib/facil/http/http_internal.c
   lib/facil/http/websockets.c
-  lib/facil/http/parsers/http1_parser.c
   lib/facil/redis/redis_engine.c
 )
 

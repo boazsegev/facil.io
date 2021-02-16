@@ -143,36 +143,36 @@
 <h3 id="array-creation-api">Array creation API</h3>
 
 <h4 id="fiobj_ary_new"><code>fiobj_ary_new</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_ary_new</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_ary_new</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a mutable empty Array object. Use <code>fiobj_free</code> when done.</p>
 
 <h4 id="fiobj_ary_new2"><code>fiobj_ary_new2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_ary_new2</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">capa</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_ary_new2</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">capa</span><span class="p">);</span>
 </code></pre></div>
 <p>Creates a mutable empty Array object with the requested capacity.</p>
 
 <h3 id="accessing-array-members-data">Accessing Array Members / Data</h3>
 
 <h4 id="fiobj_ary_count"><code>fiobj_ary_count</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_ary_count</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fiobj_ary_count</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the number of elements in the Array.</p>
 
 <h4 id="fiobj_ary_capa"><code>fiobj_ary_capa</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_ary_capa</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="nf">fiobj_ary_capa</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns the current, temporary, array capacity (it&#39;s dynamic).</p>
 
 <h4 id="fiobj_ary2ptr"><code>fiobj_ary2ptr</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="o">*</span><span class="n">fiobj_ary2ptr</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="o">*</span><span class="nf">fiobj_ary2ptr</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a TEMPORARY pointer to the beginning of the array.</p>
 
 <p>This pointer can be used for sorting and other direct access operations as long as no other actions (insertion/deletion) are performed on the array.</p>
 
 <h4 id="fiobj_ary_index"><code>fiobj_ary_index</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_ary_index</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">pos</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_ary_index</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">pos</span><span class="p">);</span>
 </code></pre></div>
 <p>Returns a temporary object owned by the Array.</p>
 
@@ -197,41 +197,41 @@ void fiobj_ary_set(FIOBJ ary, FIOBJ obj, int64_t pos);</p>
 <h3 id="array-push-shift-api">Array push / shift API</h3>
 
 <h4 id="fiobj_ary_push"><code>fiobj_ary_push</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_ary_push</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fiobj_ary_push</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
 </code></pre></div>
 <p>Pushes an object to the end of the Array.</p>
 
 <h4 id="fiobj_ary_pop"><code>fiobj_ary_pop</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_ary_pop</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_ary_pop</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">);</span>
 </code></pre></div>
 <p>Pops an object from the end of the Array.</p>
 
 <h4 id="fiobj_ary_unshift"><code>fiobj_ary_unshift</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_ary_unshift</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fiobj_ary_unshift</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">);</span>
 </code></pre></div>
 <p>Unshifts an object to the beginning of the Array. This could be expensive.</p>
 
 <h4 id="fiobj_ary_shift"><code>fiobj_ary_shift</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_ary_shift</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_ary_shift</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">);</span>
 </code></pre></div>
 <p>Shifts an object from the beginning of the Array.</p>
 
 <h1 id="find-remove-replace">Find / Remove / Replace</h1>
 
 <h4 id="fiobj_ary_replace"><code>fiobj_ary_replace</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_ary_replace</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">pos</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="nf">fiobj_ary_replace</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">obj</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">pos</span><span class="p">);</span>
 </code></pre></div>
 <p>Replaces the object at a specific position, returning the old object -
 remember to <code>fiobj_free</code> the old object.</p>
 
 <h4 id="fiobj_ary_find"><code>fiobj_ary_find</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int64_t</span> <span class="n">fiobj_ary_find</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">data</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int64_t</span> <span class="nf">fiobj_ary_find</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">data</span><span class="p">);</span>
 </code></pre></div>
 <p>Finds the index of a specifide object (if any). Returns -1 if the object
 isn&#39;t found.</p>
 
 <h4 id="fiobj_ary_remove"><code>fiobj_ary_remove</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fiobj_ary_remove</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">pos</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fiobj_ary_remove</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">pos</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes the object at the index (if valid), changing the index of any
 following objects.</p>
@@ -239,7 +239,7 @@ following objects.</p>
 <p>Returns 0 on success or -1 (if no object or out of bounds).</p>
 
 <h4 id="fiobj_ary_remove2"><code>fiobj_ary_remove2</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fiobj_ary_remove2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">data</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">fiobj_ary_remove2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">data</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes the first instance of an object from the Array (if any), changing the
 index of any following objects.</p>
@@ -249,7 +249,7 @@ index of any following objects.</p>
 <h3 id="array-compacting">Array Compacting</h3>
 
 <h4 id="fiobj_ary_compact"><code>fiobj_ary_compact</code></h4>
-<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_ary_compact</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="nf">fiobj_ary_compact</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">ary</span><span class="p">);</span>
 </code></pre></div>
 <p>Removes any NULL <em>pointers</em> from an Array, keeping all Objects (including
 explicit NULL objects) in the array.</p>
@@ -265,7 +265,6 @@ It could get expensive.</p>
     $('body')[0].className = localStorage.getItem("theme");
     set_theme_link();
     $('#show_nav').attr('checked', false);
-    return false;
 };
 function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
 function on_sidebar_link(e) {

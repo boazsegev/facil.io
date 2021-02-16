@@ -36,6 +36,12 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include <arpa/inet.h>
 
+#if HAVE_OPENSSL
+#include <openssl/bio.h>
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#endif
+
 /* force poll for testing? */
 #ifndef FIO_ENGINE_POLL
 #define FIO_ENGINE_POLL 0
@@ -277,26 +283,6 @@ static inline fio_packet_s *fio_packet_alloc(void) {
 Core Connection Data Clearing
 ***************************************************************************** */
 
-/* set the minimal max_protocol_fd */
-static void fio_max_fd_min(uint32_t fd) {
-  if (fio_data->max_protocol_fd > fd)
-    return;
-  fio_lock(&fio_data->lock);
-  if (fio_data->max_protocol_fd < fd)
-    fio_data->max_protocol_fd = fd;
-  fio_unlock(&fio_data->lock);
-}
-
-/* set the minimal max_protocol_fd */
-static void fio_max_fd_shrink(void) {
-  fio_lock(&fio_data->lock);
-  uint32_t fd = fio_data->max_protocol_fd;
-  while (fd && fd_data(fd).protocol == NULL)
-    --fd;
-  fio_data->max_protocol_fd = fd;
-  fio_unlock(&fio_data->lock);
-}
-
 /* resets connection data, marking it as either open or closed. */
 static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
   fio_packet_s *packet;
@@ -318,6 +304,13 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
       .counter = fd_data(fd).counter + 1,
       .packet_last = &fd_data(fd).packet,
   };
+  if (fio_data->max_protocol_fd < fd) {
+    fio_data->max_protocol_fd = fd;
+  } else {
+    while (fio_data->max_protocol_fd &&
+           !fd_data(fio_data->max_protocol_fd).open)
+      --fio_data->max_protocol_fd;
+  }
   fio_unlock(&(fd_data(fd).sock_lock));
   if (rw_hooks && rw_hooks->cleanup)
     rw_hooks->cleanup(rw_udata);
@@ -336,8 +329,8 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
   if (protocol && protocol->on_close) {
     fio_defer(deferred_on_close, (void *)fd2uuid(fd), protocol);
   }
-  if (is_open)
-    fio_max_fd_min(fd);
+  FIO_LOG_DEBUG("FD %d re-initialized (state: %p-%s).", (int)fd,
+                (void *)fd2uuid(fd), (is_open ? "open" : "closed"));
   return 0;
 }
 
@@ -2887,7 +2880,7 @@ void fio_close(intptr_t uuid) {
   }
   if (uuid_data(uuid).packet || uuid_data(uuid).sock_lock) {
     uuid_data(uuid).close = 1;
-    fio_poll_add_write(fio_uuid2fd(uuid));
+    fio_force_event(uuid, FIO_EVENT_ON_READY);
     return;
   }
   fio_force_close(uuid);
@@ -2970,7 +2963,7 @@ ssize_t fio_flush(intptr_t uuid) {
     goto test_errno;
   }
 
-  if (uuid_data(uuid).packet_count >= 1024 &&
+  if (uuid_data(uuid).packet_count >= FIO_SLOWLORIS_LIMIT &&
       uuid_data(uuid).packet == old_packet &&
       uuid_data(uuid).sent >= old_sent &&
       (uuid_data(uuid).sent - old_sent) < 32768) {
@@ -3019,6 +3012,7 @@ test_errno:
   case ENOSPC:        /* fallthrough */
   case EADDRNOTAVAIL: /* fallthrough */
   case EINTR:
+  case 0:
     return 1;
   case EFAULT:
     FIO_LOG_ERROR("fio_flush EFAULT - possible memory address error sent to "
@@ -3032,8 +3026,8 @@ test_errno:
     fio_force_close(uuid);
     return -1;
   }
-  fprintf(stderr, "UUID error: %p (%d)\n", (void *)uuid, errno);
-  perror("No errno handler");
+  FIO_LOG_DEBUG("UUID error: %p (%d): %s\n", (void *)uuid, errno,
+                strerror(errno));
   return 0;
 
 invalid:
@@ -3099,6 +3093,19 @@ const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS = {
     .cleanup = fio_hooks_default_cleanup,
 };
 
+static inline void fio_rw_hook_validate(fio_rw_hook_s *rw_hooks) {
+  if (!rw_hooks->read)
+    rw_hooks->read = fio_hooks_default_read;
+  if (!rw_hooks->write)
+    rw_hooks->write = fio_hooks_default_write;
+  if (!rw_hooks->flush)
+    rw_hooks->flush = fio_hooks_default_flush;
+  if (!rw_hooks->before_close)
+    rw_hooks->before_close = fio_hooks_default_before_close;
+  if (!rw_hooks->cleanup)
+    rw_hooks->cleanup = fio_hooks_default_cleanup;
+}
+
 /**
  * Replaces an existing read/write hook with another from within a read/write
  * hook callback.
@@ -3112,19 +3119,10 @@ int fio_rw_hook_replace_unsafe(intptr_t uuid, fio_rw_hook_s *rw_hooks,
   int replaced = -1;
   uint8_t was_locked;
   intptr_t fd = fio_uuid2fd(uuid);
-  if (!rw_hooks->read)
-    rw_hooks->read = fio_hooks_default_read;
-  if (!rw_hooks->write)
-    rw_hooks->write = fio_hooks_default_write;
-  if (!rw_hooks->flush)
-    rw_hooks->flush = fio_hooks_default_flush;
-  if (!rw_hooks->before_close)
-    rw_hooks->before_close = fio_hooks_default_before_close;
-  if (!rw_hooks->cleanup)
-    rw_hooks->cleanup = fio_hooks_default_cleanup;
+  fio_rw_hook_validate(rw_hooks);
   /* protect against some fulishness... but not all of it. */
   was_locked = fio_trylock(&fd_data(fd).sock_lock);
-  if (fd2uuid(fd) == uuid) {
+  if (uuid_is_valid(uuid)) {
     fd_data(fd).rw_hooks = rw_hooks;
     fd_data(fd).rw_udata = udata;
     replaced = 0;
@@ -3138,16 +3136,7 @@ int fio_rw_hook_replace_unsafe(intptr_t uuid, fio_rw_hook_s *rw_hooks,
 int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata) {
   if (fio_is_closed(uuid))
     goto invalid_uuid;
-  if (!rw_hooks->read)
-    rw_hooks->read = fio_hooks_default_read;
-  if (!rw_hooks->write)
-    rw_hooks->write = fio_hooks_default_write;
-  if (!rw_hooks->flush)
-    rw_hooks->flush = fio_hooks_default_flush;
-  if (!rw_hooks->before_close)
-    rw_hooks->before_close = fio_hooks_default_before_close;
-  if (!rw_hooks->cleanup)
-    rw_hooks->cleanup = fio_hooks_default_cleanup;
+  fio_rw_hook_validate(rw_hooks);
   intptr_t fd = fio_uuid2fd(uuid);
   fio_rw_hook_s *old_rw_hooks;
   void *old_udata;
@@ -3249,7 +3238,6 @@ static int fio_attach__internal(void *uuid_, void *protocol_) {
     /* adding a new uuid to the reactor */
     fio_poll_add(fio_uuid2fd(uuid));
   }
-  fio_max_fd_min(fio_uuid2fd(uuid));
   return 0;
 
 invalid_uuid:
@@ -3510,18 +3498,19 @@ static void fio_on_fork(void) {
   fio_poll_init();
   fio_state_callback_on_fork();
 
+  /* don't pass open connections belonging to the parent onto the child. */
   const size_t limit = fio_data->capa;
   for (size_t i = 0; i < limit; ++i) {
     fd_data(i).sock_lock = FIO_LOCK_INIT;
     fd_data(i).protocol_lock = FIO_LOCK_INIT;
-    if (fd_data(i).protocol) {
+    if (fd_data(i).protocol && fd_data(i).open) {
+      /* open without protocol might be waiting for the child (listening) */
       fd_data(i).protocol->rsv = 0;
       fio_force_close(fd2uuid(i));
     }
   }
 
   fio_pubsub_on_fork();
-  fio_max_fd_shrink();
   uint16_t old_active = fio_data->active;
   fio_data->active = 0;
   fio_defer_perform();
@@ -3681,24 +3670,30 @@ static void fio_review_timeout(void *arg, void *ignr) {
   uint16_t timeout = fd_data(fd).timeout;
   if (!timeout)
     timeout = 300; /* enforced timout settings */
-  if (!fd_data(fd).protocol || (fd_data(fd).active + timeout >= review))
+  if (!fd_data(fd).open || fd_data(fd).active + timeout >= review)
     goto finish;
-  tmp = protocol_try_lock(fd, FIO_PR_LOCK_STATE);
-  if (!tmp) {
-    if (errno == EBADF)
-      goto finish;
-    goto reschedule;
+  if (fd_data(fd).protocol) {
+    tmp = protocol_try_lock(fd, FIO_PR_LOCK_STATE);
+    if (!tmp) {
+      if (errno == EBADF)
+        goto finish;
+      goto reschedule;
+    }
+    if (prt_meta(tmp).locks[FIO_PR_LOCK_TASK] ||
+        prt_meta(tmp).locks[FIO_PR_LOCK_WRITE])
+      goto unlock;
+    fio_defer_push_task(deferred_ping, (void *)fio_fd2uuid((int)fd), NULL);
+  unlock:
+    protocol_unlock(tmp, FIO_PR_LOCK_STATE);
+  } else {
+    /* open FD but no protocol? RW hook thing or listening sockets? */
+    if (fd_data(fd).rw_hooks != &FIO_DEFAULT_RW_HOOKS)
+      fio_close(fd2uuid(fd));
   }
-  if (prt_meta(tmp).locks[FIO_PR_LOCK_TASK] ||
-      prt_meta(tmp).locks[FIO_PR_LOCK_WRITE])
-    goto unlock;
-  fio_defer_push_task(deferred_ping, (void *)fio_fd2uuid((int)fd), NULL);
-unlock:
-  protocol_unlock(tmp, FIO_PR_LOCK_STATE);
 finish:
   do {
     fd++;
-  } while (!fd_data(fd).protocol && (fd <= fio_data->max_protocol_fd));
+  } while (!fd_data(fd).open && (fd <= fio_data->max_protocol_fd));
 
   if (fio_data->max_protocol_fd < fd) {
     fio_data->need_review = 1;
@@ -3714,7 +3709,6 @@ static void fio_cycle_schedule_events(void) {
   static time_t last_to_review = 0;
   fio_mark_time();
   fio_timer_schedule();
-  fio_max_fd_shrink();
   if (fio_signal_children_flag) {
     /* hot restart support */
     fio_signal_children_flag = 0;
@@ -3817,7 +3811,8 @@ static void fio_worker_cleanup(void) {
   fio_timer_clear_all();
   fio_defer_perform();
   if (!fio_data->is_worker) {
-    kill(0, SIGINT);
+    fio_cluster_signal_children();
+    fio_defer_perform();
     while (wait(NULL) != -1)
       ;
   }
@@ -3922,16 +3917,22 @@ void fio_start FIO_IGNORE_MACRO(struct fio_start_args args) {
   fio_data->is_worker = 0;
 
   fio_state_callback_force(FIO_CALL_PRE_START);
-
   FIO_LOG_INFO(
       "Server is running %u %s X %u %s with facil.io " FIO_VERSION_STRING
       " (%s)\n"
+#if HAVE_OPENSSL
+      "* Linked to %s\n"
+#endif
       "* Detected capacity: %d open file limit\n"
       "* Root pid: %d\n"
       "* Press ^C to stop\n",
       fio_data->workers, fio_data->workers > 1 ? "workers" : "worker",
       fio_data->threads, fio_data->threads > 1 ? "threads" : "thread",
-      fio_engine(), fio_data->capa, (int)fio_data->parent);
+      fio_engine(),
+#if HAVE_OPENSSL
+      OpenSSL_version(0),
+#endif
+      fio_data->capa, (int)fio_data->parent);
 
   if (args.workers > 1) {
     for (int i = 0; i < args.workers && fio_data->active; ++i) {
@@ -6206,7 +6207,7 @@ static void fio_cluster_listen_on_close(intptr_t uuid,
                   (int)getpid());
 #endif
     if (fio_data->active)
-      kill(0, SIGINT);
+      fio_stop();
   }
   (void)uuid;
 }
@@ -6248,7 +6249,6 @@ static void fio_cluster_client_handler(struct cluster_pr_s *pr) {
     break;
   case FIO_CLUSTER_MSG_SHUTDOWN:
     fio_stop();
-    kill(getpid(), SIGINT);
   case FIO_CLUSTER_MSG_ERROR:         /* fallthrough */
   case FIO_CLUSTER_MSG_PING:          /* fallthrough */
   case FIO_CLUSTER_MSG_ROOT:          /* fallthrough */
@@ -6503,7 +6503,7 @@ static void fio_pubsub_on_fork(void) {
 /** Signals children (or self) to shutdown) - NOT signal safe. */
 static void fio_cluster_signal_children(void) {
   if (fio_parent_pid() != getpid()) {
-    kill(getpid(), SIGINT);
+    fio_stop();
     return;
   }
   fio_cluster_server_sender(fio_msg_internal_create(0, FIO_CLUSTER_MSG_SHUTDOWN,
