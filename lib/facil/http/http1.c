@@ -325,10 +325,13 @@ static int http1_http2websocket_server(http_s *h, websocket_settings_s *args) {
   static char ws_key_accpt_str[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
   static uintptr_t sec_version = 0;
   static uintptr_t sec_key = 0;
+  static uintptr_t sec_protocol = 0;
   if (!sec_version)
     sec_version = fiobj_hash_string("sec-websocket-version", 21);
   if (!sec_key)
     sec_key = fiobj_hash_string("sec-websocket-key", 17);
+  if (!sec_protocol)
+    sec_protocol = fiobj_hash_string("sec-websocket-protocol", 22);
 
   FIOBJ tmp = fiobj_hash_get2(h->headers, sec_version);
   if (!tmp)
@@ -342,6 +345,22 @@ static int http1_http2websocket_server(http_s *h, websocket_settings_s *args) {
     goto bad_request;
   stmp = fiobj_obj2cstr(tmp);
 
+  FIOBJ tmp_protocol = fiobj_hash_get2(h->headers, sec_protocol);
+  if (tmp_protocol) {
+    char *protocol_str = fiobj_obj2cstr(tmp_protocol).data;
+
+    if (strlen(protocol_str)) {
+      printf("HALLO\n");
+      char *tmp_ptr;
+          
+      tmp_ptr = strchr(protocol_str, ',');
+      if (tmp_ptr != NULL)
+          *tmp_ptr = '\0';
+      printf(protocol_str);
+      tmp_protocol = fiobj_str_new(protocol_str, strlen(protocol_str));
+    }
+  }
+
   fio_sha1_s sha1 = fio_sha1_init();
   fio_sha1_write(&sha1, stmp.data, stmp.len);
   fio_sha1_write(&sha1, ws_key_accpt_str, sizeof(ws_key_accpt_str) - 1);
@@ -352,6 +371,9 @@ static int http1_http2websocket_server(http_s *h, websocket_settings_s *args) {
   http_set_header(h, HTTP_HEADER_CONNECTION, fiobj_dup(HTTP_HVALUE_WS_UPGRADE));
   http_set_header(h, HTTP_HEADER_UPGRADE, fiobj_dup(HTTP_HVALUE_WEBSOCKET));
   http_set_header(h, HTTP_HEADER_WS_SEC_KEY, tmp);
+  if (tmp_protocol)
+    http_set_header(h, HTTP_HEADER_WS_SEC_PROTOCOL, tmp_protocol);
+
   h->status = 101;
   http1pr_s *pr = handle2pr(h);
   const intptr_t uuid = handle2pr(h)->p.uuid;
