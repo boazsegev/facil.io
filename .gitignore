@@ -11,9 +11,12 @@ lib/bearssl/
 .gitignore
 .DS_Store
 .gitmodules
+.vscode
 
 callgrind*
 docs/assets/styles/main.css.map
 tests/xxhash.h
 tests/xxhash.c
 tests/words.txt
+obj.obj
+a.exe
