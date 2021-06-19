@@ -1,5 +1,5 @@
 
-#include "tests/mustache.c.h"
+#include "mustache_c.h"
 
 #include <fio.h>
 #include <fiobj.h>
