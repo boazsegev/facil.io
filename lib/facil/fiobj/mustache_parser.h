@@ -28,6 +28,10 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#ifdef __MINGW32__
+ssize_t pread(int, void*, size_t, off_t);
+#endif
+
 #if !defined(__GNUC__) && !defined(__clang__) && !defined(FIO_GNUC_BYPASS)
 #define __attribute__(...)
 #define __has_include(...) 0

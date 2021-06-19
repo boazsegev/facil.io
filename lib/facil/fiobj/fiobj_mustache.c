@@ -240,12 +240,20 @@ Testing
 #if DEBUG
 static inline void mustache_save2file(char const *filename, char const *data,
                                       size_t length) {
+#ifdef __MINGW32__
+  int fd = _open(filename, _O_CREAT | _O_RDWR);
+#else
   int fd = open(filename, O_CREAT | O_RDWR, 0);
+#endif
   if (fd == -1) {
     perror("Couldn't open / create file for template testing");
     exit(-1);
   }
+#ifdef __MINGW32__
+  _chmod(filename, _S_IREAD | _S_IWRITE);
+#else
   fchmod(fd, 0777);
+#endif
   if (pwrite(fd, data, length, 0) != (ssize_t)length) {
     perror("Mustache template write error");
     exit(-1);
@@ -265,6 +273,7 @@ void fiobj_mustache_test(void) {
       "{{=<< >>=}}* Users:\r\n<<#users>><<id>>. <<& name>> "
       "(<<name>>)\r\n<</users>>\r\nNested: <<& nested.item >>.";
   char const *template_name = "mustache_test_template.mustache";
+  fprintf(stderr, "mustache test saving template %s\n", template_name);
   mustache_save2file(template_name, template, strlen(template));
   mustache_s *m =
       fiobj_mustache_load((fio_str_info_s){.data = (char *)template_name});

@@ -17,7 +17,9 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <http.h>
 #include <http_internal.h>
 
+#ifndef __MINGW32__
 #include <arpa/inet.h>
+#endif
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,7 +28,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include <websocket_parser.h>
 
-#if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
+#if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) && !defined(__MINGW32__)
 #include <endian.h>
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) &&                 \
     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__

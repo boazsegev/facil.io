@@ -15,7 +15,9 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include <http.h>
 
+#ifndef __MINGW32__
 #include <arpa/inet.h>
+#endif
 #include <errno.h>
 
 /* *****************************************************************************

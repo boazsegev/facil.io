@@ -1,5 +1,5 @@
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__) ||           \
-    defined(__CYGWIN__) /* require POSIX */
+    defined(__CYGWIN__) || defined(__MINGW32__) /* require POSIX */
 /*
 Copyright: Boaz Segev, 2017-2019
 License: MIT
@@ -63,6 +63,17 @@ Object required VTable and functions
     }                                                                          \
   } while (0)
 
+static inline int64_t fiobj_data_get_fd_size(const FIOBJ o) {
+  struct stat stat;
+retry:
+  if (fstat(obj2io(o)->fd, &stat)) {
+    if (errno == EINTR)
+      goto retry;
+    return -1;
+  }
+  return stat.st_size;
+}
+
 static void fiobj_data_copy_buffer(FIOBJ o) {
   obj2io(o)->capa = (((obj2io(o)->len) >> 12) + 1) << 12;
   void *tmp = fio_malloc(obj2io(o)->capa);
@@ -102,7 +113,11 @@ static void fiobj_data_copy_parent(FIOBJ o) {
       if (data.len + pos > obj2io(o)->len)
         data.len = obj2io(o)->len - pos;
     retry_int:
+#ifdef __MINGW32__
+      written = pwrite(obj2io(o)->fd, data.data, data.len, 0);
+#else
       written = write(obj2io(o)->fd, data.data, data.len);
+#endif
       if (written < 0) {
         if (errno == EINTR)
           goto retry_int;
@@ -138,17 +153,6 @@ static inline void fiobj_data_pre_write(FIOBJ o, uintptr_t length) {
   obj2io(o)->capa = (((obj2io(o)->len + length) >> 12) + 1) << 12;
   obj2io(o)->buffer = fio_realloc(obj2io(o)->buffer, obj2io(o)->capa);
   REQUIRE_MEM(obj2io(o)->buffer);
-}
-
-static inline int64_t fiobj_data_get_fd_size(const FIOBJ o) {
-  struct stat stat;
-retry:
-  if (fstat(obj2io(o)->fd, &stat)) {
-    if (errno == EINTR)
-      goto retry;
-    return -1;
-  }
-  return stat.st_size;
 }
 
 static FIOBJ fiobj_data_alloc(void *buffer, int fd) {
@@ -1046,7 +1050,6 @@ void fiobj_data_test(void) {
     fprintf(stderr, "* `fiobj_data_read` operation overflow - FAILED!\n");
     exit(-1);
   }
-
   if (fiobj_obj2cstr(strio).len != fiobj_obj2cstr(text).len ||
       fiobj_obj2cstr(fdio).len != fiobj_obj2cstr(text).len) {
     fprintf(stderr, "* `write` operation FAILED!\n");

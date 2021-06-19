@@ -4,6 +4,10 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 ***************************************************************************** */
+#ifdef __MINGW32__
+#define FIO_FORCE_MALLOC 1
+#define FIO_DISABLE_HOT_RESTART 1
+#endif
 
 #include <fio.h>
 
@@ -18,9 +22,12 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <errno.h>
 #include <limits.h>
 #include <pthread.h>
+#ifndef __MINGW32__
 #include <sys/mman.h>
+#endif
 #include <unistd.h>
 
+#ifndef __MINGW32__
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -29,12 +36,27 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
+#ifndef __MINGW32__
 #include <sys/un.h>
 #include <sys/wait.h>
 
 #include <arpa/inet.h>
+#endif
+
+#ifdef __MINGW32__
+#include <windef.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
+
+#if HAVE_OPENSSL
+#include <openssl/bio.h>
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#endif
 
 #if HAVE_OPENSSL
 #include <openssl/bio.h>
@@ -47,12 +69,14 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FIO_ENGINE_POLL 0
 #endif
 
-#if !FIO_ENGINE_POLL && !FIO_ENGINE_EPOLL && !FIO_ENGINE_KQUEUE
+#if !FIO_ENGINE_POLL && !FIO_ENGINE_EPOLL && !FIO_ENGINE_KQUEUE && !FIO_ENGINE_WSAPOLL
 #if defined(__linux__)
 #define FIO_ENGINE_EPOLL 1
 #elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) ||     \
     defined(__OpenBSD__) || defined(__bsdi__) || defined(__DragonFly__)
 #define FIO_ENGINE_KQUEUE 1
+#elif defined(__MINGW32__)
+#define FIO_ENGINE_WSAPOLL 1
 #else
 #define FIO_ENGINE_POLL 1
 #endif
@@ -95,6 +119,189 @@ Feel free to copy, use and enjoy according to the license provided.
 #else
 #define MAP_ANONYMOUS 0
 #endif
+#endif
+
+/* *****************************************************************************
+Windows support functions
+***************************************************************************** */
+#ifdef __MINGW32__
+
+#define WIFEXITED(s)	(!((s)&0xFF))
+#define WEXITSTATUS(s)	(((s)>>8)&0xFF)
+
+int fork() {
+  fprintf(stderr, "fork() is not supported on Windows.\n");
+  errno = ENOSYS;
+  return -1;
+}
+
+int ioctl (int fd, u_long request, int* argp) {
+  int error;
+  u_long flags;
+  flags = *argp;
+  error = ioctlsocket(fd, request, &flags);
+  if (error > 0) { return -1; }
+  else { return 0; }
+}
+
+int kill(int pid, int signum) {
+  int error;
+  int must_close = 0;
+  HANDLE process_handle;
+
+  if (signum < 0 || signum >= NSIG) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (pid == 0) {
+    // Linux: send to every process in the process group of the calling process
+    // Windows: current process
+    process_handle = GetCurrentProcess();
+  } else if (pid == -1) {
+    // Linux: send to every process for which the calling process has permission to send signals
+    // Windows: current process
+    process_handle = GetCurrentProcess();
+  } else {
+    process_handle = OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_INFORMATION, FALSE, pid);
+    must_close = 1;
+  }
+
+  if (process_handle == NULL) {
+    error = GetLastError();
+    if (error == ERROR_INVALID_PARAMETER) {
+      errno = ESRCH;
+      return -1;
+    } else if (error == ERROR_ACCESS_DENIED) {
+      errno = EPERM;
+      return -1;
+    } else {
+      errno = error;
+      return -1;
+    }
+  }
+
+  switch (signum) {
+    case SIGTERM:
+    case SIGKILL:
+    case SIGINT: {
+      // exterminate
+      if (TerminateProcess(process_handle, 1)) {
+        errno = 0;
+        error = 0;
+      }
+      // extermination failed
+      DWORD status;
+      error = GetLastError();
+      if (error == ERROR_ACCESS_DENIED &&
+          GetExitCodeProcess(process_handle, &status) &&
+          status != STILL_ACTIVE) {
+        errno = ESRCH;
+        error = -1;
+      }
+      break;
+    }
+    case SIGCONT: {
+      // wake up al threads
+      // WakeAllConditionVariable. threads need to wait for some ConditionVariable
+      // (IntitializeConditionVariable, SleepConditionVariable*)
+      // or cycle with ResumeThread through all threads, needs all thread handles
+      errno = ENOSYS;
+      error = -1;
+      break;
+    }
+    case 0: {
+      // only check if process is still alive
+      DWORD status;
+      if (!GetExitCodeProcess(process_handle, &status)) {
+        errno = GetLastError();
+        error = -1;
+      }
+
+      if (status != STILL_ACTIVE) {
+        errno = ESRCH;
+        error = -1;
+      }
+
+      error = 0;
+      break;
+    }
+
+    default:
+      // unsupported signal
+      errno = ENOSYS;
+      error = -1;
+  }
+
+  if (must_close) { 
+    CloseHandle(process_handle);
+  }
+
+  return error;
+}
+
+ssize_t pread(int fd, void *buf, size_t count, off_t offset) {
+  u_long bytes_read;
+  memset(buf, 0, count);
+  HANDLE handle = (HANDLE)_get_osfhandle(fd);
+  if (handle == (HANDLE)-1) {
+    errno = EBADF;
+    return -1;
+  }
+  int result;
+  OVERLAPPED overlapped = {0};
+  if (offset > 0) {
+    overlapped.Offset = offset;
+  } else {
+    overlapped.Offset = 0;
+  }
+  result = ReadFile(handle, buf, count, &bytes_read, &overlapped);
+  if (result) {
+    return bytes_read; 
+  } 
+  else {
+    if(GetLastError() == ERROR_HANDLE_EOF) {
+      return bytes_read;
+    }
+    errno = EIO;
+    return -1; 
+  }
+}
+
+ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset) {
+  u_long bytes_written;
+  HANDLE handle = (HANDLE)_get_osfhandle(fd);
+  if (handle == (HANDLE)-1) {
+    errno = EBADF;
+    return -1;
+  }
+  int result;
+  OVERLAPPED overlapped = {0};
+  if (offset > 0) {
+    overlapped.Offset = offset;
+  } else {
+    overlapped.Offset = 0;
+  }
+  result = WriteFile(handle, buf, count, &bytes_written, &overlapped);
+  //  SetEndOfFile(handle);
+  if (result) { return bytes_written; }
+  else {
+    errno = EIO;
+    return -1;
+  }
+}
+
+pid_t wait(int *stat_loc) {
+  fprintf(stderr, "wait() is not supported on Windows.\n");
+  errno = ENOSYS;
+  return -1;
+}
+
+pid_t waitpid(pid_t pid, int *stat_loc, int options) {
+  fprintf(stderr, "waitpid() is not supported on Windows.\n");
+  errno = ENOSYS;
+  return -1;
+}
 #endif
 
 /* *****************************************************************************
@@ -219,7 +426,7 @@ typedef struct {
   uint32_t max_protocol_fd;
   /* timer handler */
   pid_t parent;
-#if FIO_ENGINE_POLL
+#if FIO_ENGINE_POLL || FIO_ENGINE_WSAPOLL
   struct pollfd *poll;
 #endif
   fio_fd_data_s info[];
@@ -698,7 +905,11 @@ FIO_FUNC void fio_thread_suspend(void) {
       .events = (POLLPRI | POLLIN),
       .fd = fio_thread_data.fd_wait,
   };
+#ifdef __MINGW32__
+  if (WSAPoll(&list, 1, 5000) > 0) {
+#else
   if (poll(&list, 1, 5000) > 0) {
+#endif
     /* thread was removed from the list through signal */
     uint64_t data;
     int r = read(fio_thread_data.fd_wait, &data, sizeof(data));
@@ -1342,6 +1553,10 @@ Section Start Marker
 volatile uint8_t fio_signal_children_flag = 0;
 volatile fio_lock_i fio_signal_set_flag = 0;
 /* store old signal handlers to propagate signal handling */
+#ifdef __MINGW32__
+void (*fio_old_sig_int)(int);
+void (*fio_old_sig_term)(int);
+#else
 static struct sigaction fio_old_sig_chld;
 static struct sigaction fio_old_sig_pipe;
 static struct sigaction fio_old_sig_term;
@@ -1349,6 +1564,10 @@ static struct sigaction fio_old_sig_int;
 #if !FIO_DISABLE_HOT_RESTART
 static struct sigaction fio_old_sig_usr1;
 #endif
+#endif
+
+#ifndef __MINGW32__
+/* there are no process children on Windows, as there is only one worker */
 
 /*
  * Zombie Reaping
@@ -1380,10 +1599,15 @@ void fio_reap_children(void) {
     exit(errno);
   }
 }
+#endif
 
 /* handles the SIGUSR1, SIGINT and SIGTERM signals. */
 static void sig_int_handler(int sig) {
+#ifdef __MINGW32__
+  void (*old)(int) = NULL;
+#else
   struct sigaction *old = NULL;
+#endif
   switch (sig) {
 #if !FIO_DISABLE_HOT_RESTART
   case SIGUSR1:
@@ -1394,28 +1618,44 @@ static void sig_int_handler(int sig) {
     /* fallthrough */
   case SIGINT:
     if (!old)
+#ifdef __MINGW32__
+      old = fio_old_sig_int;
+#else
       old = &fio_old_sig_int;
+#endif
     /* fallthrough */
   case SIGTERM:
     if (!old)
+#ifdef __MINGW32__
+      old = fio_old_sig_term;
+#else
       old = &fio_old_sig_term;
+#endif
     fio_stop();
     break;
+#ifndef __MINGW32__
   case SIGPIPE:
     if (!old)
       old = &fio_old_sig_pipe;
+#endif
   /* fallthrough */
   default:
     break;
   }
+#ifndef __MINGW32__
   /* propagate signale handling to previous existing handler (if any) */
   if (old && old->sa_handler != SIG_IGN && old->sa_handler != SIG_DFL)
     old->sa_handler(sig);
+#endif
 }
 
 /* setup handling for the SIGUSR1, SIGPIPE, SIGINT and SIGTERM signals. */
 static void fio_signal_handler_setup(void) {
   /* setup signal handling */
+#ifdef __MINGW32__
+  fio_old_sig_int = signal(SIGINT, sig_int_handler);
+  fio_old_sig_term = signal(SIGTERM, sig_int_handler);
+#else
   struct sigaction act;
   if (fio_trylock(&fio_signal_set_flag))
     return;
@@ -1447,9 +1687,14 @@ static void fio_signal_handler_setup(void) {
     perror("couldn't set signal handler");
     return;
   };
+#endif
 }
 
 void fio_signal_handler_reset(void) {
+#ifdef __MINGW32__
+  signal(SIGINT, fio_old_sig_int);
+  signal(SIGTERM, fio_old_sig_term);
+#else
   struct sigaction old;
   if (fio_signal_set_flag)
     return;
@@ -1457,6 +1702,7 @@ void fio_signal_handler_reset(void) {
   memset(&old, 0, sizeof(old));
   sigaction(SIGINT, &fio_old_sig_int, &old);
   sigaction(SIGTERM, &fio_old_sig_term, &old);
+
   sigaction(SIGPIPE, &fio_old_sig_pipe, &old);
   if (fio_old_sig_chld.sa_handler)
     sigaction(SIGCHLD, &fio_old_sig_chld, &old);
@@ -1464,10 +1710,13 @@ void fio_signal_handler_reset(void) {
   sigaction(SIGUSR1, &fio_old_sig_usr1, &old);
   memset(&fio_old_sig_usr1, 0, sizeof(fio_old_sig_usr1));
 #endif
+#endif
   memset(&fio_old_sig_int, 0, sizeof(fio_old_sig_int));
   memset(&fio_old_sig_term, 0, sizeof(fio_old_sig_term));
+#ifndef __MINGW32__
   memset(&fio_old_sig_pipe, 0, sizeof(fio_old_sig_pipe));
   memset(&fio_old_sig_chld, 0, sizeof(fio_old_sig_chld));
+#endif
 }
 
 /**
@@ -1495,7 +1744,11 @@ pid_t fio_parent_pid(void) { return fio_data->parent; }
 
 static inline size_t fio_detect_cpu_cores(void) {
   ssize_t cpu_count = 0;
-#ifdef _SC_NPROCESSORS_ONLN
+#if defined(__MINGW32__)
+  SYSTEM_INFO sys_info;
+  GetSystemInfo(&sys_info);
+  cpu_count = sys_info.dwNumberOfProcessors;
+#elif defined(_SC_NPROCESSORS_ONLN)
   cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
   if (cpu_count < 0) {
     FIO_LOG_WARNING("CPU core count auto-detection failed.");
@@ -2048,6 +2301,166 @@ Section Start Marker
 
 
 
+
+                       Polling State Machine - wsapoll
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+#if FIO_ENGINE_WSAPOLL
+
+/**
+ * Returns a C string detailing the IO engine selected during compilation.
+ *
+ * Valid values are "kqueue", "epoll" and "poll".
+ */
+char const *fio_engine(void) { return "wsapoll"; }
+
+#define FIO_POLL_READ_EVENTS (POLLPRI | POLLIN)
+#define FIO_POLL_WRITE_EVENTS (POLLOUT)
+
+static void fio_poll_close(void) {
+  WSACleanup();
+}
+
+static void fio_poll_init(void) {
+  int result;
+  WSADATA wsa_data;
+  result = WSAStartup(MAKEWORD(2,2), &wsa_data);
+  if (result != 0) {
+    FIO_LOG_FATAL("WSA startup failed.\n");
+    exit(result);
+  }
+}
+
+static inline void fio_poll_remove_fd(int fd) {
+  fio_data->poll[fd].fd = -1;
+  fio_data->poll[fd].events = 0;
+}
+
+static inline void fio_poll_add_read(int fd) {
+  fio_data->poll[fd].fd = fd;
+  fio_data->poll[fd].events |= FIO_POLL_READ_EVENTS;
+}
+
+static inline void fio_poll_add_write(int fd) {
+  fio_data->poll[fd].fd = fd;
+  fio_data->poll[fd].events |= FIO_POLL_WRITE_EVENTS;
+}
+
+static inline void fio_poll_add(int fd) {
+  fio_data->poll[fd].fd = fd;
+  fio_data->poll[fd].events = FIO_POLL_READ_EVENTS | FIO_POLL_WRITE_EVENTS;
+}
+
+static inline void fio_poll_remove_read(int fd) {
+  fio_lock(&fio_data->lock);
+  if (fio_data->poll[fd].events & FIO_POLL_WRITE_EVENTS)
+    fio_data->poll[fd].events = FIO_POLL_WRITE_EVENTS;
+  else {
+    fio_poll_remove_fd(fd);
+  }
+  fio_unlock(&fio_data->lock);
+}
+
+static inline void fio_poll_remove_write(int fd) {
+  fio_lock(&fio_data->lock);
+  if (fio_data->poll[fd].events & FIO_POLL_READ_EVENTS)
+    fio_data->poll[fd].events = FIO_POLL_READ_EVENTS;
+  else {
+    fio_poll_remove_fd(fd);
+  }
+  fio_unlock(&fio_data->lock);
+}
+
+/** returns non-zero if events were scheduled, 0 if idle */
+static size_t fio_poll(void) {
+  /* shrink fd poll range */
+  size_t end = fio_data->capa; // max_protocol_fd might break TLS
+  size_t start = 0;
+  struct pollfd *list = NULL;
+  fio_lock(&fio_data->lock);
+  while (start < end && fio_data->poll[start].fd == (SOCKET)-1)
+    ++start;
+  while (start < end && fio_data->poll[end - 1].fd == (SOCKET)-1)
+    --end;
+  if (start != end) {
+    /* copy poll list for multi-threaded poll */
+    list = fio_malloc(sizeof(struct pollfd) * end);
+    memcpy(list + start, fio_data->poll + start,
+           (sizeof(struct pollfd)) * (end - start));
+  }
+  fio_unlock(&fio_data->lock);
+
+  int timeout = fio_timer_calc_first_interval();
+  size_t count = 0;
+
+  if (start == end) {
+    fio_throttle_thread((timeout * 1000000UL));
+  } else if (WSAPoll(list + start, end - start, timeout) == -1) {
+    goto finish;
+  }
+  for (size_t i = start; i < end; ++i) {
+    if (list[i].revents) {
+      touchfd(i);
+      ++count;
+      if (list[i].revents & FIO_POLL_WRITE_EVENTS) {
+        // FIO_LOG_DEBUG("Poll Write %zu => %p", i, (void *)fd2uuid(i));
+        fio_poll_remove_write(i);
+        fio_defer_push_urgent(deferred_on_ready, (void *)fd2uuid(i), NULL);
+      }
+      if (list[i].revents & FIO_POLL_READ_EVENTS) {
+        // FIO_LOG_DEBUG("Poll Read %zu => %p", i, (void *)fd2uuid(i));
+        fio_poll_remove_read(i);
+        fio_defer_push_task(deferred_on_data, (void *)fd2uuid(i), NULL);
+      }
+      if (list[i].revents & (POLLHUP | POLLERR)) {
+        // FIO_LOG_DEBUG("Poll Hangup %zu => %p", i, (void *)fd2uuid(i));
+        fio_poll_remove_fd(i);
+        fio_force_close_in_poll(fd2uuid(i));
+      }
+      if (list[i].revents & POLLNVAL) {
+        // FIO_LOG_DEBUG("Poll Invalid %zu => %p", i, (void *)fd2uuid(i));
+        fio_poll_remove_fd(i);
+        fio_lock(&fd_data(i).protocol_lock);
+        fio_clear_fd(i, 0);
+        fio_unlock(&fd_data(i).protocol_lock);
+      }
+    }
+  }
+finish:
+  fio_free(list);
+  return count;
+}
+
+#endif /* FIO_ENGINE_WSAPOLL */
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
                          IO Callbacks / Event Handling
 
 
@@ -2375,13 +2788,26 @@ intptr_t fio_accept(intptr_t srv_uuid) {
 #endif
   // avoid the TCP delay algorithm.
   {
+  #ifdef __MINGW32__
+    char optval = 1;
+  #else
     int optval = 1;
+  #endif
     setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval));
   }
   // handle socket buffers.
   {
     int optval = 0;
     socklen_t size = (socklen_t)sizeof(optval);
+#ifdef __MINGW32__
+    if (!getsockopt(client, SOL_SOCKET, SO_SNDBUF, (char *)&optval, &size) &&
+        optval <= 131072) {
+      optval = 131072;
+      setsockopt(client, SOL_SOCKET, SO_SNDBUF, (char *)&optval, sizeof(optval));
+      optval = 131072;
+      setsockopt(client, SOL_SOCKET, SO_RCVBUF, (char *)&optval, sizeof(optval));
+    }
+#else
     if (!getsockopt(client, SOL_SOCKET, SO_SNDBUF, &optval, &size) &&
         optval <= 131072) {
       optval = 131072;
@@ -2389,6 +2815,7 @@ intptr_t fio_accept(intptr_t srv_uuid) {
       optval = 131072;
       setsockopt(client, SOL_SOCKET, SO_RCVBUF, &optval, sizeof(optval));
     }
+#endif
   }
 
   fio_lock(&fd_data(client).protocol_lock);
@@ -2409,6 +2836,121 @@ intptr_t fio_accept(intptr_t srv_uuid) {
   return fd2uuid(client);
 }
 
+/* Creates a TCP/IP socket - returning it's uuid (or -1) */
+static intptr_t fio_tcp_socket(const char *address, const char *port,
+                               uint8_t server) {
+  /* TCP/IP socket */
+  // setup the address
+  struct addrinfo hints = {0};
+  struct addrinfo *addrinfo;       // will point to the results
+  memset(&hints, 0, sizeof hints); // make sure the struct is empty
+  hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
+  hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+  hints.ai_flags = AI_PASSIVE;     // fill in my IP for me
+  if (getaddrinfo(address, port, &hints, &addrinfo)) {
+    // perror("addr err");
+    return -1;
+  }
+  // get the file descriptor
+  int fd =
+      socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
+  if (fd <= 0) {
+    freeaddrinfo(addrinfo);
+    return -1;
+  }
+  // make sure the socket is non-blocking
+  if (fio_set_non_block(fd) < 0) {
+    freeaddrinfo(addrinfo);
+    close(fd);
+    return -1;
+  }
+  if (server) {
+    {
+      // avoid the "address taken"
+  #ifdef __MINGW32__
+    char optval = 1;
+  #else
+    int optval = 1;
+  #endif
+      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    }
+    // bind the address to the socket
+    int bound = 0;
+    for (struct addrinfo *i = addrinfo; i != NULL; i = i->ai_next) {
+      if (!bind(fd, i->ai_addr, i->ai_addrlen))
+        bound = 1;
+    }
+    if (!bound) {
+      // perror("bind err");
+      freeaddrinfo(addrinfo);
+      close(fd);
+      return -1;
+    }
+#ifdef TCP_FASTOPEN
+    {
+      // support TCP Fast Open when available
+      int optval = 128;
+      setsockopt(fd, addrinfo->ai_protocol, TCP_FASTOPEN, &optval,
+                 sizeof(optval));
+    }
+#endif
+    if (listen(fd, SOMAXCONN) < 0) {
+      freeaddrinfo(addrinfo);
+      close(fd);
+      return -1;
+    }
+  } else {
+#ifdef __MINGW32__
+    char optval = 1;
+#else
+    int optval = 1;
+#endif
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval));
+    errno = 0;
+    for (struct addrinfo *i = addrinfo; i; i = i->ai_next) {
+#ifdef __MINGW32__
+      int connres = connect(fd, i->ai_addr, i->ai_addrlen);
+      if (connres == SOCKET_ERROR) {
+        int error = WSAGetLastError();
+        if (error == WSAEISCONN || error == WSAEWOULDBLOCK || error == WSAEINPROGRESS) 
+          goto socket_okay;
+      } else if (connres == 0) { goto socket_okay; }
+#else
+      if (connect(fd, i->ai_addr, i->ai_addrlen) == 0 || errno == EINPROGRESS)
+        goto socket_okay;
+#endif
+    }
+    freeaddrinfo(addrinfo);
+    close(fd);
+    return -1;
+  }
+socket_okay:
+  fio_lock(&fd_data(fd).protocol_lock);
+  fio_clear_fd(fd, 1);
+  fio_unlock(&fd_data(fd).protocol_lock);
+  fio_tcp_addr_cpy(fd, addrinfo->ai_family, (void *)addrinfo);
+  freeaddrinfo(addrinfo);
+  intptr_t ufd = fd2uuid(fd);
+  return ufd;
+}
+
+#ifdef __MINGW32__
+/* Creates a tcp socket in the 10000 to 19999 port range */
+static intptr_t fio_unix_socket(const char *address, uint8_t server) {
+  static char *localhost = "localhost";
+  char localport[6];
+  int vary = _getpid();
+  int iterations = sizeof(int) * 8;
+  int i = iterations;
+  while (vary > 9999) {
+    i--;
+    vary &= ~(1u << i);
+  }
+  sprintf_s(localport, 6, "1%04u", vary);
+  fprintf(stderr, "Using tcp socket on localhost port %s instead of unix socket on Windows.\n", localport);
+  return fio_tcp_socket(localhost, localport, server);
+}
+#else
 /* Creates a Unix socket - returning it's uuid (or -1) */
 static intptr_t fio_unix_socket(const char *address, uint8_t server) {
   /* Unix socket */
@@ -2446,7 +2988,7 @@ static intptr_t fio_unix_socket(const char *address, uint8_t server) {
       close(fd);
       return -1;
     }
-    /* chmod for foriegn connections */
+    /* chmod for foreign connections */
     fchmod(fd, 0777);
   } else {
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1 &&
@@ -2464,86 +3006,7 @@ static intptr_t fio_unix_socket(const char *address, uint8_t server) {
   }
   return fd2uuid(fd);
 }
-
-/* Creates a TCP/IP socket - returning it's uuid (or -1) */
-static intptr_t fio_tcp_socket(const char *address, const char *port,
-                               uint8_t server) {
-  /* TCP/IP socket */
-  // setup the address
-  struct addrinfo hints = {0};
-  struct addrinfo *addrinfo;       // will point to the results
-  memset(&hints, 0, sizeof hints); // make sure the struct is empty
-  hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
-  hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
-  hints.ai_flags = AI_PASSIVE;     // fill in my IP for me
-  if (getaddrinfo(address, port, &hints, &addrinfo)) {
-    // perror("addr err");
-    return -1;
-  }
-  // get the file descriptor
-  int fd =
-      socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
-  if (fd <= 0) {
-    freeaddrinfo(addrinfo);
-    return -1;
-  }
-  // make sure the socket is non-blocking
-  if (fio_set_non_block(fd) < 0) {
-    freeaddrinfo(addrinfo);
-    close(fd);
-    return -1;
-  }
-  if (server) {
-    {
-      // avoid the "address taken"
-      int optval = 1;
-      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-    }
-    // bind the address to the socket
-    int bound = 0;
-    for (struct addrinfo *i = addrinfo; i != NULL; i = i->ai_next) {
-      if (!bind(fd, i->ai_addr, i->ai_addrlen))
-        bound = 1;
-    }
-    if (!bound) {
-      // perror("bind err");
-      freeaddrinfo(addrinfo);
-      close(fd);
-      return -1;
-    }
-#ifdef TCP_FASTOPEN
-    {
-      // support TCP Fast Open when available
-      int optval = 128;
-      setsockopt(fd, addrinfo->ai_protocol, TCP_FASTOPEN, &optval,
-                 sizeof(optval));
-    }
 #endif
-    if (listen(fd, SOMAXCONN) < 0) {
-      freeaddrinfo(addrinfo);
-      close(fd);
-      return -1;
-    }
-  } else {
-    int one = 1;
-    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-    errno = 0;
-    for (struct addrinfo *i = addrinfo; i; i = i->ai_next) {
-      if (connect(fd, i->ai_addr, i->ai_addrlen) == 0 || errno == EINPROGRESS)
-        goto socket_okay;
-    }
-    freeaddrinfo(addrinfo);
-    close(fd);
-    return -1;
-  }
-socket_okay:
-  fio_lock(&fd_data(fd).protocol_lock);
-  fio_clear_fd(fd, 1);
-  fio_unlock(&fd_data(fd).protocol_lock);
-  fio_tcp_addr_cpy(fd, addrinfo->ai_family, (void *)addrinfo);
-  freeaddrinfo(addrinfo);
-  return fd2uuid(fd);
-}
 
 /* PUBLIC API: opens a server or client socket */
 intptr_t fio_socket(const char *address, const char *port, uint8_t server) {
@@ -3548,9 +4011,12 @@ static void __attribute__((constructor)) fio_lib_init(void) {
   {
 #ifdef _SC_OPEN_MAX
     capa = sysconf(_SC_OPEN_MAX);
+#elif defined(__MINGW32__)
+    capa = _getmaxstdio();
 #elif defined(FOPEN_MAX)
     capa = FOPEN_MAX;
 #endif
+#ifndef __MINGW32__
     // try to maximize limits - collect max and set to max
     struct rlimit rlim = {.rlim_max = 0};
     if (getrlimit(RLIMIT_NOFILE, &rlim) == -1) {
@@ -3569,6 +4035,8 @@ static void __attribute__((constructor)) fio_lib_init(void) {
       if (capa > 1024) /* leave a slice of room */
         capa -= 16;
     }
+#endif
+
     /* initialize memory allocator */
     fio_mem_init();
     /* initialize polling engine */
@@ -3586,6 +4054,16 @@ static void __attribute__((constructor)) fio_lib_init(void) {
                   (capa * (sizeof(*fio_data->info)))),
                  (sizeof(*fio_data->poll) + sizeof(*fio_data->info)),
                  sizeof(*fio_data));
+#elif FIO_ENGINE_WSAPOLL
+    FIO_LOG_INFO("facil.io " FIO_VERSION_STRING " capacity initialization:\n"
+                 "*    Meximum open files %zu out of %zu\n"
+                 "*    Allocating %zu bytes for state handling.\n"
+                 "*    %zu bytes per connection + %zu for state handling.",
+                 capa, FOPEN_MAX,
+                 (sizeof(*fio_data) + (capa * (sizeof(*fio_data->poll))) +
+                  (capa * (sizeof(*fio_data->info)))),
+                 (sizeof(*fio_data->poll) + sizeof(*fio_data->info)),
+                 sizeof(*fio_data));
 #else
     FIO_LOG_INFO("facil.io " FIO_VERSION_STRING " capacity initialization:\n"
                  "*    Meximum open files %zu out of %zu\n"
@@ -3598,7 +4076,7 @@ static void __attribute__((constructor)) fio_lib_init(void) {
 #endif
   }
 
-#if FIO_ENGINE_POLL
+#if FIO_ENGINE_POLL || FIO_ENGINE_WSAPOLL
   /* allocate and initialize main data structures by detected capacity */
   fio_data = fio_mmap(sizeof(*fio_data) + (capa * (sizeof(*fio_data->poll))) +
                       (capa * (sizeof(*fio_data->info))));
@@ -3618,7 +4096,7 @@ static void __attribute__((constructor)) fio_lib_init(void) {
 
   for (ssize_t i = 0; i < capa; ++i) {
     fio_clear_fd(i, 0);
-#if FIO_ENGINE_POLL
+#if FIO_ENGINE_POLL || FIO_ENGINE_WSAPOLL
     fio_data->poll[i].fd = -1;
 #endif
   }
@@ -3915,7 +4393,7 @@ void fio_start FIO_IGNORE_MACRO(struct fio_start_args args) {
   fio_data->threads = (uint16_t)args.threads;
   fio_data->active = 1;
   fio_data->is_worker = 0;
-
+  
   fio_state_callback_force(FIO_CALL_PRE_START);
 #if HAVE_OPENSSL
   FIO_LOG_INFO(
@@ -4367,7 +4845,7 @@ Section Start Marker
 
 
 ***************************************************************************** */
-
+ #ifndef __MINGW32__
 /**
  * Returns the number of registered ALPN protocol names.
  *
@@ -4441,6 +4919,7 @@ void FIO_TLS_WEAK fio_tls_destroy(void *tls) {
   return;
   (void)tls;
 }
+#endif
 
 /* *****************************************************************************
 Section Start Marker
@@ -4498,8 +4977,10 @@ typedef struct {
 
 static void fio_listen_cleanup_task(void *pr_) {
   fio_listen_protocol_s *pr = pr_;
+#ifndef __MINGW32__
   if (pr->tls)
     fio_tls_destroy(pr->tls);
+#endif
   if (pr->on_finish) {
     pr->on_finish(pr->uuid, pr->udata);
   }
@@ -4540,6 +5021,7 @@ static void fio_listen_on_data(intptr_t uuid, fio_protocol_s *pr_) {
   }
 }
 
+#ifndef __MINGW32__
 static void fio_listen_on_data_tls(intptr_t uuid, fio_protocol_s *pr_) {
   fio_listen_protocol_s *pr = (fio_listen_protocol_s *)pr_;
   for (int i = 0; i < 4; ++i) {
@@ -4560,6 +5042,7 @@ static void fio_listen_on_data_tls_alpn(intptr_t uuid, fio_protocol_s *pr_) {
     fio_tls_accept(client, pr->tls, pr->udata);
   }
 }
+#endif
 
 /* stub for editor - unused */
 void fio_listen____(void);
@@ -4570,11 +5053,19 @@ void fio_listen____(void);
  */
 intptr_t fio_listen FIO_IGNORE_MACRO(struct fio_listen_args args) {
   // ...
+#ifdef __MINGW32__
+  if ((!args.on_open) ||
+      (!args.address && !args.port)) {
+    errno = EINVAL;
+    goto error;
+  }
+#else
   if ((!args.on_open && (!args.tls || !fio_tls_alpn_count(args.tls))) ||
       (!args.address && !args.port)) {
     errno = EINVAL;
     goto error;
   }
+#endif
 
   size_t addr_len = 0;
   size_t port_len = 0;
@@ -4600,19 +5091,23 @@ intptr_t fio_listen FIO_IGNORE_MACRO(struct fio_listen_args args) {
   fio_listen_protocol_s *pr = malloc(sizeof(*pr) + addr_len + port_len +
                                      ((addr_len + port_len) ? 2 : 0));
   FIO_ASSERT_ALLOC(pr);
-
+#ifndef __MINGW32__
   if (args.tls)
     fio_tls_dup(args.tls);
-
+#endif
   *pr = (fio_listen_protocol_s){
       .pr =
           {
               .on_close = fio_listen_on_close,
               .ping = mock_ping_eternal,
+#ifdef __MINGW32__
+              .on_data = fio_listen_on_data,
+#else
               .on_data = (args.tls ? (fio_tls_alpn_count(args.tls)
                                           ? fio_listen_on_data_tls_alpn
                                           : fio_listen_on_data_tls)
                                    : fio_listen_on_data),
+#endif
           },
       .uuid = uuid,
       .udata = args.udata,
@@ -4704,8 +5199,10 @@ static void fio_connect_on_close(intptr_t uuid, fio_protocol_s *pr_) {
   fio_connect_protocol_s *pr = (fio_connect_protocol_s *)pr_;
   if (pr->on_fail)
     pr->on_fail(uuid, pr->udata);
+#ifndef __MINGW32__
   if (pr->tls)
     fio_tls_destroy(pr->tls);
+#endif
   fio_free(pr);
   (void)uuid;
 }
@@ -4721,6 +5218,7 @@ static void fio_connect_on_ready(intptr_t uuid, fio_protocol_s *pr_) {
   (void)uuid;
 }
 
+#ifndef __MINGW32__
 static void fio_connect_on_ready_tls(intptr_t uuid, fio_protocol_s *pr_) {
   fio_connect_protocol_s *pr = (fio_connect_protocol_s *)pr_;
   if (pr->pr.on_ready == mock_on_ev)
@@ -4743,16 +5241,25 @@ static void fio_connect_on_ready_tls_alpn(intptr_t uuid, fio_protocol_s *pr_) {
   fio_poll_add(fio_uuid2fd(uuid));
   (void)uuid;
 }
+#endif
 
 /* stub for sublime text function navigation */
 intptr_t fio_connect___(struct fio_connect_args args);
 
 intptr_t fio_connect FIO_IGNORE_MACRO(struct fio_connect_args args) {
+#ifdef __MINGW32__
+  if ((!args.on_connect) ||
+      (!args.address && !args.port)) {
+    errno = EINVAL;
+    goto error;
+  }
+#else
   if ((!args.on_connect && (!args.tls || !fio_tls_alpn_count(args.tls))) ||
       (!args.address && !args.port)) {
     errno = EINVAL;
     goto error;
   }
+#endif
   const intptr_t uuid = fio_socket(args.address, args.port, 0);
   if (uuid == -1)
     goto error;
@@ -4760,17 +5267,21 @@ intptr_t fio_connect FIO_IGNORE_MACRO(struct fio_connect_args args) {
 
   fio_connect_protocol_s *pr = fio_malloc(sizeof(*pr));
   FIO_ASSERT_ALLOC(pr);
-
+#ifndef __MINGW32__
   if (args.tls)
     fio_tls_dup(args.tls);
-
+#endif
   *pr = (fio_connect_protocol_s){
       .pr =
           {
+#ifdef __MINGW32__
+              .on_ready = fio_connect_on_ready,
+#else
               .on_ready = (args.tls ? (fio_tls_alpn_count(args.tls)
                                            ? fio_connect_on_ready_tls_alpn
                                            : fio_connect_on_ready_tls)
                                     : fio_connect_on_ready),
+#endif
               .on_close = fio_connect_on_close,
           },
       .uuid = uuid,
@@ -6238,8 +6749,12 @@ static void fio_listen2cluster(void *ignore) {
       .ping = mock_ping_eternal,
       .on_close = fio_cluster_listen_on_close,
   };
+#ifdef __MINGW32__
+  FIO_LOG_DEBUG("(%d) Listening to cluster on above tcp socket.", (int)getpid());
+#else
   FIO_LOG_DEBUG("(%d) Listening to cluster: %s", (int)getpid(),
                 cluster_data.name);
+#endif
   fio_attach(cluster_data.uuid, p);
   (void)ignore;
 }
@@ -7303,6 +7818,10 @@ static void fio_mem_init(void) {
   ssize_t cpu_count = 0;
 #ifdef _SC_NPROCESSORS_ONLN
   cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+#elif defined(__MINGW32__)
+  SYSTEM_INFO sys_info;
+  GetSystemInfo(&sys_info);
+  cpu_count = sys_info.dwNumberOfProcessors;
 #else
 #warning Dynamic CPU core count is unavailable - assuming 8 cores for memory allocation pools.
 #endif
@@ -9460,6 +9979,12 @@ FIO_FUNC void fio_socket_test(void) {
 
   fprintf(stderr, "=== Testing facil.io listening socket creation (partial "
                   "testing only).\n");
+#ifdef __MINGW32__
+  fprintf(stderr, "* testing on TCP/IP port 8765\n");
+  intptr_t uuid;
+  intptr_t client1;
+  intptr_t client2;
+#else
   fprintf(stderr, "* testing on TCP/IP port 8765 and Unix socket: %s\n",
           fio_str_data(&sock_name));
   intptr_t uuid = fio_socket(fio_str_data(&sock_name), NULL, 1);
@@ -9516,6 +10041,7 @@ FIO_FUNC void fio_socket_test(void) {
   unlink(fio_str_data(&sock_name));
   /* free unix socket name */
   fio_str_free(&sock_name);
+#endif
 
   uuid = fio_socket(NULL, "8765", 1);
   FIO_ASSERT(uuid != -1, "Failed to open TCP/IP socket on port 8765");
@@ -9726,7 +10252,7 @@ FIO_FUNC void fio_set_test(void) {
   FIO_ASSERT(!fio_set_test_last(&s), "empty set shouldn't have a last object");
   FIO_ASSERT(!fio_hash_test_last(&h).key && !fio_hash_test_last(&h).obj,
              "empty hash shouldn't have a last object");
-
+  
   for (uintptr_t i = 1; i < FIO_SET_TEST_COUNT; ++i) {
     fio_set_test_insert(&s, i, i);
     fio_hash_test_insert(&h, i, i, i + 1, NULL);
@@ -10504,7 +11030,7 @@ FIO_FUNC void fio_base64_test(void) {
       fprintf(stderr,
               ":\n--- fio Base64 Test FAILED!\nstring: %s\nlength: %lu\n "
               "expected: %s\ngot: %s\n\n",
-              sets[i].str, strlen(sets[i].str), sets[i].base64, buffer);
+              sets[i].str, (u_long)strlen(sets[i].str), sets[i].base64, buffer);
       FIO_ASSERT(0, "Base64 failure.");
     }
     i++;
@@ -10839,7 +11365,7 @@ FIO_FUNC void fio_atol_test(void) {
     __asm__ volatile("" ::: "memory");
   }
   end = clock();
-  fprintf(stderr, "fio_atol base 10 (%ld): %zd CPU cycles\n", result,
+  fprintf(stderr, "fio_atol base 10 (%ld): %zd CPU cycles\n", (long int)result,
           end - start);
 
   result = 0;
@@ -10850,7 +11376,7 @@ FIO_FUNC void fio_atol_test(void) {
     __asm__ volatile("" ::: "memory");
   }
   end = clock();
-  fprintf(stderr, "native strtol base 10 (%ld): %zd CPU cycles\n", result,
+  fprintf(stderr, "native strtol base 10 (%ld): %zd CPU cycles\n", (long int)result,
           end - start);
 
   result = 0;
@@ -10862,7 +11388,7 @@ FIO_FUNC void fio_atol_test(void) {
     __asm__ volatile("" ::: "memory");
   }
   end = clock();
-  fprintf(stderr, "fio_atol base 16 (%ld): %zd CPU cycles\n", result,
+  fprintf(stderr, "fio_atol base 16 (%ld): %zd CPU cycles\n", (long int)result,
           end - start);
 
   result = 0;
@@ -10873,7 +11399,7 @@ FIO_FUNC void fio_atol_test(void) {
     __asm__ volatile("" ::: "memory");
   }
   end = clock();
-  fprintf(stderr, "native strtol base 16 (%ld): %zd CPU cycles%s\n", result,
+  fprintf(stderr, "native strtol base 16 (%ld): %zd CPU cycles%s\n", (long int)result,
           end - start, (result != expect ? " (!?stdlib overflow?!)" : ""));
 
   result = 0;
@@ -10897,7 +11423,7 @@ FIO_FUNC void fio_atol_test(void) {
   start = clock();
   for (size_t i = 0; i < FIO_ATOL_TEST_MAX_CYCLES; ++i) {
     __asm__ volatile("" ::: "memory");
-    sprintf(number, "%ld", expect);
+    sprintf(number, "%ld", (long int)expect);
     __asm__ volatile("" ::: "memory");
   }
   end = clock();
