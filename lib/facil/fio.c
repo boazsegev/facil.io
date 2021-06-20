@@ -1837,7 +1837,7 @@ void fio_expected_concurrency(int16_t *threads, int16_t *processes) {
 
   /* make sure we have at least one (or exactly one on Windows) process and at least one thread */
 #ifdef __MINGW32__
-  FIO_LOG_WARNING("Using only 1 worker on Windows, because fork() support missing.");
+  FIO_LOG_WARNING("Using only 1 worker on Windows, because fork() support is missing.");
   *processes = 1;
 #else
   if (*processes <= 0)
