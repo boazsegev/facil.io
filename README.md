@@ -27,7 +27,7 @@ Please select a release version for any production needs.
 ### Windows support
 
 Windows support is available for development and not at all recommended for production use.
-There si no ssl support.
+There is no ssl support.
 Only one worker is allowed, because there is no fork() support on Windows.
 Instead of unix sockets a local tcp port in the port range from 10000 to 19999 is used for inter process/thread communication, which makes things a bit slower.
 
