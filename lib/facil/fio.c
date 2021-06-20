@@ -953,7 +953,7 @@ static size_t fio_poll(void);
  * A thread entering this function should wait for new evennts.
  */
 static void fio_defer_thread_wait(void) {
-#if FIO_ENGINE_POLL
+#if FIO_ENGINE_POLL || FIO_ENGINE_WSAPOLL
   fio_poll();
   return;
 #endif
@@ -1789,11 +1789,16 @@ void fio_expected_concurrency(int16_t *threads, int16_t *processes) {
       cpu_count = FIO_CPU_CORES_LIMIT;
     }
 #endif
+#ifdef __MINGW32__
+    *threads = (int16_t)cpu_count;
+    *processes = 1;
+#else
     *threads = *processes = (int16_t)cpu_count;
     if (cpu_count > 3) {
       /* leave a core available for the kernel */
       --(*processes);
     }
+#endif
   } else if (*threads < 0 || *processes < 0) {
     /* Set any option that is less than 0 be equal to cores/value */
     /* Set any option equal to 0 be equal to the other option in value */
@@ -1830,9 +1835,14 @@ void fio_expected_concurrency(int16_t *threads, int16_t *processes) {
     }
   }
 
-  /* make sure we have at least one process and at least one thread */
+  /* make sure we have at least one (or exactly one on Windows) process and at least one thread */
+#ifdef __MINGW32__
+  FIO_LOG_WARNING("Using only 1 worker on Windows, because fork() support missing.");
+  *processes = 1;
+#else
   if (*processes <= 0)
     *processes = 1;
+#endif
   if (*threads <= 0)
     *threads = 1;
 }
