@@ -902,7 +902,11 @@ FIO_FUNC void fio_thread_suspend(void) {
   fio_ls_embd_push(&fio_thread_queue, &fio_thread_data.node);
   fio_unlock(&fio_thread_lock);
   struct pollfd list = {
+#ifdef __MINGW32__
+      .events = POLLIN,
+#else
       .events = (POLLPRI | POLLIN),
+#endif
       .fd = fio_thread_data.fd_wait,
   };
 #ifdef __MINGW32__
@@ -2338,7 +2342,7 @@ Section Start Marker
  */
 char const *fio_engine(void) { return "wsapoll"; }
 
-#define FIO_POLL_READ_EVENTS (POLLPRI | POLLIN)
+#define FIO_POLL_READ_EVENTS (POLLIN)
 #define FIO_POLL_WRITE_EVENTS (POLLOUT)
 
 static void fio_poll_close(void) {
@@ -2419,7 +2423,9 @@ static size_t fio_poll(void) {
 
   if (start == end) {
     fio_throttle_thread((timeout * 1000000UL));
-  } else if (WSAPoll(list + start, end - start, timeout) == -1) {
+  } else if (WSAPoll(list + start, end - start, timeout) == SOCKET_ERROR) {
+    int error = WSAGetLastError();
+    FIO_LOG_DEBUG("fio_poll WSAPoll error %i", error);
     goto finish;
   }
   for (size_t i = start; i < end; ++i) {
