@@ -3541,12 +3541,20 @@ Connection Read / Write Hooks, for overriding the system calls
 
 static ssize_t fio_hooks_default_read(intptr_t uuid, void *udata, void *buf,
                                       size_t count) {
+#ifdef __MINGW32__
+  return recv(fio_uuid2fd(uuid), buf, count, 0);
+#else
   return read(fio_uuid2fd(uuid), buf, count);
+#endif
   (void)(udata);
 }
 static ssize_t fio_hooks_default_write(intptr_t uuid, void *udata,
                                        const void *buf, size_t count) {
+#ifdef __MINGW32__
+  return sendto(fio_uuid2fd(uuid), buf, count, 0, NULL, 0);
+#else
   return write(fio_uuid2fd(uuid), buf, count);
+#endif
   (void)(udata);
 }
 
