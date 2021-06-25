@@ -143,6 +143,7 @@ OPTIMIZATION:=-O0 -march=native -fno-omit-frame-pointer
 endif
 WARNINGS += -Wno-format -Wno-error=unused-parameter
 LINKER_LIBS += Ws2_32
+LDFLAGS += -static
 else ifeq ($(OS),Darwin) # Run MacOS commands
 	# debugger
 	DB=lldb
