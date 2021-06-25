@@ -5,6 +5,7 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 ***************************************************************************** */
 #ifdef __MINGW32__
+#define FD_SETSIZE 1024
 #define FIO_FORCE_MALLOC 1
 #define FIO_DISABLE_HOT_RESTART 1
 #endif
@@ -400,6 +401,10 @@ typedef struct {
   void *rw_udata;
   /* Objects linked to the UUID */
   fio_uuid_links_s links;
+#ifdef __MINGW32__
+  /* Winsock operating system socket handle */
+  SOCKET socket_handle;
+#endif
 } fio_fd_data_s;
 
 typedef struct {
@@ -503,6 +508,9 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
   protocol = fd_data(fd).protocol;
   rw_hooks = fd_data(fd).rw_hooks;
   rw_udata = fd_data(fd).rw_udata;
+#ifdef __MINGW32__
+  SOCKET socket_handle = fd_data(fd).socket_handle;
+#endif
   fd_data(fd) = (fio_fd_data_s){
       .open = is_open,
       .sock_lock = fd_data(fd).sock_lock,
@@ -510,11 +518,14 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
       .rw_hooks = (fio_rw_hook_s *)&FIO_DEFAULT_RW_HOOKS,
       .counter = fd_data(fd).counter + 1,
       .packet_last = &fd_data(fd).packet,
+#ifdef __MINGW32__
+      .socket_handle = socket_handle,
+#endif
   };
   if (fio_data->max_protocol_fd < fd) {
     fio_data->max_protocol_fd = fd;
   } else {
-    while (fio_data->max_protocol_fd &&
+    while ((fio_data->max_protocol_fd > fd) &&
            !fd_data(fio_data->max_protocol_fd).open)
       --fio_data->max_protocol_fd;
   }
@@ -859,8 +870,18 @@ Suspending and renewing thread execution (signaling events)
  * progressive nano-sleep throttling system that is less exact.
  */
 #ifndef FIO_DEFER_THROTTLE_POLL
+#ifdef __MINGW32_
+#define FIO_DEFER_THROTTLE_POLL 1
+#else
 #define FIO_DEFER_THROTTLE_POLL 0
 #endif
+#endif
+
+#ifdef __MINGW32__
+CONDITION_VARIABLE thread_cont;
+CRITICAL_SECTION thread_cont_cs;
+#endif
+  
 
 typedef struct fio_thread_queue_s {
   fio_ls_embd_s node;
@@ -874,6 +895,7 @@ static __thread fio_thread_queue_s fio_thread_data = {.fd_wait = -1,
                                                       .fd_signal = -1};
 
 FIO_FUNC inline void fio_thread_make_suspendable(void) {
+#ifndef __MINGW32__
   if (fio_thread_data.fd_signal >= 0)
     return;
   int fd[2] = {0, 0};
@@ -885,35 +907,35 @@ FIO_FUNC inline void fio_thread_make_suspendable(void) {
              "(fio) couldn't set internal pipe to non-blocking mode.");
   fio_thread_data.fd_wait = fd[0];
   fio_thread_data.fd_signal = fd[1];
+#endif
 }
 
 FIO_FUNC inline void fio_thread_cleanup(void) {
+#ifndef __MINGW32__
   if (fio_thread_data.fd_signal < 0)
     return;
   close(fio_thread_data.fd_wait);
   close(fio_thread_data.fd_signal);
   fio_thread_data.fd_wait = -1;
   fio_thread_data.fd_signal = -1;
+#endif
 }
 
 /* suspend thread execution (might be resumed unexpectedly) */
 FIO_FUNC void fio_thread_suspend(void) {
+#ifdef __MINGW32__
+  EnterCriticalSection(&thread_cont_cs);
+  SleepConditionVariableCS(&thread_cont, &thread_cont_cs, 5000);
+  LeaveCriticalSection(&thread_cont_cs);
+#else
   fio_lock(&fio_thread_lock);
   fio_ls_embd_push(&fio_thread_queue, &fio_thread_data.node);
   fio_unlock(&fio_thread_lock);
   struct pollfd list = {
-#ifdef __MINGW32__
-      .events = POLLIN,
-#else
       .events = (POLLPRI | POLLIN),
-#endif
       .fd = fio_thread_data.fd_wait,
   };
-#ifdef __MINGW32__
-  if (WSAPoll(&list, 1, 5000) > 0) {
-#else
   if (poll(&list, 1, 5000) > 0) {
-#endif
     /* thread was removed from the list through signal */
     uint64_t data;
     int r = read(fio_thread_data.fd_wait, &data, sizeof(data));
@@ -924,10 +946,14 @@ FIO_FUNC void fio_thread_suspend(void) {
     fio_ls_embd_remove(&fio_thread_data.node);
     fio_unlock(&fio_thread_lock);
   }
+#endif
 }
 
 /* wake up a single thread */
 FIO_FUNC void fio_thread_signal(void) {
+#ifdef __MINGW32__
+  WakeConditionVariable(&thread_cont);
+#else
   fio_thread_queue_s *t;
   int fd = -2;
   fio_lock(&fio_thread_lock);
@@ -943,18 +969,23 @@ FIO_FUNC void fio_thread_signal(void) {
     /* hardly the best way, but there's a thread sleeping on air */
     kill(getpid(), SIGCONT);
   }
+#endif
 }
 
 /* wake up all threads */
 FIO_FUNC void fio_thread_broadcast(void) {
+#ifdef __MINGW32__
+  WakeAllConditionVariable(&thread_cont);
+#else
   while (fio_ls_embd_any(&fio_thread_queue)) {
     fio_thread_signal();
   }
+#endif
 }
 
 static size_t fio_poll(void);
 /**
- * A thread entering this function should wait for new evennts.
+ * A thread entering this function should wait for new events.
  */
 static void fio_defer_thread_wait(void) {
 #if FIO_ENGINE_POLL || FIO_ENGINE_WSAPOLL
@@ -2418,6 +2449,12 @@ static size_t fio_poll(void) {
   }
   fio_unlock(&fio_data->lock);
 
+  // replace facil fds with actual Windows socket handles in list
+  int i;
+  for(int i = 0; i < (end - start); i++) {
+    list[i].fd = fd_data(list[i].fd).socket_handle;
+  }
+
   int timeout = fio_timer_calc_first_interval();
   size_t count = 0;
 
@@ -2428,31 +2465,40 @@ static size_t fio_poll(void) {
     FIO_LOG_DEBUG("fio_poll WSAPoll error %i", error);
     goto finish;
   }
+  int fd;
   for (size_t i = start; i < end; ++i) {
     if (list[i].revents) {
-      touchfd(i);
+      fd = fio_fd4handle(list[i].fd);
+      if (fd == -1) {
+        // someone cleared the handle from the fd beforehand
+        closesocket(list[i].fd);
+        continue;
+      }
+      touchfd(fd);
       ++count;
+
       if (list[i].revents & FIO_POLL_WRITE_EVENTS) {
-        // FIO_LOG_DEBUG("Poll Write %zu => %p", i, (void *)fd2uuid(i));
-        fio_poll_remove_write(i);
-        fio_defer_push_urgent(deferred_on_ready, (void *)fd2uuid(i), NULL);
+        // FIO_LOG_DEBUG("Poll Write %zu => %p", fd, (void *)fd2uuid(fd));
+        fio_poll_remove_write(fd);
+        fio_defer_push_urgent(deferred_on_ready, (void *)fd2uuid(fd), NULL);
       }
       if (list[i].revents & FIO_POLL_READ_EVENTS) {
-        // FIO_LOG_DEBUG("Poll Read %zu => %p", i, (void *)fd2uuid(i));
-        fio_poll_remove_read(i);
-        fio_defer_push_task(deferred_on_data, (void *)fd2uuid(i), NULL);
+        // FIO_LOG_DEBUG("Poll Read %zu => %p", fd, (void *)fd2uuid(fd));
+        fio_poll_remove_read(fd);
+        fio_defer_push_task(deferred_on_data, (void *)fd2uuid(fd), NULL);
       }
       if (list[i].revents & (POLLHUP | POLLERR)) {
-        // FIO_LOG_DEBUG("Poll Hangup %zu => %p", i, (void *)fd2uuid(i));
-        fio_poll_remove_fd(i);
-        fio_force_close_in_poll(fd2uuid(i));
+        // FIO_LOG_DEBUG("Poll Hangup %zu => %p", fd, (void *)fd2uuid(fd));
+        fio_poll_remove_fd(fd);
+        fio_force_close_in_poll(fd2uuid(fd));
       }
       if (list[i].revents & POLLNVAL) {
-        // FIO_LOG_DEBUG("Poll Invalid %zu => %p", i, (void *)fd2uuid(i));
-        fio_poll_remove_fd(i);
-        fio_lock(&fd_data(i).protocol_lock);
-        fio_clear_fd(i, 0);
-        fio_unlock(&fd_data(i).protocol_lock);
+        // FIO_LOG_DEBUG("Poll Invalid %zu => %p", fd, (void *)fd2uuid(fd));
+        fio_poll_remove_fd(fd);
+        fio_lock(&fd_data(fd).protocol_lock);
+        fio_clear_handle(fd);
+        fio_clear_fd(fd, 0);
+        fio_unlock(&fd_data(fd).protocol_lock);
       }
     }
   }
@@ -2777,6 +2823,55 @@ static void fio_tcp_addr_cpy(int fd, int family, struct sockaddr *addrinfo) {
   }
 }
 
+#ifdef __MINGW32__
+int fio_handle2fd(SOCKET handle) {
+  int found = 0;
+  int fd = -1;
+  int it = 0;
+  while(!found) {
+    fd++;
+    if (fd >= fio_data->capa) {
+      fd = 0;
+      it++;
+      fio_reschedule_thread();
+    }
+    if (fd_data(fd).socket_handle)
+      continue;
+    fio_lock(&(fd_data(fd).sock_lock));
+    if (fd_data(fd).socket_handle) {
+      fio_unlock(&(fd_data(fd).sock_lock));
+      continue;
+    } else {
+      fd_data(fd).socket_handle = handle;
+      found = 1;
+      fio_unlock(&(fd_data(fd).sock_lock));
+    }
+  }
+  // fprintf(stderr, "while took %i iterations, found fd %i\n", it, fd);
+  return fd;
+}
+
+int fio_fd4handle(SOCKET handle) {
+  int fd = 0;
+  while(fd < fio_data->capa) {
+    if (fd_data(fd).socket_handle == handle) {
+      //fprintf(stderr, "while found fd %i 4handle\n", fd);
+      return fd;
+    }
+    fd++;
+  }
+  //fprintf(stderr, "while found nothing 4handle\n");
+  return -1;
+}
+
+void fio_clear_handle(int fd) {
+  // fprintf(stderr, "clearing handle for %i\n", fd);
+  fio_lock(&(fd_data(fd).sock_lock));
+  fd_data(fd).socket_handle = 0;
+  fio_unlock(&(fd_data(fd).sock_lock));
+}
+#endif
+
 /**
  * `fio_accept` accepts a new socket connection from a server socket - see the
  * server flag on `fio_socket`.
@@ -2794,11 +2889,19 @@ intptr_t fio_accept(intptr_t srv_uuid) {
   if (client <= 0)
     return -1;
 #else
+#ifdef __MINGW32__
+  client = accept(fd_data(fio_uuid2fd(srv_uuid)).socket_handle, (struct sockaddr *)addrinfo, &addrlen);
+#else
   client = accept(fio_uuid2fd(srv_uuid), (struct sockaddr *)addrinfo, &addrlen);
+#endif
   if (client <= 0)
     return -1;
   if (fio_set_non_block(client) == -1) {
-    close(client);
+#ifdef __MINGW32__
+      closesocket(client);
+#else      
+      close(client);
+#endif
     return -1;
   }
 #endif
@@ -2833,7 +2936,9 @@ intptr_t fio_accept(intptr_t srv_uuid) {
     }
 #endif
   }
-
+#ifdef __MINGW32__
+  client = fio_handle2fd(client);
+#endif
   fio_lock(&fd_data(client).protocol_lock);
   fio_clear_fd(client, 1);
   fio_unlock(&fd_data(client).protocol_lock);
@@ -2877,7 +2982,11 @@ static intptr_t fio_tcp_socket(const char *address, const char *port,
   // make sure the socket is non-blocking
   if (fio_set_non_block(fd) < 0) {
     freeaddrinfo(addrinfo);
-    close(fd);
+#ifdef __MINGW32__
+      closesocket(fd);
+#else      
+      close(fd); // socket
+#endif
     return -1;
   }
   if (server) {
@@ -2899,7 +3008,11 @@ static intptr_t fio_tcp_socket(const char *address, const char *port,
     if (!bound) {
       // perror("bind err");
       freeaddrinfo(addrinfo);
-      close(fd);
+#ifdef __MINGW32__
+      closesocket(fd);
+#else      
+      close(fd); // socket
+#endif
       return -1;
     }
 #ifdef TCP_FASTOPEN
@@ -2912,7 +3025,11 @@ static intptr_t fio_tcp_socket(const char *address, const char *port,
 #endif
     if (listen(fd, SOMAXCONN) < 0) {
       freeaddrinfo(addrinfo);
-      close(fd);
+#ifdef __MINGW32__
+      closesocket(fd);
+#else      
+      close(fd); // socket
+#endif
       return -1;
     }
   } else {
@@ -2937,10 +3054,17 @@ static intptr_t fio_tcp_socket(const char *address, const char *port,
 #endif
     }
     freeaddrinfo(addrinfo);
-    close(fd);
+#ifdef __MINGW32__
+    closesocket(fd);
+#else      
+    close(fd); // socket
+#endif
     return -1;
   }
 socket_okay:
+#ifdef __MINGW32__
+  fd = fio_handle2fd(fd);
+#endif
   fio_lock(&fd_data(fd).protocol_lock);
   fio_clear_fd(fd, 1);
   fio_unlock(&fd_data(fd).protocol_lock);
@@ -2963,7 +3087,7 @@ static intptr_t fio_unix_socket(const char *address, uint8_t server) {
     vary &= ~(1u << i);
   }
   sprintf_s(localport, 6, "1%04u", vary);
-  fprintf(stderr, "Using tcp socket on localhost port %s instead of unix socket on Windows.\n", localport);
+  FIO_LOG_WARNING("Using tcp socket on localhost port %s for IPC instead of unix socket on Windows.", localport);
   return fio_tcp_socket(localhost, localport, server);
 }
 #else
@@ -2989,19 +3113,31 @@ static intptr_t fio_unix_socket(const char *address, uint8_t server) {
     return -1;
   }
   if (fio_set_non_block(fd) == -1) {
-    close(fd);
+#ifdef __MINGW32__
+      closesocket(fd);
+#else      
+      close(fd);
+#endif
     return -1;
   }
   if (server) {
     unlink(addr.sun_path);
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
       // perror("couldn't bind unix socket");
+#ifdef __MINGW32__
+      closesocket(fd);
+#else      
       close(fd);
+#endif
       return -1;
     }
     if (listen(fd, SOMAXCONN) < 0) {
       // perror("couldn't start listening to unix socket");
+#ifdef __MINGW32__
+      closesocket(fd);
+#else      
       close(fd);
+#endif
       return -1;
     }
     /* chmod for foreign connections */
@@ -3009,10 +3145,17 @@ static intptr_t fio_unix_socket(const char *address, uint8_t server) {
   } else {
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1 &&
         errno != EINPROGRESS) {
+#ifdef __MINGW32__
+      closesocket(fd);
+#else      
       close(fd);
+#endif
       return -1;
     }
   }
+#ifdef __MINGW32__
+  fd = fio_handle2fd(fd);
+#endif
   fio_lock(&fd_data(fd).protocol_lock);
   fio_clear_fd(fd, 1);
   fio_unlock(&fd_data(fd).protocol_lock);
@@ -3085,7 +3228,15 @@ Internal socket flushing related functions
 
 #endif
 
+#ifdef __MINGW32__
+static void fio_sock_perform_close_fd(intptr_t fd) { 
+  HANDLE s = fd_data(fd).socket_handle;
+  fio_clear_handle(fd);
+  closesocket(s);
+}
+#else
 static void fio_sock_perform_close_fd(intptr_t fd) { close(fd); }
+#endif
 
 static inline void fio_sock_packet_rotate_unsafe(uintptr_t fd) {
   fio_packet_s *packet = fd_data(fd).packet;
@@ -3403,7 +3554,11 @@ void fio_force_close(intptr_t uuid) {
   fio_lock(&uuid_data(uuid).protocol_lock);
   fio_clear_fd(fio_uuid2fd(uuid), 0);
   fio_unlock(&uuid_data(uuid).protocol_lock);
+#ifdef __MINGW32__
+  fio_sock_perform_close_fd(fio_uuid2fd(uuid));
+#else
   close(fio_uuid2fd(uuid));
+#endif
 #if FIO_ENGINE_POLL
   fio_poll_remove_fd(fio_uuid2fd(uuid));
 #endif
@@ -3542,7 +3697,7 @@ Connection Read / Write Hooks, for overriding the system calls
 static ssize_t fio_hooks_default_read(intptr_t uuid, void *udata, void *buf,
                                       size_t count) {
 #ifdef __MINGW32__
-  return recv(fio_uuid2fd(uuid), buf, count, 0);
+  return recv(fd_data(fio_uuid2fd(uuid)).socket_handle, buf, count, 0);
 #else
   return read(fio_uuid2fd(uuid), buf, count);
 #endif
@@ -3551,7 +3706,7 @@ static ssize_t fio_hooks_default_read(intptr_t uuid, void *udata, void *buf,
 static ssize_t fio_hooks_default_write(intptr_t uuid, void *udata,
                                        const void *buf, size_t count) {
 #ifdef __MINGW32__
-  return sendto(fio_uuid2fd(uuid), buf, count, 0, NULL, 0);
+  return sendto(fd_data(fio_uuid2fd(uuid)).socket_handle, buf, count, 0, NULL, 0);
 #else
   return write(fio_uuid2fd(uuid), buf, count);
 #endif
@@ -4036,7 +4191,9 @@ static void __attribute__((constructor)) fio_lib_init(void) {
 #ifdef _SC_OPEN_MAX
     capa = sysconf(_SC_OPEN_MAX);
 #elif defined(__MINGW32__)
-    capa = _getmaxstdio();
+    capa = 1024;
+    InitializeConditionVariable(&thread_cont);
+    InitializeCriticalSection(&thread_cont_cs);
 #elif defined(FOPEN_MAX)
     capa = FOPEN_MAX;
 #endif
