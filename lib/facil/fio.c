@@ -2461,12 +2461,9 @@ static size_t fio_poll(void) {
     list[i].fd = fd_data(list[i].fd).socket_handle;
   }
 
-  int timeout = fio_timer_calc_first_interval();
   size_t count = 0;
 
-  if (start == end) {
-    fio_throttle_thread((timeout * 1000000UL));
-  } else if (WSAPoll(list + start, end - start, timeout) == SOCKET_ERROR) {
+  if (WSAPoll(list + start, end - start, 1) == SOCKET_ERROR) {
     int error = WSAGetLastError();
     FIO_LOG_DEBUG("fio_poll WSAPoll error %i", error);
     goto finish;
