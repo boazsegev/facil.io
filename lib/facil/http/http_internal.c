@@ -102,7 +102,7 @@ int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
   http_s_new(r, (http_fio_protocol_s *)pr, http1_vtable());
   http_fio_protocol_s *h = fio_malloc(sizeof(*h));
   h->settings = settings;
-  r->private_data.flag = h;
+  r->private_data.flag = (uintptr_t)h;
   int ret = http_send_error(r, error);
   fio_free(h);
   fio_free(r);
