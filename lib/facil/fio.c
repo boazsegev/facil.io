@@ -891,8 +891,10 @@ typedef struct fio_thread_queue_s {
 
 fio_ls_embd_s fio_thread_queue = FIO_LS_INIT(fio_thread_queue);
 fio_lock_i fio_thread_lock = FIO_LOCK_INIT;
+#ifndef __MINGW32__
 static __thread fio_thread_queue_s fio_thread_data = {.fd_wait = -1,
                                                       .fd_signal = -1};
+#endif
 
 FIO_FUNC inline void fio_thread_make_suspendable(void) {
 #ifndef __MINGW32__
@@ -2371,6 +2373,10 @@ Section Start Marker
  *
  * Valid values are "kqueue", "epoll", "poll" and "wsapoll".
  */
+
+void fio_clear_handle(int fd);
+int fio_fd4handle(SOCKET handle);
+
 char const *fio_engine(void) { return "wsapoll"; }
 
 #define FIO_POLL_READ_EVENTS (POLLIN)
@@ -2450,8 +2456,8 @@ static size_t fio_poll(void) {
   fio_unlock(&fio_data->lock);
 
   // replace facil fds with actual Windows socket handles in list
-  int i;
-  for(int i = start; i < (end - start); i++) {
+  size_t i;
+  for(i = start; i < (end - start); i++) {
     list[i].fd = fd_data(list[i].fd).socket_handle;
   }
 
@@ -2466,7 +2472,7 @@ static size_t fio_poll(void) {
     goto finish;
   }
   int fd;
-  for (size_t i = start; i < end; ++i) {
+  for (i = start; i < end; ++i) {
     if (list[i].revents) {
       fd = fio_fd4handle(list[i].fd);
       if (fd == -1) {
@@ -2832,7 +2838,7 @@ int fio_handle2fd(SOCKET handle) {
   int it = 0;
   while(!found) {
     fd++;
-    if (fd >= fio_data->capa) {
+    if (fd >= (int)fio_data->capa) {
       fd = 0;
       it++;
       fio_reschedule_thread();
@@ -2855,7 +2861,7 @@ int fio_handle2fd(SOCKET handle) {
 
 int fio_fd4handle(SOCKET handle) {
   int fd = 0;
-  while(fd < fio_data->capa) {
+  while(fd < (int)fio_data->capa) {
     if (fd_data(fd).socket_handle == handle) {
       //fprintf(stderr, "while found fd %i 4handle\n", fd);
       return fd;
@@ -3232,7 +3238,7 @@ Internal socket flushing related functions
 
 #ifdef __MINGW32__
 static void fio_sock_perform_close_fd(intptr_t fd) { 
-  HANDLE s = fd_data(fd).socket_handle;
+  SOCKET s = fd_data(fd).socket_handle;
   fio_clear_handle(fd);
   closesocket(s);
 }
