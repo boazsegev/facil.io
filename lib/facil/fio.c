@@ -870,7 +870,7 @@ Suspending and renewing thread execution (signaling events)
  * progressive nano-sleep throttling system that is less exact.
  */
 #ifndef FIO_DEFER_THROTTLE_POLL
-#ifdef __MINGW32_
+#ifdef __MINGW32__
 #define FIO_DEFER_THROTTLE_POLL 1
 #else
 #define FIO_DEFER_THROTTLE_POLL 0
@@ -988,7 +988,7 @@ static size_t fio_poll(void);
  * A thread entering this function should wait for new events.
  */
 static void fio_defer_thread_wait(void) {
-#if FIO_ENGINE_POLL || FIO_ENGINE_WSAPOLL
+#if FIO_ENGINE_POLL
   fio_poll();
   return;
 #endif
