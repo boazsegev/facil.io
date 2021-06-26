@@ -2369,7 +2369,7 @@ Section Start Marker
 /**
  * Returns a C string detailing the IO engine selected during compilation.
  *
- * Valid values are "kqueue", "epoll" and "poll".
+ * Valid values are "kqueue", "epoll", "poll" and "wsapoll".
  */
 char const *fio_engine(void) { return "wsapoll"; }
 
@@ -2451,7 +2451,7 @@ static size_t fio_poll(void) {
 
   // replace facil fds with actual Windows socket handles in list
   int i;
-  for(int i = 0; i < (end - start); i++) {
+  for(int i = start; i < (end - start); i++) {
     list[i].fd = fd_data(list[i].fd).socket_handle;
   }
 
@@ -2486,11 +2486,13 @@ static size_t fio_poll(void) {
         // FIO_LOG_DEBUG("Poll Read %zu => %p", fd, (void *)fd2uuid(fd));
         fio_poll_remove_read(fd);
         fio_defer_push_task(deferred_on_data, (void *)fd2uuid(fd), NULL);
+        continue;
       }
       if (list[i].revents & (POLLHUP | POLLERR)) {
         // FIO_LOG_DEBUG("Poll Hangup %zu => %p", fd, (void *)fd2uuid(fd));
         fio_poll_remove_fd(fd);
         fio_force_close_in_poll(fd2uuid(fd));
+        continue;
       }
       if (list[i].revents & POLLNVAL) {
         // FIO_LOG_DEBUG("Poll Invalid %zu => %p", fd, (void *)fd2uuid(fd));
