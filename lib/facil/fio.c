@@ -2450,16 +2450,14 @@ static size_t fio_poll(void) {
   if (start != end) {
     /* copy poll list for multi-threaded poll */
     list = fio_malloc(sizeof(struct pollfd) * end);
-    // memcpy(list + start, fio_data->poll + start,
-    //        (sizeof(struct pollfd)) * (end - start));
   }
 
   fio_unlock(&fio_data->lock);
-  // fprintf(stderr, "adding fds: ");
+
   // replace facil fds with actual Windows socket handles in list
   size_t i = 0;
   size_t j = 0;
-  SOCKET s;
+
   for(i = start; i < end; i++) {
     if (fd_data(i).socket_handle != INVALID_SOCKET) {
       list[j].fd = fd_data(i).socket_handle;
@@ -2990,14 +2988,16 @@ static intptr_t fio_tcp_socket(const char *address, const char *port,
     return -1;
   }
   // get the file descriptor
-  int fd =
-      socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
 #ifdef __MINGW32__
+  SOCKET fd =
+      socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
   if (fd == INVALID_SOCKET) {
     freeaddrinfo(addrinfo);
     return -1;
   }
 #else
+  int fd =
+      socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
   if (fd <= 0) {
     freeaddrinfo(addrinfo);
     return -1;
@@ -11317,6 +11317,44 @@ FIO_FUNC void fio_test_random(void) {
 Poll (not kqueue or epoll) tests
 ***************************************************************************** */
 #if FIO_ENGINE_POLL || FIO_ENGINE_WSAPOLL
+#ifdef __MINGW32__
+FIO_FUNC void fio_poll_test(void) {
+  fprintf(stderr, "=== Testing poll add / remove fd\n");
+  fio_poll_add(5);
+  FIO_ASSERT(fio_data->poll[5].fd == 5, "fio_poll_add didn't set used fd data");
+  FIO_ASSERT(fio_data->poll[5].events ==
+                 (FIO_POLL_READ_EVENTS | FIO_POLL_WRITE_EVENTS),
+             "fio_poll_add didn't set used fd flags");
+  fio_poll_add(7);
+  FIO_ASSERT(fio_data->poll[6].fd == INVALID_SOCKET,
+             "fio_poll_add didn't reset unused fd data %d",
+             fio_data->poll[6].fd);
+  fio_poll_add(6);
+  fio_poll_remove_fd(6);
+  FIO_ASSERT(fio_data->poll[6].fd == INVALID_SOCKET,
+             "fio_poll_remove_fd didn't reset unused fd data");
+  FIO_ASSERT(fio_data->poll[6].events == 0,
+             "fio_poll_remove_fd didn't reset unused fd flags");
+  fio_poll_remove_read(7);
+  FIO_ASSERT(fio_data->poll[7].events == (FIO_POLL_WRITE_EVENTS),
+             "fio_poll_remove_read didn't remove read flags");
+  fio_poll_add_read(7);
+  fio_poll_remove_write(7);
+  FIO_ASSERT(fio_data->poll[7].events == (FIO_POLL_READ_EVENTS),
+             "fio_poll_remove_write didn't remove read flags");
+  fio_poll_add_write(7);
+  fio_poll_remove_read(7);
+  FIO_ASSERT(fio_data->poll[7].events == (FIO_POLL_WRITE_EVENTS),
+             "fio_poll_add_write didn't add the write flag?");
+  fio_poll_remove_write(7);
+  FIO_ASSERT(fio_data->poll[7].fd == INVALID_SOCKET,
+             "fio_poll_remove (both) didn't reset unused fd data");
+  FIO_ASSERT(fio_data->poll[7].events == 0,
+             "fio_poll_remove (both) didn't reset unused fd flags");
+  fio_poll_remove_fd(5);
+  fprintf(stderr, "\n* passed.\n");
+}
+#else
 FIO_FUNC void fio_poll_test(void) {
   fprintf(stderr, "=== Testing poll add / remove fd\n");
   fio_poll_add(5);
@@ -11353,6 +11391,7 @@ FIO_FUNC void fio_poll_test(void) {
   fio_poll_remove_fd(5);
   fprintf(stderr, "\n* passed.\n");
 }
+#endif
 #else
 #define fio_poll_test()
 #endif
