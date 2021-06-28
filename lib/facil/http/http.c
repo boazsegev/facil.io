@@ -33,6 +33,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #endif
 #endif
 
+#ifndef __MINGW32__
 /* *****************************************************************************
 SSL/TLS patch
 ***************************************************************************** */
@@ -56,6 +57,7 @@ fio_tls_alpn_add(void *tls, const char *protocol_name,
   (void)udata_tls;
 }
 #pragma weak fio_tls_alpn_add
+#endif
 
 /* *****************************************************************************
 Small Helpers
@@ -880,7 +882,6 @@ static void http_on_server_protocol_http1(intptr_t uuid, void *set,
       FIO_LOG_WARNING("HTTP server at capacity");
     fio_http_at_capa = 1;
     http_send_error2(503, uuid, set);
-    fio_close(uuid);
     return;
   }
   fio_http_at_capa = 0;
@@ -923,10 +924,12 @@ intptr_t http_listen(const char *port, const char *binding,
 
   http_settings_s *settings = http_settings_new(arg_settings);
   settings->is_client = 0;
+#ifndef __MINGW32__
   if (settings->tls) {
     fio_tls_alpn_add(settings->tls, "http/1.1", http_on_server_protocol_http1,
                      NULL, NULL);
   }
+#endif
 
   return fio_listen(.port = port, .address = binding, .tls = arg_settings.tls,
                     .on_finish = http_on_finish, .on_open = http_on_open,
