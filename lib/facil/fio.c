@@ -2445,36 +2445,44 @@ static size_t fio_poll(void) {
   fio_lock(&fio_data->lock);
   while (start < end && fio_data->poll[start].fd == (SOCKET)-1)
     ++start;
-  while (start < end && fio_data->poll[end - 1].fd == (SOCKET)-1)
+  while (start < end && fio_data->poll[end-1].fd == (SOCKET)-1)
     --end;
   if (start != end) {
     /* copy poll list for multi-threaded poll */
     list = fio_malloc(sizeof(struct pollfd) * end);
-    memcpy(list + start, fio_data->poll + start,
-           (sizeof(struct pollfd)) * (end - start));
+    // memcpy(list + start, fio_data->poll + start,
+    //        (sizeof(struct pollfd)) * (end - start));
   }
+
   fio_unlock(&fio_data->lock);
-
+  // fprintf(stderr, "adding fds: ");
   // replace facil fds with actual Windows socket handles in list
-  size_t i;
-  for(i = start; i < (end - start); i++) {
-    list[i].fd = fd_data(list[i].fd).socket_handle;
+  size_t i = 0;
+  size_t j = 0;
+  SOCKET s;
+  for(i = start; i < end; i++) {
+    if (fd_data(i).socket_handle != INVALID_SOCKET) {
+      list[j].fd = fd_data(i).socket_handle;
+      list[j].events = fio_data->poll[i].events;
+      list[j].revents = fio_data->poll[i].revents;
+      j++;
+    }
   }
 
-  size_t count = 0;
-
-  if (WSAPoll(list + start, end - start, 1) == SOCKET_ERROR) {
+  if (WSAPoll(list, j, 1) == SOCKET_ERROR) {
     int error = WSAGetLastError();
     FIO_LOG_DEBUG("fio_poll WSAPoll error %i", error);
     goto finish;
   }
+
+  size_t count = 0;
   int fd;
-  for (i = start; i < end; ++i) {
-    if (list[i].revents) {
+
+  for (i = 0; i < j; i++) {
+    if (list[i].fd != INVALID_SOCKET && list[i].revents) {
       fd = fio_fd4handle(list[i].fd);
       if (fd == -1) {
-        // someone cleared the handle from the fd beforehand
-        closesocket(list[i].fd);
+        // somebody else cleared the handle from the fd beforehand
         continue;
       }
       touchfd(fd);
@@ -2838,12 +2846,14 @@ int fio_handle2fd(SOCKET handle) {
     if (fd >= (int)fio_data->capa) {
       fd = 0;
       it++;
+      if (it > 2)
+        return -1;
       fio_reschedule_thread();
     }
-    if (fd_data(fd).socket_handle)
+    if (fd_data(fd).socket_handle != INVALID_SOCKET && fd_data(fd).socket_handle > 0)
       continue;
     fio_lock(&(fd_data(fd).sock_lock));
-    if (fd_data(fd).socket_handle) {
+    if (fd_data(fd).socket_handle != INVALID_SOCKET && fd_data(fd).socket_handle > 0) {
       fio_unlock(&(fd_data(fd).sock_lock));
       continue;
     } else {
@@ -2852,27 +2862,23 @@ int fio_handle2fd(SOCKET handle) {
       fio_unlock(&(fd_data(fd).sock_lock));
     }
   }
-  // fprintf(stderr, "while took %i iterations, found fd %i\n", it, fd);
   return fd;
 }
 
 int fio_fd4handle(SOCKET handle) {
-  int fd = 0;
-  while(fd < (int)fio_data->capa) {
+  unsigned int fd = 0;
+  while(fd < fio_data->capa) {
     if (fd_data(fd).socket_handle == handle) {
-      //fprintf(stderr, "while found fd %i 4handle\n", fd);
       return fd;
     }
     fd++;
   }
-  //fprintf(stderr, "while found nothing 4handle\n");
   return -1;
 }
 
 void fio_clear_handle(int fd) {
-  // fprintf(stderr, "clearing handle for %i\n", fd);
   fio_lock(&(fd_data(fd).sock_lock));
-  fd_data(fd).socket_handle = 0;
+  fd_data(fd).socket_handle = INVALID_SOCKET;
   fio_unlock(&(fd_data(fd).sock_lock));
 }
 #endif
@@ -2887,7 +2893,11 @@ void fio_clear_handle(int fd) {
 intptr_t fio_accept(intptr_t srv_uuid) {
   struct sockaddr_in6 addrinfo[2]; /* grab a slice of stack (aligned) */
   socklen_t addrlen = sizeof(addrinfo);
+#ifdef __MINGW32__
+  SOCKET client;
+#else
   int client;
+#endif
 #ifdef SOCK_NONBLOCK
   client = accept4(fio_uuid2fd(srv_uuid), (struct sockaddr *)addrinfo, &addrlen,
                    SOCK_NONBLOCK | SOCK_CLOEXEC);
@@ -2896,11 +2906,13 @@ intptr_t fio_accept(intptr_t srv_uuid) {
 #else
 #ifdef __MINGW32__
   client = accept(fd_data(fio_uuid2fd(srv_uuid)).socket_handle, (struct sockaddr *)addrinfo, &addrlen);
+  if (client == INVALID_SOCKET)
+    return -1;
 #else
   client = accept(fio_uuid2fd(srv_uuid), (struct sockaddr *)addrinfo, &addrlen);
-#endif
   if (client <= 0)
     return -1;
+#endif
   if (fio_set_non_block(client) == -1) {
 #ifdef __MINGW32__
       closesocket(client);
@@ -2980,10 +2992,17 @@ static intptr_t fio_tcp_socket(const char *address, const char *port,
   // get the file descriptor
   int fd =
       socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
+#ifdef __MINGW32__
+  if (fd == INVALID_SOCKET) {
+    freeaddrinfo(addrinfo);
+    return -1;
+  }
+#else
   if (fd <= 0) {
     freeaddrinfo(addrinfo);
     return -1;
   }
+#endif
   // make sure the socket is non-blocking
   if (fio_set_non_block(fd) < 0) {
     freeaddrinfo(addrinfo);
@@ -3114,9 +3133,15 @@ static intptr_t fio_unix_socket(const char *address, uint8_t server) {
 #endif
   // get the file descriptor
   int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+#ifdef __MINGW32__
+  if (fd == INVALID_SOCKET) {
+    return -1;
+  }
+#else
   if (fd == -1) {
     return -1;
   }
+#endif
   if (fio_set_non_block(fd) == -1) {
 #ifdef __MINGW32__
       closesocket(fd);
@@ -3564,7 +3589,7 @@ void fio_force_close(intptr_t uuid) {
 #else
   close(fio_uuid2fd(uuid));
 #endif
-#if FIO_ENGINE_POLL
+#if FIO_ENGINE_POLL || FIO_ENGINE_WSAPOLL
   fio_poll_remove_fd(fio_uuid2fd(uuid));
 #endif
   if (fio_data->connection_count)
@@ -8017,7 +8042,9 @@ static void fio_mem_init(void) {
   arenas = big_alloc(sizeof(*arenas) * cpu_count);
   FIO_ASSERT_ALLOC(arenas);
   block_free(block_new());
+#ifndef __MINGW32__
   pthread_atfork(NULL, NULL, fio_malloc_after_fork);
+#endif
 }
 
 static void fio_mem_destroy(void) {
@@ -11289,7 +11316,7 @@ FIO_FUNC void fio_test_random(void) {
 /* *****************************************************************************
 Poll (not kqueue or epoll) tests
 ***************************************************************************** */
-#if FIO_ENGINE_POLL
+#if FIO_ENGINE_POLL || FIO_ENGINE_WSAPOLL
 FIO_FUNC void fio_poll_test(void) {
   fprintf(stderr, "=== Testing poll add / remove fd\n");
   fio_poll_add(5);
