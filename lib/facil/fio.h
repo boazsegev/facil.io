@@ -3026,7 +3026,7 @@ FIO_FUNC inline int fio_trylock(fio_lock_i *lock) {
 /**
  * Releases a spinlock. Releasing an unacquired lock will break it.
  *
- * Returns a non-zero value on success, or 0 if the lock was in an unloacked
+ * Returns a non-zero value on success, or 0 if the lock was in an unlocked
  * state.
  */
 FIO_FUNC inline int fio_unlock(fio_lock_i *lock) {
@@ -3890,6 +3890,7 @@ FIO_FUNC char *fio_str_detach(fio_str_s *s) {
     }
     /* make a copy */
     void *tmp = FIO_MALLOC(i.len + 1);
+    FIO_ASSERT_ALLOC(tmp);
     memcpy(tmp, i.data, i.len + 1);
     i.data = tmp;
   } else {
@@ -3900,6 +3901,7 @@ FIO_FUNC char *fio_str_detach(fio_str_s *s) {
     } else if (s->dealloc != FIO_FREE) {
       /* make a copy */
       void *tmp = FIO_MALLOC(i.len + 1);
+      FIO_ASSERT_ALLOC(tmp);
       memcpy(tmp, i.data, i.len + 1);
       i.data = tmp;
       if (s->dealloc)
@@ -4364,7 +4366,7 @@ inline FIO_FUNC fio_str_info_s fio_str_write_i(fio_str_s *s, int64_t num) {
   fio_str_info_s i;
   if (!num)
     goto zero;
-  char buf[22];
+  char buf[22] = {0};
   uint64_t l = 0;
   uint8_t neg;
   if ((neg = (num < 0))) {
