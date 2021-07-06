@@ -2932,9 +2932,9 @@ C++ extern end
 /**
  * The logarithmic value for a memory block, 15 == 32Kb, 16 == 64Kb, etc'
  *
- * By default, a block of memory is 32Kb silce from an 8Mb allocation.
+ * By default, a block of memory is a 32Kb slice from an 8Mb allocation.
  *
- * A value of 16 will make this a 64Kb silce from a 16Mb allocation.
+ * A value of 16 will make this a 64Kb slice from a 16Mb allocation.
  */
 #define FIO_MEMORY_BLOCK_SIZE_LOG (15)
 #endif
