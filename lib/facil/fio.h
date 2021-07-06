@@ -2068,7 +2068,7 @@ FIO_FUNC inline int fio_trylock(fio_lock_i *lock);
 /**
  * Releases a spinlock. Releasing an unacquired lock will break it.
  *
- * Returns a non-zero value on success, or 0 if the lock was in an unloacked
+ * Returns a non-zero value on success, or 0 if the lock was in an unlocked
  * state.
  */
 FIO_FUNC inline int fio_unlock(fio_lock_i *lock);
@@ -3001,7 +3001,7 @@ FIO_FUNC inline int fio_trylock(fio_lock_i *lock) {
 /**
  * Releases a spinlock. Releasing an unacquired lock will break it.
  *
- * Returns a non-zero value on success, or 0 if the lock was in an unloacked
+ * Returns a non-zero value on success, or 0 if the lock was in an unlocked
  * state.
  */
 FIO_FUNC inline int fio_unlock(fio_lock_i *lock) {
