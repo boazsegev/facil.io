@@ -936,10 +936,18 @@ FIO_FUNC void fio_thread_suspend(void) {
   fio_ls_embd_push(&fio_thread_queue, &fio_thread_data.node);
   fio_unlock(&fio_thread_lock);
   struct pollfd list = {
+#ifdef __MINGW32__
+      .events = POLLIN,
+#else
       .events = (POLLPRI | POLLIN),
+#endif
       .fd = fio_thread_data.fd_wait,
   };
+#ifdef __MINGW32__
+  if (WSAPoll(&list, 1, 5000) > 0) {
+#else
   if (poll(&list, 1, 5000) > 0) {
+#endif
     /* thread was removed from the list through signal */
     uint64_t data;
     int r = read(fio_thread_data.fd_wait, &data, sizeof(data));
@@ -992,7 +1000,7 @@ static size_t fio_poll(void);
  * A thread entering this function should wait for new events.
  */
 static void fio_defer_thread_wait(void) {
-#if FIO_ENGINE_POLL
+#if FIO_ENGINE_POLL || FIO_ENGINE_WSAPOLL
   fio_poll();
   return;
 #endif
@@ -2370,15 +2378,14 @@ Section Start Marker
 
 #if FIO_ENGINE_WSAPOLL
 
+void fio_clear_handle(int fd);
+int fio_fd4handle(SOCKET handle);
+
 /**
  * Returns a C string detailing the IO engine selected during compilation.
  *
  * Valid values are "kqueue", "epoll", "poll" and "wsapoll".
  */
-
-void fio_clear_handle(int fd);
-int fio_fd4handle(SOCKET handle);
-
 char const *fio_engine(void) { return "wsapoll"; }
 
 #define FIO_POLL_READ_EVENTS (POLLIN)
@@ -4221,7 +4228,7 @@ static void __attribute__((constructor)) fio_lib_init(void) {
 #ifdef _SC_OPEN_MAX
     capa = sysconf(_SC_OPEN_MAX);
 #elif defined(__MINGW32__)
-    capa = 1024;
+    capa = FD_SETSIZE;
     InitializeConditionVariable(&thread_cont);
     InitializeCriticalSection(&thread_cont_cs);
 #elif defined(FOPEN_MAX)
