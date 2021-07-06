@@ -64,7 +64,7 @@ LINKER_LIBS=pthread m
 # optimization level.
 OPTIMIZATION=-O2 -march=native
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
-WARNINGS= -Wshadow -Wall -Wextra -Wno-missing-field-initializers -Wpedantic
+WARNINGS= -Wshadow -Wall -Wextra -Wno-missing-field-initializers -Wpedantic -Wno-error=cast-function-type
 # any extra include folders, space seperated list. (i.e. `pg_config --includedir`)
 INCLUDE= ./
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
@@ -817,5 +817,3 @@ vars:
 	@echo "LINKER_LIBS_EXT: $(LINKER_LIBS_EXT)"
 	@echo ""
 	@echo "LINKER_FLAGS: $(LINKER_FLAGS)"
-
-
