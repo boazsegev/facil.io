@@ -5379,8 +5379,8 @@ static inline channel_s *fio_filter_dup_lock_internal(channel_s *ch,
   fio_lock(&c->lock);
   ch = fio_ch_set_insert(&c->channels, hashed, ch);
   fio_channel_dup(ch);
-  fio_lock(&ch->lock);
   fio_unlock(&c->lock);
+  fio_lock(&ch->lock);
   return ch;
 }
 
