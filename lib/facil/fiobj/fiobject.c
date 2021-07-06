@@ -102,7 +102,7 @@ size_t __attribute__((weak)) fio_ltoa(char *dest, int64_t num, uint8_t base) {
                            '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
   size_t len = 0;
-  char buf[48]; /* we only need up to 20 for base 10, but base 3 needs 41... */
+  char buf[48] = {0}; /* we only need up to 20 for base 10, but base 3 needs 41... */
 
   if (!num)
     goto zero;
