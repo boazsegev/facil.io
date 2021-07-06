@@ -3743,7 +3743,7 @@ static ssize_t fio_hooks_default_read(intptr_t uuid, void *udata, void *buf,
 static ssize_t fio_hooks_default_write(intptr_t uuid, void *udata,
                                        const void *buf, size_t count) {
 #ifdef __MINGW32__
-  return sendto(fd_data(fio_uuid2fd(uuid)).socket_handle, buf, count, 0, NULL, 0);
+  return send(fd_data(fio_uuid2fd(uuid)).socket_handle, buf, count, 0);
 #else
   return write(fio_uuid2fd(uuid), buf, count);
 #endif
