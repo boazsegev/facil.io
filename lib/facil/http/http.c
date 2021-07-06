@@ -879,7 +879,7 @@ static void http_on_server_protocol_http1(intptr_t uuid, void *set,
     if (!fio_http_at_capa)
       FIO_LOG_WARNING("HTTP server at capacity");
     fio_http_at_capa = 1;
-    http_send_error2(uuid, 503, set);
+    http_send_error2(503, uuid, set);
     fio_close(uuid);
     return;
   }
