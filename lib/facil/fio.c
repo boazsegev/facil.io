@@ -93,7 +93,9 @@ Feel free to copy, use and enjoy according to the license provided.
 #endif
 
 #ifndef FIO_USE_URGENT_QUEUE
+#ifndef __MINGW32__
 #define FIO_USE_URGENT_QUEUE 1
+#endif
 #endif
 
 #ifndef DEBUG_SPINLOCK
@@ -393,7 +395,7 @@ typedef struct {
   uint8_t close;
   /** peer address length */
   uint8_t addr_len;
-  /** peer address length */
+  /** peer address */
   uint8_t addr[48];
   /** RW hooks. */
   fio_rw_hook_s *rw_hooks;
@@ -2451,7 +2453,6 @@ static size_t fio_poll(void) {
     /* copy poll list for multi-threaded poll */
     list = fio_malloc(sizeof(struct pollfd) * end);
   }
-
   fio_unlock(&fio_data->lock);
 
   // replace facil fds with actual Windows socket handles in list
@@ -2479,10 +2480,6 @@ static size_t fio_poll(void) {
   for (i = 0; i < j; i++) {
     if (list[i].fd != INVALID_SOCKET && list[i].revents) {
       fd = fio_fd4handle(list[i].fd);
-      if (fd == -1) {
-        // somebody else cleared the handle from the fd beforehand
-        continue;
-      }
       touchfd(fd);
       ++count;
 
@@ -3504,8 +3501,7 @@ ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s options) {
 locked_error:
   fio_unlock(&uuid_data(uuid).sock_lock);
   fio_packet_free(packet);
-  errno = EBADF;
-  return -1;
+  /** fallthrough and free buffer */
 error:
   if (options.after.dealloc) {
     options.after.dealloc((void *)options.data.buffer);
@@ -3654,7 +3650,11 @@ closed:
   return -1;
 
 flush_rw_hook:
-  flushed = uuid_data(uuid).rw_hooks->flush(uuid, uuid_data(uuid).rw_udata);
+  if (uuid_data(uuid).rw_hooks && uuid_data(uuid).rw_hooks->flush) {
+    flushed = uuid_data(uuid).rw_hooks->flush(uuid, uuid_data(uuid).rw_udata);
+  } else {
+    fprintf(stderr, "prevented a crash in fio_flush\n");
+  }
   fio_unlock(&uuid_data(uuid).sock_lock);
   if (!flushed)
     return 0;
@@ -6109,8 +6109,8 @@ static inline channel_s *fio_filter_dup_lock_internal(channel_s *ch,
   fio_lock(&c->lock);
   ch = fio_ch_set_insert(&c->channels, hashed, ch);
   fio_channel_dup(ch);
-  fio_lock(&ch->lock);
   fio_unlock(&c->lock);
+  fio_lock(&ch->lock);
   return ch;
 }
 
@@ -6121,6 +6121,7 @@ static channel_s *fio_filter_dup_lock(uint32_t filter) {
       .name_len = (sizeof(filter)),
       .parent = &fio_postoffice.filters,
       .ref = 8, /* avoid freeing stack memory */
+      .lock = FIO_LOCK_INIT,
   };
   return fio_filter_dup_lock_internal(&ch, filter, &fio_postoffice.filters);
 }
@@ -6132,6 +6133,7 @@ static channel_s *fio_channel_dup_lock(fio_str_info_s name) {
       .name_len = name.len,
       .parent = &fio_postoffice.pubsub,
       .ref = 8, /* avoid freeing stack memory */
+      .lock = FIO_LOCK_INIT,
   };
   uint64_t hashed_name = FIO_HASH_FN(
       name.data, name.len, &fio_postoffice.pubsub, &fio_postoffice.pubsub);
@@ -6152,6 +6154,7 @@ static channel_s *fio_channel_match_dup_lock(fio_str_info_s name,
       .parent = &fio_postoffice.patterns,
       .match = match,
       .ref = 8, /* avoid freeing stack memory */
+      .lock = FIO_LOCK_INIT,
   };
   uint64_t hashed_name = FIO_HASH_FN(
       name.data, name.len, &fio_postoffice.pubsub, &fio_postoffice.pubsub);
@@ -6178,7 +6181,7 @@ static inline void fio_subscription_free(subscription_s *s) {
 /** SublimeText 3 marker */
 subscription_s *fio_subscribe___(subscribe_args_s args);
 
-/** Subscribes to a filter, pub/sub channle or patten */
+/** Subscribes to a filter, pub/sub channel or pattern */
 subscription_s *fio_subscribe FIO_IGNORE_MACRO(subscribe_args_s args) {
   if (!args.on_message)
     goto error;
