@@ -307,7 +307,7 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
   if (fio_data->max_protocol_fd < fd) {
     fio_data->max_protocol_fd = fd;
   } else {
-    while (fio_data->max_protocol_fd &&
+    while (fio_data->max_protocol_fd > fd &&
            !fd_data(fio_data->max_protocol_fd).open)
       --fio_data->max_protocol_fd;
   }
