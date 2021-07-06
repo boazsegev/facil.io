@@ -766,6 +766,7 @@ void http_pause(http_s *h, void (*task)(http_pause_handle_s *http)) {
   http_fio_protocol_s *p = (http_fio_protocol_s *)h->private_data.flag;
   http_vtable_s *vtbl = (http_vtable_s *)h->private_data.vtbl;
   http_pause_handle_s *http = fio_malloc(sizeof(*http));
+  FIO_ASSERT_ALLOC(http);
   *http = (http_pause_handle_s){
       .uuid = p->uuid,
       .h = h,
@@ -1186,6 +1187,7 @@ static void on_websocket_http_connection_finished(http_settings_s *settings) {
 #undef websocket_connect
 int websocket_connect(const char *address, websocket_settings_s settings) {
   websocket_settings_s *s = fio_malloc(sizeof(*s));
+  FIO_ASSERT_ALLOC(s);
   *s = settings;
   return http_connect(address, NULL, .on_request = on_websocket_http_connected,
                       .on_response = on_websocket_http_connected,
