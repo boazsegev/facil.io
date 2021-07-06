@@ -739,7 +739,7 @@ FIO_FUNC void fio_thread_broadcast(void) {
 
 static size_t fio_poll(void);
 /**
- * A thread entering this function should wait for new evennts.
+ * A thread entering this function should wait for new events.
  */
 static void fio_defer_thread_wait(void) {
 #if FIO_ENGINE_POLL
