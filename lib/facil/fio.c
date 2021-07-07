@@ -1341,7 +1341,7 @@ Section Start Marker
 
 volatile uint8_t fio_signal_children_flag = 0;
 volatile fio_lock_i fio_signal_set_flag = 0;
-/* store old signal handlers to propegate signal handling */
+/* store old signal handlers to propagate signal handling */
 static struct sigaction fio_old_sig_chld;
 static struct sigaction fio_old_sig_pipe;
 static struct sigaction fio_old_sig_term;
@@ -6354,7 +6354,7 @@ static void fio_send2cluster(fio_msg_internal_s *m) {
 }
 
 /* *****************************************************************************
- * Propegation
+ * Propagation
  **************************************************************************** */
 
 static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
