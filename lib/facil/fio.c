@@ -2844,8 +2844,7 @@ ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s options) {
 locked_error:
   fio_unlock(&uuid_data(uuid).sock_lock);
   fio_packet_free(packet);
-  errno = EBADF;
-  return -1;
+  /** fallthrough to free buffer */
 error:
   if (options.after.dealloc) {
     options.after.dealloc((void *)options.data.buffer);
