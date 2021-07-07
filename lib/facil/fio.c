@@ -929,25 +929,19 @@ FIO_FUNC inline void fio_thread_cleanup(void) {
 FIO_FUNC void fio_thread_suspend(void) {
 #ifdef __MINGW32__
   EnterCriticalSection(&thread_cont_cs);
-  SleepConditionVariableCS(&thread_cont, &thread_cont_cs, 5000);
+  SleepConditionVariableCS(&thread_cont, &thread_cont_cs, 50);
   LeaveCriticalSection(&thread_cont_cs);
 #else
   fio_lock(&fio_thread_lock);
   fio_ls_embd_push(&fio_thread_queue, &fio_thread_data.node);
   fio_unlock(&fio_thread_lock);
   struct pollfd list = {
-#ifdef __MINGW32__
-      .events = POLLIN,
-#else
+
       .events = (POLLPRI | POLLIN),
-#endif
       .fd = fio_thread_data.fd_wait,
   };
-#ifdef __MINGW32__
-  if (WSAPoll(&list, 1, 5000) > 0) {
-#else
+e
   if (poll(&list, 1, 5000) > 0) {
-#endif
     /* thread was removed from the list through signal */
     uint64_t data;
     int r = read(fio_thread_data.fd_wait, &data, sizeof(data));
@@ -2458,7 +2452,7 @@ static size_t fio_poll(void) {
     --end;
   fio_unlock(&fio_data->lock);
 
-  /* copy poll list for multi-threaded poll */
+    /* copy poll list for multi-threaded poll */
   list = fio_malloc(sizeof(*list) * (end - start + 1));
   FIO_ASSERT_ALLOC(list);
 
@@ -2487,6 +2481,8 @@ static size_t fio_poll(void) {
   for (i = 0; i < j; i++) {
     if (list[i].fd != INVALID_SOCKET && list[i].revents) {
       fd = fio_fd4handle(list[i].fd);
+      if (fd == -1)
+        continue;
       touchfd(fd);
       ++count;
 
@@ -2957,6 +2953,8 @@ intptr_t fio_accept(intptr_t srv_uuid) {
   }
 #ifdef __MINGW32__
   client = fio_handle2fd(client);
+  if (client == -1)
+    return -1;
 #endif
   fio_lock(&fd_data(client).protocol_lock);
   fio_clear_fd(client, 1);
@@ -3092,6 +3090,8 @@ static intptr_t fio_tcp_socket(const char *address, const char *port,
 socket_okay:
 #ifdef __MINGW32__
   fd = fio_handle2fd(fd);
+  if (fd == -1)
+    return -1;
 #endif
   fio_lock(&fd_data(fd).protocol_lock);
   fio_clear_fd(fd, 1);
@@ -3189,6 +3189,8 @@ static intptr_t fio_unix_socket(const char *address, uint8_t server) {
   }
 #ifdef __MINGW32__
   fd = fio_handle2fd(fd);
+  if (fd == -1)
+    return -1;
 #endif
   fio_lock(&fd_data(fd).protocol_lock);
   fio_clear_fd(fd, 1);
