@@ -1000,7 +1000,7 @@ static size_t fio_poll(void);
  * A thread entering this function should wait for new events.
  */
 static void fio_defer_thread_wait(void) {
-#if FIO_ENGINE_POLL || FIO_ENGINE_WSAPOLL
+#if FIO_ENGINE_POLL
   fio_poll();
   return;
 #endif
