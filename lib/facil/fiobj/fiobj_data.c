@@ -78,6 +78,7 @@ static void fiobj_data_copy_parent(FIOBJ o) {
   switch (obj2io(obj2io(o)->source.parent)->fd) {
   case -1:
     obj2io(o)->buffer = fio_malloc(obj2io(o)->len + 1);
+    FIO_ASSERT_ALLOC(obj2io(o)->buffer);
     memcpy(obj2io(o)->buffer,
            obj2io(obj2io(o)->source.parent)->buffer + obj2io(o)->capa,
            obj2io(o)->len);
