@@ -3917,23 +3917,31 @@ void fio_start FIO_IGNORE_MACRO(struct fio_start_args args) {
   fio_data->is_worker = 0;
 
   fio_state_callback_force(FIO_CALL_PRE_START);
+#if HAVE_OPENSSL
   FIO_LOG_INFO(
       "Server is running %u %s X %u %s with facil.io " FIO_VERSION_STRING
       " (%s)\n"
-#if HAVE_OPENSSL
       "* Linked to %s\n"
-#endif
       "* Detected capacity: %d open file limit\n"
       "* Root pid: %d\n"
       "* Press ^C to stop\n",
       fio_data->workers, fio_data->workers > 1 ? "workers" : "worker",
       fio_data->threads, fio_data->threads > 1 ? "threads" : "thread",
       fio_engine(),
-#if HAVE_OPENSSL
       OpenSSL_version(0),
-#endif
       fio_data->capa, (int)fio_data->parent);
-
+#else
+  FIO_LOG_INFO(
+      "Server is running %u %s X %u %s with facil.io " FIO_VERSION_STRING
+      " (%s)\n"
+      "* Detected capacity: %d open file limit\n"
+      "* Root pid: %d\n"
+      "* Press ^C to stop\n",
+      fio_data->workers, fio_data->workers > 1 ? "workers" : "worker",
+      fio_data->threads, fio_data->threads > 1 ? "threads" : "thread",
+      fio_engine(),
+      fio_data->capa, (int)fio_data->parent);
+#endif
   if (args.workers > 1) {
     for (int i = 0; i < args.workers && fio_data->active; ++i) {
       fio_sentinel_task(NULL, NULL);
