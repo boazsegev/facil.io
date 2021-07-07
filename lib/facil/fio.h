@@ -3865,6 +3865,7 @@ FIO_FUNC char *fio_str_detach(fio_str_s *s) {
     }
     /* make a copy */
     void *tmp = FIO_MALLOC(i.len + 1);
+    FIO_ASSERT_ALLOC(tmp);
     memcpy(tmp, i.data, i.len + 1);
     i.data = tmp;
   } else {
@@ -3875,6 +3876,7 @@ FIO_FUNC char *fio_str_detach(fio_str_s *s) {
     } else if (s->dealloc != FIO_FREE) {
       /* make a copy */
       void *tmp = FIO_MALLOC(i.len + 1);
+      FIO_ASSERT_ALLOC(tmp);
       memcpy(tmp, i.data, i.len + 1);
       i.data = tmp;
       if (s->dealloc)
