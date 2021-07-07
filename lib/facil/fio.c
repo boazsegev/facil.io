@@ -5391,6 +5391,7 @@ static channel_s *fio_filter_dup_lock(uint32_t filter) {
       .name_len = (sizeof(filter)),
       .parent = &fio_postoffice.filters,
       .ref = 8, /* avoid freeing stack memory */
+      .lock = FIO_LOCK_INIT,
   };
   return fio_filter_dup_lock_internal(&ch, filter, &fio_postoffice.filters);
 }
@@ -5402,6 +5403,7 @@ static channel_s *fio_channel_dup_lock(fio_str_info_s name) {
       .name_len = name.len,
       .parent = &fio_postoffice.pubsub,
       .ref = 8, /* avoid freeing stack memory */
+      .lock = FIO_LOCK_INIT,
   };
   uint64_t hashed_name = FIO_HASH_FN(
       name.data, name.len, &fio_postoffice.pubsub, &fio_postoffice.pubsub);
@@ -5422,6 +5424,7 @@ static channel_s *fio_channel_match_dup_lock(fio_str_info_s name,
       .parent = &fio_postoffice.patterns,
       .match = match,
       .ref = 8, /* avoid freeing stack memory */
+      .lock = FIO_LOCK_INIT,
   };
   uint64_t hashed_name = FIO_HASH_FN(
       name.data, name.len, &fio_postoffice.pubsub, &fio_postoffice.pubsub);
