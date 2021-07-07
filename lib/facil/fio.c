@@ -2456,17 +2456,17 @@ static size_t fio_poll(void) {
     ++start;
   while (start < end && fio_data->poll[end-1].fd == (SOCKET)-1)
     --end;
-  if (start != end) {
-    /* copy poll list for multi-threaded poll */
-    list = fio_malloc(sizeof(struct pollfd) * end);
-  }
   fio_unlock(&fio_data->lock);
+
+  /* copy poll list for multi-threaded poll */
+  list = fio_malloc(sizeof(*list) * (end - start + 1));
+  FIO_ASSERT_ALLOC(list);
 
   // replace facil fds with actual Windows socket handles in list
   size_t i = 0;
   size_t j = 0;
 
-  for(i = start; i < end; i++) {
+  for(i = start; i <= end; i++) {
     if (fd_data(i).socket_handle != INVALID_SOCKET) {
       list[j].fd = fd_data(i).socket_handle;
       list[j].events = fio_data->poll[i].events;
