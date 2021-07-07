@@ -375,6 +375,7 @@ static int http1_http2websocket_client(http_s *h, websocket_settings_s *args) {
     p->p.settings->on_finish(p->p.settings);
   /* Copy the Websocket setting arguments to the HTTP settings `udata` */
   p->p.settings->udata = fio_malloc(sizeof(*args));
+  FIO_ASSERT_ALLOC(p->p.settings->udata);
   ((websocket_settings_s *)(p->p.settings->udata))[0] = *args;
   /* Set callbacks */
   p->p.settings->on_finish = http1_websocket_client_on_hangup;   /* unknown */
