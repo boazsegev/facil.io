@@ -139,7 +139,9 @@ WINSOCK:=
 
 ifeq ($(OS),Windows_NT)
 ifdef DEBUG
-OPTIMIZATION:=-O0 -march=native -fno-omit-frame-pointer
+OPTIMIZATION:=-O0 -march=native -mthreads -fno-omit-frame-pointer
+else
+OPTIMIZATION += -mthreads
 endif
 WARNINGS += -Wno-format -Wno-error=unused-parameter
 LINKER_LIBS += Ws2_32
@@ -848,5 +850,3 @@ vars:
 	@echo "LINKER_LIBS_EXT: $(LINKER_LIBS_EXT)"
 	@echo ""
 	@echo "LINKER_FLAGS: $(LINKER_FLAGS)"
-
-
