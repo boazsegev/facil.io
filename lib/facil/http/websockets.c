@@ -80,11 +80,9 @@ struct buffer_s resize_ws_buffer(ws_s *owner, struct buffer_s buff) {
   void *tmp = realloc(buff.data, buff.size);
   if (!tmp) {
     free_ws_buffer(owner, buff);
-    buff.data = NULL;
     buff.size = 0;
-  } else {
-    buff.data = tmp;
   }
+  buff.data = tmp;
   return buff;
 }
 void free_ws_buffer(ws_s *owner, struct buffer_s buff) {
