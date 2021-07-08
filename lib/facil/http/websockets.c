@@ -71,6 +71,7 @@ struct buffer_s create_ws_buffer(ws_s *owner) {
   struct buffer_s buff;
   buff.size = WS_INITIAL_BUFFER_SIZE;
   buff.data = malloc(buff.size);
+  FIO_ASSERT_ALLOC(buff.data);
   return buff;
 }
 
@@ -79,7 +80,6 @@ struct buffer_s resize_ws_buffer(ws_s *owner, struct buffer_s buff) {
   void *tmp = realloc(buff.data, buff.size);
   if (!tmp) {
     free_ws_buffer(owner, buff);
-    buff.data = NULL;
     buff.size = 0;
   }
   buff.data = tmp;
@@ -174,6 +174,7 @@ static void websocket_on_protocol_ping(void *ws_p, void *msg_, uint64_t len) {
   ws_s *ws = ws_p;
   if (msg_) {
     void *buff = malloc(len + 16);
+    FIO_ASSERT_ALLOC(buff);
     len = (((ws_s *)ws)->is_client
                ? websocket_client_wrap(buff, msg_, len, 10, 1, 1, 0)
                : websocket_server_wrap(buff, msg_, len, 10, 1, 1, 0));
@@ -305,6 +306,7 @@ Create/Destroy the websocket object
 static ws_s *new_websocket(intptr_t uuid) {
   // allocate the protocol object
   ws_s *ws = malloc(sizeof(*ws));
+  FIO_ASSERT_ALLOC(ws);
   *ws = (ws_s){
       .protocol.ping = ws_ping,
       .protocol.on_data = on_data_first,
@@ -330,7 +332,6 @@ static void destroy_ws(ws_s *ws) {
 void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
                       websocket_settings_s *args, void *data, size_t length) {
   ws_s *ws = new_websocket(uuid);
-  FIO_ASSERT_ALLOC(ws);
   // we have an active websocket connection - prep the connection buffer
   ws->buffer = create_ws_buffer(ws);
   // Setup ws callbacks
@@ -383,6 +384,7 @@ static void websocket_write_impl(intptr_t fd, void *data, size_t len, char text,
                                  char first, char last, char client) {
   if (len <= WS_MAX_FRAME_SIZE) {
     void *buff = fio_malloc(len + 16);
+    FIO_ASSERT_ALLOC(buff);
     len = (client ? websocket_client_wrap(buff, data, len, (text ? 1 : 2),
                                           first, last, 0)
                   : websocket_server_wrap(buff, data, len, (text ? 1 : 2),
