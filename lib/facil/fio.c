@@ -304,7 +304,7 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
       .counter = fd_data(fd).counter + 1,
       .packet_last = &fd_data(fd).packet,
   };
-  if (fio_data->max_protocol_fd < fd) {
+  if (is_open && fio_data->max_protocol_fd < fd) {
     fio_data->max_protocol_fd = fd;
   } else {
     while (fio_data->max_protocol_fd &&
