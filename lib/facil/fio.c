@@ -525,7 +525,7 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
       .socket_handle = socket_handle,
 #endif
   };
-  if (fio_data->max_protocol_fd < fd) {
+  if (is_open && fio_data->max_protocol_fd < fd) {
     fio_data->max_protocol_fd = fd;
   } else {
     while ((fio_data->max_protocol_fd > fd) &&
