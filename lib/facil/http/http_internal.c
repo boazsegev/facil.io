@@ -104,7 +104,6 @@ int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
 
   int ret = http_send_error(r, error);
 
-  fio_free(r);
   fio_close(uuid);
   return ret;
 }
