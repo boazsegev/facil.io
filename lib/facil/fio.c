@@ -192,20 +192,21 @@ int kill(int pid, int signum) {
       if (TerminateProcess(process_handle, 1)) {
         errno = 0;
         error = 0;
-      }
-      // extermination failed
-      DWORD status;
-      error = GetLastError();
-      if (error == ERROR_ACCESS_DENIED &&
-          GetExitCodeProcess(process_handle, &status) &&
-          status != STILL_ACTIVE) {
-        errno = ESRCH;
-        error = -1;
+      } else {
+        // extermination failed
+        DWORD status;
+        error = GetLastError();
+        if (error == ERROR_ACCESS_DENIED &&
+            GetExitCodeProcess(process_handle, &status) &&
+            status != STILL_ACTIVE) {
+          errno = ESRCH;
+          error = -1;
+        }
       }
       break;
     }
     case SIGCONT: {
-      // wake up al threads
+      // wake up all threads
       // WakeAllConditionVariable. threads need to wait for some ConditionVariable
       // (IntitializeConditionVariable, SleepConditionVariable*)
       // or cycle with ResumeThread through all threads, needs all thread handles
