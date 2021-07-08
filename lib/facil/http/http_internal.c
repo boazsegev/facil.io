@@ -98,6 +98,7 @@ int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
     return -1;
   fio_protocol_s *pr = http1_new(uuid, settings, NULL, 0);
   http_s *r = fio_malloc(sizeof(*r));
+  FIO_ASSERT_ALLOC(r);
   FIO_ASSERT(pr, "Couldn't allocate response object for error report.")
   http_s_new(r, (http_fio_protocol_s *)pr, http1_vtable());
   int ret = http_send_error(r, error);
