@@ -3620,11 +3620,7 @@ closed:
   return -1;
 
 flush_rw_hook:
-  if (uuid_data(uuid).rw_hooks && uuid_data(uuid).rw_hooks->flush) {
-    flushed = uuid_data(uuid).rw_hooks->flush(uuid, uuid_data(uuid).rw_udata);
-  } else {
-    fprintf(stderr, "prevented a crash in fio_flush\n");
-  }
+  flushed = uuid_data(uuid).rw_hooks->flush(uuid, uuid_data(uuid).rw_udata);
   fio_unlock(&uuid_data(uuid).sock_lock);
   if (!flushed)
     return 0;
@@ -3697,7 +3693,24 @@ Connection Read / Write Hooks, for overriding the system calls
 static ssize_t fio_hooks_default_read(intptr_t uuid, void *udata, void *buf,
                                       size_t count) {
 #ifdef __MINGW32__
-  return recv(fd_data(fio_uuid2fd(uuid)).socket_handle, buf, count, 0);
+  int len = recv(fd_data(fio_uuid2fd(uuid)).socket_handle, buf, count, 0);
+  if (len != SOCKET_ERROR)
+    return len;
+  int error = WSAGetLastError();
+  switch (error) {
+    case WSAEWOULDBLOCK:
+      errno = EWOULDBLOCK;
+      break;
+    case WSAENOTCONN:
+      errno = ENOTCONN;
+      break;
+    case WSAEINTR:
+      errno = EINTR;
+      break;
+    default:
+      errno = error;
+  }
+  return -1;
 #else
   return read(fio_uuid2fd(uuid), buf, count);
 #endif
