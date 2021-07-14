@@ -147,152 +147,112 @@ int ioctl (int fd, u_long request, int* argp) {
   else { return 0; }
 }
 
-int kill(int pid, int signum) {
-  int error;
-  int must_close = 0;
-  HANDLE process_handle;
-
-  if (signum < 0 || signum >= NSIG) {
+int kill(int pid, int sig) {
+  /* Credit to Jan Biedermann (GitHub: @janbiedermann) */
+  HANDLE handle;
+  DWORD status;
+  if (sig < 0 || sig >= NSIG) {
     errno = EINVAL;
     return -1;
   }
-
-  if (pid == 0) {
-    // Linux: send to every process in the process group of the calling process
-    // Windows: current process
-    process_handle = GetCurrentProcess();
-  } else if (pid == -1) {
-    // Linux: send to every process for which the calling process has permission to send signals
-    // Windows: current process
-    process_handle = GetCurrentProcess();
-  } else {
-    process_handle = OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_INFORMATION, FALSE, pid);
-    must_close = 1;
+#ifdef SIGCONT
+  if (sig == SIGCONT) {
+    errno = ENOSYS;
+    return -1;
   }
+#endif
 
-  if (process_handle == NULL) {
-    error = GetLastError();
-    if (error == ERROR_INVALID_PARAMETER) {
+  if (pid == -1)
+    pid = 0;
+
+  if (!pid)
+    handle = GetCurrentProcess();
+  else
+    handle =
+        OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_INFORMATION, FALSE, pid);
+  if (!handle)
+    goto something_went_wrong;
+
+  switch (sig) {
+  case SIGKILL:
+  case SIGTERM:
+  case SIGINT: /* terminate */
+    if (!TerminateProcess(handle, 1))
+      goto something_went_wrong;
+    break;
+  case 0: /* check status */
+    if (!GetExitCodeProcess(handle, &status))
+      goto something_went_wrong;
+    if (status != STILL_ACTIVE) {
       errno = ESRCH;
-      return -1;
-    } else if (error == ERROR_ACCESS_DENIED) {
-      errno = EPERM;
-      return -1;
-    } else {
-      errno = error;
-      return -1;
+      goto cleanup_after_error;
     }
+    break;
+  default: /* not supported? */
+    errno = ENOSYS;
+    goto cleanup_after_error;
   }
 
-  switch (signum) {
-    case SIGTERM:
-    case SIGKILL:
-    case SIGINT: {
-      // exterminate
-      if (TerminateProcess(process_handle, 1)) {
-        errno = 0;
-        error = 0;
-      } else {
-        // extermination failed
-        DWORD status;
-        error = GetLastError();
-        if (error == ERROR_ACCESS_DENIED &&
-            GetExitCodeProcess(process_handle, &status) &&
-            status != STILL_ACTIVE) {
-          errno = ESRCH;
-          error = -1;
-        }
-      }
-      break;
-    }
-    case SIGCONT: {
-      // wake up all threads
-      // WakeAllConditionVariable. threads need to wait for some ConditionVariable
-      // (IntitializeConditionVariable, SleepConditionVariable*)
-      // or cycle with ResumeThread through all threads, needs all thread handles
-      errno = ENOSYS;
-      error = -1;
-      break;
-    }
-    case 0: {
-      // only check if process is still alive
-      DWORD status;
-      if (!GetExitCodeProcess(process_handle, &status)) {
-        errno = GetLastError();
-        error = -1;
-      }
-
-      if (status != STILL_ACTIVE) {
-        errno = ESRCH;
-        error = -1;
-      }
-
-      error = 0;
-      break;
-    }
-
-    default:
-      // unsupported signal
-      errno = ENOSYS;
-      error = -1;
+  if (pid) {
+    CloseHandle(handle);
   }
+  return 0;
 
-  if (must_close) { 
-    CloseHandle(process_handle);
+something_went_wrong:
+  switch (GetLastError()) {
+  case ERROR_INVALID_PARAMETER:
+    errno = ESRCH;
+    break;
+  case ERROR_ACCESS_DENIED:
+    errno = EPERM;
+    if (handle && GetExitCodeProcess(handle, &status) && status != STILL_ACTIVE)
+      errno = ESRCH;
+    break;
+  default:
+    errno = GetLastError();
   }
-
-  return error;
+cleanup_after_error:
+  if (handle && pid)
+    CloseHandle(handle);
+  return -1;
 }
 
 ssize_t pread(int fd, void *buf, size_t count, off_t offset) {
-  u_long bytes_read;
-  memset(buf, 0, count);
+  /* Credit to Jan Biedermann (GitHub: @janbiedermann) */
+  ssize_t bytes_read = 0;
   HANDLE handle = (HANDLE)_get_osfhandle(fd);
-  if (handle == (HANDLE)-1) {
-    errno = EBADF;
-    return -1;
-  }
-  int result;
+  if (handle == INVALID_HANDLE_VALUE)
+    goto bad_file;
   OVERLAPPED overlapped = {0};
-  if (offset > 0) {
+  if (offset > 0)
     overlapped.Offset = offset;
-  } else {
-    overlapped.Offset = 0;
-  }
-  result = ReadFile(handle, buf, count, &bytes_read, &overlapped);
-  if (result) {
-    return bytes_read; 
-  } 
-  else {
-    if(GetLastError() == ERROR_HANDLE_EOF) {
-      return bytes_read;
-    }
-    errno = EIO;
-    return -1; 
-  }
+  if (ReadFile(handle, buf, count, (u_long *)&bytes_read, &overlapped))
+    return bytes_read;
+  if (GetLastError() == ERROR_HANDLE_EOF)
+    return bytes_read;
+  errno = EIO;
+  return -1;
+bad_file:
+  errno = EBADF;
+  return -1;
 }
 
 ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset) {
-  u_long bytes_written;
+  /* Credit to Jan Biedermann (GitHub: @janbiedermann) */
+  ssize_t bytes_written = 0;
   HANDLE handle = (HANDLE)_get_osfhandle(fd);
-  if (handle == (HANDLE)-1) {
-    errno = EBADF;
-    return -1;
-  }
-  int result;
+  if (handle == INVALID_HANDLE_VALUE)
+    goto bad_file;
   OVERLAPPED overlapped = {0};
-  if (offset > 0) {
+  if (offset > 0)
     overlapped.Offset = offset;
-  } else {
-    overlapped.Offset = 0;
-  }
-  result = WriteFile(handle, buf, count, &bytes_written, &overlapped);
-  //  SetEndOfFile(handle);
-  if (result) { return bytes_written; }
-  else {
-    errno = EIO;
-    return -1;
-  }
+  if (WriteFile(handle, buf, count, (u_long *)&bytes_written, &overlapped))
+    return bytes_written;
+  errno = EIO;
+  return -1;
+bad_file:
+  errno = EBADF;
+  return -1;
 }
 
 pid_t wait(int *stat_loc) {
@@ -2954,7 +2914,7 @@ intptr_t fio_accept(intptr_t srv_uuid) {
   }
 #ifdef __MINGW32__
   client = fio_handle2fd(client);
-  if (client == -1)
+  if (client == (SOCKET)-1)
     return -1;
 #endif
   fio_lock(&fd_data(client).protocol_lock);
@@ -3091,7 +3051,7 @@ static intptr_t fio_tcp_socket(const char *address, const char *port,
 socket_okay:
 #ifdef __MINGW32__
   fd = fio_handle2fd(fd);
-  if (fd == -1)
+  if (fd == (SOCKET)-1)
     return -1;
 #endif
   fio_lock(&fd_data(fd).protocol_lock);
