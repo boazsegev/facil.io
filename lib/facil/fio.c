@@ -839,28 +839,34 @@ Suspending and renewing thread execution (signaling events)
 #define FIO_DEFER_THROTTLE_POLL 0
 #endif
 #endif
-
-#ifdef __MINGW32__
-CONDITION_VARIABLE thread_cont;
-CRITICAL_SECTION thread_cont_cs;
-#endif
   
-
 typedef struct fio_thread_queue_s {
   fio_ls_embd_s node;
-  int fd_wait;   /* used for weaiting (read signal) */
+#ifdef __MINGW32__
+  HANDLE handle;
+  int in_list;
+#else
+  int fd_wait;   /* used for waiting (read signal) */
   int fd_signal; /* used for signalling (write) */
+#endif
 } fio_thread_queue_s;
 
 fio_ls_embd_s fio_thread_queue = FIO_LS_INIT(fio_thread_queue);
 fio_lock_i fio_thread_lock = FIO_LOCK_INIT;
-#ifndef __MINGW32__
+
+#ifdef __MINGW32__
+static __thread fio_thread_queue_s fio_thread_data = {.handle = INVALID_HANDLE_VALUE };
+#else
 static __thread fio_thread_queue_s fio_thread_data = {.fd_wait = -1,
                                                       .fd_signal = -1};
 #endif
 
 FIO_FUNC inline void fio_thread_make_suspendable(void) {
-#ifndef __MINGW32__
+#ifdef __MINGW32__
+  /** create automatically reseting event */
+  fio_thread_data.handle = CreateEvent(NULL, FALSE, FALSE, TEXT("thread signal"));
+  fio_thread_data.in_list = 0;
+#else
   if (fio_thread_data.fd_signal >= 0)
     return;
   int fd[2] = {0, 0};
@@ -876,7 +882,11 @@ FIO_FUNC inline void fio_thread_make_suspendable(void) {
 }
 
 FIO_FUNC inline void fio_thread_cleanup(void) {
-#ifndef __MINGW32__
+#ifdef __MINGW32__
+  HANDLE h = fio_thread_data.handle;
+  fio_thread_data.handle = INVALID_HANDLE_VALUE;
+  CloseHandle(h);
+#else
   if (fio_thread_data.fd_signal < 0)
     return;
   close(fio_thread_data.fd_wait);
@@ -889,19 +899,24 @@ FIO_FUNC inline void fio_thread_cleanup(void) {
 /* suspend thread execution (might be resumed unexpectedly) */
 FIO_FUNC void fio_thread_suspend(void) {
 #ifdef __MINGW32__
-  EnterCriticalSection(&thread_cont_cs);
-  SleepConditionVariableCS(&thread_cont, &thread_cont_cs, 50);
-  LeaveCriticalSection(&thread_cont_cs);
+  fio_lock(&fio_thread_lock);
+  /** don't add thread to queue if its already in there
+   * to prevent queue breakage
+   * can happen if WaitForSingleObject returns for other reasons */
+  if (!fio_thread_data.in_list) {
+    fio_ls_embd_push(&fio_thread_queue, &fio_thread_data.node);
+    fio_thread_data.in_list = 1;
+  }
+  fio_unlock(&fio_thread_lock);
+  WaitForSingleObject(fio_thread_data.handle, INFINITE);
 #else
   fio_lock(&fio_thread_lock);
   fio_ls_embd_push(&fio_thread_queue, &fio_thread_data.node);
   fio_unlock(&fio_thread_lock);
   struct pollfd list = {
-
       .events = (POLLPRI | POLLIN),
       .fd = fio_thread_data.fd_wait,
   };
-e
   if (poll(&list, 1, 5000) > 0) {
     /* thread was removed from the list through signal */
     uint64_t data;
@@ -919,7 +934,15 @@ e
 /* wake up a single thread */
 FIO_FUNC void fio_thread_signal(void) {
 #ifdef __MINGW32__
-  WakeConditionVariable(&thread_cont);
+  fio_lock(&fio_thread_lock);
+  fio_thread_queue_s *t = (fio_thread_queue_s *)fio_ls_embd_shift(&fio_thread_queue);
+  if (t) {
+    t->in_list = 0;
+    fio_unlock(&fio_thread_lock);
+    SetEvent(t->handle);
+  } else {
+    fio_unlock(&fio_thread_lock);
+  }
 #else
   fio_thread_queue_s *t;
   int fd = -2;
@@ -941,13 +964,9 @@ FIO_FUNC void fio_thread_signal(void) {
 
 /* wake up all threads */
 FIO_FUNC void fio_thread_broadcast(void) {
-#ifdef __MINGW32__
-  WakeAllConditionVariable(&thread_cont);
-#else
   while (fio_ls_embd_any(&fio_thread_queue)) {
     fio_thread_signal();
   }
-#endif
 }
 
 static size_t fio_poll(void);
@@ -4205,8 +4224,6 @@ static void __attribute__((constructor)) fio_lib_init(void) {
     capa = sysconf(_SC_OPEN_MAX);
 #elif defined(__MINGW32__)
     capa = FD_SETSIZE;
-    InitializeConditionVariable(&thread_cont);
-    InitializeCriticalSection(&thread_cont_cs);
 #elif defined(FOPEN_MAX)
     capa = FOPEN_MAX;
 #endif
