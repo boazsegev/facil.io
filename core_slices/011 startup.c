@@ -55,6 +55,7 @@ static void fio___worker_cleanup(void) {
   if (!fio_data.is_master)
     FIO_LOG_INFO("(%d) worker shutdown complete.", (int)getpid());
   else {
+#if FIO_OS_POSIX
     /*
      * Wait for some of the children, assuming at least one of them will be a
      * worker.
@@ -63,6 +64,7 @@ static void fio___worker_cleanup(void) {
       int jnk = 0;
       waitpid(-1, &jnk, 0);
     }
+#endif
     FIO_LOG_INFO("(%d) shutdown complete.", (int)fio_data.master);
   }
 }
@@ -178,7 +180,9 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
 
   if (fio_data.workers) {
     fio_data.is_worker = 0;
+#if FIO_OS_POSIX
     fio_signal_monitor(SIGUSR1, fio___worker_reset_signal_handler, NULL);
+#endif
     for (size_t i = 0; i < fio_data.workers; ++i) {
       fio_spawn_worker(NULL, NULL);
     }
@@ -341,7 +345,11 @@ static void fio___reap_children(int sig, void *ignr_) {
  * global zombie reaping.
  */
 void fio_reap_children(void) {
+#if FIO_OS_POSIX
   fio_signal_monitor(SIGCHLD, fio___reap_children, NULL);
+#else
+  FIO_LOG_ERROR("fio_reap_children unsupported on this system.");
+#endif
 }
 
 /**

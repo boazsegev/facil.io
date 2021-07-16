@@ -6,20 +6,20 @@ Feel free to copy, use and enjoy according to the license provided.
 ***************************************************************************** */
 
 /* *****************************************************************************
-Quick Patches
-***************************************************************************** */
-#if _MSC_VER
-#define pipe(pfd) _pipe(pfd, 0, _O_BINARY)
-#define pid_t     HANDLE
-#define getpid    GetCurrentProcessId
-#endif
-/* *****************************************************************************
 External STL features published
 ***************************************************************************** */
 #define FIO_EXTERN_COMPLETE   1
 #define FIOBJ_EXTERN_COMPLETE 1
 #define FIO_VERSION_GUARD
 #include <fio.h>
+/* *****************************************************************************
+Quick Patches
+***************************************************************************** */
+#if _MSC_VER
+#define waitpid(...)     (-1)
+#define WIFEXITED(...)   (-1)
+#define WEXITSTATUS(...) (-1)
+#endif
 /* *****************************************************************************
 Internal helpers
 ***************************************************************************** */
@@ -191,7 +191,7 @@ Signal Helpers
 ***************************************************************************** */
 #define FIO_SIGNAL
 #include "fio-stl.h"
-static fio_signal_forwarded = 0;
+static volatile uint8_t fio_signal_forwarded = 0;
 /* Handles signals */
 static void fio___stop_signal_handler(int sig, void *ignr_) {
   fio_data.running = 0;
@@ -326,7 +326,7 @@ FIO_SFUNC void fio_uuid_free_task(void *uuid, void *ignr) {
   fio_uuid_free2(uuid);
 }
 
-fio_uuid_s *fio_uuid_dup(fio_uuid_s *uuid) { fio_uuid_dup2(uuid); }
+fio_uuid_s *fio_uuid_dup(fio_uuid_s *uuid) { return fio_uuid_dup2(uuid); }
 void fio_uuid_free(fio_uuid_s *uuid) {
   fio_queue_push(&tasks_io_core, .fn = fio_uuid_free_task, .udata1 = uuid);
 }
@@ -573,7 +573,7 @@ IO Polling
 #endif               /* development sugar, ignore */
 
 #ifndef FIO_POLL_TICK
-#define FIO_POLL_TICK 1000
+#define FIO_POLL_TICK 993
 #endif
 
 #if !defined(FIO_ENGINE_EPOLL) && !defined(FIO_ENGINE_KQUEUE) &&               \
@@ -622,7 +622,7 @@ FIO_IFUNC void fio___poll_ev_wrap_close(int fd, void *uuid_) {
 }
 
 FIO_IFUNC int fio_uuid_monitor_tick_len(void) {
-  return (FIO_POLL_TICK * fio_data.running);
+  return (FIO_POLL_TICK * fio_data.running) | 7;
 }
 
 /* *****************************************************************************
@@ -919,17 +919,14 @@ FIO_IFUNC void fio_poll_remove_fd(fio_uuid_s *uuid) {
 
 FIO_IFUNC void fio_uuid_monitor_add_read(fio_uuid_s *uuid) {
   fio_poll_monitor(&fio___poll_data, uuid->fd, uuid, POLLIN);
-  /* TODO: fio_poll_wake(&fio___poll_data); */
 }
 
 FIO_IFUNC void fio_uuid_monitor_add_write(fio_uuid_s *uuid) {
   fio_poll_monitor(&fio___poll_data, uuid->fd, uuid, POLLOUT);
-  /* TODO: fio_poll_wake(&fio___poll_data); */
 }
 
 FIO_IFUNC void fio_uuid_monitor_add(fio_uuid_s *uuid) {
   fio_poll_monitor(&fio___poll_data, uuid->fd, uuid, POLLIN | POLLOUT);
-  /* TODO: fio_poll_wake(&fio___poll_data); */
 }
 
 /** returns non-zero if events were scheduled, 0 if idle */
@@ -996,6 +993,7 @@ static void fio___worker_cleanup(void) {
   if (!fio_data.is_master)
     FIO_LOG_INFO("(%d) worker shutdown complete.", (int)getpid());
   else {
+#if FIO_OS_POSIX
     /*
      * Wait for some of the children, assuming at least one of them will be a
      * worker.
@@ -1004,6 +1002,7 @@ static void fio___worker_cleanup(void) {
       int jnk = 0;
       waitpid(-1, &jnk, 0);
     }
+#endif
     FIO_LOG_INFO("(%d) shutdown complete.", (int)fio_data.master);
   }
 }
@@ -1119,7 +1118,9 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
 
   if (fio_data.workers) {
     fio_data.is_worker = 0;
+#if FIO_OS_POSIX
     fio_signal_monitor(SIGUSR1, fio___worker_reset_signal_handler, NULL);
+#endif
     for (size_t i = 0; i < fio_data.workers; ++i) {
       fio_spawn_worker(NULL, NULL);
     }
@@ -1282,7 +1283,11 @@ static void fio___reap_children(int sig, void *ignr_) {
  * global zombie reaping.
  */
 void fio_reap_children(void) {
+#if FIO_OS_POSIX
   fio_signal_monitor(SIGCHLD, fio___reap_children, NULL);
+#else
+  FIO_LOG_ERROR("fio_reap_children unsupported on this system.");
+#endif
 }
 
 /**
@@ -1592,6 +1597,6 @@ void fio_test(void) {
   fprintf(stderr, "Testing facil.io IO-Core framework modules.\n");
   FIO_NAME_TEST(io, state)();
   fio_defer(fio_test___task, NULL, NULL);
-  fio_start(.threads = -1, .workers = 0);
+  fio_start(.threads = -2, .workers = 0);
 }
 #endif

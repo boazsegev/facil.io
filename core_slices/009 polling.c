@@ -6,7 +6,7 @@ IO Polling
 #endif               /* development sugar, ignore */
 
 #ifndef FIO_POLL_TICK
-#define FIO_POLL_TICK 1000
+#define FIO_POLL_TICK 993
 #endif
 
 #if !defined(FIO_ENGINE_EPOLL) && !defined(FIO_ENGINE_KQUEUE) &&               \
@@ -55,7 +55,7 @@ FIO_IFUNC void fio___poll_ev_wrap_close(int fd, void *uuid_) {
 }
 
 FIO_IFUNC int fio_uuid_monitor_tick_len(void) {
-  return (FIO_POLL_TICK * fio_data.running);
+  return (FIO_POLL_TICK * fio_data.running) | 7;
 }
 
 /* *****************************************************************************
@@ -352,17 +352,14 @@ FIO_IFUNC void fio_poll_remove_fd(fio_uuid_s *uuid) {
 
 FIO_IFUNC void fio_uuid_monitor_add_read(fio_uuid_s *uuid) {
   fio_poll_monitor(&fio___poll_data, uuid->fd, uuid, POLLIN);
-  /* TODO: fio_poll_wake(&fio___poll_data); */
 }
 
 FIO_IFUNC void fio_uuid_monitor_add_write(fio_uuid_s *uuid) {
   fio_poll_monitor(&fio___poll_data, uuid->fd, uuid, POLLOUT);
-  /* TODO: fio_poll_wake(&fio___poll_data); */
 }
 
 FIO_IFUNC void fio_uuid_monitor_add(fio_uuid_s *uuid) {
   fio_poll_monitor(&fio___poll_data, uuid->fd, uuid, POLLIN | POLLOUT);
-  /* TODO: fio_poll_wake(&fio___poll_data); */
 }
 
 /** returns non-zero if events were scheduled, 0 if idle */

@@ -169,7 +169,7 @@ Signal Helpers
 ***************************************************************************** */
 #define FIO_SIGNAL
 #include "fio-stl.h"
-static fio_signal_forwarded = 0;
+static volatile uint8_t fio_signal_forwarded = 0;
 /* Handles signals */
 static void fio___stop_signal_handler(int sig, void *ignr_) {
   fio_data.running = 0;
@@ -304,7 +304,7 @@ FIO_SFUNC void fio_uuid_free_task(void *uuid, void *ignr) {
   fio_uuid_free2(uuid);
 }
 
-fio_uuid_s *fio_uuid_dup(fio_uuid_s *uuid) { fio_uuid_dup2(uuid); }
+fio_uuid_s *fio_uuid_dup(fio_uuid_s *uuid) { return fio_uuid_dup2(uuid); }
 void fio_uuid_free(fio_uuid_s *uuid) {
   fio_queue_push(&tasks_io_core, .fn = fio_uuid_free_task, .udata1 = uuid);
 }

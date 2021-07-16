@@ -16,11 +16,6 @@ NOTE: this file is auto-generated from: https://github.com/facil-io/io-core
 #endif               /* development sugar, ignore */
 
 /* *****************************************************************************
-Included files
-***************************************************************************** */
-#include <arpa/inet.h>
-
-/* *****************************************************************************
 General Compile Time Settings
 ***************************************************************************** */
 #ifndef FIO_CPU_CORES_FALLBACK
@@ -78,11 +73,28 @@ CSTL modules
 #define FIO_FIOBJ
 #include "fio-stl.h"
 
+/* *****************************************************************************
+Additional Included files
+***************************************************************************** */
+#if FIO_OS_POSIX
+#include <arpa/inet.h>
+#endif
+
 /** The main protocol object type. See `struct fio_protocol_s`. */
 typedef struct fio_protocol_s fio_protocol_s;
 
 /** The main protocol object type. See `struct fio_protocol_s`. */
 typedef struct fio_uuid_s fio_uuid_s;
+
+/* *****************************************************************************
+Quick Windows Patches
+***************************************************************************** */
+#if _MSC_VER
+#define pipe(pfd) _pipe(pfd, 0, _O_BINARY)
+#define pid_t     HANDLE
+#define getpid    GetCurrentProcessId
+FIO_IFUNC HANDLE fork(void) { return -1; }
+#endif
 /* *****************************************************************************
 Starting the IO reactor and reviewing it's state
 ***************************************************************************** */

@@ -6,17 +6,17 @@ Feel free to copy, use and enjoy according to the license provided.
 ***************************************************************************** */
 
 /* *****************************************************************************
-Quick Patches
-***************************************************************************** */
-#if _MSC_VER
-#define pipe(pfd) _pipe(pfd, 0, _O_BINARY)
-#define pid_t     HANDLE
-#define getpid    GetCurrentProcessId
-#endif
-/* *****************************************************************************
 External STL features published
 ***************************************************************************** */
 #define FIO_EXTERN_COMPLETE   1
 #define FIOBJ_EXTERN_COMPLETE 1
 #define FIO_VERSION_GUARD
 #include <fio.h>
+/* *****************************************************************************
+Quick Patches
+***************************************************************************** */
+#if _MSC_VER
+#define waitpid(...)     (-1)
+#define WIFEXITED(...)   (-1)
+#define WEXITSTATUS(...) (-1)
+#endif

@@ -206,8 +206,8 @@ Compiler detection, GCC / CLang features and OS dependent included files
 #define FIO_HAVE_UNIX_TOOLS 1
 #define FIO_OS_POSIX        1
 #define FIO___PRINTF_STYLE  printf
-#elif defined(_WIN32) || defined(WIN32) || defined(__CYGWIN__) ||              \
-    defined(__MINGW32__) || defined(__BORLANDC__)
+#elif defined(_WIN32) || defined(_WIN64) || defined(WIN32) ||                  \
+    defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__)
 #define FIO_OS_WIN     1
 #define POSIX_C_SOURCE 200809L
 #ifndef WIN32_LEAN_AND_MEAN
@@ -529,13 +529,14 @@ typedef struct fio___list_node_s {
 /** Loops through every node in the linked list except the head. */
 #define FIO_LIST_EACH(type, node_name, head, pos)                              \
   for (type *pos = FIO_PTR_FROM_FIELD(type, node_name, (head)->next),          \
-            *next____p_ls =                                                    \
+            *next____p_ls_##pos =                                              \
                 FIO_PTR_FROM_FIELD(type, node_name, (head)->next->next);       \
        pos != FIO_PTR_FROM_FIELD(type, node_name, (head));                     \
-       (pos = next____p_ls),                                                   \
-            (next____p_ls = FIO_PTR_FROM_FIELD(type,                           \
-                                               node_name,                      \
-                                               next____p_ls->node_name.next)))
+       (pos = next____p_ls_##pos),                                             \
+            (next____p_ls_##pos =                                              \
+                 FIO_PTR_FROM_FIELD(type,                                      \
+                                    node_name,                                 \
+                                    next____p_ls_##pos->node_name.next)))
 #endif
 
 /** UNSAFE macro for pushing a node to a list. */
@@ -12722,6 +12723,10 @@ SFUNC int fio_sock_open_unix(const char *address, int is_client, int nonblock) {
   return fd;
 }
 #elif FIO_OS_WIN
+
+/* UNIX Sockets?
+ * https://devblogs.microsoft.com/commandline/af_unix-comes-to-windows/
+ */
 
 static WSADATA fio___sock_useless_windows_data;
 FIO_CONSTRUCTOR(fio___sock_win_init) {

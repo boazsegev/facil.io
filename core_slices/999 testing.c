@@ -16,6 +16,6 @@ void fio_test(void) {
   fprintf(stderr, "Testing facil.io IO-Core framework modules.\n");
   FIO_NAME_TEST(io, state)();
   fio_defer(fio_test___task, NULL, NULL);
-  fio_start(.threads = -1, .workers = 0);
+  fio_start(.threads = -2, .workers = 0);
 }
 #endif
