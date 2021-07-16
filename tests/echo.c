@@ -1,20 +1,8 @@
 /* when compiling tests this is easier... */
-#ifdef TEST_WITH_LIBRARY
-#include "fio.h"
-#else
-#include "fio.c"
+#include "../lib/fio.h"
+#ifndef TEST_WITH_LIBRARY
+#include "../lib/fio.c"
 #endif
-
-#define FIO_STR_NAME echo_str
-#include "fio-stl.h"
-
-/* The echo protocol object */
-typedef struct {
-  /* inherit the fio_protocol_s properties (first for simple casting) */
-  fio_protocol_s pr;
-  /* used to buffer streaming data and echo each line separately. */
-  echo_str_s buf;
-} echo_protocol_s;
 
 /* the default timeout for the echo protocol. */
 #define TIMEOUT 15
@@ -22,15 +10,26 @@ typedef struct {
 /* running the program */
 int main(int argc, char const *argv[]);
 /* Called when a new connection arrived (used for allocation) */
-FIO_SFUNC void echo_on_open(intptr_t uuid, void *udata);
+FIO_SFUNC void echo_on_open(fio_uuid_s *uuid, void *udata);
 /* Called when data is available on the socket (uuid). */
-FIO_SFUNC void echo_on_data(intptr_t uuid, fio_protocol_s *protocol);
+FIO_SFUNC void echo_on_data(fio_uuid_s *uuid, void *udata);
 /* Called when the server is shutting down, before the uuid is closed. */
-FIO_SFUNC uint8_t echo_on_shutdown(intptr_t uuid, fio_protocol_s *protocol);
+FIO_SFUNC uint8_t echo_on_shutdown(fio_uuid_s *uuid, void *udata);
 /* Called after the connection was closed, for object cleanup. */
-FIO_SFUNC void echo_on_close(intptr_t uuid, fio_protocol_s *protocol);
+FIO_SFUNC void echo_on_close(void *udata);
 /* Called if no data was received in a while and TIMEOUT occured. */
-FIO_SFUNC void echo_ping(intptr_t uuid, fio_protocol_s *protocol);
+FIO_SFUNC void echo_ping(fio_uuid_s *uuid, void *udata);
+
+static fio_protocol_s ECHO_PROTOCOL = {
+    .on_data = echo_on_data,
+    .on_shutdown = echo_on_shutdown,
+    .on_close = echo_on_close,
+    .on_timeout = echo_ping,
+    .timeout = 10,
+};
+
+#define FIO_STR_NAME echo_str
+#include "fio-stl.h"
 
 /* *****************************************************************************
 Main
@@ -50,11 +49,13 @@ int main(int argc, char const *argv[]) {
       FIO_CLI_PRINT("Negative values are fractions of CPU core count."),
       FIO_CLI_PRINT(
           "A zero value (0) will run facil.io in single process mode."),
-      FIO_CLI_INT("--threads -t (1) The number of threads per worker process."),
+      FIO_CLI_INT(
+          "--threads -t (1) The number of worker threads per worker process."),
       FIO_CLI_PRINT("Negative values are fractions of CPU core count."),
       FIO_CLI_BOOL("--verbose -V Turns on debug level messages."));
   if (fio_cli_get_bool("-V"))
     FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
+
   /* NULL will result in the default address and port (NULL): 0.0.0.0:3000 */
   fio_listen(fio_cli_get("-b"), .on_open = echo_on_open);
   /* start the reactor */
@@ -68,25 +69,10 @@ int main(int argc, char const *argv[]) {
 Accepting new connections
 ***************************************************************************** */
 
-FIO_SFUNC void echo_on_open(intptr_t uuid, void *udata) {
-  /* allocate a new echo protocol object */
-  echo_protocol_s *p = fio_malloc(sizeof(*p));
-  FIO_ASSERT_ALLOC(p);
-  /* initialize the object */
-  *p = (echo_protocol_s){
-      .pr =
-          {
-              .on_data = echo_on_data,
-              .on_shutdown = echo_on_shutdown,
-              .on_close = echo_on_close,
-              .on_timeout = echo_ping,
-          },
-      .buf = FIO_STR_INIT,
-  };
-  /* attach the protocol to the UUID (otherwise the UUID might leak) */
-  fio_attach(uuid, &p->pr);
-  /* set timeout */
-  fio_timeout_set(uuid, TIMEOUT);
+FIO_SFUNC void echo_on_open(fio_uuid_s *uuid, void *udata) {
+  /* attach the protocol to the UUID, or it might be closed automatically. */
+  fio_attach(uuid, &ECHO_PROTOCOL);
+  fio_udata_set(uuid, echo_str_new());
   /* log it all */
   FIO_LOG_INFO("echo connection open at %p", (void *)uuid);
   (void)udata; /* unused */
@@ -97,17 +83,16 @@ Echo protocol callbacks
 ***************************************************************************** */
 
 /* Called when data is available on the socket (uuid). */
-FIO_SFUNC void echo_on_data(intptr_t uuid, fio_protocol_s *protocol) {
-  echo_protocol_s *p = (echo_protocol_s *)protocol;
-
+FIO_SFUNC void echo_on_data(fio_uuid_s *uuid, void *udata) {
   /* read the data from the socket  */
   char mem[1024];
   ssize_t r = fio_read(uuid, mem, 1018);
   if (r <= 0)
     return;
 
+  echo_str_s *str = udata;
   /* write the data to the end of the existing buffer - support fragmentation */
-  fio_str_info_s s = echo_str_write(&p->buf, mem, (size_t)r);
+  fio_str_info_s s = echo_str_write(str, mem, (size_t)r);
   char *end = s.buf;
   char *start = s.buf;
 
@@ -132,38 +117,35 @@ FIO_SFUNC void echo_on_data(intptr_t uuid, fio_protocol_s *protocol) {
   /* are there any fragmented lines? */
   if (s.buf + s.len <= start) {
     /* all data was consumed, keep string's buffer, just reset it's size. */
-    echo_str_resize(&p->buf, 0);
+    echo_str_resize(str, 0);
   } else {
     /* move the fragmented line to the beginning of the buffer  */
     memmove(s.buf, start, (s.len + s.buf) - start);
-    echo_str_resize(&p->buf, (s.len + s.buf) - start);
+    echo_str_resize(str, (s.len + s.buf) - start);
     /* are we under attack? more than 64Kb with no new lines markers? */
-    if (echo_str_len(&p->buf) > 65536) {
+    if (echo_str_len(str) > 65536) {
       fio_write(uuid, "Server: attack pattern detected! Goodbye!\n", 42);
-      echo_str_destroy(&p->buf);
+      echo_str_destroy(str);
       fio_close(uuid);
     }
   }
 }
 
 /* Called when the server is shutting down, before the uuid is closed. */
-FIO_SFUNC uint8_t echo_on_shutdown(intptr_t uuid, fio_protocol_s *protocol) {
+FIO_SFUNC uint8_t echo_on_shutdown(fio_uuid_s *uuid, void *udata) {
   fio_write(uuid, "SERVER: Server shutting down. Goodbye.\n", 39);
-  (void)protocol; /* unused */
+  (void)udata; /* unused */
   return 0;
 }
 
 /* Called after the connection was closed, for object cleanup. */
-FIO_SFUNC void echo_on_close(intptr_t uuid, fio_protocol_s *protocol) {
-  echo_protocol_s *p = (echo_protocol_s *)protocol;
-  echo_str_destroy(&p->buf);
-  fio_free(p);
-  /* log it all */
-  FIO_LOG_INFO("echo connection closed at %p", (void *)uuid);
+FIO_SFUNC void echo_on_close(void *udata) {
+  echo_str_destroy(udata);
+  FIO_LOG_INFO("echo connection closed.");
 }
 
-/* Called if no data was received in a while and TIMEOUT occured. */
-FIO_SFUNC void echo_ping(intptr_t uuid, fio_protocol_s *protocol) {
+/* Called if no data was received in a while and TIMEOUT occurred. */
+FIO_SFUNC void echo_ping(fio_uuid_s *uuid, void *udata) {
   fio_write(uuid, "SERVER: Are you there?\n", 23);
   (void)protocol; /* unused */
 }

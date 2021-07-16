@@ -1,34 +1,28 @@
 /* *****************************************************************************
-Section Start Marker
-
-
-
-
-
-
-
-
-
-
-                       Polling State Machine - epoll
-
-
-
-
-
-
-
-
-
-
-
+IO Polling
 ***************************************************************************** */
-#ifndef H_FACIL_IO_H   /* Development inclusion - ignore line */
-#include "0011 base.c" /* Development inclusion - ignore line */
-#endif                 /* Development inclusion - ignore line */
+#ifndef H_FACIL_IO_H /* development sugar, ignore */
+#include "999 dev.h" /* development sugar, ignore */
+#endif               /* development sugar, ignore */
 
-static inline void fio_force_close_in_poll(intptr_t uuid) {
-  fio_force_close(uuid);
+#ifndef FIO_POLL_TICK
+#define FIO_POLL_TICK 1000
+#endif
+
+#if !defined(FIO_ENGINE_EPOLL) && !defined(FIO_ENGINE_KQUEUE) &&               \
+    !defined(FIO_ENGINE_POLL)
+#if defined(HAVE_EPOLL) || __has_include("sys/epoll.h")
+#define FIO_ENGINE_EPOLL 1
+#elif defined(HAVE_KQUEUE) || __has_include("sys/event.h")
+#define FIO_ENGINE_KQUEUE 1
+#else
+#define FIO_ENGINE_POLL 1
+#endif
+#endif /* !defined(FIO_ENGINE_EPOLL) ... */
+
+static inline void fio_force_close_in_poll(void *uuid_) {
+  fio_uuid_s *uuid = uuid_;
+  uuid->state = FIO_UUID_CLOSED;
 }
 
 #ifndef FIO_POLL_MAX_EVENTS
@@ -36,8 +30,36 @@ static inline void fio_force_close_in_poll(intptr_t uuid) {
 #define FIO_POLL_MAX_EVENTS 96
 #endif
 
+FIO_IFUNC void fio___poll_ev_wrap_data(int fd, void *uuid_) {
+  fio_uuid_s *uuid = uuid_;
+  fio_uuid_dup(uuid);
+  fio_queue_push(fio_queue_select(uuid->protocol->reserved.flags),
+                 fio_ev_on_data,
+                 uuid,
+                 uuid->udata);
+  fio_user_thread_wake();
+  (void)fd;
+}
+FIO_IFUNC void fio___poll_ev_wrap_ready(int fd, void *uuid_) {
+  fio_uuid_s *uuid = uuid_;
+  fio_uuid_dup(uuid);
+  fio_queue_push(&tasks_io_core, fio_ev_on_ready, uuid, uuid->udata);
+  (void)fd;
+}
+
+FIO_IFUNC void fio___poll_ev_wrap_close(int fd, void *uuid_) {
+  fio_uuid_s *uuid = uuid_;
+  uuid->state = FIO_UUID_CLOSED;
+  fio_uuid_free(uuid);
+  (void)fd;
+}
+
+FIO_IFUNC int fio_uuid_monitor_tick_len(void) {
+  return (FIO_POLL_TICK * fio_data.running);
+}
+
 /* *****************************************************************************
-Start Section
+EPoll
 ***************************************************************************** */
 #if FIO_ENGINE_EPOLL
 #include <sys/epoll.h>
@@ -52,7 +74,7 @@ char const *fio_engine(void) { return "epoll"; }
 /* epoll tester, in and out */
 static int evio_fd[3] = {-1, -1, -1};
 
-FIO_IFUNC void fio_poll_close(void) {
+FIO_IFUNC void fio_uuid_monitor_close(void) {
   for (int i = 0; i < 3; ++i) {
     if (evio_fd[i] != -1) {
       close(evio_fd[i]);
@@ -61,7 +83,7 @@ FIO_IFUNC void fio_poll_close(void) {
   }
 }
 
-FIO_IFUNC void fio_poll_init(void) {
+FIO_IFUNC void fio_uuid_monitor_init(void) {
   fio_poll_close();
   for (int i = 0; i < 3; ++i) {
     evio_fd[i] = epoll_create1(EPOLL_CLOEXEC);
@@ -84,9 +106,12 @@ error:
   return;
 }
 
-FIO_IFUNC int fio___poll_add2(int fd, uint32_t events, int ep_fd) {
+FIO_IFUNC int fio___peoll_add2(fio_uuid_s *uuid, uint32_t events, int ep_fd) {
+  int ret = -1;
   struct epoll_event chevent;
-  int ret;
+  int fd = uuid->fd;
+  if (fd == -1)
+    return ret;
   do {
     errno = 0;
     chevent = (struct epoll_event){
@@ -107,39 +132,40 @@ FIO_IFUNC int fio___poll_add2(int fd, uint32_t events, int ep_fd) {
   return ret;
 }
 
-FIO_IFUNC void fio_poll_add_read(intptr_t fd) {
-  fio___poll_add2(fd,
-                  (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
-                  evio_fd[1]);
+FIO_IFUNC void fio_uuid_monitor_add_read(fio_uuid_s *uuid) {
+  fio___peoll_add2(uuid,
+                   (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                   evio_fd[1]);
   return;
 }
 
-FIO_IFUNC void fio_poll_add_write(intptr_t fd) {
-  fio___poll_add2(fd,
-                  (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
-                  evio_fd[2]);
+FIO_IFUNC void fio_uuid_monitor_add_write(fio_uuid_s *uuid) {
+  fio___peoll_add2(uuid,
+                   (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                   evio_fd[2]);
   return;
 }
 
-FIO_IFUNC void fio_poll_add(intptr_t fd) {
-  if (fio___poll_add2(fd,
-                      (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
-                      evio_fd[1]) == -1)
+FIO_IFUNC void fio_uuid_monitor_add(fio_uuid_s *uuid) {
+  if (fio___peoll_add2(uuid,
+                       (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                       evio_fd[1]) == -1)
     return;
-  fio___poll_add2(fd,
-                  (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
-                  evio_fd[2]);
+  fio___peoll_add2(uuid,
+                   (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                   evio_fd[2]);
   return;
 }
 
-FIO_IFUNC void fio_poll_remove_fd(intptr_t fd) {
-  struct epoll_event chevent = {.events = (EPOLLOUT | EPOLLIN), .data.fd = fd};
-  epoll_ctl(evio_fd[1], EPOLL_CTL_DEL, fd, &chevent);
-  epoll_ctl(evio_fd[2], EPOLL_CTL_DEL, fd, &chevent);
+FIO_IFUNC void fio_uuid_monitor_remove(fio_uuid_s *uuid) {
+  struct epoll_event chevent = {.events = (EPOLLOUT | EPOLLIN),
+                                .data.ptr = uuid};
+  epoll_ctl(evio_fd[1], EPOLL_CTL_DEL, uuid, &chevent);
+  epoll_ctl(evio_fd[2], EPOLL_CTL_DEL, uuid, &chevent);
 }
 
-FIO_SFUNC size_t fio_poll(void) {
-  int timeout_millisec = fio___timer_calc_first_interval();
+FIO_SFUNC size_t fio_uuid_monitor(void) {
+  int timeout_millisec = fio_uuid_monitor_tick_len();
   struct epoll_event internal[2];
   struct epoll_event events[FIO_POLL_MAX_EVENTS];
   int total = 0;
@@ -154,18 +180,14 @@ FIO_SFUNC size_t fio_poll(void) {
       for (int i = 0; i < active_count; i++) {
         if (events[i].events & (~(EPOLLIN | EPOLLOUT))) {
           // errors are hendled as disconnections (on_close)
-          fio_force_close_in_poll(fd2uuid(events[i].data.fd));
+          fio___poll_ev_wrap_close(0, events[i].data.ptr);
         } else {
           // no error, then it's an active event(s)
           if (events[i].events & EPOLLOUT) {
-            fio_defer_urgent(deferred_on_ready,
-                             (void *)fd2uuid(events[i].data.fd),
-                             NULL);
+            fio___poll_ev_wrap_ready(0, events[i].data.ptr);
           }
           if (events[i].events & EPOLLIN)
-            fio_defer(deferred_on_data,
-                      (void *)fd2uuid(events[i].data.fd),
-                      NULL);
+            fio___poll_ev_wrap_data(0, events[i].data.ptr);
         }
       } // end for loop
       total += active_count;
@@ -175,29 +197,7 @@ FIO_SFUNC size_t fio_poll(void) {
 }
 
 /* *****************************************************************************
-Section Start Marker
-
-
-
-
-
-
-
-
-
-
-                       Polling State Machine - kqueue
-
-
-
-
-
-
-
-
-
-
-
+KQueue
 ***************************************************************************** */
 #elif FIO_ENGINE_KQUEUE
 #include <sys/event.h>
@@ -211,10 +211,10 @@ char const *fio_engine(void) { return "kqueue"; }
 
 static int evio_fd = -1;
 
-FIO_IFUNC void fio_poll_close(void) { close(evio_fd); }
+FIO_IFUNC void fio_uuid_monitor_close(void) { close(evio_fd); }
 
-FIO_IFUNC void fio_poll_init(void) {
-  fio_poll_close();
+FIO_IFUNC void fio_uuid_monitor_init(void) {
+  fio_uuid_monitor_close();
   evio_fd = kqueue();
   if (evio_fd == -1) {
     FIO_LOG_FATAL("couldn't open kqueue.\n");
@@ -222,15 +222,15 @@ FIO_IFUNC void fio_poll_init(void) {
   }
 }
 
-FIO_IFUNC void fio_poll_add_read(intptr_t fd) {
+FIO_IFUNC void fio_uuid_monitor_add_read(fio_uuid_s *uuid) {
   struct kevent chevent[1];
   EV_SET(chevent,
-         fd,
+         uuid->fd,
          EVFILT_READ,
          EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
          0,
          0,
-         ((void *)fd));
+         ((void *)uuid));
   do {
     errno = 0;
     kevent(evio_fd, chevent, 1, NULL, 0, NULL);
@@ -238,15 +238,15 @@ FIO_IFUNC void fio_poll_add_read(intptr_t fd) {
   return;
 }
 
-FIO_IFUNC void fio_poll_add_write(intptr_t fd) {
+FIO_IFUNC void fio_uuid_monitor_add_write(fio_uuid_s *uuid) {
   struct kevent chevent[1];
   EV_SET(chevent,
-         fd,
+         uuid->fd,
          EVFILT_WRITE,
          EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
          0,
          0,
-         ((void *)fd));
+         ((void *)uuid));
   do {
     errno = 0;
     kevent(evio_fd, chevent, 1, NULL, 0, NULL);
@@ -254,45 +254,45 @@ FIO_IFUNC void fio_poll_add_write(intptr_t fd) {
   return;
 }
 
-FIO_IFUNC void fio_poll_add(intptr_t fd) {
+FIO_IFUNC void fio_uuid_monitor_add(fio_uuid_s *uuid) {
   struct kevent chevent[2];
   EV_SET(chevent,
-         fd,
+         uuid->fd,
          EVFILT_READ,
          EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
          0,
          0,
-         ((void *)fd));
+         ((void *)uuid));
   EV_SET(chevent + 1,
-         fd,
+         uuid->fd,
          EVFILT_WRITE,
          EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
          0,
          0,
-         ((void *)fd));
+         ((void *)uuid));
   do {
     errno = 0;
   } while (kevent(evio_fd, chevent, 2, NULL, 0, NULL) == -1 && errno == EINTR);
   return;
 }
 
-FIO_IFUNC void fio_poll_remove_fd(intptr_t fd) {
-  FIO_LOG_WARNING("fio_poll_remove_fd called for %d", (int)fd);
+FIO_IFUNC void fio_uuid_monitor_remove(fio_uuid_s *uuid) {
+  FIO_LOG_WARNING("fio_uuid_monitor_remove called for %d", (int)uuid->fd);
   if (evio_fd < 0)
     return;
   struct kevent chevent[2];
-  EV_SET(chevent, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
-  EV_SET(chevent + 1, fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
+  EV_SET(chevent, uuid->fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+  EV_SET(chevent + 1, uuid->fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
   do {
     errno = 0;
     kevent(evio_fd, chevent, 2, NULL, 0, NULL);
   } while (errno == EINTR);
 }
 
-FIO_SFUNC size_t fio_poll(void) {
+FIO_SFUNC size_t fio_uuid_monitor_review(void) {
   if (evio_fd < 0)
     return -1;
-  int timeout_millisec = fio___timer_calc_first_interval();
+  int timeout_millisec = fio_uuid_monitor_tick_len();
   struct kevent events[FIO_POLL_MAX_EVENTS] = {{0}};
 
   const struct timespec timeout = {
@@ -306,14 +306,12 @@ FIO_SFUNC size_t fio_poll(void) {
     for (int i = 0; i < active_count; i++) {
       // test for event(s) type
       if (events[i].filter == EVFILT_WRITE) {
-        fio_defer_urgent(deferred_on_ready,
-                         ((void *)fd2uuid(events[i].udata)),
-                         NULL);
+        fio___poll_ev_wrap_ready(0, (void *)events[i].udata);
       } else if (events[i].filter == EVFILT_READ) {
-        fio_defer(deferred_on_data, (void *)fd2uuid(events[i].udata), NULL);
+        fio___poll_ev_wrap_data(0, (void *)events[i].udata);
       }
       if (events[i].flags & (EV_EOF | EV_ERROR)) {
-        fio_force_close_in_poll(fd2uuid(events[i].udata));
+        fio___poll_ev_wrap_close(0, (void *)events[i].udata);
       }
     }
   } else if (active_count < 0) {
@@ -325,34 +323,11 @@ FIO_SFUNC size_t fio_poll(void) {
 }
 
 /* *****************************************************************************
-Section Start Marker
-
-
-
-
-
-
-
-
-
-
-                       Polling State Machine - poll
-
-
-
-
-
-
-
-
-
-
-
+Poll
 ***************************************************************************** */
 #elif FIO_ENGINE_POLL
 
 #define FIO_POLL
-#define FIO_POLL_HAS_UDATA_COLLECTION 0
 #include "fio-stl.h"
 
 /**
@@ -362,47 +337,38 @@ Section Start Marker
  */
 char const *fio_engine(void) { return "poll"; }
 
-FIO_SFUNC void fio___poll_ev_wrap_data(int fd, void *udata) {
-  intptr_t uuid = fd2uuid(fd);
-  fio_defer(deferred_on_data, (void *)uuid, udata);
-}
-FIO_SFUNC void fio___poll_ev_wrap_ready(int fd, void *udata) {
-  intptr_t uuid = fd2uuid(fd);
-  fio_defer_urgent(deferred_on_ready, (void *)uuid, udata);
-}
-FIO_SFUNC void fio___poll_ev_wrap_close(int fd, void *udata) {
-  intptr_t uuid = fd2uuid(fd);
-  fio_force_close_in_poll(uuid);
-  (void)udata;
-}
-
 static fio_poll_s fio___poll_data = FIO_POLL_INIT(fio___poll_ev_wrap_data,
                                                   fio___poll_ev_wrap_ready,
                                                   fio___poll_ev_wrap_close);
-FIO_IFUNC void fio_poll_close(void) { fio_poll_destroy(&fio___poll_data); }
-
-FIO_IFUNC void fio_poll_init(void) {}
-
-FIO_IFUNC void fio_poll_remove_fd(intptr_t fd) {
-  fio_poll_forget(&fio___poll_data, fd);
+FIO_IFUNC void fio_uuid_monitor_close(void) {
+  fio_poll_destroy(&fio___poll_data);
 }
 
-FIO_IFUNC void fio_poll_add_read(intptr_t fd) {
-  fio_poll_monitor(&fio___poll_data, fd, NULL, POLLIN);
+FIO_IFUNC void fio_uuid_monitor_init(void) {}
+
+FIO_IFUNC void fio_poll_remove_fd(fio_uuid_s *uuid) {
+  fio_poll_forget(&fio___poll_data, uuid->fd);
 }
 
-FIO_IFUNC void fio_poll_add_write(intptr_t fd) {
-  fio_poll_monitor(&fio___poll_data, fd, NULL, POLLOUT);
+FIO_IFUNC void fio_uuid_monitor_add_read(fio_uuid_s *uuid) {
+  fio_poll_monitor(&fio___poll_data, uuid->fd, uuid, POLLIN);
+  /* TODO: fio_poll_wake(&fio___poll_data); */
 }
 
-FIO_IFUNC void fio_poll_add(intptr_t fd) {
-  fio_poll_monitor(&fio___poll_data, fd, NULL, POLLIN | POLLOUT);
+FIO_IFUNC void fio_uuid_monitor_add_write(fio_uuid_s *uuid) {
+  fio_poll_monitor(&fio___poll_data, uuid->fd, uuid, POLLOUT);
+  /* TODO: fio_poll_wake(&fio___poll_data); */
+}
+
+FIO_IFUNC void fio_uuid_monitor_add(fio_uuid_s *uuid) {
+  fio_poll_monitor(&fio___poll_data, uuid->fd, uuid, POLLIN | POLLOUT);
+  /* TODO: fio_poll_wake(&fio___poll_data); */
 }
 
 /** returns non-zero if events were scheduled, 0 if idle */
-static size_t fio_poll(void) {
-  int timeout_millisec = fio___timer_calc_first_interval();
-  return (size_t)(fio_poll_review(&fio___poll_data, timeout_millisec) > 0);
+FIO_SFUNC size_t fio_uuid_monitor_review(void) {
+  return (size_t)(
+      fio_poll_review(&fio___poll_data, fio_uuid_monitor_tick_len()) > 0);
 }
 
 #endif /* FIO_ENGINE_POLL */

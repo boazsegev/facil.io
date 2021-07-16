@@ -90,9 +90,9 @@ CMAKE_REQUIRE_PACKAGE=Threads
 # any libraries required (only names, ommit the "-l" at the begining)
 LINKER_LIBS=pthread m
 # optimization level.
-OPTIMIZATION=-O2 -march=native
+OPTIMIZATION=-O2
 # optimization level in debug mode.
-OPTIMIZATION_DEBUG=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer
+OPTIMIZATION_DEBUG=-O0 -fsanitize=address -fno-omit-frame-pointer
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
 WARNINGS=-Wshadow -Wall -Wextra -Wpedantic -Wno-missing-field-initializers
 # any extra include folders, space seperated list. (i.e. `pg_config --includedir`)
@@ -140,7 +140,7 @@ endif
 
 TEST4POLL:=       # HAVE_KQUEUE / HAVE_EPOLL / HAVE_POLL
 TEST4SOCKET:=1    # --- adds linker flags, not compilation flags
-TEST4SSL:=        # HAVE_OPENSSL / HAVE_BEARSSL + HAVE_S2N
+TEST4TLS:=        # HAVE_OPENSSL / HAVE_BEARSSL + HAVE_S2N
 TEST4SENDFILE:=   # HAVE_SENDFILE
 TEST4TM_ZONE:=    # HAVE_TM_TM_ZONE
 TEST4ZLIB:=       # HAVE_ZLIB
@@ -456,7 +456,7 @@ endif # TEST4SOCKET
 # SSL/ TLS Library Detection
 # (no need to edit)
 #############################################################################
-ifdef TEST4SSL
+ifdef TEST4TLS
 
 # BearSSL requirement C application code
 # (source code variation)
@@ -543,7 +543,7 @@ ifeq ($(call TRY_COMPILE, "\#include <s2n.h>\\n int main(void) {}", "-ls2n") , 0
   LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
 endif
 
-endif # TEST4SSL
+endif # TEST4TLS
 #############################################################################
 # ZLib Library Detection
 # (no need to edit)
