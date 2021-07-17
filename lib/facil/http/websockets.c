@@ -83,9 +83,8 @@ struct buffer_s resize_ws_buffer(ws_s *owner, struct buffer_s buff) {
   if (!tmp) {
     free_ws_buffer(owner, buff);
     buff.size = 0;
-  } else {
-    buff.data = tmp;
   }
+  buff.data = tmp;
   return buff;
 }
 void free_ws_buffer(ws_s *owner, struct buffer_s buff) {
