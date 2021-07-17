@@ -3117,61 +3117,34 @@ static intptr_t fio_unix_socket(const char *address, uint8_t server) {
 #endif
   // get the file descriptor
   int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-#ifdef __MINGW32__
-  if (fd == INVALID_SOCKET) {
-    return -1;
-  }
-#else
   if (fd == -1) {
     return -1;
   }
-#endif
-  if (fio_set_non_block(fd) == -1) {
-#ifdef __MINGW32__
-      closesocket(fd);
-#else      
+  if (fio_set_non_block(fd) == -1) {   
       close(fd);
-#endif
     return -1;
   }
   if (server) {
     unlink(addr.sun_path);
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-      // perror("couldn't bind unix socket");
-#ifdef __MINGW32__
-      closesocket(fd);
-#else      
+      // perror("couldn't bind unix socket");    
       close(fd);
-#endif
       return -1;
     }
     if (listen(fd, SOMAXCONN) < 0) {
-      // perror("couldn't start listening to unix socket");
-#ifdef __MINGW32__
-      closesocket(fd);
-#else      
+      // perror("couldn't start listening to unix socket");    
       close(fd);
-#endif
       return -1;
     }
     /* chmod for foreign connections */
     fchmod(fd, 0777);
   } else {
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1 &&
-        errno != EINPROGRESS) {
-#ifdef __MINGW32__
-      closesocket(fd);
-#else      
+        errno != EINPROGRESS) {   
       close(fd);
-#endif
       return -1;
     }
   }
-#ifdef __MINGW32__
-  fd = fio_handle2fd(fd);
-  if (fd == -1)
-    return -1;
-#endif
   fio_lock(&fd_data(fd).protocol_lock);
   fio_clear_fd(fd, 1);
   fio_unlock(&fd_data(fd).protocol_lock);
