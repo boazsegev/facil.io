@@ -2441,7 +2441,7 @@ static size_t fio_poll(void) {
   size_t j = 0;
 
   for(i = start; i <= end; i++) {
-    if (fd_data(i).socket_handle != INVALID_SOCKET) {
+    if (fd_data(i).socket_handle != INVALID_SOCKET && fd_data(i).socket_handle > 0) {
       list[j].fd = fd_data(i).socket_handle;
       list[j].events = fio_data->poll[i].events;
       list[j].revents = fio_data->poll[i].revents;
@@ -4280,6 +4280,9 @@ static void __attribute__((constructor)) fio_lib_init(void) {
 
   for (ssize_t i = 0; i < capa; ++i) {
     fio_clear_fd(i, 0);
+#ifdef __MINGW32__
+    fio_clear_handle(i);
+#endif
 #if FIO_ENGINE_POLL || FIO_ENGINE_WSAPOLL
     fio_data->poll[i].fd = -1;
 #endif
