@@ -29,6 +29,9 @@ typedef struct {
   void *arg;
 } fio___state_task_s;
 
+#ifdef FIO_MEM_REALLOC_
+#error FIO_MEM_REALLOC_ should have been undefined
+#endif
 #define FIO_MALLOC_TMP_USE_SYSTEM
 #define FIO_OMAP_NAME          fio_state_tasks
 #define FIO_MAP_TYPE           fio___state_task_s

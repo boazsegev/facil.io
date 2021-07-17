@@ -16,6 +16,7 @@ External STL features published
 Quick Patches
 ***************************************************************************** */
 #if _MSC_VER
+#define fork()           (-1)
 #define waitpid(...)     (-1)
 #define WIFEXITED(...)   (-1)
 #define WEXITSTATUS(...) (-1)

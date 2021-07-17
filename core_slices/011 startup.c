@@ -16,7 +16,15 @@ static void fio___worker_nothread_cycle(void) {
       continue;
     if (!fio_data.running)
       break;
-    fio___housekeeping();
+    fio___cycle_housekeeping_running();
+  }
+  fio_cleanup_start_shutdown();
+  for (;;) {
+    if (!fio_queue_perform(&tasks_io_core))
+      continue;
+    if (!fio_queue_perform(&tasks_user))
+      continue;
+    break;
   }
 }
 
@@ -26,11 +34,7 @@ static void *fio___user_thread_cycle(void *ignr) {
   while (fio_data.running) {
     fio_queue_perform_all(&tasks_user);
     if (fio_data.running) {
-#if FIO_ENGINE_POLL
-      fio_uuid_monitor_review();
-#else
       fio_user_thread_suspent();
-#endif
     }
   }
   return NULL;
@@ -38,16 +42,23 @@ static void *fio___user_thread_cycle(void *ignr) {
 /** Worker cycle */
 static void fio___worker_cycle(void) {
   while (fio_data.running) {
-    fio___housekeeping();
+    fio___cycle_housekeeping_running();
     fio_queue_perform_all(&tasks_io_core);
   }
-  return;
+  fio_cleanup_start_shutdown();
+  for (;;) {
+    if (!fio_queue_perform(&tasks_io_core))
+      continue;
+    if (!fio_queue_perform(&tasks_user))
+      continue;
+    return;
+  }
 }
 
 static void fio___worker_cleanup(void) {
   fio_cleanup_after_fork(NULL);
   do {
-    fio___housekeeping();
+    fio___cycle_housekeeping();
     fio_queue_perform_all(&tasks_io_core);
     fio_queue_perform_all(&tasks_user);
   } while (fio_queue_count(&tasks_io_core) + fio_queue_count(&tasks_user));
@@ -90,7 +101,7 @@ static void fio___worker(void) {
     fio_user_thread_wake_all();
     for (size_t i = 0; i < fio_data.threads; ++i) {
       fio_queue_perform_all(&tasks_io_core);
-      fio___housekeeping();
+      fio___cycle_housekeeping();
       fio_thread_join(threads[i]);
     }
     free(threads);
@@ -155,6 +166,7 @@ static void fio_spawn_worker(void *ignr_1, void *ignr_2) {
  * This method blocks the current thread until the server is stopped (when a
  * SIGINT/SIGTERM is received).
  */
+void fio_start___(void); /* sublime text marker */
 void fio_start FIO_NOOP(struct fio_start_args args) {
   fio_expected_concurrency(&args.threads, &args.workers);
   fio_signal_monitor(SIGINT, fio___stop_signal_handler, NULL);
@@ -230,7 +242,7 @@ void fio_expected_concurrency(int16_t *restrict threads,
                               int16_t *restrict processes) {
   if (!threads || !processes)
     return;
-  if (!*threads && !*processes) {
+  if (0 && !*threads && !*processes) {
     /* both options set to 0 - default to master_worker with X cores threads */
     ssize_t cpu_count = fio_detect_cpu_cores();
 #if FIO_CPU_CORES_LIMIT
@@ -293,10 +305,6 @@ void fio_expected_concurrency(int16_t *restrict threads,
       }
     }
   }
-
-  /* make sure we have at least one thread */
-  if (*threads <= 0)
-    *threads = 1;
 }
 /**
  * Returns the number of worker processes if facil.io is running.

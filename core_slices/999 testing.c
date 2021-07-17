@@ -13,9 +13,10 @@ FIO_SFUNC void fio_test___task(void *u1, void *u2) {
   (void)u2;
 }
 void fio_test(void) {
+  FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
   fprintf(stderr, "Testing facil.io IO-Core framework modules.\n");
   FIO_NAME_TEST(io, state)();
-  fio_defer(fio_test___task, NULL, NULL);
+  // fio_defer(fio_test___task, NULL, NULL);
   fio_start(.threads = -2, .workers = 0);
 }
 #endif

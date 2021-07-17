@@ -37,6 +37,9 @@ General Compile Time Settings
 #define FIO_SOCKET_BUFFER_PER_WRITE (1UL << 16)
 #endif
 
+#ifndef FIO_UUID_TIMEOUT_MAX
+#define FIO_UUID_TIMEOUT_MAX 600
+#endif
 /* *****************************************************************************
 CSTL modules
 ***************************************************************************** */
@@ -53,6 +56,7 @@ CSTL modules
 #define FIO_CLI
 #include "fio-stl.h"
 
+#define FIO_EXTERN
 #define FIO_MALLOC
 #include "fio-stl.h"
 
@@ -68,6 +72,7 @@ CSTL modules
 #define FIO_URL
 #include "fio-stl.h"
 
+#define FIO_EXTERN
 #define FIOBJ_EXTERN
 #define FIOBJ_MALLOC
 #define FIO_FIOBJ
@@ -86,6 +91,9 @@ typedef struct fio_protocol_s fio_protocol_s;
 /** The main protocol object type. See `struct fio_protocol_s`. */
 typedef struct fio_uuid_s fio_uuid_s;
 
+/** TLS context object, if any. */
+typedef struct fio_tls_s fio_tls_s;
+
 /* *****************************************************************************
 Quick Windows Patches
 ***************************************************************************** */
@@ -93,5 +101,4 @@ Quick Windows Patches
 #define pipe(pfd) _pipe(pfd, 0, _O_BINARY)
 #define pid_t     HANDLE
 #define getpid    GetCurrentProcessId
-FIO_IFUNC HANDLE fork(void) { return -1; }
 #endif

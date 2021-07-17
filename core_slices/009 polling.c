@@ -9,48 +9,52 @@ IO Polling
 #define FIO_POLL_TICK 993
 #endif
 
-#if !defined(FIO_ENGINE_EPOLL) && !defined(FIO_ENGINE_KQUEUE) &&               \
-    !defined(FIO_ENGINE_POLL)
-#if defined(HAVE_EPOLL) || __has_include("sys/epoll.h")
-#define FIO_ENGINE_EPOLL 1
-#elif defined(HAVE_KQUEUE) || __has_include("sys/event.h")
-#define FIO_ENGINE_KQUEUE 1
-#else
-#define FIO_ENGINE_POLL 1
-#endif
-#endif /* !defined(FIO_ENGINE_EPOLL) ... */
-
-static inline void fio_force_close_in_poll(void *uuid_) {
-  fio_uuid_s *uuid = uuid_;
-  uuid->state = FIO_UUID_CLOSED;
-}
-
 #ifndef FIO_POLL_MAX_EVENTS
 /* The number of events to collect with each call to epoll or kqueue. */
 #define FIO_POLL_MAX_EVENTS 96
 #endif
 
+#if FIO_ENGINE_POLL
+/* fio_poll_remove might not work when polling from multiple threads */
+#define FIO_POLL_EV_VALIDATE_UUID(uuid)                                        \
+  do {                                                                         \
+    fio_queue_perform_all(&tasks_io_core);                                     \
+    if (!fio_uuid_is_valid(uuid)) {                                            \
+      FIO_LOG_DEBUG("uuid validation failed for uuid %p", (void *)uuid);       \
+      return;                                                                  \
+    }                                                                          \
+  } while (0);
+#else
+#define FIO_POLL_EV_VALIDATE_UUID(uuid)
+#endif
+
 FIO_IFUNC void fio___poll_ev_wrap_data(int fd, void *uuid_) {
   fio_uuid_s *uuid = uuid_;
-  fio_uuid_dup(uuid);
+  // FIO_LOG_DEBUG("event on_data detected for uuid %p", uuid_);
+  FIO_POLL_EV_VALIDATE_UUID(uuid);
   fio_queue_push(fio_queue_select(uuid->protocol->reserved.flags),
                  fio_ev_on_data,
-                 uuid,
+                 fio_uuid_dup(uuid),
                  uuid->udata);
   fio_user_thread_wake();
   (void)fd;
 }
 FIO_IFUNC void fio___poll_ev_wrap_ready(int fd, void *uuid_) {
   fio_uuid_s *uuid = uuid_;
-  fio_uuid_dup(uuid);
-  fio_queue_push(&tasks_io_core, fio_ev_on_ready, uuid, uuid->udata);
+  // FIO_LOG_DEBUG("event on_ready detected for uuid %p", uuid_);
+  FIO_POLL_EV_VALIDATE_UUID(uuid);
+  fio_queue_push(&tasks_io_core,
+                 fio_ev_on_ready,
+                 fio_uuid_dup(uuid),
+                 uuid->udata);
   (void)fd;
 }
 
 FIO_IFUNC void fio___poll_ev_wrap_close(int fd, void *uuid_) {
   fio_uuid_s *uuid = uuid_;
-  uuid->state = FIO_UUID_CLOSED;
-  fio_uuid_free(uuid);
+  // FIO_LOG_DEBUG("event on_close detected for uuid %p", uuid_);
+  FIO_POLL_EV_VALIDATE_UUID(uuid);
+  fio_uuid_close(uuid);
   (void)fd;
 }
 
@@ -277,7 +281,6 @@ FIO_IFUNC void fio_uuid_monitor_add(fio_uuid_s *uuid) {
 }
 
 FIO_IFUNC void fio_uuid_monitor_remove(fio_uuid_s *uuid) {
-  FIO_LOG_WARNING("fio_uuid_monitor_remove called for %d", (int)uuid->fd);
   if (evio_fd < 0)
     return;
   struct kevent chevent[2];
@@ -344,28 +347,41 @@ FIO_IFUNC void fio_uuid_monitor_close(void) {
   fio_poll_destroy(&fio___poll_data);
 }
 
-FIO_IFUNC void fio_uuid_monitor_init(void) {}
+FIO_IFUNC void fio_uuid_monitor_init(void) {
+  fio___poll_data = (fio_poll_s)FIO_POLL_INIT(fio___poll_ev_wrap_data,
+                                              fio___poll_ev_wrap_ready,
+                                              fio___poll_ev_wrap_close);
+}
 
-FIO_IFUNC void fio_poll_remove_fd(fio_uuid_s *uuid) {
+FIO_IFUNC void fio_uuid_monitor_remove(fio_uuid_s *uuid) {
+  // FIO_LOG_DEBUG("IO monitor removing %p", uuid);
+  fio_io_thread_wake();
   fio_poll_forget(&fio___poll_data, uuid->fd);
 }
 
 FIO_IFUNC void fio_uuid_monitor_add_read(fio_uuid_s *uuid) {
+  // FIO_LOG_DEBUG("IO monitor added read for %p (%d)", uuid, uuid->fd);
   fio_poll_monitor(&fio___poll_data, uuid->fd, uuid, POLLIN);
+  fio_io_thread_wake();
 }
 
 FIO_IFUNC void fio_uuid_monitor_add_write(fio_uuid_s *uuid) {
   fio_poll_monitor(&fio___poll_data, uuid->fd, uuid, POLLOUT);
+  fio_io_thread_wake();
 }
 
 FIO_IFUNC void fio_uuid_monitor_add(fio_uuid_s *uuid) {
+  // FIO_LOG_DEBUG("IO monitor adding %p (%d)", uuid, uuid->fd);
   fio_poll_monitor(&fio___poll_data, uuid->fd, uuid, POLLIN | POLLOUT);
+  fio_io_thread_wake();
 }
 
 /** returns non-zero if events were scheduled, 0 if idle */
 FIO_SFUNC size_t fio_uuid_monitor_review(void) {
-  return (size_t)(
-      fio_poll_review(&fio___poll_data, fio_uuid_monitor_tick_len()) > 0);
+  // FIO_LOG_DEBUG("IO monitor reviewing events with %zu sockets",
+  //               fio___poll_fds_count(&fio___poll_data.fds));
+  fio_io_thread_wake_clear();
+  return fio_poll_review(&fio___poll_data, fio_uuid_monitor_tick_len());
 }
 
 #endif /* FIO_ENGINE_POLL */

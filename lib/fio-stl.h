@@ -306,6 +306,12 @@ Function Attributes
 #endif
 #define FIO_CONSTRUCTOR(fname) FIO___CONSTRUCTOR_INTERNAL(fname)
 
+#define FIO_DESTRUCTOR_INTERNAL(fname)                                         \
+  static void fname(void);                                                     \
+  FIO_CONSTRUCTOR(fname##__hook) { atexit(fname); }                            \
+  static void fname(void)
+#define FIO_DESTRUCTOR(fname) FIO_DESTRUCTOR_INTERNAL(fname)
+
 #else
 /** Marks a function as a constructor - if supported. */
 #define FIO_CONSTRUCTOR(fname)                                                 \
@@ -553,8 +559,11 @@ typedef struct fio___list_node_s {
   do {                                                                         \
     (n)->prev->next = (n)->next;                                               \
     (n)->next->prev = (n)->prev;                                               \
-    (n)->next = (n)->prev = NULL;                                              \
+    (n)->next = (n)->prev = (n);                                               \
   } while (0)
+
+/** UNSAFE macro for testing if a list is empty. */
+#define FIO_LIST_IS_EMPTY(head) (!(head) || (head)->next == (head)->prev)
 
 /* *****************************************************************************
 Indexed Linked Lists Persistent Macros and Types
@@ -732,7 +741,7 @@ Memory allocation macros
 #undef FIO_MEM_REST
 
 /* if a global allocator was previously defined route macros to fio_malloc */
-#ifdef H___FIO_MALLOC___H
+#if defined(H___FIO_MALLOC___H)
 /** Reallocates memory, copying (at least) `copy_len` if necessary. */
 #define FIO_MEM_REALLOC(ptr, old_size, new_size, copy_len)                     \
   fio_realloc2((ptr), (new_size), (copy_len))
@@ -8527,9 +8536,6 @@ FIO_CONSTRUCTOR(FIO_NAME(FIO_MEMORY_NAME, __mem_state_setup)) {
         FIO_NAME(FIO_MEMORY_NAME, __mem_block_new)();
   }
 #endif
-#if _MSC_VER
-  atexit(FIO_NAME(FIO_MEMORY_NAME, __mem_state_cleanup));
-#endif
 #ifdef DEBUG
   FIO_NAME(FIO_MEMORY_NAME, malloc_print_settings)();
 #endif /* DEBUG */
@@ -8688,6 +8694,7 @@ FIO_IFUNC void FIO_NAME(FIO_MEMORY_NAME, __mem_chunk_free)(
         (FIO_LIST_NODE *)FIO_NAME(FIO_MEMORY_NAME, __mem_chunk2ptr)(c, b, 0);
     if (n->prev && n->next) {
       FIO_LIST_REMOVE(n);
+      n->prev = n->next = NULL;
     }
   }
   FIO_NAME(FIO_MEMORY_NAME, __mem_chunk_cache_or_dealloc)(c);
@@ -8799,6 +8806,7 @@ FIO_IFUNC void *FIO_NAME(FIO_MEMORY_NAME, __mem_block_new)(void) {
       &FIO_NAME(FIO_MEMORY_NAME, __mem_state)->blocks) {
     FIO_LIST_NODE *n = FIO_NAME(FIO_MEMORY_NAME, __mem_state)->blocks.prev;
     FIO_LIST_REMOVE(n);
+    n->next = n->prev = NULL;
     c = FIO_NAME(FIO_MEMORY_NAME, __mem_ptr2chunk)((void *)n);
     fio_atomic_add_fetch(&c->ref, 1);
     p = (void *)n;

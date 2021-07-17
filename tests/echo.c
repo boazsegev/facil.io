@@ -10,7 +10,7 @@
 /* running the program */
 int main(int argc, char const *argv[]);
 /* Called when a new connection arrived (used for allocation) */
-FIO_SFUNC void echo_on_open(fio_uuid_s *uuid, void *udata);
+FIO_SFUNC void echo_on_open(int fd, void *udata);
 /* Called when data is available on the socket (uuid). */
 FIO_SFUNC void echo_on_data(fio_uuid_s *uuid, void *udata);
 /* Called when the server is shutting down, before the uuid is closed. */
@@ -69,13 +69,12 @@ int main(int argc, char const *argv[]) {
 Accepting new connections
 ***************************************************************************** */
 
-FIO_SFUNC void echo_on_open(fio_uuid_s *uuid, void *udata) {
+FIO_SFUNC void echo_on_open(int fd, void *udata) {
   /* attach the protocol to the UUID, or it might be closed automatically. */
-  fio_attach(uuid, &ECHO_PROTOCOL);
-  fio_udata_set(uuid, echo_str_new());
+  udata = echo_str_new();
+  fio_attach_fd(fd, &ECHO_PROTOCOL, udata, NULL);
   /* log it all */
-  FIO_LOG_INFO("echo connection open at %p", (void *)uuid);
-  (void)udata; /* unused */
+  FIO_LOG_INFO("echo connection open with %p", (void *)udata);
 }
 
 /* *****************************************************************************
@@ -108,7 +107,7 @@ FIO_SFUNC void echo_on_data(fio_uuid_s *uuid, void *udata) {
       memcpy(tmp, "ECHO: ", 6);
       memcpy(tmp + 6, start, len);
       /* send the message by transferring ownership of the allocated buffer */
-      fio_write2(uuid, .data.buf = tmp, .len = len + 6, .dealloc = fio_free);
+      fio_write2(uuid, .buf = tmp, .len = len + 6, .dealloc = fio_free);
     }
     /* seek immediately after the '\n' character  */
     start = end + 1;
@@ -140,12 +139,12 @@ FIO_SFUNC uint8_t echo_on_shutdown(fio_uuid_s *uuid, void *udata) {
 
 /* Called after the connection was closed, for object cleanup. */
 FIO_SFUNC void echo_on_close(void *udata) {
-  echo_str_destroy(udata);
-  FIO_LOG_INFO("echo connection closed.");
+  echo_str_free(udata);
+  FIO_LOG_INFO("echo connection closed with %p", udata);
 }
 
 /* Called if no data was received in a while and TIMEOUT occurred. */
 FIO_SFUNC void echo_ping(fio_uuid_s *uuid, void *udata) {
   fio_write(uuid, "SERVER: Are you there?\n", 23);
-  (void)protocol; /* unused */
+  (void)udata; /* unused */
 }

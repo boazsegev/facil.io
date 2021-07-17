@@ -40,12 +40,7 @@ Callbacks and object used by main()
 ***************************************************************************** */
 
 /** Called to accept new connections */
-FIO_SFUNC void on_open(intptr_t uuid, void *udata);
-
-/** Called there's incoming data (from STDIN / the client socket. */
-FIO_SFUNC void on_data(intptr_t uuid, fio_protocol_s *protocol);
-/** Called when the monitored IO is closed or has a fatal error. */
-FIO_SFUNC void on_close(intptr_t uuid, fio_protocol_s *protocol);
+FIO_SFUNC void on_open(int fd, void *udata);
 
 /* *****************************************************************************
 Starting the program - main()
@@ -81,7 +76,7 @@ int main(int argc, char const *argv[]) {
   }
   /* review CLI connection address (in URL format) */
   const char *url = fio_cli_get("-b");
-  size_t url_len = strlen(url);
+  size_t url_len = url ? strlen(url) : 0;
   FIO_ASSERT(url_len < 1024, "URL address too long");
   FIO_ASSERT(fio_listen(url, .on_open = on_open) != -1,
              "Can't open listening socket %s",
@@ -91,9 +86,6 @@ int main(int argc, char const *argv[]) {
   fio_start(.threads = fio_cli_get_i("-t"), .workers = fio_cli_get_i("-w"));
   /* cleanup */
   fio_cli_end();
-  FIOBJ a = fiobj_array_new();
-  fiobj_array_compact(a);
-  fiobj_free(a);
   return 0;
 }
 
@@ -103,8 +95,8 @@ IO "Objects"and helpers
 #include "http1_parser.h"
 
 typedef struct {
-  fio_protocol_s pr;
   http1_parser_s parser;
+  fio_uuid_s *uuid; /* valid only within an IO callback */
   struct {
     char *name;
     char *value;
@@ -120,13 +112,10 @@ typedef struct {
   int body_len;
   int buf_pos;
   int buf_consumed;
-  intptr_t fd;
   char buf[]; /* header and data buffer */
 } client_s;
 
 #define FIO_REF_NAME client
-#define FIO_REF_INIT(c)                                                        \
-  c = (client_s){.pr = {.on_data = on_data, .on_close = on_close}};
 #define FIO_REF_CONSTRUCTOR_ONLY
 #define FIO_REF_FLEX_TYPE char
 #include "fio-stl.h"
@@ -138,25 +127,31 @@ static void http_send_response(client_s *c,
                                fio_str_info_s headers[][2],
                                fio_str_info_s body);
 
+/** Called there's incoming data (from STDIN / the client socket. */
+FIO_SFUNC void on_data(fio_uuid_s *uuid, void *udata);
+
+fio_protocol_s HTTP_PROTOCOL_1 = {
+    .on_data = on_data,
+    .on_close = (void (*)(void *))client_free,
+};
+
 /* *****************************************************************************
 IO callback(s)
 ***************************************************************************** */
 
 /** Called to accept new connections */
-FIO_SFUNC void on_open(intptr_t fd, void *udata) {
+FIO_SFUNC void on_open(int fd, void *udata) {
   client_s *c = client_new(HTTP_CLIENT_BUFFER);
   FIO_ASSERT_ALLOC(c);
-  c->fd = fd;
-  fio_attach(fd, &c->pr);
-  FIO_LOG_DEBUG2("Accepted a new connection, attaching %p => %p",
-                 (void *)fd,
-                 (void *)c);
+  fio_attach_fd(fd, &HTTP_PROTOCOL_1, c, NULL);
+  FIO_LOG_DEBUG2("Accepted a new HTTP connection (at %d): %p", fd, (void *)c);
   (void)udata;
 }
 
 /** Called there's incoming data (from STDIN / the client socket. */
-FIO_SFUNC void on_data(intptr_t uuid, fio_protocol_s *protocol) {
-  client_s *c = (client_s *)protocol;
+FIO_SFUNC void on_data(fio_uuid_s *uuid, void *udata) {
+  client_s *c = udata;
+  c->uuid = uuid;
   ssize_t r =
       fio_read(uuid, c->buf + c->buf_pos, HTTP_CLIENT_BUFFER - c->buf_pos);
   if (r > 0) {
@@ -178,13 +173,6 @@ FIO_SFUNC void on_data(intptr_t uuid, fio_protocol_s *protocol) {
     }
   }
   return;
-  (void)uuid;
-}
-
-/** Called when the monitored IO is closed or has a fatal error. */
-FIO_SFUNC void on_close(intptr_t uuid, fio_protocol_s *protocol) {
-  client_free((client_s *)protocol);
-  (void)uuid;
 }
 
 /* *****************************************************************************
@@ -311,8 +299,7 @@ static int http1_on_body_chunk(http1_parser_s *parser,
 /** called when a protocol error occurred. */
 static int http1_on_error(http1_parser_s *parser) {
   client_s *c = FIO_PTR_FROM_FIELD(client_s, parser, parser);
-  close(c->fd);
-  c->fd = -1;
+  fio_close(c->uuid);
   return -1;
 }
 
@@ -364,8 +351,8 @@ static void http_send_response(client_s *c,
   fio_str_info_s final = str_write(response, "\r\n", 2);
   if (body.len && body.buf)
     final = str_write(response, body.buf, body.len);
-  fio_write2(c->fd,
-             .data.buf = response,
+  fio_write2(c->uuid,
+             .buf = response,
              .len = final.len,
              .offset = (((uintptr_t) final.buf - (uintptr_t)response)),
              .dealloc = (void (*)(void *))str_free);
