@@ -848,6 +848,7 @@ static http_settings_s *http_settings_new(http_settings_s arg_settings) {
       char *home = getenv("HOME");
       size_t home_len = strlen(home);
       char *tmp = malloc(settings->public_folder_length + home_len + 1);
+      FIO_ASSERT_ALLOC(tmp);
       memcpy(tmp, home, home_len);
       if (home[home_len - 1] == '/')
         --home_len;
@@ -857,6 +858,7 @@ static http_settings_s *http_settings_new(http_settings_s arg_settings) {
       settings->public_folder_length = strlen(settings->public_folder);
     } else {
       settings->public_folder = malloc(settings->public_folder_length + 1);
+      FIO_ASSERT_ALLOC(settings->public_folder);
       memcpy((void *)settings->public_folder, arg_settings.public_folder,
              settings->public_folder_length);
       ((uint8_t *)settings->public_folder)[settings->public_folder_length] = 0;

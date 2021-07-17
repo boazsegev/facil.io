@@ -5866,7 +5866,7 @@ struct subscription_s {
   fio_lock_i unsubscribed;
 };
 
-/* Use `malloc` / `free`, because channles might have a long life. */
+/* Use `malloc` / `free`, because channels might have a long life. */
 
 /** Used internally by the Set object to create a new channel. */
 static channel_s *fio_channel_copy(channel_s *src) {
@@ -6213,7 +6213,7 @@ error:
   return NULL;
 }
 
-/** Unsubscribes from a filter, pub/sub channle or patten */
+/** Unsubscribes from a filter, pub/sub channel or pattern */
 void fio_unsubscribe(subscription_s *s) {
   if (!s)
     return;
