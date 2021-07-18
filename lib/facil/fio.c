@@ -657,7 +657,7 @@ Suspending and renewing thread execution (signaling events)
 
 typedef struct fio_thread_queue_s {
   fio_ls_embd_s node;
-  int fd_wait;   /* used for weaiting (read signal) */
+  int fd_wait;   /* used for waiting (read signal) */
   int fd_signal; /* used for signalling (write) */
 } fio_thread_queue_s;
 
