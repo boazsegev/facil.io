@@ -132,7 +132,7 @@ FIO_SFUNC void on_data(fio_uuid_s *uuid, void *udata);
 
 fio_protocol_s HTTP_PROTOCOL_1 = {
     .on_data = on_data,
-    .on_close = (void (*)(void *))client_free,
+    .on_close = (void (*)(void *))(uintptr_t)client_free,
 };
 
 /* *****************************************************************************

@@ -705,9 +705,9 @@ else
 # Windows libraries
 .PHONY : %.___clean
 %.___clean:
- 	-@del /f /q $(subst /,\,$(BIN))
- 	-@del /s /f /q $(subst /,\,$(TMP_ROOT))
- 	-@mkdir $(BUILDTREE)
+	-@del /f /q $(subst /,\,$(BIN))
+	-@del /s /f /q $(subst /,\,$(TMP_ROOT))
+	-@mkdir $(BUILDTREE)
 endif
 
 .PHONY : run

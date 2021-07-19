@@ -15,9 +15,29 @@ External STL features published
 /* *****************************************************************************
 Quick Patches
 ***************************************************************************** */
-#if _MSC_VER
-#define fork()           (-1)
-#define waitpid(...)     (-1)
-#define WIFEXITED(...)   (-1)
+#if FIO_OS_WIN
+#ifndef fork
+#define fork() (-1)
+#endif
+#ifndef waitpid
+#define waitpid(...) (-1)
+#endif
+#ifndef WIFEXITED
+#define WIFEXITED(...) (-1)
+#endif
+#ifndef WEXITSTATUS
 #define WEXITSTATUS(...) (-1)
+#endif
+#ifndef WEXITSTATUS
+#define WEXITSTATUS(...) (-1)
+#endif
+#ifndef pipe
+#define pipe(pfd) _pipe(pfd, 0, _O_BINARY)
+#endif
+#ifndef dup
+#define dup _dup
+#endif
+#ifndef dup2
+#define dup2 _dup2
+#endif
 #endif

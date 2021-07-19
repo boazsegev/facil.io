@@ -194,6 +194,8 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
     fio_data.is_worker = 0;
 #if FIO_OS_POSIX
     fio_signal_monitor(SIGUSR1, fio___worker_reset_signal_handler, NULL);
+#else
+    (void)fio___worker_reset_signal_handler;
 #endif
     for (size_t i = 0; i < fio_data.workers; ++i) {
       fio_spawn_worker(NULL, NULL);
@@ -343,10 +345,11 @@ static void fio___reap_children(int sig, void *ignr_) {
   FIO_ASSERT_DEBUG(sig == SIGCHLD, "wrong signal handler called");
   while (waitpid(-1, &sig, WNOHANG) > 0)
     ;
-  (void)ignr_;
 #else
+  (void)sig;
   FIO_ASSERT(0, "Children reaping is only supported on POSIX systems.");
 #endif
+  (void)ignr_;
 }
 /**
  * Initializes zombie reaping for the process. Call before `fio_start` to enable
@@ -356,6 +359,7 @@ void fio_reap_children(void) {
 #if FIO_OS_POSIX
   fio_signal_monitor(SIGCHLD, fio___reap_children, NULL);
 #else
+  (void)fio___reap_children;
   FIO_LOG_ERROR("fio_reap_children unsupported on this system.");
 #endif
 }

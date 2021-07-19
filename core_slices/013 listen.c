@@ -114,7 +114,8 @@ int fio_listen FIO_NOOP(struct fio_listen_args args) {
     }
   }
   if (!u.host.buf && !u.port.buf && u.path.buf) {
-    /* unix socket */
+/* unix socket */
+#if FIO_OS_POSIX
     info->reserved =
         fio_sock_open(u.path.buf,
                       NULL,
@@ -124,6 +125,10 @@ int fio_listen FIO_NOOP(struct fio_listen_args args) {
                     u.path.buf);
       goto error;
     }
+#else
+    FIO_LOG_ERROR("Unix suckets aren't supported on Windows.");
+    goto error;
+#endif
   } else {
     if (u.host.buf && u.host.len < 1024) {
       if (buf != u.host.buf)

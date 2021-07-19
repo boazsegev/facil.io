@@ -98,7 +98,6 @@ typedef struct fio_tls_s fio_tls_s;
 Quick Windows Patches
 ***************************************************************************** */
 #if _MSC_VER
-#define pipe(pfd) _pipe(pfd, 0, _O_BINARY)
-#define pid_t     HANDLE
-#define getpid    GetCurrentProcessId
+#define pid_t  HANDLE
+#define getpid GetCurrentProcessId
 #endif

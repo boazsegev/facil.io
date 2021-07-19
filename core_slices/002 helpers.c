@@ -63,9 +63,8 @@ static void fio_uuid_env_obj_call_callback_task(void *p, void *udata) {
   union {
     void (*fn)(void *);
     void *p;
-  } u;
+  } u = {.p = p};
   u.fn(udata);
-  u.p = p;
 }
 
 /* cleanup event scheduling */
@@ -73,9 +72,8 @@ FIO_IFUNC void fio_uuid_env_obj_call_callback(fio_uuid_env_obj_s o) {
   union {
     void (*fn)(void *);
     void *p;
-  } u;
+  } u = {.fn = o.on_close};
   if (o.on_close) {
-    u.fn = o.on_close;
     fio_queue_push_urgent(fio_queue_select(o.flags),
                           fio_uuid_env_obj_call_callback_task,
                           u.p,
