@@ -85,7 +85,7 @@ LIB_CONCAT_TARGET?=fio
 # Testing folder
 TEST_ROOT=tests
 
-# The default test file to run when running: make test (without the  C extension)
+# The default test file to run when running: make test (without the C extension)
 TEST_DEFAULT=core
 
 #############################################################################
