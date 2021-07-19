@@ -18,7 +18,7 @@ Polling Helpers
     !defined(FIO_ENGINE_POLL)
 #if defined(HAVE_EPOLL) || __has_include("sys/epoll.h")
 #define FIO_ENGINE_EPOLL 1
-#elif defined(HAVE_KQUEUE) || __has_include("sys/event.h")
+#elif (defined(HAVE_KQUEUE) || __has_include("sys/event.h"))
 #define FIO_ENGINE_KQUEUE 1
 #else
 #define FIO_ENGINE_POLL 1
@@ -223,14 +223,18 @@ FIO_CONSTRUCTOR(fio_data_state_init) {
 Thread suspension helpers
 ***************************************************************************** */
 
+FIO_SFUNC void fio_user_thread_suspent(void) {
+  short e = fio_sock_wait_io(fio_data.thread_suspenders.in, POLLIN, 2000);
+  if (e != -1 && (e & POLLIN)) {
+    char buf[512];
+    int r = fio_sock_read(fio_data.thread_suspenders.in, buf, 512);
+    (void)r;
+  }
+}
+
 FIO_IFUNC void fio_user_thread_wake(void) {
   char buf[1] = {0};
   fio_sock_write(fio_data.thread_suspenders.out, buf, 1);
-}
-
-FIO_IFUNC void fio_user_thread_suspent(void) {
-  char buf[1];
-  fio_sock_read(fio_data.thread_suspenders.in, buf, 1);
 }
 
 FIO_IFUNC void fio_user_thread_wake_all(void) {
@@ -493,8 +497,6 @@ FIO_SFUNC void fio_io_wakeup_prep(void) {
   FIO_ASSERT_ALLOC(uuid);
   uuid->tls = NULL;
   uuid->fd = fio_data.io_wake.in;
-  fio_sock_set_non_block(fio_data.io_wake.in);
-  fio_sock_set_non_block(fio_data.io_wake.out);
   fio_protocol_validate(&FIO_IO_WAKEUP_PROTOCOL);
   FIO_IO_WAKEUP_PROTOCOL.reserved.flags |= 1; /* system protocol */
   uuid->protocol = &FIO_IO_WAKEUP_PROTOCOL;

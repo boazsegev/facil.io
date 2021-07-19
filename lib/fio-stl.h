@@ -12251,6 +12251,76 @@ IO Poll - API
     __VA_ARGS__, (struct pollfd) { .fd = -1 }                                  \
   }
 
+typedef enum {
+  FIO_SOCK_SERVER = 0,
+  FIO_SOCK_CLIENT = 1,
+  FIO_SOCK_NONBLOCK = 2,
+  FIO_SOCK_TCP = 4,
+  FIO_SOCK_UDP = 8,
+#if FIO_OS_POSIX
+  FIO_SOCK_UNIX = 16,
+#endif
+} fio_sock_open_flags_e;
+
+/**
+ * Creates a new socket according to the provided flags.
+ *
+ * The `port` string will be ignored when `FIO_SOCK_UNIX` is set.
+ */
+FIO_IFUNC int fio_sock_open(const char *restrict address,
+                            const char *restrict port,
+                            uint16_t flags);
+
+/**
+ * Attempts to resolve an address to a valid IP6 / IP4 address pointer.
+ *
+ * The `sock_type` element should be a socket type, such as `SOCK_DGRAM` (UDP)
+ * or `SOCK_STREAM` (TCP/IP).
+ *
+ * The address should be freed using `fio_sock_address_free`.
+ */
+FIO_IFUNC struct addrinfo *fio_sock_address_new(const char *restrict address,
+                                                const char *restrict port,
+                                                int sock_type);
+
+/** Frees the pointer returned by `fio_sock_address_new`. */
+FIO_IFUNC void fio_sock_address_free(struct addrinfo *a);
+
+/** Creates a new network socket and binds it to a local address. */
+SFUNC int fio_sock_open_local(struct addrinfo *addr, int nonblock);
+
+/** Creates a new network socket and connects it to a remote address. */
+SFUNC int fio_sock_open_remote(struct addrinfo *addr, int nonblock);
+
+#if FIO_OS_POSIX
+/** Creates a new Unix socket and binds it to a local address. */
+SFUNC int fio_sock_open_unix(const char *address, int is_client, int nonblock);
+#endif
+
+/** Sets a file descriptor / socket to non blocking state. */
+SFUNC int fio_sock_set_non_block(int fd);
+
+/**
+ * Returns 0 on timeout, -1 on error or the events that are valid.
+ *
+ * Possible events are POLLIN | POLLOUT
+ */
+SFUNC short fio_sock_wait_io(int fd, short events, int timeout);
+
+/** A helper macro that waits on a single IO with no callbacks (0 = no event) */
+#define FIO_SOCK_WAIT_RW(fd, timeout_)                                         \
+  fio_sock_wait_io(fd, POLLIN | POLLOUT, timeout_)
+
+/** A helper macro that waits on a single IO with no callbacks (0 = no event) */
+#define FIO_SOCK_WAIT_R(fd, timeout_) fio_sock_wait_io(fd, POLLIN, timeout_)
+
+/** A helper macro that waits on a single IO with no callbacks (0 = no event) */
+#define FIO_SOCK_WAIT_W(fd, timeout_) fio_sock_wait_io(fd, POLLOUT, timeout_)
+
+/* *****************************************************************************
+Small Poll API
+***************************************************************************** */
+
 typedef struct {
   /** Called after polling but before any events are processed. */
   void (*before_events)(void *udata);
@@ -12298,73 +12368,6 @@ typedef struct {
  */
 FIO_IFUNC int fio_sock_poll(fio_sock_poll_args args);
 #define fio_sock_poll(...) fio_sock_poll((fio_sock_poll_args){__VA_ARGS__})
-
-typedef enum {
-  FIO_SOCK_SERVER = 0,
-  FIO_SOCK_CLIENT = 1,
-  FIO_SOCK_NONBLOCK = 2,
-  FIO_SOCK_TCP = 4,
-  FIO_SOCK_UDP = 8,
-#if FIO_OS_POSIX
-  FIO_SOCK_UNIX = 16,
-#endif
-} fio_sock_open_flags_e;
-
-/** A helper macro that waits on a single IO with no callbacks (0 = no event) */
-#define FIO_SOCK_WAIT_RW(fd, timeout_)                                         \
-  fio_sock_poll(.timeout = (timeout_),                                         \
-                .count = 1,                                                    \
-                FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_RW((fd))))
-
-/** A helper macro that waits on a single IO with no callbacks (0 = no event) */
-#define FIO_SOCK_WAIT_R(fd, timeout_)                                          \
-  fio_sock_poll(.timeout = (timeout_),                                         \
-                .count = 1,                                                    \
-                FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_R((fd))))
-
-/** A helper macro that waits on a single IO with no callbacks (0 = no event) */
-#define FIO_SOCK_WAIT_W(fd, timeout_)                                          \
-  fio_sock_poll(.timeout = (timeout_),                                         \
-                .count = 1,                                                    \
-                FIO_SOCK_POLL_LIST(FIO_SOCK_POLL_W((fd))))
-
-/**
- * Creates a new socket according to the provided flags.
- *
- * The `port` string will be ignored when `FIO_SOCK_UNIX` is set.
- */
-FIO_IFUNC int fio_sock_open(const char *restrict address,
-                            const char *restrict port,
-                            uint16_t flags);
-
-/**
- * Attempts to resolve an address to a valid IP6 / IP4 address pointer.
- *
- * The `sock_type` element should be a socket type, such as `SOCK_DGRAM` (UDP)
- * or `SOCK_STREAM` (TCP/IP).
- *
- * The address should be freed using `fio_sock_address_free`.
- */
-FIO_IFUNC struct addrinfo *fio_sock_address_new(const char *restrict address,
-                                                const char *restrict port,
-                                                int sock_type);
-
-/** Frees the pointer returned by `fio_sock_address_new`. */
-FIO_IFUNC void fio_sock_address_free(struct addrinfo *a);
-
-/** Creates a new network socket and binds it to a local address. */
-SFUNC int fio_sock_open_local(struct addrinfo *addr, int nonblock);
-
-/** Creates a new network socket and connects it to a remote address. */
-SFUNC int fio_sock_open_remote(struct addrinfo *addr, int nonblock);
-
-#if FIO_OS_POSIX
-/** Creates a new Unix socket and binds it to a local address. */
-SFUNC int fio_sock_open_unix(const char *address, int is_client, int nonblock);
-#endif
-
-/** Sets a file descriptor / socket to non blocking state. */
-SFUNC int fio_sock_set_non_block(int fd);
 
 /* *****************************************************************************
 IO Poll - Implementation (always static / inlined)
@@ -12672,6 +12675,20 @@ SFUNC int fio_sock_open_remote(struct addrinfo *addr, int nonblock) {
   return fd;
 }
 
+/** Returns 0 on timeout, -1 on error or the events that are valid. */
+SFUNC short fio_sock_wait_io(int fd, short events, int timeout) {
+  short r;
+  struct pollfd pfd = {.fd = fd, .events = events};
+#if FIO_OS_WIN
+  r = (short)WSAPoll(&pfd, 1, timeout);
+#else
+  r = (short)poll(&pfd, 1, timeout);
+#endif
+  if (r == 1)
+    r = events;
+  return r;
+}
+
 #if FIO_OS_POSIX
 /** Creates a new Unix socket and binds it to a local address. */
 SFUNC int fio_sock_open_unix(const char *address, int is_client, int nonblock) {
@@ -12929,6 +12946,9 @@ FIO_SFUNC void FIO_NAME_TEST(stl, sock)(void) {
 
     if (fio_sock_write(accepted, "hello", 5) > 0) {
       // wait for read
+      FIO_ASSERT(fio_sock_wait_io(cl, POLLIN, 0) != -1 &&
+                     (fio_sock_wait_io(cl, POLLIN, 0) | POLLIN),
+                 "fio_sock_wait_io should have returned a POLLIN event.");
       fio_sock_poll(.before_events = fio___sock_test_before_events,
                     .on_ready = NULL,
                     .on_data = fio___sock_test_on_event,

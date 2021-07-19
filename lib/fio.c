@@ -41,7 +41,7 @@ Polling Helpers
     !defined(FIO_ENGINE_POLL)
 #if defined(HAVE_EPOLL) || __has_include("sys/epoll.h")
 #define FIO_ENGINE_EPOLL 1
-#elif defined(HAVE_KQUEUE) || __has_include("sys/event.h")
+#elif (defined(HAVE_KQUEUE) || __has_include("sys/event.h"))
 #define FIO_ENGINE_KQUEUE 1
 #else
 #define FIO_ENGINE_POLL 1
@@ -246,14 +246,18 @@ FIO_CONSTRUCTOR(fio_data_state_init) {
 Thread suspension helpers
 ***************************************************************************** */
 
+FIO_SFUNC void fio_user_thread_suspent(void) {
+  short e = fio_sock_wait_io(fio_data.thread_suspenders.in, POLLIN, 2000);
+  if (e != -1 && (e & POLLIN)) {
+    char buf[1024];
+    int r = fio_sock_read(fio_data.thread_suspenders.in, buf, 1024);
+    (void)r;
+  }
+}
+
 FIO_IFUNC void fio_user_thread_wake(void) {
   char buf[1] = {0};
   fio_sock_write(fio_data.thread_suspenders.out, buf, 1);
-}
-
-FIO_IFUNC void fio_user_thread_suspent(void) {
-  char buf[1];
-  fio_sock_read(fio_data.thread_suspenders.in, buf, 1);
 }
 
 FIO_IFUNC void fio_user_thread_wake_all(void) {
@@ -2191,7 +2195,7 @@ void fio_test(void) {
   FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
   fprintf(stderr, "Testing facil.io IO-Core framework modules.\n");
   FIO_NAME_TEST(io, state)();
-  // fio_defer(fio_test___task, NULL, NULL);
+  fio_defer(fio_test___task, NULL, NULL);
   fio_start(.threads = -2, .workers = 0);
 }
 #endif
