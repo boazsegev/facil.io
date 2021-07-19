@@ -1,12 +1,28 @@
 #############################################################################
 # This makefile was composed for facil.io
 #
-# Copyright (c) 2016-2019 Boaz Segev
+# Copyright (c) 2016-2020 Boaz Segev
 # License MIT or ISC
 #
-# This makefile should be easilty portable.
+# This makefile SHOULD be easilty portable and Should work on any POSIX
+# system for any project... under the following assumptions:
 #
-# Should work on any POSIX system for any project.
+# * If your code has a `main` function, that code should be placed in the
+#   `MAIN_ROOT` folder and/or `MAIN_SUBFOLDERS` (i.e., `./src`).
+#
+# * If your code provides a library style API, the published functions are
+#   in the `LIB_ROOT` folder and/or `LIB_XXX_SUBFOLDERS` (i.e., `./lib`).
+#
+# * If you want to concat a number of header / source / markdown (docs) files
+#   than place them in the `LIB_CONCAT_FOLDER`.
+#
+# * Test files are independent, each test files compiles and runs as is, and
+#   placed in the `TEST_ROOT` folder (i.e., `./tests`).
+#
+#   Run tests (i.e., the test file `foo.c`) with:       `make test/foo`
+#   Run tests after linking with the library code with: `make test/lib/foo`
+#   Run tests with DEBUG mode (no optimizations) with:  `make test/db/foo`
+#   Run tests with DEBUG and  linking to library with:  `make test/lib/db/foo`
 #
 #############################################################################
 
@@ -25,7 +41,7 @@ TMP_ROOT=tmp
 DEST?=$(TMP_ROOT)
 
 # output folder for `make libdump` - dumps all library files (not source files) in one place.
-DUMP_LIB=libdump
+DUMP_LIB?=libdump
 
 #############################################################################
 # Source Code Folder Settings
@@ -57,10 +73,10 @@ LIB_PRIVATE_SUBFOLDERS=
 # a folder containing code that should be unified into a single file
 #
 # Note: files will be unified in the same order the system provides (usually, file anme)
-LIB_CONCAT_FOLDER=core_slices
+LIB_CONCAT_FOLDER?=core_slices
 
 # the path and file name to use when unifying *.c, *.h, and *.md files (without extension).
-LIB_CONCAT_TARGET=./lib/fio
+LIB_CONCAT_TARGET?=fio
 
 #############################################################################
 # Test Source Code Folder
@@ -88,21 +104,23 @@ CMAKE_REQUIRE_PACKAGE=Threads
 #############################################################################
 
 # any libraries required (only names, ommit the "-l" at the begining)
-LINKER_LIBS=pthread m
-# optimization level.
-OPTIMIZATION=-O2
+ifneq ($(OS),Windows_NT)
+  # POSIX libraries
+  LINKER_LIBS=pthread m
+else
+  # Windows libraries
+  LINKER_LIBS=Ws2_32
+endif
+# optimization level. (-march=native fails with some ARM compilers)
+OPTIMIZATION=-O2 
 # optimization level in debug mode.
-OPTIMIZATION_DEBUG=-O0 -fsanitize=address -fno-omit-frame-pointer
+OPTIMIZATION_DEBUG=-O0 -fsanitize=address -fsanitize=thread -fsanitize=undefined -fno-omit-frame-pointer
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
 WARNINGS=-Wshadow -Wall -Wextra -Wpedantic -Wno-missing-field-initializers
 # any extra include folders, space seperated list. (i.e. `pg_config --includedir`)
-INCLUDE=./
+INCLUDE=.
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
 FLAGS:=
-# c compiler
-CC?=gcc
-# c++ compiler
-CXX?=g++
 # C specific compiler options
 C_EXTRA_OPT:=
 # C++ specific compiler options
@@ -139,33 +157,32 @@ endif
 # Tests are performed unless the value is empty / missing
 
 TEST4POLL:=       # HAVE_KQUEUE / HAVE_EPOLL / HAVE_POLL
-TEST4SOCKET:=1    # --- adds linker flags, not compilation flags
-TEST4TLS:=        # HAVE_OPENSSL / HAVE_BEARSSL + HAVE_S2N
+TEST4SOCKET:=     # --- tests for socket library linker flags
+TEST4CRYPTO:=     # HAVE_OPENSSL / HAVE_BEARSSL + HAVE_SODIUM
 TEST4SENDFILE:=   # HAVE_SENDFILE
 TEST4TM_ZONE:=    # HAVE_TM_TM_ZONE
 TEST4ZLIB:=       # HAVE_ZLIB
 TEST4PG:=         # HAVE_POSTGRESQL
-TEST4ENDIAN:=1    # __BIG_ENDIAN__=?
-
-#############################################################################
-# facil.io compilation flag helpers
-#############################################################################
-
-# add FIO_PUBSUB_SUPPORT flag if requested
-ifdef FIO_PUBSUB_SUPPORT
-  FLAGS:=$(FLAGS) FIO_PUBSUB_SUPPORT=$(FIO_PUBSUB_SUPPORT)
-endif
+TEST4ENDIAN:=     # __BIG_ENDIAN__=?
 
 #############################################################################
 # OS Specific Settings (debugger, disassembler, etc')
 #############################################################################
 
-
+# Set default C and C++ compilers
 ifneq ($(OS),Windows_NT)
   OS:=$(shell uname)
+  CC?=gcc
+  CXX?=g++
+else ifneq (,$(findstring version,$(shell gcc -v 2>&1)))
+  CC?=gcc
+  CXX?=g++
 else
   $(warning *** Windows systems might not work with this makefile / library.)
+  CC?=cl
+  CXX?=cl
 endif
+
 ifeq ($(OS),Darwin) # Run MacOS commands
   # debugger
   DB=lldb
@@ -214,17 +231,44 @@ LIB_OBJS=$(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, 
 
 OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d) 
 
-# TODO: fix code so this isn't required.
-#
-# GCC (at least) >= 7 triggers some bug when -fipa-icf is enabled
-# (as in our default: -O2)
-#
-# Is there a hidden code issue in facil.io?
-#
-# https://kristerw.blogspot.com/2017/05/interprocedural-optimization-in-gcc.html
-ifeq ($(shell $(CC) -v 2>&1 | grep -o "^gcc version"),gcc version)
-  OPTIMIZATION+=-fno-ipa-icf
+
+#############################################################################
+# Combining single-file library
+#############################################################################
+
+ifdef LIB_CONCAT_FOLDER
+ifdef LIB_CONCAT_TARGET
+ifneq ($(OS),Windows_NT)
+# POSIX implementation
+
+LIB_CONCAT_HEADERS=$(wildcard $(LIB_CONCAT_FOLDER)/*.h)
+LIB_CONCAT_SOURCES=$(wildcard $(LIB_CONCAT_FOLDER)/*.c)
+LIB_CONCAT_DOCS=$(wildcard $(LIB_CONCAT_FOLDER)/*.md)
+ifneq ($(LIB_CONCAT_HEADERS), $(EMPTY))
+  $(info * Building single-file header: $(LIB_CONCAT_TARGET).h)
+  $(shell rm $(LIB_CONCAT_TARGET).h 2> /dev/null)
+  $(shell cat $(LIB_CONCAT_FOLDER)/*.h >> $(LIB_CONCAT_TARGET).h)
 endif
+
+ifneq ($(LIB_CONCAT_SOURCES), $(EMPTY))
+  $(info * Building single-file source: $(LIB_CONCAT_TARGET).c)
+  $(shell rm $(LIB_CONCAT_TARGET).c 2> /dev/null)
+  $(shell cat $(LIB_CONCAT_FOLDER)/*.c >> $(LIB_CONCAT_TARGET).c)
+endif
+
+ifneq ($(LIB_CONCAT_DOCS), $(EMPTY))
+  $(info * Building documentation: $(LIB_CONCAT_TARGET).md)
+  $(shell rm $(LIB_CONCAT_TARGET).md 2> /dev/null)
+  $(shell cat $(LIB_CONCAT_FOLDER)/*.md >> $(LIB_CONCAT_TARGET).md)
+endif
+
+else
+# Windows implementation
+$(warning *** Single-file library concatination requires a POSIX system.)
+endif #Windows_NT
+
+endif # LIB_CONCAT_TARGET
+endif # LIB_CONCAT_FOLDER
 
 #############################################################################
 # TRY_RUN, TRY_COMPILE and TRY_COMPILE_AND_RUN functions
@@ -237,39 +281,26 @@ endif
 #############################################################################
 
 TRY_RUN=$(shell $(1) >> /dev/null 2> /dev/null; echo $$?;)
-TRY_COMPILE=$(shell printf $(1) | $(CC) $(INCLUDE_STR) $(LDFLAGS) $(2) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null)
-TRY_COMPILE_AND_RUN=$(shell printf $(1) | $(CC) $(2) -xc -o ./___fio_tmp_test_ - 2> /dev/null ; ./___fio_tmp_test_ >> /dev/null 2> /dev/null; echo $$?; rm ./___fio_tmp_test_ 2> /dev/null)
+TRY_COMPILE=$(shell printf $(1) | $(CC) $(INCLUDE_STR) $(CFLAGS) -xc -o /dev/null - $(LDFLAGS) $(2) >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null)
+TRY_COMPILE_AND_RUN=$(shell printf $(1) | $(CC) $(INCLUDE_STR) $(CFLAGS) -xc -o ./___fio_tmp_test_ - $(LDFLAGS) $(2) 2> /dev/null ; ./___fio_tmp_test_ >> /dev/null 2> /dev/null; echo $$?; rm ./___fio_tmp_test_ 2> /dev/null)
 EMPTY:=
 
-
 #############################################################################
-# Combining single-file library
+# GCC bug handling.
+#
+# GCC might trigger a bug when -fipa-icf is enabled and (de)constructor
+# functions are used (as in our case with -O2 or above).
+#
+# https://gcc.gnu.org/bugzilla/show_bug.cgi?id=70306
 #############################################################################
 
-ifdef LIB_CONCAT_FOLDER
-ifdef LIB_CONCAT_TARGET
-LIB_CONCAT_HEADERS=$(wildcard $(LIB_CONCAT_FOLDER)/*.h)
-LIB_CONCAT_SOURCES=$(wildcard $(LIB_CONCAT_FOLDER)/*.c)
-LIB_CONCAT_DOCS=$(wildcard $(LIB_CONCAT_FOLDER)/*.md)
-ifneq ($(LIB_CONCAT_HEADERS), $(EMPTY))
-  $(info * Building single-file header: $(LIB_CONCAT_TARGET).h)
-  $(shell rm $(LIB_CONCAT_TARGET).h 2> /dev/null)
-  $(shell cat $(LIB_CONCAT_FOLDER)/*.h >> $(LIB_CONCAT_TARGET).h)
-endif
-ifneq ($(LIB_CONCAT_SOURCES), $(EMPTY))
-  $(info * Building single-file source: $(LIB_CONCAT_TARGET).c)
-  $(shell rm $(LIB_CONCAT_TARGET).c 2> /dev/null)
-  $(shell cat $(LIB_CONCAT_FOLDER)/*.c >> $(LIB_CONCAT_TARGET).c)
-endif
-ifneq ($(LIB_CONCAT_DOCS), $(EMPTY))
-  $(info * Building documentation: $(LIB_CONCAT_TARGET).md)
-  $(shell rm $(LIB_CONCAT_TARGET).md 2> /dev/null)
-  $(shell cat $(LIB_CONCAT_FOLDER)/*.md >> $(LIB_CONCAT_TARGET).md)
-endif
 
+ifneq ($(strip $(CC)),gcc)
+ifeq ($(shell $(CC) -v 2>&1 | grep -o "^gcc version [0-7]\." | grep -o "^gcc version"),gcc version)
+  OPTIMIZATION+=-fno-ipa-icf
+  $(info * Disabled `-fipa-icf` optimization, might be buggy with this gcc version.)
 endif
 endif
-
 
 #############################################################################
 # kqueue / epoll / poll Selection / Detection
@@ -456,7 +487,7 @@ endif # TEST4SOCKET
 # SSL/ TLS Library Detection
 # (no need to edit)
 #############################################################################
-ifdef TEST4TLS
+ifdef TEST4CRYPTO
 
 # BearSSL requirement C application code
 # (source code variation)
@@ -511,10 +542,18 @@ ifeq ($(shell $(PKG_CONFIG) -- openssl >/dev/null 2>&1; echo $$?), 0)
   OPENSSL_CFLAGS:=$(shell $(PKG_CONFIG) --cflags openssl)
   OPENSSL_LDFLAGS:=$(shell $(PKG_CONFIG) --libs openssl)
 endif
+ifeq ($(shell $(PKG_CONFIG) -- libsodium >/dev/null 2>&1; echo $$?), 0)
+  LIBSODIUM_CFLAGS:=$(shell $(PKG_CONFIG) --cflags libsodium)
+  LIBSODIUM_LDFLAGS:=$(shell $(PKG_CONFIG) --libs libsodium)
+else
+  LIBSODIUM_CFLAGS:=
+  LIBSODIUM_LDFLAGS:=-lsodium
+endif
 
 
 # add BearSSL/OpenSSL library flags (exclusive)
 ifdef FIO_NO_TLS
+  $(info * Skipping crypto library detection.)
 else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_SOURCE), $(EMPTY)), 0)
   $(info * Detected the BearSSL source code library, setting HAVE_BEARSSL)
   # TODO: when BearSSL support arrived, set the FIO_TLS_FOUND flag as well
@@ -532,18 +571,17 @@ else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), $(OPENSSL_CFLAGS) $(OPEN
   CFLAGS+=$(OPENSSL_CFLAGS)
   PKGC_REQ_OPENSSL=openssl >= 1.1, openssl < 1.2
   PKGC_REQ+=$$(PKGC_REQ_OPENSSL)
+else ifeq ($(call TRY_COMPILE, "\#include <sodium.h.h>\\n int main(void) {}", $(LIBSODIUM_CFLAGS) $(LIBSODIUM_LDFLAGS)) , 0)
+  # Sodium Crypto Library: https://doc.libsodium.org/usage
+  $(info * Detected the Sodium library, setting HAVE_SODIUM)
+  FLAGS:=$(FLAGS) HAVE_SODIUM
+  LDFLAGS+=$(LIBSODIUM_CFLAGS)
+  CFLAGS+=$(LIBSODIUM_LDFLAGS)
 else
   $(info * No compatible SSL/TLS library detected.)
-endif
+endif # FIO_NO_TLS
 
-# S2N TLS/SSL library: https://github.com/awslabs/s2n
-ifeq ($(call TRY_COMPILE, "\#include <s2n.h>\\n int main(void) {}", "-ls2n") , 0)
-  $(info * Detected the s2n library, setting HAVE_S2N)
-  FLAGS:=$(FLAGS) HAVE_S2N
-  LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
-endif
-
-endif # TEST4TLS
+endif # TEST4CRYPTO
 #############################################################################
 # ZLib Library Detection
 # (no need to edit)
@@ -598,13 +636,20 @@ endif # TEST4ENDIAN
 # Updated flags and final values
 # (don't edit)
 #############################################################################
-
+ifneq ($(OS),Windows_NT)
 FLAGS_STR=$(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
+#POSIX
 CFLAGS:=$(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR) $(C_EXTRA_OPT)
 CXXFLAGS:=$(CXXFLAGS) -std=$(CXXSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR) $(CXX_EXTRA_OPT)
+else
+# Windows
+INCLUDE_STR:=$(subst /,\,$(INCLUDE_STR))
+CFLAGS:=$(CFLAGS) -g -std=$(CSTD) $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR) $(C_EXTRA_OPT)
+CXXFLAGS:=$(CXXFLAGS) -std=$(CXXSTD)  $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR) $(CXX_EXTRA_OPT)
+endif
+
 LINKER_FLAGS=$(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
 CFLAGS_DEPENDENCY=-MT $@ -MMD -MP
-
 
 # Build a "Requires:" string for the pkgconfig/facil.pc file
 # unfortunately, leading or trailing commas are interpreted as
@@ -629,6 +674,13 @@ endif
 # Tasks - Building
 #############################################################################
 
+ifeq ($(OS),Windows_NT)
+# Windows libraries
+BUILDTREE:=$(subst /,\,$(BUILDTREE))
+endif
+
+
+
 $(NAME): build
 
 build: | create_tree build_objects
@@ -642,11 +694,21 @@ build_objects: $(LIB_OBJS) $(MAIN_OBJS)
 .PHONY : clean
 clean: | _.___clean
 
+ifneq ($(OS),Windows_NT)
+# POSIX libraries
 .PHONY : %.___clean
 %.___clean:
 	-@rm -f $(BIN) 2> /dev/null || echo "" >> /dev/null
 	-@rm -R -f $(TMP_ROOT) 2> /dev/null || echo "" >> /dev/null
 	-@mkdir -p $(BUILDTREE) 2> /dev/null
+else
+# Windows libraries
+.PHONY : %.___clean
+%.___clean:
+ 	-@del /f /q $(subst /,\,$(BIN))
+ 	-@del /s /f /q $(subst /,\,$(TMP_ROOT))
+ 	-@mkdir $(BUILDTREE)
+endif
 
 .PHONY : run
 run: | build
@@ -655,7 +717,7 @@ run: | build
 .PHONY : set_debug_flags___
 set_debug_flags___:
 	$(eval OPTIMIZATION=$($(OPTIMIZATION_DEBUG)))
-	$(eval CFLAGS+=-coverage -DDEBUG=1 -Werror)
+	$(eval CFLAGS+=-coverage -DDEBUG=1)
 	$(eval CXXFLAGS+=-coverage -DDEBUG=1)
 	$(eval LINKER_FLAGS=-coverage -DDEBUG=1 $(LINKER_FLAGS))
 	@echo "* Set Debug flags."
@@ -665,9 +727,18 @@ db: | db.___clean set_debug_flags___ build
 	DEBUG=1 $(MAKE) build
 	$(DB) $(BIN)
 
+ifneq ($(OS),Windows_NT)
+# POSIX libraries
 .PHONY : create_tree
 create_tree:
 	-@mkdir -p $(BUILDTREE) 2> /dev/null
+else
+# Windows libraries
+.PHONY : create_tree
+create_tree:
+	-@mkdir $(BUILDTREE)
+endif
+
 
 lib: | create_tree lib_build
 
@@ -710,9 +781,9 @@ $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
 #### add diassembling stage (testing / slower)
 else
 $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
-	@echo "* Compiling $<"
-	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
-	@$(DISAMS) $@ > $@.s
+ 	@echo "* Compiling $<"
+ 	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION)
+ 	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
 	@echo "* Compiling $<"
