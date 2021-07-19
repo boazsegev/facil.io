@@ -1151,7 +1151,7 @@ Patched functions
  * https://stackoverflow.com/questions/5404277/porting-clock-gettime-to-windows
  */
 /** patch for clock_gettime */
-FIO_SFUNC int fio_clock_gettime(const uint32_t clk_type, struct timespec *tv) {
+SFUNC int fio_clock_gettime(const uint32_t clk_type, struct timespec *tv) {
   if (!tv)
     return -1;
   static union {
@@ -5752,7 +5752,7 @@ Windows Implementation - inlined static functions
 
 // clang-format off
 /** Starts a new thread, returns 0 on success and -1 on failure. */
-FIO_IFUNC int fio_thread_create(fio_thread_t *t, void *(*fn)(void *), void *arg) { *t = (HANDLE)_beginthreadex(NULL, 0, (void(*)(void *))(uintptr_t)fn, 0, arg, NULL); return (!!t) - 1; }
+FIO_IFUNC int fio_thread_create(fio_thread_t *t, void *(*fn)(void *), void *arg) { *t = (HANDLE)_beginthreadex(NULL, 0, (unsigned int (*)(void *))(uintptr_t)fn, arg, 0, NULL); return (!!t) - 1; }
 
 FIO_IFUNC int fio_thread_join(fio_thread_t t) {
   int r = 0;
