@@ -97,10 +97,13 @@ typedef struct fio_tls_s fio_tls_s;
 /* *****************************************************************************
 Quick Windows Patches
 ***************************************************************************** */
-#if _MSC_VER
-#define pipe(pfd) _pipe(pfd, 0, _O_BINARY)
-#define pid_t     HANDLE
-#define getpid    GetCurrentProcessId
+#if FIO_OS_WIN
+#ifndef pid_t
+#define pid_t DWORD
+#endif
+#ifndef getpid
+#define getpid GetCurrentProcessId
+#endif
 #endif
 /* *****************************************************************************
 Starting the IO reactor and reviewing it's state

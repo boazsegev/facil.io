@@ -39,7 +39,24 @@ FIO_SFUNC void fio_listen___attach(void *udata) {
   struct fio_listen_args *l = udata;
   FIO_LOG_DEBUG("Calling dup(%d) to attach as a listening socket.",
                 l->reserved);
+#if FIO_OS_WIN
+  int fd = -1;
+  {
+    SOCKET tmpfd = INVALID_SOCKET;
+    WSAPROTOCOL_INFOA info;
+    if (!WSADuplicateSocketA(l->reserved, GetCurrentProcessId(), &info) &&
+        (tmpfd =
+             WSASocketA(AF_UNSPEC, SOCK_STREAM, IPPROTO_TCP, &info, 0, 0)) !=
+            INVALID_SOCKET) {
+      if (FIO_SOCK_FD_ISVALID(tmpfd))
+        fd = (int)tmpfd;
+      else
+        fio_sock_close(tmpfd);
+    }
+  }
+#else
   int fd = dup(l->reserved);
+#endif
   FIO_ASSERT(fd != -1, "listening socket failed to `dup`");
   fio_attach_fd(fd, &FIO_PROTOCOL_LISTEN, l, NULL);
 }
@@ -85,14 +102,14 @@ int fio_listen FIO_NOOP(struct fio_listen_args args) {
     buf[len] = 0;
     args.url = buf;
   } else {
-    FIO_MEMCPY(buf, args.url, len);
+    FIO_MEMCPY(buf, args.url, len + 1);
   }
 
   info = malloc(sizeof(*info) + len + 1);
   FIO_ASSERT_ALLOC(info);
   *info = args;
   info->url = (const char *)(info + 1);
-  memcpy(info + 1, buf, len);
+  memcpy(info + 1, buf, len + 1);
 
   /* parse URL */
   u = fio_url_parse(args.url, len);

@@ -17,10 +17,10 @@ Quick Patches
 ***************************************************************************** */
 #if FIO_OS_WIN
 #ifndef fork
-#define fork() (-1)
+#define fork() ((pid_t)(-1))
 #endif
 #ifndef waitpid
-#define waitpid(...) (-1)
+#define waitpid(...) ((pid_t)(-1))
 #endif
 #ifndef WIFEXITED
 #define WIFEXITED(...) (-1)
@@ -33,11 +33,5 @@ Quick Patches
 #endif
 #ifndef pipe
 #define pipe(pfd) _pipe(pfd, 0, _O_BINARY)
-#endif
-#ifndef dup
-#define dup _dup
-#endif
-#ifndef dup2
-#define dup2 _dup2
 #endif
 #endif

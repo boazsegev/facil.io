@@ -112,11 +112,12 @@ static void fio___worker(void) {
 static void *fio_worker_sentinal(void *GIL) {
   fio_state_callback_force(FIO_CALL_BEFORE_FORK);
   pid_t pid = fork();
-  FIO_ASSERT(pid != -1, "system call `fork` failed.");
+  FIO_ASSERT(pid != (pid_t)-1, "system call `fork` failed.");
   fio_state_callback_force(FIO_CALL_AFTER_FORK);
   fio_unlock(GIL);
   if (pid) {
     int status = 0;
+    (void)status;
     if (waitpid(pid, &status, 0) != pid && fio_data.running)
       FIO_LOG_ERROR("waitpid failed, worker re-spawning might fail.");
     if (!WIFEXITED(status) || WEXITSTATUS(status)) {

@@ -15,11 +15,25 @@ External STL features published
 /* *****************************************************************************
 Quick Patches
 ***************************************************************************** */
-#if _MSC_VER
-#define fork()           (-1)
-#define waitpid(...)     (-1)
-#define WIFEXITED(...)   (-1)
+#if FIO_OS_WIN
+#ifndef fork
+#define fork() ((pid_t)(-1))
+#endif
+#ifndef waitpid
+#define waitpid(...) ((pid_t)(-1))
+#endif
+#ifndef WIFEXITED
+#define WIFEXITED(...) (-1)
+#endif
+#ifndef WEXITSTATUS
 #define WEXITSTATUS(...) (-1)
+#endif
+#ifndef WEXITSTATUS
+#define WEXITSTATUS(...) (-1)
+#endif
+#ifndef pipe
+#define pipe(pfd) _pipe(pfd, 0, _O_BINARY)
+#endif
 #endif
 /* *****************************************************************************
 Internal helpers
@@ -86,9 +100,8 @@ static void fio_uuid_env_obj_call_callback_task(void *p, void *udata) {
   union {
     void (*fn)(void *);
     void *p;
-  } u;
+  } u = {.p = p};
   u.fn(udata);
-  u.p = p;
 }
 
 /* cleanup event scheduling */
@@ -96,9 +109,8 @@ FIO_IFUNC void fio_uuid_env_obj_call_callback(fio_uuid_env_obj_s o) {
   union {
     void (*fn)(void *);
     void *p;
-  } u;
+  } u = {.fn = o.on_close};
   if (o.on_close) {
-    u.fn = o.on_close;
     fio_queue_push_urgent(fio_queue_select(o.flags),
                           fio_uuid_env_obj_call_callback_task,
                           u.p,
@@ -168,16 +180,12 @@ static struct {
   fio_thread_mutex_t env_lock;
   fio___uuid_env_s env;
   struct timespec tick;
+  fio_uuid_s *io_wake_uuid;
   struct {
     int in;
     int out;
   } thread_suspenders, io_wake;
-  fio_uuid_s *io_wake_uuid;
-#if FIO_OS_WIN
-  HANDLE master;
-#else
   pid_t master;
-#endif
   uint16_t threads;
   uint16_t workers;
   uint8_t is_master;
@@ -249,8 +257,8 @@ Thread suspension helpers
 FIO_SFUNC void fio_user_thread_suspent(void) {
   short e = fio_sock_wait_io(fio_data.thread_suspenders.in, POLLIN, 2000);
   if (e != -1 && (e & POLLIN)) {
-    char buf[1024];
-    int r = fio_sock_read(fio_data.thread_suspenders.in, buf, 1024);
+    char buf[512];
+    int r = fio_sock_read(fio_data.thread_suspenders.in, buf, 512);
     (void)r;
   }
 }
@@ -416,11 +424,12 @@ FIO_SFUNC void fio_uuid_free_task(void *uuid, void *ignr) {
 }
 
 fio_uuid_s *fio_uuid_dup(fio_uuid_s *uuid) { return fio_uuid_dup2(uuid); }
+
+#define fio_uuid_dup fio_uuid_dup2
+
 void fio_uuid_free(fio_uuid_s *uuid) {
   fio_queue_push(&tasks_io_core, .fn = fio_uuid_free_task, .udata1 = uuid);
 }
-
-#define fio_uuid_dup fio_uuid_dup2
 
 FIO_IFUNC void fio_uuid_close(fio_uuid_s *uuid) {
   if (fio_atomic_and(&uuid->state, ~(unsigned)FIO_UUID_OPEN) & FIO_UUID_OPEN) {
@@ -520,8 +529,6 @@ FIO_SFUNC void fio_io_wakeup_prep(void) {
   FIO_ASSERT_ALLOC(uuid);
   uuid->tls = NULL;
   uuid->fd = fio_data.io_wake.in;
-  fio_sock_set_non_block(fio_data.io_wake.in);
-  fio_sock_set_non_block(fio_data.io_wake.out);
   fio_protocol_validate(&FIO_IO_WAKEUP_PROTOCOL);
   FIO_IO_WAKEUP_PROTOCOL.reserved.flags |= 1; /* system protocol */
   uuid->protocol = &FIO_IO_WAKEUP_PROTOCOL;
@@ -1301,11 +1308,12 @@ static void fio___worker(void) {
 static void *fio_worker_sentinal(void *GIL) {
   fio_state_callback_force(FIO_CALL_BEFORE_FORK);
   pid_t pid = fork();
-  FIO_ASSERT(pid != -1, "system call `fork` failed.");
+  FIO_ASSERT(pid != (pid_t)-1, "system call `fork` failed.");
   fio_state_callback_force(FIO_CALL_AFTER_FORK);
   fio_unlock(GIL);
   if (pid) {
     int status = 0;
+    (void)status;
     if (waitpid(pid, &status, 0) != pid && fio_data.running)
       FIO_LOG_ERROR("waitpid failed, worker re-spawning might fail.");
     if (!WIFEXITED(status) || WEXITSTATUS(status)) {
@@ -1383,6 +1391,8 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
     fio_data.is_worker = 0;
 #if FIO_OS_POSIX
     fio_signal_monitor(SIGUSR1, fio___worker_reset_signal_handler, NULL);
+#else
+    (void)fio___worker_reset_signal_handler;
 #endif
     for (size_t i = 0; i < fio_data.workers; ++i) {
       fio_spawn_worker(NULL, NULL);
@@ -1532,10 +1542,11 @@ static void fio___reap_children(int sig, void *ignr_) {
   FIO_ASSERT_DEBUG(sig == SIGCHLD, "wrong signal handler called");
   while (waitpid(-1, &sig, WNOHANG) > 0)
     ;
-  (void)ignr_;
 #else
+  (void)sig;
   FIO_ASSERT(0, "Children reaping is only supported on POSIX systems.");
 #endif
+  (void)ignr_;
 }
 /**
  * Initializes zombie reaping for the process. Call before `fio_start` to enable
@@ -1545,6 +1556,7 @@ void fio_reap_children(void) {
 #if FIO_OS_POSIX
   fio_signal_monitor(SIGCHLD, fio___reap_children, NULL);
 #else
+  (void)fio___reap_children;
   FIO_LOG_ERROR("fio_reap_children unsupported on this system.");
 #endif
 }
@@ -1768,7 +1780,24 @@ FIO_SFUNC void fio_listen___attach(void *udata) {
   struct fio_listen_args *l = udata;
   FIO_LOG_DEBUG("Calling dup(%d) to attach as a listening socket.",
                 l->reserved);
+#if FIO_OS_WIN
+  int fd = -1;
+  {
+    SOCKET tmpfd = INVALID_SOCKET;
+    WSAPROTOCOL_INFOA info;
+    if (!WSADuplicateSocketA(l->reserved, GetCurrentProcessId(), &info) &&
+        (tmpfd =
+             WSASocketA(AF_UNSPEC, SOCK_STREAM, IPPROTO_TCP, &info, 0, 0)) !=
+            INVALID_SOCKET) {
+      if (FIO_SOCK_FD_ISVALID(tmpfd))
+        fd = (int)tmpfd;
+      else
+        fio_sock_close(tmpfd);
+    }
+  }
+#else
   int fd = dup(l->reserved);
+#endif
   FIO_ASSERT(fd != -1, "listening socket failed to `dup`");
   fio_attach_fd(fd, &FIO_PROTOCOL_LISTEN, l, NULL);
 }
@@ -1814,14 +1843,14 @@ int fio_listen FIO_NOOP(struct fio_listen_args args) {
     buf[len] = 0;
     args.url = buf;
   } else {
-    FIO_MEMCPY(buf, args.url, len);
+    FIO_MEMCPY(buf, args.url, len + 1);
   }
 
   info = malloc(sizeof(*info) + len + 1);
   FIO_ASSERT_ALLOC(info);
   *info = args;
   info->url = (const char *)(info + 1);
-  memcpy(info + 1, buf, len);
+  memcpy(info + 1, buf, len + 1);
 
   /* parse URL */
   u = fio_url_parse(args.url, len);
@@ -1843,7 +1872,8 @@ int fio_listen FIO_NOOP(struct fio_listen_args args) {
     }
   }
   if (!u.host.buf && !u.port.buf && u.path.buf) {
-    /* unix socket */
+/* unix socket */
+#if FIO_OS_POSIX
     info->reserved =
         fio_sock_open(u.path.buf,
                       NULL,
@@ -1853,6 +1883,10 @@ int fio_listen FIO_NOOP(struct fio_listen_args args) {
                     u.path.buf);
       goto error;
     }
+#else
+    FIO_LOG_ERROR("Unix suckets aren't supported on Windows.");
+    goto error;
+#endif
   } else {
     if (u.host.buf && u.host.len < 1024) {
       if (buf != u.host.buf)

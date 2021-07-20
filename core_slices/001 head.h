@@ -97,7 +97,11 @@ typedef struct fio_tls_s fio_tls_s;
 /* *****************************************************************************
 Quick Windows Patches
 ***************************************************************************** */
-#if _MSC_VER
-#define pid_t  HANDLE
+#if FIO_OS_WIN
+#ifndef pid_t
+#define pid_t DWORD
+#endif
+#ifndef getpid
 #define getpid GetCurrentProcessId
+#endif
 #endif

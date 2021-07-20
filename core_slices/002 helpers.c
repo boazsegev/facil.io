@@ -143,16 +143,12 @@ static struct {
   fio_thread_mutex_t env_lock;
   fio___uuid_env_s env;
   struct timespec tick;
+  fio_uuid_s *io_wake_uuid;
   struct {
     int in;
     int out;
   } thread_suspenders, io_wake;
-  fio_uuid_s *io_wake_uuid;
-#if FIO_OS_WIN
-  HANDLE master;
-#else
   pid_t master;
-#endif
   uint16_t threads;
   uint16_t workers;
   uint8_t is_master;
@@ -391,11 +387,12 @@ FIO_SFUNC void fio_uuid_free_task(void *uuid, void *ignr) {
 }
 
 fio_uuid_s *fio_uuid_dup(fio_uuid_s *uuid) { return fio_uuid_dup2(uuid); }
+
+#define fio_uuid_dup fio_uuid_dup2
+
 void fio_uuid_free(fio_uuid_s *uuid) {
   fio_queue_push(&tasks_io_core, .fn = fio_uuid_free_task, .udata1 = uuid);
 }
-
-#define fio_uuid_dup fio_uuid_dup2
 
 FIO_IFUNC void fio_uuid_close(fio_uuid_s *uuid) {
   if (fio_atomic_and(&uuid->state, ~(unsigned)FIO_UUID_OPEN) & FIO_UUID_OPEN) {
