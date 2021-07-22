@@ -36,7 +36,6 @@ FIO_IFUNC void fio___poll_ev_wrap_data(int fd, void *uuid_) {
                  fio_ev_on_data,
                  fio_uuid_dup(uuid),
                  uuid->udata);
-  fio_user_thread_wake();
   (void)fd;
 }
 FIO_IFUNC void fio___poll_ev_wrap_ready(int fd, void *uuid_) {

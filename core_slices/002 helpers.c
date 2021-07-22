@@ -224,15 +224,15 @@ Thread suspension helpers
 FIO_SFUNC void fio_user_thread_suspent(void) {
   short e = fio_sock_wait_io(fio_data.thread_suspenders.in, POLLIN, 2000);
   if (e != -1 && (e & POLLIN)) {
-    char buf[512];
-    int r = fio_sock_read(fio_data.thread_suspenders.in, buf, 512);
+    char buf[2];
+    int r = fio_sock_read(fio_data.thread_suspenders.in, buf, 1);
     (void)r;
   }
 }
 
 FIO_IFUNC void fio_user_thread_wake(void) {
-  char buf[1] = {0};
-  fio_sock_write(fio_data.thread_suspenders.out, buf, 1);
+  char buf[2] = {0};
+  fio_sock_write(fio_data.thread_suspenders.out, buf, 2);
 }
 
 FIO_IFUNC void fio_user_thread_wake_all(void) {
@@ -537,6 +537,8 @@ Housekeeping cycle
 FIO_SFUNC void fio___cycle_housekeeping(void) {
   static int old = 0;
   static time_t last_to_review = 0;
+  if (fio_queue_count(&tasks_user))
+    fio_user_thread_wake();
   int c = fio_uuid_monitor_review();
   fio_data.tick = fio_time_real();
   c += fio_signal_review();
@@ -576,8 +578,8 @@ FIO_SFUNC void fio___cycle_housekeeping(void) {
       }
     }
   }
-  /* what if there were no other events and timeouts were scheduled?  */
-  fio_user_thread_wake();
+  if (fio_queue_count(&tasks_user))
+    fio_user_thread_wake();
 }
 
 FIO_SFUNC void fio___cycle_housekeeping_running(void) {

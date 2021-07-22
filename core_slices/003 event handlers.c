@@ -75,7 +75,6 @@ static void fio_ev_on_ready(void *uuid_, void *udata) {
                               .fn = fio_ev_on_ready_user,
                               .udata1 = fio_uuid_dup(uuid),
                               .udata2 = udata);
-        fio_user_thread_wake();
       }
     } else {
       fio_uuid_monitor_add_write(uuid);
