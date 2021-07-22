@@ -45,6 +45,8 @@ This file also contains common helper macros / primitives, such as:
 
 * Naming Macros - i.e., `FIO_NAME` / `FIO_NAME2` / `FIO_NAME_BL`
 
+* OS portable Threads - defined by `FIO_THREADS`
+
 * Sleep / Thread Scheduling Macros - i.e., `FIO_THREAD_RESCHEDULE`
 
 * Logging and Assertion (no heap allocation) - defined by `FIO_LOG`
@@ -67,9 +69,11 @@ This file also contains common helper macros / primitives, such as:
 
 * Socket Helpers - defined by `FIO_SOCK`
 
+* Polling Helpers - defined by `FIO_POLL`
+
 * Data Stream Containers - defined by `FIO_STREAM`
 
-* Signal (passthrough) Monitors - defined by `FIO_SIGNAL`
+* Signal (pass-through) Monitors - defined by `FIO_SIGNAL`
 
 * Custom Memory Pool / Allocation - defined by `FIO_MEMORY_NAME` / `FIO_MALLOC`,
   if `FIO_MALLOC` is used, it updates `FIO_MEM_REALLOC` etc'
@@ -292,6 +296,8 @@ Function Attributes
 /** Marks a function as a constructor - if supported. */
 
 #if _WIN64 /* MSVC linker uses different name mangling on 32bit systems */
+#undef FIO_CONSTRUCTOR
+#undef FIO_DESTRUCTOR
 #define FIO___CONSTRUCTOR_INTERNAL(fname)                                      \
   static void fname(void);                                                     \
   __pragma(comment(linker, "/include:" #fname "__")); /* and next.... */       \
@@ -913,11 +919,15 @@ Common macros
 
 ***************************************************************************** */
 
-/* FIO_MEMORY_NAME dependencies */
+/* Modules that require logging */
 #if defined(FIO_MEMORY_NAME) || defined(FIO_MALLOC)
 #ifndef FIO_LOG
 #define FIO_LOG
 #endif
+#endif /* FIO_MALLOC */
+
+/* Modules that require randomness */
+#if defined(FIO_MEMORY_NAME) || defined(FIO_MALLOC)
 #ifndef FIO_RAND
 #define FIO_RAND
 #endif
@@ -928,8 +938,10 @@ Common macros
 #define FIO_SOCK
 #endif
 
+/* Modules that require Threads data */
 #if (defined(FIO_QUEUE) && defined(FIO_TEST_CSTL)) ||                          \
-    defined(FIO_MEMORY_USE_THREAD_MUTEX) || defined(FIO_USE_THREAD_MUTEX_TMP)
+    defined(FIO_MEMORY_NAME) || defined(FIO_MALLOC) ||                         \
+    defined(FIO_USE_THREAD_MUTEX_TMP)
 #define FIO_THREADS
 #endif
 
@@ -942,7 +954,7 @@ Common macros
 
 /* Modules that require FIO_RISKY_HASH */
 #if defined(FIO_RAND) || defined(FIO_STR_NAME) || defined(FIO_STR_SMALL) ||    \
-    defined(FIO_CLI)
+    defined(FIO_CLI) || defined(FIO_MEMORY_NAME) || defined(FIO_MALLOC)
 #ifndef FIO_RISKY_HASH
 #define FIO_RISKY_HASH
 #endif
@@ -966,10 +978,9 @@ Common macros
 /* Modules that require FIO_ATOMIC */
 #if defined(FIO_BITMAP) || defined(FIO_REF_NAME) || defined(FIO_LOCK2) ||      \
     (defined(FIO_POLL) && !FIO_USE_THREAD_MUTEX_TMP) ||                        \
-    ((defined(FIO_MEMORY_NAME) || defined(FIO_MALLOC)) && !FIO_OS_WIN) ||      \
+    (defined(FIO_MEMORY_NAME) || defined(FIO_MALLOC)) ||                       \
     (defined(FIO_QUEUE) && !FIO_USE_THREAD_MUTEX_TMP) || defined(FIO_JSON) ||  \
-    (defined(FIO_SIGNAL) && !FIO_OS_WIN) || defined(FIO_BITMAP) ||             \
-    (defined(FIO_THREADS) && FIO_OS_WIN)
+    defined(FIO_SIGNAL) || defined(FIO_BITMAP) || defined(FIO_THREADS)
 #ifndef FIO_ATOMIC
 #define FIO_ATOMIC
 #endif
@@ -3801,10 +3812,10 @@ Random - Implementation
 #include <sys/time.h>
 #endif
 
-static __thread uint64_t fio___rand_state[4]; /* random state */
-static __thread size_t fio___rand_counter;    /* seed counter */
+static volatile uint64_t fio___rand_state[4]; /* random state */
+static volatile size_t fio___rand_counter;    /* seed counter */
 /* feeds random data to the algorithm through this 256 bit feed. */
-static __thread uint64_t fio___rand_buffer[4] = {0x9c65875be1fce7b9ULL,
+static volatile uint64_t fio___rand_buffer[4] = {0x9c65875be1fce7b9ULL,
                                                  0x7cc568e838f6a40d,
                                                  0x4bb8d885a0fe47d5,
                                                  0x95561f0927ad7ecd};
@@ -3861,27 +3872,27 @@ IFUNC void fio_rand_reseed(void) {
   {
     struct rusage rusage;
     getrusage(RUSAGE_SELF, &rusage);
-    fio___rand_state[0] =
+    fio___rand_state[0] ^=
         fio_risky_hash(&rusage, sizeof(rusage), fio___rand_state[0]);
   }
 #endif
   for (size_t i = 0; i < jitter_samples; ++i) {
     uint64_t clk = (uint64_t)fio_time_nano();
-    fio___rand_state[0] =
+    fio___rand_state[0] ^=
         fio_risky_hash(&clk, sizeof(clk), fio___rand_state[0] + i);
     clk = fio_time_nano();
-    fio___rand_state[1] =
+    fio___rand_state[1] ^=
         fio_risky_hash(&clk,
                        sizeof(clk),
                        fio___rand_state[1] + fio___rand_counter);
   }
-  fio___rand_state[2] =
-      fio_risky_hash(fio___rand_buffer,
+  fio___rand_state[2] ^=
+      fio_risky_hash((void *)fio___rand_buffer,
                      sizeof(fio___rand_buffer),
                      fio___rand_counter + fio___rand_state[0]);
-  fio___rand_state[3] = fio_risky_hash(fio___rand_state,
-                                       sizeof(fio___rand_state),
-                                       fio___rand_state[1] + jitter_samples);
+  fio___rand_state[3] ^= fio_risky_hash((void *)fio___rand_state,
+                                        sizeof(fio___rand_state),
+                                        fio___rand_state[1] + jitter_samples);
   fio___rand_buffer[0] = fio_lrot64(fio___rand_buffer[0], 31);
   fio___rand_buffer[1] = fio_lrot64(fio___rand_buffer[1], 29);
   fio___rand_buffer[2] ^= fio___rand_buffer[0];
@@ -7010,13 +7021,11 @@ License: ISC / MIT (choose your license)
 Feel free to copy, use and enjoy according to the license provided.
 ***************************************************************************** */
 #ifndef H___FIO_CSTL_INCLUDE_ONCE_H /* Development inclusion - ignore line */
-#define FIO_ATOMIC                  /* Development inclusion - ignore line */
-#define FIO_RAND                    /* Development inclusion - ignore line */
-#define FIO_RISKY_HASH              /* Development inclusion - ignore line */
+#define FIO_MEMORY_NAME fio         /* Development inclusion - ignore line */
 #include "000 header.h"             /* Development inclusion - ignore line */
 #include "003 atomics.h"            /* Development inclusion - ignore line */
 #include "005 riskyhash.h"          /* Development inclusion - ignore line */
-#define FIO_MEMORY_NAME fio         /* Development inclusion - ignore line */
+#include "007 threads.h"            /* Development inclusion - ignore line */
 #endif                              /* Development inclusion - ignore line */
 /* *****************************************************************************
 
@@ -8285,7 +8294,15 @@ FIO_SFUNC FIO_NAME(FIO_MEMORY_NAME, __mem_arena_s) *
   static size_t warning_printed = 0;
 #endif
   /** thread arena value */
-  static __thread size_t FIO_NAME(FIO_MEMORY_NAME, __mem_arena_var);
+  size_t FIO_NAME(FIO_MEMORY_NAME, __mem_arena_var);
+  {
+    /* select the default arena selection using a thread ID. */
+    union {
+      void *p;
+      fio_thread_t t;
+    } u = {.t = fio_thread_current()};
+    FIO_NAME(FIO_MEMORY_NAME, __mem_arena_var) = (size_t)fio_risky_ptr(u.p);
+  }
   for (;;) {
     /* rotate all arenas to find one that's available */
     for (size_t i = 0; i < FIO_NAME(FIO_MEMORY_NAME, __mem_state)->arena_count;
@@ -8298,7 +8315,6 @@ FIO_SFUNC FIO_NAME(FIO_MEMORY_NAME, __mem_arena_s) *
       if (FIO_MEMORY_TRYLOCK(
               FIO_NAME(FIO_MEMORY_NAME, __mem_state)->arena[index].lock))
         continue;
-      FIO_NAME(FIO_MEMORY_NAME, __mem_arena_var) = index;
       return (FIO_NAME(FIO_MEMORY_NAME, __mem_state)->arena + index);
     }
 #if defined(DEBUG) && FIO_MEMORY_ARENA_COUNT > 0 && !defined(FIO_TEST_CSTL)
@@ -8309,7 +8325,7 @@ FIO_SFUNC FIO_NAME(FIO_MEMORY_NAME, __mem_arena_s) *
                             "          Consider recompiling with more arenas.");
     warning_printed = 1;
 #endif /* DEBUG */
-#if FIO_MEMORY_USE_THREAD_MUTEX
+#if FIO_MEMORY_USE_THREAD_MUTEX && FIO_OS_POSIX
     /* slow wait for last arena used by the thread */
     FIO_MEMORY_LOCK(FIO_NAME(FIO_MEMORY_NAME, __mem_state)
                         ->arena[FIO_NAME(FIO_MEMORY_NAME, __mem_arena_var)]
@@ -15582,11 +15598,26 @@ SFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME, unshift)(FIO_ARRAY_PTR ary,
 SFUNC int FIO_NAME(FIO_ARRAY_NAME, shift)(FIO_ARRAY_PTR ary,
                                           FIO_ARRAY_TYPE *old);
 
+/** Iteration information structure passed to the callback. */
+typedef struct FIO_NAME(FIO_ARRAY_NAME, each_s) {
+  /** The being iterated. Once set, cannot be safely changed. */
+  FIO_ARRAY_PTR const parent;
+  /** The current object's index */
+  uint64_t index;
+  /** Always 1, but may be used to allow type detection. */
+  const int64_t items_at_index;
+  /** The callback / task called for each index, may be updated mid-cycle. */
+  int (*task)(struct FIO_NAME(FIO_ARRAY_NAME, each_s) * info);
+  /** Opaque user data. */
+  void *udata;
+  /** The object / value at the current index. */
+  FIO_ARRAY_TYPE value;
+} FIO_NAME(FIO_ARRAY_NAME, each_s);
+
 /**
  * Iteration using a callback for each entry in the array.
  *
- * The callback task function must accept an the entry data as well as an opaque
- * user pointer.
+ * The callback task function must accept an each_s pointer, see above.
  *
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  *
@@ -15595,9 +15626,32 @@ SFUNC int FIO_NAME(FIO_ARRAY_NAME, shift)(FIO_ARRAY_PTR ary,
  */
 IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME,
                         each)(FIO_ARRAY_PTR ary,
-                              int32_t start_at,
-                              int (*task)(FIO_ARRAY_TYPE obj, void *arg),
-                              void *arg);
+                              int (*task)(FIO_NAME(FIO_ARRAY_NAME, each_s) *
+                                          info),
+                              void *udata,
+                              int32_t start_at);
+
+#ifndef FIO_ARRAY_EACH
+/**
+ * Iterates through the array using a `for` loop.
+ *
+ * Access the object with the pointer `pos`. The `pos` variable can be named
+ * however you please.
+ *
+ * Avoid editing the array during a FOR loop, although I hope it's possible, I
+ * wouldn't count on it.
+ *
+ * **Note**: this variant supports automatic pointer tagging / untagging.
+ */
+#define FIO_ARRAY_EACH(array_name, array, pos)                                 \
+  for (FIO_NAME(FIO_ARRAY_NAME,                                                \
+                ____type_t) *first___ = NULL,                                  \
+                            *pos =                                             \
+                                FIO_NAME(array_name,                           \
+                                         each_next)((array), &first___, NULL); \
+       pos;                                                                    \
+       pos = FIO_NAME(array_name, each_next)((array), &first___, pos))
+#endif
 
 /**
  * Returns a pointer to the (next) object in the array.
@@ -15623,28 +15677,6 @@ FIO_IFUNC FIO_ARRAY_TYPE *FIO_NAME(FIO_ARRAY_NAME,
                                    each_next)(FIO_ARRAY_PTR ary,
                                               FIO_ARRAY_TYPE **first,
                                               FIO_ARRAY_TYPE *pos);
-
-#ifndef FIO_ARRAY_EACH
-/**
- * Iterates through the array using a `for` loop.
- *
- * Access the object with the pointer `pos`. The `pos` variable can be named
- * however you please.
- *
- * Avoid editing the array during a FOR loop, although I hope it's possible, I
- * wouldn't count on it.
- *
- * **Note**: this variant supports automatic pointer tagging / untagging.
- */
-#define FIO_ARRAY_EACH(array_name, array, pos)                                 \
-  for (FIO_NAME(FIO_ARRAY_NAME,                                                \
-                ____type_t) *first___ = NULL,                                  \
-                            *pos =                                             \
-                                FIO_NAME(array_name,                           \
-                                         each_next)((array), &first___, NULL); \
-       pos;                                                                    \
-       pos = FIO_NAME(array_name, each_next)((array), &first___, pos))
-#endif
 
 /* *****************************************************************************
 Dynamic Arrays - embedded arrays
@@ -16604,28 +16636,47 @@ SFUNC int FIO_NAME(FIO_ARRAY_NAME, shift)(FIO_ARRAY_PTR ary_,
  */
 IFUNC uint32_t FIO_NAME(FIO_ARRAY_NAME,
                         each)(FIO_ARRAY_PTR ary_,
-                              int32_t start_at,
-                              int (*task)(FIO_ARRAY_TYPE obj, void *arg),
-                              void *arg) {
+                              int (*task)(FIO_NAME(FIO_ARRAY_NAME, each_s) *
+                                          info),
+                              void *udata,
+                              int32_t start_at) {
   FIO_ARRAY_TYPE *a = FIO_NAME2(FIO_ARRAY_NAME, ptr)(ary_);
   if (!a)
-    return start_at;
-  {
-    uint32_t count = FIO_NAME(FIO_ARRAY_NAME, count)(ary_);
+    return (uint32_t)-1;
 
-    if (!a || !task)
-      return start_at;
-    if ((uint32_t)start_at >= count)
-      return count;
+  uint32_t count = FIO_NAME(FIO_ARRAY_NAME, count)(ary_);
+
+  if (start_at < 0) {
+    start_at = count - start_at;
+    if (start_at < 0)
+      start_at = 0;
   }
 
-  while ((uint32_t)start_at < FIO_NAME(FIO_ARRAY_NAME, count)(ary_)) {
+  if (!a || !task)
+    return (uint32_t)-1;
+
+  if ((uint32_t)start_at >= count)
+    return count;
+
+  FIO_NAME(FIO_ARRAY_NAME, each_s)
+  e = {
+      .parent = ary_,
+      .index = (uint64_t)start_at,
+      .items_at_index = 1,
+      .task = task,
+      .udata = udata,
+  };
+
+  while ((uint32_t)e.index < FIO_NAME(FIO_ARRAY_NAME, count)(ary_)) {
     a = FIO_NAME2(FIO_ARRAY_NAME, ptr)(ary_);
-    if (task(a[(uint32_t)(start_at++)], arg) == -1) {
-      return (uint32_t)(start_at);
+    e.value = a[e.index];
+    int r = e.task(&e);
+    ++e.index;
+    if (r == -1) {
+      return (uint32_t)(e.index);
     }
   }
-  return start_at;
+  return e.index;
 }
 
 /* *****************************************************************************
@@ -16639,18 +16690,19 @@ IFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, new)(void);
 IFUNC int FIO_NAME(FIO_ARRAY_NAME, free)(FIO_ARRAY_PTR ary);
 #endif /* FIO_REF_CONSTRUCTOR_ONLY */
 
-#define FIO_ARRAY_TEST_OBJ_SET(dest, val) memset(&(dest), (int)(val), sizeof(o))
+#define FIO_ARRAY_TEST_OBJ_SET(dest, val)                                      \
+  memset(&(dest), (int)(val), sizeof(FIO_ARRAY_TYPE))
 #define FIO_ARRAY_TEST_OBJ_IS(val)                                             \
-  (!memcmp(&o, memset(&v, (int)(val), sizeof(v)), sizeof(o)))
+  (!memcmp(&o, memset(&v, (int)(val), sizeof(v)), sizeof(FIO_ARRAY_TYPE)))
 
-FIO_SFUNC int FIO_NAME_TEST(stl,
-                            FIO_NAME(FIO_ARRAY_NAME,
-                                     test_task))(FIO_ARRAY_TYPE o, void *a_) {
+FIO_SFUNC int FIO_NAME_TEST(stl, FIO_NAME(FIO_ARRAY_NAME, test_task))(
+    FIO_NAME(FIO_ARRAY_NAME, each_s) * i) {
   struct data_s {
     int i;
     int va[];
-  } *d = (struct data_s *)a_;
+  } *d = (struct data_s *)i->udata;
   FIO_ARRAY_TYPE v;
+
   FIO_ARRAY_TEST_OBJ_SET(v, d->va[d->i]);
   ++d->i;
   if (d->va[d->i + 1])
@@ -16945,9 +16997,9 @@ FIO_SFUNC void FIO_NAME_TEST(stl, FIO_ARRAY_NAME)(void) {
 
       int index = FIO_NAME(FIO_ARRAY_NAME, each)(
           a,
-          d.i,
           FIO_NAME_TEST(stl, FIO_NAME(FIO_ARRAY_NAME, test_task)),
-          (void *)&d);
+          (void *)&d,
+          d.i);
       FIO_ASSERT(index == d.i,
                  "index rerturned from each should match next object");
       FIO_ASSERT(*(char *)&d.va[d.i],
@@ -17369,8 +17421,8 @@ Map API
 Types
 ***************************************************************************** */
 
-/** The type for each member in the map. */
-typedef struct FIO_NAME(FIO_MAP_NAME, each_s) FIO_NAME(FIO_MAP_NAME, each_s);
+/** The type for each node in the map. */
+typedef struct FIO_NAME(FIO_MAP_NAME, node_s) FIO_NAME(FIO_MAP_NAME, node_s);
 /** The Map Type (container) itself. */
 typedef struct FIO_NAME(FIO_MAP_NAME, s) FIO_NAME(FIO_MAP_NAME, s);
 
@@ -17380,7 +17432,7 @@ typedef struct FIO_NAME(FIO_MAP_NAME, s) FIO_NAME(FIO_MAP_NAME, s);
   { 0 }
 #endif
 
-struct FIO_NAME(FIO_MAP_NAME, each_s) {
+struct FIO_NAME(FIO_MAP_NAME, node_s) {
   /** the data being stored in the Map / key-value pair: obj.key obj.value. */
   FIO_MAP_OBJ obj;
 #if FIO_MAP_HASH_CACHED
@@ -17498,35 +17550,46 @@ Iteration
 ***************************************************************************** */
 
 /** Takes a previous (or NULL) item's position and returns the next. */
-FIO_IFUNC FIO_NAME(FIO_MAP_NAME, each_s) *
+FIO_IFUNC FIO_NAME(FIO_MAP_NAME, node_s) *
     FIO_NAME(FIO_MAP_NAME, each_next)(FIO_MAP_PTR map,
-                                      FIO_NAME(FIO_MAP_NAME, each_s) * *first,
-                                      FIO_NAME(FIO_MAP_NAME, each_s) * pos);
+                                      FIO_NAME(FIO_MAP_NAME, node_s) * *first,
+                                      FIO_NAME(FIO_MAP_NAME, node_s) * pos);
+
+/** Iteration information structure passed to the callback. */
+typedef struct FIO_NAME(FIO_MAP_NAME, each_s) {
+  /** The being iterated. Once set, cannot be safely changed. */
+  FIO_MAP_PTR const parent;
+  /** The current object's index */
+  uint64_t index;
+  /** Either 1 (set) or 2 (map), and may be used to allow type detection. */
+  const int64_t items_at_index;
+  /** The callback / task called for each index, may be updated mid-cycle. */
+  int (*task)(struct FIO_NAME(FIO_MAP_NAME, each_s) * info);
+  /** Opaque user data. */
+  void *udata;
+  /** The object / value at the current index. */
+  FIO_MAP_TYPE value;
+#ifdef FIO_MAP_KEY
+  /** The key used to access the specific value. */
+  FIO_MAP_KEY key;
+#endif
+} FIO_NAME(FIO_MAP_NAME, each_s);
 
 /**
  * Iteration using a callback for each element in the map.
  *
- * The callback task function must accept an element variable as well as an
- * opaque user pointer.
+ * The callback task function must accept an each_s pointer, see above.
  *
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  *
  * Returns the relative "stop" position, i.e., the number of items processed +
  * the starting point.
  */
-SFUNC FIO_MAP_SIZE_TYPE FIO_NAME(FIO_MAP_NAME,
-                                 each)(FIO_MAP_PTR map,
-                                       ssize_t start_at,
-                                       int (*task)(FIO_MAP_TYPE obj, void *arg),
-                                       void *arg);
-
-#ifdef FIO_MAP_KEY
-/** Returns an object's key while in an iteration callback. */
-SFUNC FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
-#else
-/** Returns an object's key while in an iteration callback. */
-SFUNC FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void);
-#endif
+SFUNC FIO_MAP_SIZE_TYPE
+    FIO_NAME(FIO_MAP_NAME, each)(FIO_MAP_PTR map,
+                                 int (*task)(FIO_NAME(FIO_MAP_NAME, each_s) *),
+                                 void *udata,
+                                 ssize_t start_at);
 
 /* *****************************************************************************
 
@@ -17618,7 +17681,7 @@ Iteration Macro
  */
 #define FIO_MAP_EACH(map_name, map_p, pos)                                     \
   for (FIO_NAME(map_name,                                                      \
-                each_s) *first___ = NULL,                                      \
+                node_s) *first___ = NULL,                                      \
                         *pos = FIO_NAME(map_name,                              \
                                         each_next)(map_p, &first___, NULL);    \
        pos;                                                                    \
@@ -17673,7 +17736,7 @@ Ordered Map Types - Implementation
 /** An Ordered Map Type */
 struct FIO_NAME(FIO_MAP_NAME, s) {
   /** Internal map / memory - do not access directly */
-  FIO_NAME(FIO_MAP_NAME, each_s) * map;
+  FIO_NAME(FIO_MAP_NAME, node_s) * map;
   /** Object count - do not access directly */
   FIO_MAP_SIZE_TYPE count;
   /** Writing position - do not access directly */
@@ -17734,10 +17797,10 @@ FIO_IFUNC size_t FIO_NAME(FIO_MAP_NAME, capa)(FIO_MAP_PTR map) {
   return FIO_MAP_CAPA(m->bits);
 }
 
-FIO_IFUNC FIO_NAME(FIO_MAP_NAME, each_s) *
+FIO_IFUNC FIO_NAME(FIO_MAP_NAME, node_s) *
     FIO_NAME(FIO_MAP_NAME, each_next)(FIO_MAP_PTR map,
-                                      FIO_NAME(FIO_MAP_NAME, each_s) * *first,
-                                      FIO_NAME(FIO_MAP_NAME, each_s) * pos) {
+                                      FIO_NAME(FIO_MAP_NAME, node_s) * *first,
+                                      FIO_NAME(FIO_MAP_NAME, node_s) * pos) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(map);
   if (!m || !first)
@@ -17784,7 +17847,7 @@ Ordered Map Implementation - possibly externed functions.
 
 #ifndef FIO_MAP_MEMORY_SIZE
 #define FIO_MAP_MEMORY_SIZE(bits)                                              \
-  ((sizeof(FIO_NAME(FIO_MAP_NAME, each_s)) + sizeof(FIO_MAP_SIZE_TYPE)) *      \
+  ((sizeof(FIO_NAME(FIO_MAP_NAME, node_s)) + sizeof(FIO_MAP_SIZE_TYPE)) *      \
    FIO_MAP_CAPA(bits))
 #endif
 
@@ -17930,8 +17993,8 @@ FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, __realloc)(FIO_NAME(FIO_MAP_NAME, s) * m,
   // if (bits < 3)
   //   bits = 3;
   if (bits != m->bits) {
-    FIO_NAME(FIO_MAP_NAME, each_s) *tmp =
-        (FIO_NAME(FIO_MAP_NAME, each_s) *)FIO_MEM_REALLOC_(
+    FIO_NAME(FIO_MAP_NAME, node_s) *tmp =
+        (FIO_NAME(FIO_MAP_NAME, node_s) *)FIO_MEM_REALLOC_(
             m->map,
             FIO_MAP_MEMORY_SIZE(m->bits),
             FIO_MAP_MEMORY_SIZE(bits),
@@ -18311,10 +18374,6 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, rehash)(FIO_MAP_PTR map) {
 Iteration
 ***************************************************************************** */
 
-FIO_SFUNC __thread FIO_MAP_SIZE_TYPE FIO_NAME(FIO_MAP_NAME, __each_pos) = 0;
-FIO_SFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
-    FIO_NAME(FIO_MAP_NAME, __each_map) = NULL;
-
 /**
  * Iteration using a callback for each element in the map.
  *
@@ -18326,87 +18385,79 @@ FIO_SFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
  * Returns the relative "stop" position, i.e., the number of items processed +
  * the starting point.
  */
-SFUNC FIO_MAP_SIZE_TYPE FIO_NAME(FIO_MAP_NAME,
-                                 each)(FIO_MAP_PTR map,
-                                       ssize_t start_at,
-                                       int (*task)(FIO_MAP_TYPE obj, void *arg),
-                                       void *arg) {
-  FIO_MAP_SIZE_TYPE count = (FIO_MAP_SIZE_TYPE)start_at;
+SFUNC FIO_MAP_SIZE_TYPE
+FIO_NAME(FIO_MAP_NAME, each)(FIO_MAP_PTR map,
+                             int (*task)(FIO_NAME(FIO_MAP_NAME, each_s) *),
+                             void *udata,
+                             ssize_t start_at) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(map);
   if (!m)
     return 0;
-  FIO_PTR_TAG_VALID_OR_RETURN(map, 0);
-  if (!m->count)
-    return 0;
-
+  FIO_PTR_TAG_VALID_OR_RETURN(map, (FIO_MAP_SIZE_TYPE)-1);
+  FIO_MAP_SIZE_TYPE count = m->count;
   if (start_at < 0) {
-    start_at = m->count + start_at;
+    start_at = count - start_at;
     if (start_at < 0)
       start_at = 0;
   }
-  if ((FIO_MAP_SIZE_TYPE)start_at >= m->count)
-    return m->count;
-
-  FIO_NAME(FIO_MAP_NAME, s) *old_map = FIO_NAME(FIO_MAP_NAME, __each_map);
-  FIO_MAP_SIZE_TYPE old_pos = FIO_NAME(FIO_MAP_NAME, __each_pos);
-  FIO_NAME(FIO_MAP_NAME, __each_pos) = 0;
-  FIO_NAME(FIO_MAP_NAME, __each_map) = m;
+  if ((FIO_MAP_SIZE_TYPE)start_at >= count)
+    return count;
+  FIO_MAP_SIZE_TYPE pos = 0;
+  FIO_NAME(FIO_MAP_NAME, each_s)
+  e = {
+      .parent = map,
+      .index = (uint64_t)start_at,
+#ifdef FIO_MAP_KEY
+      .items_at_index = 2,
+#else
+      .items_at_index = 1,
+#endif
+      .task = task,
+      .udata = udata,
+  };
 
   if (m->w == m->count) {
-    FIO_NAME(FIO_MAP_NAME, __each_pos) = (FIO_MAP_SIZE_TYPE)start_at;
-    while (
-        count < m->count && (++count) &&
-        task(FIO_MAP_OBJ2TYPE(m->map[FIO_NAME(FIO_MAP_NAME, __each_pos)].obj),
-             arg) != -1)
-      ++FIO_NAME(FIO_MAP_NAME, __each_pos);
-    FIO_NAME(FIO_MAP_NAME, __each_pos) = old_pos;
-    FIO_NAME(FIO_MAP_NAME, __each_map) = old_map;
-    return count;
+    while (e.index < m->count) {
+      e.value = FIO_MAP_OBJ2TYPE(m->map[e.index].obj);
+#ifdef FIO_MAP_KEY
+      e.key = FIO_MAP_OBJ2KEY(m->map[e.index].obj);
+#endif
+      int r = e.task(&e);
+      ++e.index;
+      if (r == -1)
+        break;
+    }
+    return (FIO_MAP_SIZE_TYPE)(e.index);
   }
-  while (start_at && FIO_NAME(FIO_MAP_NAME, __each_pos) < m->w) {
-    if (!m->map[FIO_NAME(FIO_MAP_NAME, __each_pos)++].hash) {
+
+  pos = 0;
+  while (start_at && pos < m->w) {
+    if (!m->map[pos++].hash) {
       continue;
     }
     --start_at;
   }
+
   if (start_at)
     return m->count;
 
-  while (count < m->count && FIO_NAME(FIO_MAP_NAME, __each_pos) < m->w) {
-    if (m->map[FIO_NAME(FIO_MAP_NAME, __each_pos)].hash) {
-      ++count;
-      if (task(FIO_MAP_OBJ2TYPE(m->map[FIO_NAME(FIO_MAP_NAME, __each_pos)].obj),
-               arg) == -1)
+  while (e.index < m->count && pos < m->w) {
+    if (m->map[pos].hash) {
+      e.value = FIO_MAP_OBJ2TYPE(m->map[pos].obj);
+#ifdef FIO_MAP_KEY
+      e.key = FIO_MAP_OBJ2KEY(m->map[pos].obj);
+#endif
+      int r = e.task(&e);
+      ++e.index;
+      if (r == -1)
         break;
     }
-    ++FIO_NAME(FIO_MAP_NAME, __each_pos);
+    ++pos;
   }
-  FIO_NAME(FIO_MAP_NAME, __each_pos) = old_pos;
-  FIO_NAME(FIO_MAP_NAME, __each_map) = old_map;
-  return count;
+  return e.index;
 }
 
-#ifdef FIO_MAP_KEY
-SFUNC FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
-  if (!FIO_NAME(FIO_MAP_NAME, __each_map) ||
-      !FIO_NAME(FIO_MAP_NAME, __each_map)->count)
-    return FIO_MAP_KEY_INVALID;
-  return FIO_NAME(FIO_MAP_NAME, __each_map)
-      ->map[FIO_NAME(FIO_MAP_NAME, __each_pos)]
-      .obj.key;
-}
-#else
-
-SFUNC FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
-  if (!FIO_NAME(FIO_MAP_NAME, __each_map) ||
-      !FIO_NAME(FIO_MAP_NAME, __each_map)->count)
-    return 0;
-  return FIO_NAME(FIO_MAP_NAME, __each_map)
-      ->map[FIO_NAME(FIO_MAP_NAME, __each_pos)]
-      .hash;
-}
-#endif
 /* *****************************************************************************
 Ordered Map Cleanup
 ***************************************************************************** */
@@ -18453,11 +18504,11 @@ Benchmark: https://tessil.github.io/2016/08/29/benchmark-hopscotch-map.html
 /** An Unordered Map Type */
 struct FIO_NAME(FIO_MAP_NAME, s) {
   /** Internal map / memory - do not access directly */
-  FIO_NAME(FIO_MAP_NAME, each_s) * map;
+  FIO_NAME(FIO_MAP_NAME, node_s) * map;
   /** Object count - do not access directly */
   FIO_MAP_SIZE_TYPE count;
 #if FIO_MAP_EVICT_LRU
-  /** LRU evicion monitoring - do not access directly */
+  /** LRU eviction monitoring - do not access directly */
   FIO_MAP_SIZE_TYPE last_used;
 #endif /* FIO_MAP_EVICT_LRU */
   uint8_t bits;
@@ -18494,7 +18545,7 @@ FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, free)(FIO_MAP_PTR map) {
 }
 #endif /* FIO_REF_CONSTRUCTOR_ONLY */
 
-/** IInternal helper - do not access */
+/** Internal helper - do not access */
 FIO_IFUNC uint8_t *FIO_NAME(FIO_MAP_NAME,
                             __imap)(FIO_NAME(FIO_MAP_NAME, s) * m) {
   return (uint8_t *)(m->map + FIO_MAP_CAPA(m->bits));
@@ -18518,10 +18569,10 @@ FIO_IFUNC size_t FIO_NAME(FIO_MAP_NAME, capa)(FIO_MAP_PTR map) {
   return FIO_MAP_CAPA(m->bits);
 }
 
-FIO_IFUNC FIO_NAME(FIO_MAP_NAME, each_s) *
+FIO_IFUNC FIO_NAME(FIO_MAP_NAME, node_s) *
     FIO_NAME(FIO_MAP_NAME, each_next)(FIO_MAP_PTR map,
-                                      FIO_NAME(FIO_MAP_NAME, each_s) * *first,
-                                      FIO_NAME(FIO_MAP_NAME, each_s) * pos) {
+                                      FIO_NAME(FIO_MAP_NAME, node_s) * *first,
+                                      FIO_NAME(FIO_MAP_NAME, node_s) * pos) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(map);
   if (!m || !first)
@@ -18583,7 +18634,7 @@ Unordered Map Implementation - possibly externed functions.
 
 #ifndef FIO_MAP_MEMORY_SIZE
 #define FIO_MAP_MEMORY_SIZE(bits)                                              \
-  ((sizeof(FIO_NAME(FIO_MAP_NAME, each_s)) + sizeof(uint8_t)) *                \
+  ((sizeof(FIO_NAME(FIO_MAP_NAME, node_s)) + sizeof(uint8_t)) *                \
    FIO_MAP_CAPA(bits))
 #endif
 
@@ -18730,7 +18781,7 @@ FIO_IFUNC int FIO_NAME(FIO_MAP_NAME, __realloc)(FIO_NAME(FIO_MAP_NAME, s) * m,
                                                 size_t bits) {
   if (!m || bits >= (sizeof(FIO_MAP_SIZE_TYPE) * 8))
     return -1;
-  FIO_NAME(FIO_MAP_NAME, each_s) *tmp = (FIO_NAME(FIO_MAP_NAME, each_s) *)
+  FIO_NAME(FIO_MAP_NAME, node_s) *tmp = (FIO_NAME(FIO_MAP_NAME, node_s) *)
       FIO_MEM_REALLOC_(NULL, 0, FIO_MAP_MEMORY_SIZE(bits), 0);
   if (!tmp)
     return -1;
@@ -19161,65 +19212,85 @@ SFUNC int FIO_NAME(FIO_MAP_NAME, rehash)(FIO_MAP_PTR map) {
 
 /* *****************************************************************************
 Iteration
-*****************************************************************************
-*/
-FIO_SFUNC __thread FIO_MAP_SIZE_TYPE FIO_NAME(FIO_MAP_NAME, __each_pos) = 0;
-FIO_SFUNC __thread FIO_NAME(FIO_MAP_NAME, s) *
-    FIO_NAME(FIO_MAP_NAME, __each_map) = NULL;
+***************************************************************************** */
 
-SFUNC FIO_MAP_SIZE_TYPE FIO_NAME(FIO_MAP_NAME,
-                                 each)(FIO_MAP_PTR map,
-                                       ssize_t start_at,
-                                       int (*task)(FIO_MAP_TYPE obj, void *arg),
-                                       void *arg) {
-  FIO_MAP_SIZE_TYPE count = (FIO_MAP_SIZE_TYPE)start_at;
+/**
+ * Iteration using a callback for each element in the map.
+ *
+ * The callback task function must accept an element variable as well as an
+ * opaque user pointer.
+ *
+ * If the callback returns -1, the loop is broken. Any other value is ignored.
+ *
+ * Returns the relative "stop" position, i.e., the number of items processed +
+ * the starting point.
+ */
+SFUNC FIO_MAP_SIZE_TYPE
+FIO_NAME(FIO_MAP_NAME, each)(FIO_MAP_PTR map,
+                             int (*task)(FIO_NAME(FIO_MAP_NAME, each_s) *),
+                             void *udata,
+                             ssize_t start_at) {
   FIO_NAME(FIO_MAP_NAME, s) *m =
       (FIO_NAME(FIO_MAP_NAME, s) *)FIO_PTR_UNTAG(map);
   if (!m)
     return 0;
-  FIO_PTR_TAG_VALID_OR_RETURN(map, 0);
-  if (!m->count)
-    return 0;
-
+  FIO_PTR_TAG_VALID_OR_RETURN(map, (FIO_MAP_SIZE_TYPE)-1);
   if (start_at < 0) {
-    start_at = m->count + start_at;
+    start_at = m->count - start_at;
     if (start_at < 0)
       start_at = 0;
   }
   if ((FIO_MAP_SIZE_TYPE)start_at >= m->count)
     return m->count;
 
-  FIO_NAME(FIO_MAP_NAME, s) *old_map = FIO_NAME(FIO_MAP_NAME, __each_map);
-  FIO_MAP_SIZE_TYPE old_pos = FIO_NAME(FIO_MAP_NAME, __each_pos);
-  FIO_NAME(FIO_MAP_NAME, __each_pos) = 0;
-  FIO_NAME(FIO_MAP_NAME, __each_map) = m;
+  FIO_NAME(FIO_MAP_NAME, each_s)
+  e = {
+      .parent = map,
+      .index = (uint64_t)start_at,
+#ifdef FIO_MAP_KEY
+      .items_at_index = 2,
+#else
+      .items_at_index = 1,
+#endif
+      .task = task,
+      .udata = udata,
+  };
 
 #if FIO_MAP_EVICT_LRU
   if (start_at) {
     FIO_INDEXED_LIST_EACH(m->map, node, m->last_used, pos) {
-      ++count;
       if (start_at) {
         --start_at;
         continue;
       }
-      FIO_NAME(FIO_MAP_NAME, __each_pos) = pos;
-      if (task(FIO_MAP_OBJ2TYPE(m->map[pos].obj), arg) == -1)
+      e.value = FIO_MAP_OBJ2TYPE(m->map[pos].obj);
+#ifdef FIO_MAP_KEY
+      e.key = FIO_MAP_OBJ2KEY(m->map[pos].obj);
+#endif
+      int r = e.task(&e);
+      ++e.index;
+      if (r == -1)
         goto finish;
     }
   } else {
     FIO_INDEXED_LIST_EACH(m->map, node, m->last_used, pos) {
-      ++count;
-      FIO_NAME(FIO_MAP_NAME, __each_pos) = pos;
-      if (task(FIO_MAP_OBJ2TYPE(m->map[pos].obj), arg) == -1)
+      e.value = FIO_MAP_OBJ2TYPE(m->map[pos].obj);
+#ifdef FIO_MAP_KEY
+      e.key = FIO_MAP_OBJ2KEY(m->map[pos].obj);
+#endif
+      int r = e.task(&e);
+      ++e.index;
+      if (r == -1)
         goto finish;
     }
   }
 
-#else  /* FIO_MAP_EVICT_LRU */
+#else /* FIO_MAP_EVICT_LRU */
+
   uint8_t *imap = FIO_NAME(FIO_MAP_NAME, __imap)(m);
   FIO_MAP_SIZE_TYPE pos = 0;
   if (start_at) {
-    uint64_t *imap64 = (uint64_t *)FIO_NAME(FIO_MAP_NAME, __imap)(m);
+    uint64_t *imap64 = (uint64_t *)imap;
     /* scan map to arrive at starting point. */
     for (FIO_MAP_SIZE_TYPE i = 0; start_at && i < FIO_MAP_CAPA(m->bits);
          i += 8) {
@@ -19246,11 +19317,13 @@ SFUNC FIO_MAP_SIZE_TYPE FIO_NAME(FIO_MAP_NAME,
       row ^= UINT64_C(0x8080808080808080);
       for (int j = 0; j < 8; ++j) {
         if ((row & UINT64_C(0xFF))) {
-          FIO_NAME(FIO_MAP_NAME, __each_pos) = pos + j;
-          ++count;
-          if (task(FIO_MAP_OBJ2TYPE(
-                       m->map[FIO_NAME(FIO_MAP_NAME, __each_pos)].obj),
-                   arg) == -1)
+          e.value = FIO_MAP_OBJ2TYPE(m->map[pos + j].obj);
+#ifdef FIO_MAP_KEY
+          e.key = FIO_MAP_OBJ2KEY(m->map[pos + j].obj);
+#endif
+          int r = e.task(&e);
+          ++e.index;
+          if (r == -1)
             goto finish;
         }
         row >>= 8;
@@ -19258,49 +19331,25 @@ SFUNC FIO_MAP_SIZE_TYPE FIO_NAME(FIO_MAP_NAME,
     }
     pos += 8;
   }
+  /* scan leftover (not 8 byte aligned) byte-map */
   while (pos < FIO_MAP_CAPA(m->bits)) {
-    if (FIO_NAME(FIO_MAP_NAME, __imap)(m)[pos] &&
-        FIO_NAME(FIO_MAP_NAME, __imap)(m)[pos] != 255) {
-      FIO_NAME(FIO_MAP_NAME, __each_pos) = pos;
-      ++count;
-      if (task(FIO_MAP_OBJ2TYPE(m->map[FIO_NAME(FIO_MAP_NAME, __each_pos)].obj),
-               arg) == -1)
+    if (imap[pos] && imap[pos] != 255) {
+      e.value = FIO_MAP_OBJ2TYPE(m->map[pos].obj);
+#ifdef FIO_MAP_KEY
+      e.key = FIO_MAP_OBJ2KEY(m->map[pos].obj);
+#endif
+      int r = e.task(&e);
+      ++e.index;
+      if (r == -1)
         goto finish;
     }
     ++pos;
   }
 #endif /* FIO_MAP_EVICT_LRU */
-
 finish:
-  FIO_NAME(FIO_MAP_NAME, __each_pos) = old_pos;
-  FIO_NAME(FIO_MAP_NAME, __each_map) = old_map;
-  return count;
+  return (FIO_MAP_SIZE_TYPE)e.index;
 }
 
-#ifdef FIO_MAP_KEY
-SFUNC FIO_MAP_KEY FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
-  if (!FIO_NAME(FIO_MAP_NAME, __each_map) ||
-      !FIO_NAME(FIO_MAP_NAME, __each_map)->count)
-    return FIO_MAP_KEY_INVALID;
-  return FIO_NAME(FIO_MAP_NAME, __each_map)
-      ->map[FIO_NAME(FIO_MAP_NAME, __each_pos)]
-      .obj.key;
-}
-#else
-
-SFUNC FIO_MAP_HASH FIO_NAME(FIO_MAP_NAME, each_get_key)(void) {
-#if FIO_MAP_HASH_CACHED
-  if (!FIO_NAME(FIO_MAP_NAME, __each_map) ||
-      !FIO_NAME(FIO_MAP_NAME, __each_map)->count)
-    return 0;
-  return FIO_NAME(FIO_MAP_NAME, __each_map)
-      ->map[FIO_NAME(FIO_MAP_NAME, __each_pos)]
-      .hash;
-#else
-  return 0;
-#endif
-}
-#endif
 /* *****************************************************************************
 Unordered Map Cleanup
 ***************************************************************************** */
@@ -19320,9 +19369,9 @@ Map Testing
 #endif                              /* Development inclusion - ignore line */
 #if defined(FIO_MAP_TEST) && defined(FIO_MAP_NAME)
 
-FIO_SFUNC int FIO_NAME_TEST(stl, FIO_NAME(FIO_MAP_NAME, task))(FIO_MAP_TYPE o,
-                                                               void *p) {
-  *(size_t *)p -= (size_t)o;
+FIO_SFUNC int FIO_NAME_TEST(stl, FIO_NAME(FIO_MAP_NAME, task))(
+    FIO_NAME(FIO_MAP_NAME, each_s) * e) {
+  *(size_t *)e->udata -= (size_t)e->value;
   return 0;
 }
 FIO_SFUNC void FIO_NAME_TEST(stl, FIO_MAP_NAME)(void) {
@@ -19474,9 +19523,9 @@ FIO_SFUNC void FIO_NAME_TEST(stl, FIO_MAP_NAME)(void) {
     tmp = total;
     count = FIO_NAME(FIO_MAP_NAME,
                      each)(&m,
-                           0,
                            FIO_NAME_TEST(stl, FIO_NAME(FIO_MAP_NAME, task)),
-                           (void *)&tmp);
+                           (void *)&tmp,
+                           0);
     FIO_ASSERT(count + 1 == MEMBERS,
                "each task error, repetitions %zu != %zu",
                count,
@@ -22428,9 +22477,10 @@ IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME,
 #else
 IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME, FIO_REF_CONSTRUCTOR)(void);
 #endif /* FIO_REF_FLEX_TYPE */
+
 /** Increases the reference count. */
-IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME,
-                                FIO_REF_DUPNAME)(FIO_REF_TYPE_PTR wrapped);
+FIO_IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME,
+                                    FIO_REF_DUPNAME)(FIO_REF_TYPE_PTR wrapped);
 
 /**
  * Frees a reference counted object (or decreases the reference count).
@@ -22444,6 +22494,19 @@ IFUNC int FIO_NAME(FIO_REF_NAME, FIO_REF_DESTRUCTOR)(FIO_REF_TYPE_PTR wrapped);
 IFUNC FIO_REF_METADATA *FIO_NAME(FIO_REF_NAME,
                                  metadata)(FIO_REF_TYPE_PTR wrapped);
 #endif
+
+/* *****************************************************************************
+Inlined Implementation
+***************************************************************************** */
+/** Increases the reference count. */
+FIO_IFUNC FIO_REF_TYPE_PTR
+FIO_NAME(FIO_REF_NAME, FIO_REF_DUPNAME)(FIO_REF_TYPE_PTR wrapped_) {
+  FIO_REF_TYPE *wrapped = (FIO_REF_TYPE *)(FIO_PTR_UNTAG(wrapped_));
+  FIO_NAME(FIO_REF_NAME, _wrapper_s) *o =
+      ((FIO_NAME(FIO_REF_NAME, _wrapper_s) *)wrapped) - 1;
+  fio_atomic_add(&o->ref, 1);
+  return wrapped_;
+}
 
 /* *****************************************************************************
 Reference Counter (Wrapper) Implementation
@@ -22495,16 +22558,6 @@ IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME, FIO_REF_CONSTRUCTOR)(void) {
   FIO_REF_TYPE *ret = (FIO_REF_TYPE *)(o + 1);
   FIO_REF_INIT((ret[0]));
   return (FIO_REF_TYPE_PTR)(FIO_PTR_TAG(ret));
-}
-
-/** Increases the reference count. */
-IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME,
-                                FIO_REF_DUPNAME)(FIO_REF_TYPE_PTR wrapped_) {
-  FIO_REF_TYPE *wrapped = (FIO_REF_TYPE *)(FIO_PTR_UNTAG(wrapped_));
-  FIO_NAME(FIO_REF_NAME, _wrapper_s) *o =
-      ((FIO_NAME(FIO_REF_NAME, _wrapper_s) *)wrapped) - 1;
-  fio_atomic_add(&o->ref, 1);
-  return wrapped_;
 }
 
 /** Frees a reference counted object (or decreases the reference count). */
@@ -23073,6 +23126,26 @@ FIO_IFUNC double FIO_NAME2(fiobj, f)(FIOBJ o);
 FIOBJ Containers (iteration)
 ***************************************************************************** */
 
+/** Iteration information structure passed to the callback. */
+typedef struct fiobj_each_s {
+  /** The being iterated. Once set, cannot be safely changed. */
+  FIOBJ const parent;
+  /** The index to start at / the current object's index */
+  uint64_t index;
+  /** Always 1, but may be used to allow type detection. */
+  const int64_t items_at_index;
+  /** The callback / task called for each index, may be updated mid-cycle. */
+  int (*task)(struct fiobj_each_s *info);
+  /** The argument passed along to the task. */
+  void *udata;
+  /**
+   * The objects at the current index.
+   *
+   * For Hash Maps, `obj[0]` is the value and `obj[1]` is the key.
+   * */
+  FIOBJ obj[];
+} fiobj_each_s;
+
 /**
  * Performs a task for each element held by the FIOBJ object.
  *
@@ -23081,9 +23154,9 @@ FIOBJ Containers (iteration)
  * Returns the "stop" position - the number of elements processed + `start_at`.
  */
 FIO_SFUNC uint32_t fiobj_each1(FIOBJ o,
-                               int32_t start_at,
-                               int (*task)(FIOBJ child, void *arg),
-                               void *arg);
+                               int (*task)(fiobj_each_s *info),
+                               void *udata,
+                               int32_t start_at);
 
 /**
  * Performs a task for the object itself and each element held by the FIOBJ
@@ -23097,8 +23170,8 @@ FIO_SFUNC uint32_t fiobj_each1(FIOBJ o,
  * Returns the number of elements processed.
  */
 FIOBJ_FUNC uint32_t fiobj_each2(FIOBJ o,
-                                int (*task)(FIOBJ child, void *arg),
-                                void *arg);
+                                int (*task)(fiobj_each_s *info),
+                                void *udata);
 
 /* *****************************************************************************
 FIOBJ Primitives (NULL, True, False)
@@ -23120,7 +23193,7 @@ FIO_IFUNC FIOBJ FIO_NAME(fiobj, FIOBJ___NAME_NULL)(void) {
 }
 
 /* *****************************************************************************
-FIOBJ Type - Extendability (FIOBJ_T_OTHER)
+FIOBJ Type - Extensibility (FIOBJ_T_OTHER)
 ***************************************************************************** */
 
 /** FIOBJ types can be extended using virtual function tables. */
@@ -23143,9 +23216,9 @@ typedef struct {
   uint32_t (*count)(FIOBJ o);
   /** Iterates the exposed elements held by the object. See `fiobj_each1`. */
   uint32_t (*each1)(FIOBJ o,
-                    int32_t start_at,
-                    int (*task)(FIOBJ child, void *arg),
-                    void *arg);
+                    int (*task)(fiobj_each_s *e),
+                    void *udata,
+                    int32_t start_at);
   /**
    * Decreases the reference count and/or frees the object, calling `free2` for
    * any nested objects.
@@ -23968,9 +24041,9 @@ FIOBJ Basic Iteration
  * Returns the "stop" position - the number of elements processed + `start_at`.
  */
 FIO_SFUNC uint32_t fiobj_each1(FIOBJ o,
-                               int32_t start_at,
-                               int (*task)(FIOBJ child, void *arg),
-                               void *arg) {
+                               int (*task)(fiobj_each_s *e),
+                               void *udata,
+                               int32_t start_at) {
   switch (FIOBJ_TYPE_CLASS(o)) {
   case FIOBJ_T_PRIMITIVE: /* fallthrough */
   case FIOBJ_T_NUMBER:    /* fallthrough */
@@ -23978,13 +24051,19 @@ FIO_SFUNC uint32_t fiobj_each1(FIOBJ o,
   case FIOBJ_T_FLOAT:
     return 0;
   case FIOBJ_T_ARRAY:
-    return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY),
-                    each)(o, start_at, task, arg);
+    return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), each)(
+        o,
+        (int (*)(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), each_s *)))task,
+        udata,
+        start_at);
   case FIOBJ_T_HASH:
-    return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH),
-                    each)(o, start_at, task, arg);
+    return FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), each)(
+        o,
+        (int (*)(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_HASH), each_s *)))task,
+        udata,
+        start_at);
   case FIOBJ_T_OTHER:
-    return (*fiobj_object_metadata(o))->each1(o, start_at, task, arg);
+    return (*fiobj_object_metadata(o))->each1(o, task, udata, start_at);
   }
   return 0;
 }
@@ -24267,7 +24346,7 @@ typedef struct {
 #include __FILE__
 
 typedef struct {
-  int (*task)(FIOBJ, void *);
+  int (*task)(fiobj_each_s *info);
   void *arg;
   FIOBJ next;
   size_t count;
@@ -24292,15 +24371,21 @@ FIO_SFUNC uint32_t fiobj____each2_element_count(FIOBJ o) {
   }
   return 0;
 }
-FIO_SFUNC int fiobj____each2_wrapper_task(FIOBJ child, void *arg) {
-  fiobj_____each2_data_s *d = (fiobj_____each2_data_s *)arg;
-  d->stop = (d->task(child, d->arg) == -1);
+FIO_SFUNC int fiobj____each2_wrapper_task(fiobj_each_s *e) {
+  fiobj_____each2_data_s *d = (fiobj_____each2_data_s *)e->udata;
+  e->task = d->task;
+  e->udata = d->arg;
+  d->stop = (d->task(e) == -1);
+  d->task = e->task;
+  d->arg = e->udata;
+  e->task = fiobj____each2_wrapper_task;
+  e->udata = d;
   ++d->count;
   if (d->stop)
     return -1;
-  uint32_t c = fiobj____each2_element_count(child);
+  uint32_t c = fiobj____each2_element_count(e->obj[0]);
   if (c) {
-    d->next = child;
+    d->next = e->obj[0];
     d->end = c;
     return -1;
   }
@@ -24319,20 +24404,29 @@ FIO_SFUNC int fiobj____each2_wrapper_task(FIOBJ child, void *arg) {
  * Returns the number of elements processed.
  */
 FIOBJ_FUNC uint32_t fiobj_each2(FIOBJ o,
-                                int (*task)(FIOBJ child, void *arg),
-                                void *arg) {
+                                int (*task)(fiobj_each_s *),
+                                void *udata) {
   /* TODO - move to recursion with nesting limiter? */
   fiobj_____each2_data_s d = {
       .task = task,
-      .arg = arg,
+      .arg = udata,
       .next = FIOBJ_INVALID,
       .stack = FIO_ARRAY_INIT,
   };
+  struct FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY), each_s) e_tmp = {
+
+      .parent = FIOBJ_INVALID,
+      .task = (int (*)(FIO_NAME(FIO_NAME(fiobj, FIOBJ___NAME_ARRAY),
+                                each_s) *))fiobj____each2_wrapper_task,
+      .udata = &d,
+      .items_at_index = 1,
+      .value = o,
+  };
   fiobj____stack_element_s i = {.obj = o, .pos = 0};
   uint32_t end = fiobj____each2_element_count(o);
-  fiobj____each2_wrapper_task(i.obj, &d);
+  fiobj____each2_wrapper_task((fiobj_each_s *)&e_tmp);
   while (!d.stop && i.obj && i.pos < end) {
-    i.pos = fiobj_each1(i.obj, i.pos, fiobj____each2_wrapper_task, &d);
+    i.pos = fiobj_each1(i.obj, fiobj____each2_wrapper_task, &d, i.pos);
     if (d.next != FIOBJ_INVALID) {
       if (fiobj____stack_count(&d.stack) + 1 > FIOBJ_MAX_NESTING) {
         FIO_LOG_ERROR("FIOBJ nesting level too deep (%u)."
@@ -24910,22 +25004,25 @@ FIOBJ_FUNC FIOBJ fiobj_json_find(FIOBJ o, fio_str_info_s n) {
 FIOBJ and JSON testing
 ***************************************************************************** */
 #ifdef FIO_TEST_CSTL
-FIO_SFUNC int FIO_NAME_TEST(stl, fiobj_task)(FIOBJ o, void *e_) {
+FIO_SFUNC int FIO_NAME_TEST(stl, fiobj_task)(fiobj_each_s *e) {
   static size_t index = 0;
-  if (o == FIOBJ_INVALID && !e_) {
+  if (!e) {
     index = 0;
     return -1;
   }
-  int *expect = (int *)e_;
+  int *expect = (int *)e->udata;
   if (expect[index] == -1) {
-    FIO_ASSERT(FIOBJ_TYPE(o) == FIOBJ_T_ARRAY,
+    FIO_ASSERT(FIOBJ_TYPE(e->obj[0]) == FIOBJ_T_ARRAY,
                "each2 ordering issue [%zu] (array).",
                index);
+    FIO_ASSERT(e->items_at_index == 1,
+               "each2 items_at_index value error issue [%zu] (array).",
+               index);
   } else {
-    FIO_ASSERT(FIO_NAME2(fiobj, i)(o) == expect[index],
+    FIO_ASSERT(FIO_NAME2(fiobj, i)(e->obj[0]) == expect[index],
                "each2 ordering issue [%zu] (number) %ld != %d",
                index,
-               FIO_NAME2(fiobj, i)(o),
+               FIO_NAME2(fiobj, i)(e->obj[0]),
                expect[index]);
   }
   ++index;
@@ -25033,7 +25130,7 @@ FIO_SFUNC void FIO_NAME_TEST(stl, fiobj)(void) {
                         9 + 1,
                "each2 repetition count error");
     fiobj_free(o);
-    FIO_NAME_TEST(stl, fiobj_task)(FIOBJ_INVALID, NULL);
+    FIO_NAME_TEST(stl, fiobj_task)(NULL);
   }
   {
     fprintf(stderr, "* Testing FIOBJ JSON handling.\n");
@@ -25634,11 +25731,11 @@ FIO_SFUNC void map_____test_key_destroy(char **dest) {
 #define HASHOFi(i) i /* fio_risky_hash(&(i), sizeof((i)), 0) */
 #define HASHOFs(s) fio_risky_hash(s, strlen((s)), 0)
 
-FIO_SFUNC int set_____test_each_task(size_t o, void *a_) {
-  uintptr_t *i_p = (uintptr_t *)a_;
-  FIO_ASSERT(o == ++(*i_p), "set_each started at a bad offset!");
-  FIO_ASSERT(HASHOFi((o - 1)) == set_____test_each_get_key(),
-             "set_each key error!");
+FIO_SFUNC int set_____test_each_task(set_____test_each_s *e) {
+  uintptr_t *i_p = (uintptr_t *)e->udata;
+  FIO_ASSERT(e->items_at_index == 1, "set_each items_at_index is not 1!");
+  FIO_ASSERT(e->value == ++(*i_p), "set_each started at a bad offset!");
+
   return 0;
 }
 
@@ -25661,9 +25758,9 @@ FIO_SFUNC void fio___dynamic_types_test___map_test(void) {
     {
       uintptr_t pos_test = (TEST_REPEAT >> 1);
       size_t count =
-          set_____test_each(&m, pos_test, set_____test_each_task, &pos_test);
+          set_____test_each(&m, set_____test_each_task, &pos_test, pos_test);
       FIO_ASSERT(count == set_____test_count(&m),
-                 "set_each tast returned the wrong counter.");
+                 "set_each task returned the wrong counter.");
       FIO_ASSERT(count == pos_test, "set_each position testing error");
     }
 
