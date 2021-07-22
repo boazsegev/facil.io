@@ -72,6 +72,7 @@ int main(int argc, char const *argv[]) {
 
   /* review CLI for logging */
   if (fio_cli_get_bool("-V")) {
+    FIO_LOG_INFO("Switching debug output on.");
     FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
   }
   /* review CLI connection address (in URL format) */

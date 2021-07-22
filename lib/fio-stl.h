@@ -218,6 +218,9 @@ Compiler detection, GCC / CLang features and OS dependent included files
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS 1
+#endif
 #if defined(__MINGW32__)
 /* Mingw supports */
 #define FIO_HAVE_UNIX_TOOLS    2
@@ -293,11 +296,10 @@ Function Attributes
 #if _MSC_VER
 #pragma section(".CRT$XCU", read)
 #undef FIO_CONSTRUCTOR
+#undef FIO_DESTRUCTOR
 /** Marks a function as a constructor - if supported. */
 
 #if _WIN64 /* MSVC linker uses different name mangling on 32bit systems */
-#undef FIO_CONSTRUCTOR
-#undef FIO_DESTRUCTOR
 #define FIO___CONSTRUCTOR_INTERNAL(fname)                                      \
   static void fname(void);                                                     \
   __pragma(comment(linker, "/include:" #fname "__")); /* and next.... */       \
@@ -322,12 +324,12 @@ Function Attributes
 /** Marks a function as a constructor - if supported. */
 #define FIO_CONSTRUCTOR(fname)                                                 \
   FIO_SFUNC __attribute__((constructor)) void fname FIO_NOOP(void)
-#endif
 
 /** Marks a function as a destructor - if supported. Consider using atexit() */
 #define FIO_DESTRUCTOR(fname)                                                  \
   FIO_SFUNC                                                                    \
   __attribute__((destructor)) void fname FIO_NOOP(void)
+#endif
 
 /* *****************************************************************************
 Macro Stringifier
@@ -1097,6 +1099,7 @@ FIO_IFUNC struct tm *gmtime_r(const time_t *timep, struct tm *result) {
 #define stat          _stat64
 #define fstat         _fstat64
 #define open          _open
+#define close         _close
 #define O_APPEND      _O_APPEND
 #define O_BINARY      _O_BINARY
 #define O_CREAT       _O_CREAT

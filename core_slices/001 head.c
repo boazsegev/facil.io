@@ -34,4 +34,7 @@ Quick Patches
 #ifndef pipe
 #define pipe(pfd) _pipe(pfd, 0, _O_BINARY)
 #endif
+#ifndef close
+#define _close
+#endif
 #endif

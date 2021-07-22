@@ -162,9 +162,12 @@ static struct {
     .is_worker = 1,
 };
 
-FIO_IFUNC void fio_reset_wakeup_pipes(int *i) {
-  close(i[0]);
-  close(i[1]);
+FIO_IFUNC void fio_reset_wakeup_pipes(void *i_) {
+  int *i = i_;
+  if (i[0] > 0) {
+    close(i[0]);
+    close(i[1]);
+  }
   FIO_ASSERT(!pipe(i),
              "%d - couldn't initiate thread wakeup pipes.",
              (int)getpid());
@@ -204,12 +207,13 @@ FIO_DESTRUCTOR(fio_cleanup_at_exit) {
 static void fio_cleanup_after_fork(void *ignr_);
 
 FIO_CONSTRUCTOR(fio_data_state_init) {
+  FIO_LOG_DEBUG("initializeing facio.io IO state.");
   fio_data.protocols = FIO_LIST_INIT(fio_data.protocols);
   fio_data.master = getpid();
+  fio_data.tick = fio_time_real();
   fio_uuid_monitor_init();
   fio_reset_wakeup_pipes(&fio_data.thread_suspenders.in);
   fio_reset_wakeup_pipes(&fio_data.io_wake.in);
-  fio_data.tick = fio_time_real();
   fio_state_callback_add(FIO_CALL_IN_CHILD, fio_cleanup_after_fork, NULL);
 }
 
@@ -240,14 +244,25 @@ Signal Helpers
 ***************************************************************************** */
 #define FIO_SIGNAL
 #include "fio-stl.h"
-static volatile uint8_t fio_signal_forwarded = 0;
+FIO_IFUNC void fio_io_thread_wake(void);
 /* Handles signals */
 static void fio___stop_signal_handler(int sig, void *ignr_) {
-  fio_data.running = 0;
-  FIO_LOG_INFO("(%d) received shutdown signal.", getpid());
-  if (fio_data.is_master && fio_data.workers && !fio_signal_forwarded) {
-    kill(0, sig);
-    fio_signal_forwarded = 1;
+  static int64_t last_signal = 0;
+  if (last_signal + 2000 >= fio_time2milli(fio_data.tick))
+    return;
+  last_signal = fio_time2milli(fio_data.tick);
+  if (fio_data.running) {
+    fio_data.running = 0;
+    FIO_LOG_INFO("(%d) received shutdown signal.", getpid());
+    if (fio_data.is_master && fio_data.workers) {
+      kill(0, sig);
+    }
+    fio_io_thread_wake();
+    fio_user_thread_wake_all();
+  } else {
+    FIO_LOG_FATAL("(%d) received another shutdown signal while shutting down.",
+                  getpid());
+    exit(-1);
   }
   (void)ignr_;
 }
@@ -256,15 +271,18 @@ static void fio___stop_signal_handler(int sig, void *ignr_) {
 static void fio___worker_reset_signal_handler(int sig, void *ignr_) {
   if (!fio_data.workers || !fio_data.running)
     return;
+  static int64_t last_signal = 0;
+  if (last_signal + 2000 >= fio_time2milli(fio_data.tick))
+    return;
+  last_signal = fio_time2milli(fio_data.tick);
   if (fio_data.is_worker) {
     fio_data.running = 0;
     FIO_LOG_INFO("(%d) received worker restart signal.", getpid());
-  } else if (!fio_signal_forwarded) {
-    kill(0, sig);
+  } else {
     FIO_LOG_INFO("(%d) forwarding worker restart signal.",
                  (int)fio_data.master);
+    kill(0, sig);
   }
-  fio_signal_forwarded = 1;
   (void)ignr_;
 }
 
@@ -395,7 +413,9 @@ void fio_uuid_free(fio_uuid_s *uuid) {
 }
 
 FIO_IFUNC void fio_uuid_close(fio_uuid_s *uuid) {
-  if (fio_atomic_and(&uuid->state, ~(unsigned)FIO_UUID_OPEN) & FIO_UUID_OPEN) {
+  if (fio_atomic_and(&uuid->state,
+                     ((fio_uuid_state_e)(~(unsigned)FIO_UUID_OPEN))) &
+      FIO_UUID_OPEN) {
     uuid->state |= FIO_UUID_CLOSED;
     fio_uuid_monitor_remove(uuid);
     fio_uuid_free(uuid);
@@ -523,7 +543,6 @@ FIO_SFUNC void fio___cycle_housekeeping(void) {
   if (!c) {
     if (!old) {
       fio_state_callback_force(FIO_CALL_ON_IDLE);
-      fio_signal_forwarded = 0;
     }
 #if FIO_OS_POSIX
     if (!fio_data.is_master && fio_data.running &&
