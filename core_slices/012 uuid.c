@@ -84,8 +84,10 @@ void *fio_udata_get(fio_uuid_s *uuid) { return uuid->udata; }
  */
 size_t fio_read(fio_uuid_s *uuid, void *buf, size_t len) {
   ssize_t r = fio_sock_read(uuid->fd, buf, len);
-  if (r > 0)
+  if (r > 0) {
+    fio___touch(uuid, NULL);
     return r;
+  }
   if (r == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
     return 0;
   fio_uuid_close(uuid);
@@ -101,6 +103,7 @@ static void fio_write2___task(void *uuid_, void *packet) {
   return;
 error:
   fio_stream_pack_free(packet);
+  fio_uuid_free2(uuid);
 }
 void fio_write2___(void); /* Sublime Text marker*/
 /**

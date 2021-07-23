@@ -62,7 +62,7 @@ static void fio___worker_cleanup(void) {
     fio_queue_perform_all(&tasks_io_core);
     fio_queue_perform_all(&tasks_user);
   } while (fio_queue_count(&tasks_io_core) + fio_queue_count(&tasks_user));
-
+  fio_close_wakeup_pipes();
   if (!fio_data.is_master)
     FIO_LOG_INFO("(%d) worker shutdown complete.", (int)getpid());
   else {
@@ -172,6 +172,7 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
   fio_expected_concurrency(&args.threads, &args.workers);
   fio_signal_monitor(SIGINT, fio___stop_signal_handler, NULL);
   fio_signal_monitor(SIGTERM, fio___stop_signal_handler, NULL);
+  fio_signal_monitor(SIGPIPE, NULL, NULL);
   fio_state_callback_force(FIO_CALL_PRE_START);
   fio_data.running = 1;
   fio_data.workers = args.workers;
@@ -190,7 +191,7 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
 #if HAVE_OPENSSL
   FIO_LOG_INFO("linked to OpenSSL %s", OpenSSL_version(0));
 #endif
-
+  fio_reset_wakeup_pipes();
   if (fio_data.workers) {
     fio_data.is_worker = 0;
 #if FIO_OS_POSIX
@@ -382,4 +383,5 @@ void fio_signal_handler_reset(void) {
 #endif
   fio_signal_forget(SIGINT);
   fio_signal_forget(SIGTERM);
+  fio_signal_forget(SIGPIPE);
 }

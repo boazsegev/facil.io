@@ -18,6 +18,7 @@ static void fio_ev_on_shutdown(void *uuid_, void *udata) {
   fio_unlock(&uuid->lock);
   fio_uuid_free(uuid);
   return;
+
 reschedule:
   fio_queue_push(fio_queue_select(uuid->protocol->reserved.flags),
                  .fn = fio_ev_on_shutdown,
@@ -33,8 +34,10 @@ static void fio_ev_on_ready_user(void *uuid_, void *udata) {
     uuid->protocol->on_ready(uuid, uuid->udata);
     fio_unlock(&uuid->lock);
   }
+
   fio_uuid_free(uuid);
   return;
+
 reschedule:
   fio_queue_push_urgent(fio_queue_select(uuid->protocol->reserved.flags),
                         .fn = fio_ev_on_ready_user,
@@ -69,7 +72,7 @@ static void fio_ev_on_ready(void *uuid_, void *udata) {
       fio___touch(uuid, NULL);
     if (!fio_stream_any(&uuid->stream)) {
       if ((uuid->state & FIO_UUID_CLOSED_BIT)) {
-        fio_uuid_free(uuid); /* free the UUID again to close it..? */
+        fio_uuid_close(uuid); /* free the UUID again to close it..? */
       } else {
         fio_queue_push_urgent(fio_queue_select(uuid->protocol->reserved.flags),
                               .fn = fio_ev_on_ready_user,
@@ -96,15 +99,17 @@ static void fio_ev_on_data(void *uuid_, void *udata) {
       fio_uuid_monitor_add_read(uuid);
     }
   } else {
+    fio_uuid_monitor_add_write(uuid);
     FIO_LOG_DEBUG("skipping on_data callback for uuid %p (closed?)", uuid_);
   }
   fio_uuid_free(uuid);
   return;
+
 reschedule:
   FIO_LOG_DEBUG("rescheduling on_data for uuid %p", uuid_);
   fio_queue_push(fio_queue_select(uuid->protocol->reserved.flags),
                  .fn = fio_ev_on_data,
-                 .udata1 = fio_uuid_dup(uuid),
+                 .udata1 = uuid,
                  .udata2 = udata);
 }
 

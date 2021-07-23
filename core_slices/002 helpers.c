@@ -162,17 +162,36 @@ static struct {
     .is_worker = 1,
 };
 
-FIO_IFUNC void fio_reset_wakeup_pipes(void *i_) {
-  int *i = i_;
-  if (i[0] > 0) {
-    close(i[0]);
-    close(i[1]);
+FIO_IFUNC void fio_reset_wakeup_pipes(void) {
+  if (fio_data.thread_suspenders.in != -1) {
+    close(fio_data.thread_suspenders.in);
+    close(fio_data.thread_suspenders.out);
+    close(fio_data.io_wake.in);
+    close(fio_data.io_wake.out);
   }
-  FIO_ASSERT(!pipe(i),
-             "%d - couldn't initiate thread wakeup pipes.",
+  FIO_ASSERT(!pipe(&fio_data.thread_suspenders.in),
+             "%d - couldn't initiate user thread wakeup pipes.",
              (int)getpid());
-  fio_sock_set_non_block(i[0]);
-  fio_sock_set_non_block(i[1]);
+  FIO_ASSERT(!pipe(&fio_data.io_wake.in),
+             "%d - couldn't initiate core thread wakeup pipes.",
+             (int)getpid());
+  fio_sock_set_non_block(fio_data.thread_suspenders.in);
+  fio_sock_set_non_block(fio_data.thread_suspenders.out);
+  fio_sock_set_non_block(fio_data.io_wake.in);
+  fio_sock_set_non_block(fio_data.io_wake.out);
+}
+
+FIO_IFUNC void fio_close_wakeup_pipes(void) {
+  if (fio_data.thread_suspenders.in == -1)
+    return;
+  close(fio_data.thread_suspenders.in);
+  close(fio_data.thread_suspenders.out);
+  close(fio_data.io_wake.in);
+  close(fio_data.io_wake.out);
+  fio_data.thread_suspenders.in = -1;
+  fio_data.thread_suspenders.out = -1;
+  fio_data.io_wake.in = -1;
+  fio_data.io_wake.out = -1;
 }
 
 FIO_DESTRUCTOR(fio_cleanup_at_exit) {
@@ -189,14 +208,7 @@ FIO_DESTRUCTOR(fio_cleanup_at_exit) {
     fio_queue_perform_all(&tasks_io_core);
     fio_queue_perform_all(&tasks_user);
   }
-  close(fio_data.thread_suspenders.in);
-  close(fio_data.thread_suspenders.out);
-  close(fio_data.io_wake.in);
-  close(fio_data.io_wake.out);
-  fio_data.thread_suspenders.in = -1;
-  fio_data.thread_suspenders.out = -1;
-  fio_data.io_wake.in = -1;
-  fio_data.io_wake.out = -1;
+  fio_close_wakeup_pipes();
   fio_uuid_monitor_close();
   fio_cli_end();
   fio_uuid_invalidate_all();
@@ -212,8 +224,6 @@ FIO_CONSTRUCTOR(fio_data_state_init) {
   fio_data.master = getpid();
   fio_data.tick = fio_time_real();
   fio_uuid_monitor_init();
-  fio_reset_wakeup_pipes(&fio_data.thread_suspenders.in);
-  fio_reset_wakeup_pipes(&fio_data.io_wake.in);
   fio_state_callback_add(FIO_CALL_IN_CHILD, fio_cleanup_after_fork, NULL);
 }
 
@@ -236,7 +246,16 @@ FIO_IFUNC void fio_user_thread_wake(void) {
 }
 
 FIO_IFUNC void fio_user_thread_wake_all(void) {
-  fio_reset_wakeup_pipes(&fio_data.thread_suspenders.in);
+  if (fio_data.thread_suspenders.in != -1) {
+    close(fio_data.thread_suspenders.in);
+    close(fio_data.thread_suspenders.out);
+    fio_data.thread_suspenders.in = fio_data.thread_suspenders.out = -1;
+  }
+  FIO_ASSERT(!pipe(&fio_data.thread_suspenders.in),
+             "%d - couldn't initiate user thread wakeup pipes.",
+             (int)getpid());
+  fio_sock_set_non_block(fio_data.thread_suspenders.in);
+  fio_sock_set_non_block(fio_data.thread_suspenders.out);
 }
 
 /* *****************************************************************************
@@ -485,6 +504,8 @@ FIO_IFUNC void fio_protocol_validate(fio_protocol_s *p) {
 IO thread wakeup protocol
 ***************************************************************************** */
 
+FIO_SFUNC void fio_io_wakeup_prep(void);
+
 static void fio_io_wakeup_on_data(fio_uuid_s *uuid, void *udata) {
   char buf[1024];
   ssize_t l;
@@ -495,6 +516,11 @@ static void fio_io_wakeup_on_data(fio_uuid_s *uuid, void *udata) {
 
 static void fio_io_wakeup_on_close(void *udata) {
   fio_data.io_wake_uuid = NULL;
+  fio_data.io_wake.in = -1;
+  if (fio_data.running) {
+    fio_reset_wakeup_pipes();
+    fio_io_wakeup_prep();
+  }
   (void)udata;
 }
 
@@ -599,16 +625,15 @@ static void fio_cleanup_after_fork(void *ignr_) {
     fio_uuid_monitor_init();
   }
 
-  fio_reset_wakeup_pipes(&fio_data.thread_suspenders.in);
-  fio_reset_wakeup_pipes(&fio_data.io_wake.in);
+  fio_reset_wakeup_pipes();
 
   FIO_LIST_EACH(fio_protocol_s, reserved.protocols, &fio_data.protocols, pr) {
     FIO_LIST_EACH(fio_uuid_s, timeouts, &pr->reserved.uuids, uuid) {
-      FIO_LOG_DEBUG("cleanup for fd %d", uuid->fd);
-      // fio_sock_close(uuid->fd);
-      // uuid->fd = -1;
-      uuid->state = FIO_UUID_CLOSED;
-      fio_uuid_free2(uuid);
+      FIO_LOG_DEBUG("cleanup for fd %d ( %p )", uuid->fd, (void *)uuid);
+      fio_uuid_close(uuid);
+      fio_queue_perform_all(&tasks_io_core);
+      FIO_ASSERT_DEBUG(!fio_uuid_is_valid(uuid),
+                       "UUID should have been freed.");
     }
     FIO_LIST_REMOVE(&pr->reserved.protocols);
   }
