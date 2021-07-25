@@ -147,10 +147,10 @@ FIO_INLINE double fiobj_obj2float(const FIOBJ obj);
 /**
  * Returns a C String (NUL terminated) using the `fio_str_info_s` data type.
  *
- * The Sting in binary safe and might contain NUL bytes in the middle as well as
+ * The String is binary safe and might contain NUL bytes in the middle as well as
  * a terminating NUL.
  *
- * If a a Number or a Float are passed to the function, they
+ * If a Number or a Float are passed to the function, they
  * will be parsed as a *temporary*, thread-safe, String.
  *
  * Numbers will be represented in base 10 numerical data.
