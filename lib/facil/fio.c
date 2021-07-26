@@ -5378,10 +5378,27 @@ static inline channel_s *fio_filter_dup_lock_internal(channel_s *ch,
                                                       fio_collection_s *c) {
   fio_lock(&c->lock);
   ch = fio_ch_set_insert(&c->channels, hashed, ch);
-  fio_channel_dup(ch);
-  fio_lock(&ch->lock);
   fio_unlock(&c->lock);
+  /* respect locking order to prevent deadlock with fio_unsubscribe */
+  fio_lock(&ch->lock);
+  fio_lock(&c->lock);
+  /* check again if channels is still in collection */
+  channel_s *found_ch = fio_ch_set_find(&c->channels, hashed, ch);
+  if (found_ch == ch) {
+    /* channel is still in collection:
+     * unlock the collection
+     * increase reference counter
+     * leave the channel locked and return it */
+    fio_unlock(&c->lock);
+    fio_channel_dup(ch);
   return ch;
+  } else {
+    /* channel could not be found, it has been removed from the collection */
+    /* insert it again */
+    fio_unlock(&c->lock);
+    fio_unlock(&ch->lock);
+    return fio_filter_dup_lock_internal(ch, hashed, c);
+  }
 }
 
 /** Creates / finds a filter channel, adds a reference count and locks it. */
