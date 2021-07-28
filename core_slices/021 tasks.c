@@ -7,7 +7,10 @@ Task Scheduling
 
 /** Schedules a task for delayed execution. */
 void fio_defer(void (*task)(void *, void *), void *udata1, void *udata2) {
-  fio_queue_push(&tasks_user, .fn = task, .udata1 = udata1, .udata2 = udata2);
+  fio_queue_push((task_queues + 1),
+                 .fn = task,
+                 .udata1 = udata1,
+                 .udata2 = udata2);
 }
 
 FIO_SFUNC void fio_io_task_wrapper(void *task_, void *ignr_) {
@@ -26,7 +29,7 @@ FIO_SFUNC void fio_io_task_wrapper(void *task_, void *ignr_) {
   fio_uuid_free(uuid);
   return;
 reschedule:
-  fio_queue_push(&tasks_user,
+  fio_queue_push(fio_queue_select(uuid->protocol->reserved.flags),
                  .fn = fio_io_task_wrapper,
                  .udata1 = task_,
                  .udata2 = ignr_);
@@ -47,7 +50,7 @@ void fio_defer_io(fio_uuid_s *uuid,
   *t = (fio_queue_task_s){.fn = u.fn2,
                           .udata1 = fio_uuid_dup(uuid),
                           .udata2 = udata};
-  fio_queue_push(&tasks_user,
+  fio_queue_push(fio_queue_select(uuid->protocol->reserved.flags),
                  .fn = fio_io_task_wrapper,
                  .udata1 = uuid,
                  .udata2 = udata);

@@ -524,20 +524,20 @@ typedef struct fio_buf_info_s {
 Linked Lists Persistent Macros and Types
 ***************************************************************************** */
 
-/** A common linked list node type. */
-typedef struct fio___list_node_s {
-  struct fio___list_node_s *next;
-  struct fio___list_node_s *prev;
-} fio___list_node_s;
+/** A linked list arch-type */
+typedef struct fio_list_node_s {
+  struct fio_list_node_s *next;
+  struct fio_list_node_s *prev;
+} fio_list_node_s;
 
 /** A linked list node type */
-#define FIO_LIST_NODE fio___list_node_s
+#define FIO_LIST_NODE fio_list_node_s
 /** A linked list head type */
-#define FIO_LIST_HEAD fio___list_node_s
+#define FIO_LIST_HEAD fio_list_node_s
 
 /** Allows initialization of FIO_LIST_HEAD objects. */
 #define FIO_LIST_INIT(obj)                                                     \
-  (obj) = (fio___list_node_s) { .next = &(obj), .prev = &(obj) }
+  (fio_list_node_s) { .next = &(obj), .prev = &(obj) }
 
 #ifndef FIO_LIST_EACH
 /** Loops through every node in the linked list except the head. */
@@ -583,19 +583,38 @@ relative to some root pointer (usually the root of an array). This:
 
 2. Could be used for memory optimization if the array limits are known.
 
-The "head" index is usualy validated by reserving the value of `-1` to indicate
+The "head" index is usually validated by reserving the value of `-1` to indicate
 an empty list.
 ***************************************************************************** */
 #ifndef FIO_INDEXED_LIST_EACH
-/** A common linked list node type. */
-typedef struct fio___index32_node_s {
+
+/** A 32 bit indexed linked list node type */
+typedef struct fio_index32_node_s {
   uint32_t next;
   uint32_t prev;
-} fio___index32_node_s;
+} fio_index32_node_s;
 
-/** A linked list node type */
-#define FIO_INDEXED_LIST32_NODE fio___index32_node_s
+/** A 16 bit indexed linked list node type */
+typedef struct fio_index16_node_s {
+  uint16_t next;
+  uint16_t prev;
+} fio_index16_node_s;
+
+/** An 8 bit indexed linked list node type */
+typedef struct fio_index8_node_s {
+  uint8_t next;
+  uint8_t prev;
+} fio_index8_node_s;
+
+/** A 32 bit indexed linked list node type */
+#define FIO_INDEXED_LIST32_NODE fio_index32_node_s
 #define FIO_INDEXED_LIST32_HEAD uint32_t
+/** A 16 bit indexed linked list node type */
+#define FIO_INDEXED_LIST16_NODE fio_index16_node_s
+#define FIO_INDEXED_LIST16_HEAD uint16_t
+/** An 8 bit indexed linked list node type */
+#define FIO_INDEXED_LIST8_NODE fio_index8_node_s
+#define FIO_INDEXED_LIST8_HEAD uint8_t
 
 /** UNSAFE macro for pushing a node to a list. */
 #define FIO_INDEXED_LIST_PUSH(root, node_name, head, i)                        \
@@ -7120,6 +7139,28 @@ Memory Allocation - Setup Alignment Info
 #endif /* (__clang__ || __GNUC__)... */
 
 /* *****************************************************************************
+Memory Helpers - API
+***************************************************************************** */
+
+/**
+ * A 16 byte aligned memset (almost) naive implementation.
+ *
+ * Probably slower than the one included with your compiler's C library.
+ *
+ * Requires BOTH addresses to be 16 bit aligned memory addresses.
+ */
+SFUNC void fio_memset_aligned(void *restrict dest, uint64_t data, size_t bytes);
+
+/**
+ * A 16 byte aligned memcpy (almost) naive implementation.
+ *
+ * Probably slower than the one included with your compiler's C library.
+ *
+ * Requires a 16 bit aligned memory address.
+ */
+SFUNC void fio_memcpy_aligned(void *dest_, const void *src_, size_t bytes);
+
+/* *****************************************************************************
 Memory Allocation - API
 ***************************************************************************** */
 
@@ -7188,11 +7229,17 @@ Memory Allocation - configuration macros
 NOTE: most configuration values should be a power of 2 or a logarithmic value.
 ***************************************************************************** */
 
-/** FIO_MEMORY_DISABLE diasbles all custom memory allocators. */
+/** FIO_MEMORY_DISABLE disables all custom memory allocators. */
 #if defined(FIO_MEMORY_DISABLE)
 #ifndef FIO_MALLOC_TMP_USE_SYSTEM
 #define FIO_MALLOC_TMP_USE_SYSTEM 1
 #endif
+#endif
+
+/* Make sure the system's allocator is marked as unsafe. */
+#if FIO_MALLOC_TMP_USE_SYSTEM
+#undef FIO_MEMORY_INITIALIZE_ALLOCATIONS
+#define FIO_MEMORY_INITIALIZE_ALLOCATIONS 0
 #endif
 
 #ifndef FIO_MEMORY_SYS_ALLOCATION_SIZE_LOG
@@ -7453,54 +7500,7 @@ Memory Allocation - start implementation
 ***************************************************************************** */
 #ifdef FIO_EXTERN_COMPLETE
 /* internal workings start here */
-/* *****************************************************************************
-FIO_MEMORY_DISABLE - use the system allocator
-***************************************************************************** */
-#if defined(FIO_MEMORY_DISABLE)
 
-SFUNC void *FIO_MEM_ALIGN_NEW FIO_NAME(FIO_MEMORY_NAME, malloc)(size_t size) {
-#if FIO_MEMORY_INITIALIZE_ALLOCATIONS
-  return calloc(size, 1);
-#else
-  return malloc(size);
-#endif
-}
-SFUNC void *FIO_MEM_ALIGN_NEW FIO_NAME(FIO_MEMORY_NAME,
-                                       calloc)(size_t size_per_unit,
-                                               size_t unit_count) {
-  return calloc(size_per_unit, unit_count);
-}
-SFUNC void FIO_NAME(FIO_MEMORY_NAME, free)(void *ptr) { free(ptr); }
-SFUNC void *FIO_MEM_ALIGN FIO_NAME(FIO_MEMORY_NAME, realloc)(void *ptr,
-                                                             size_t new_size) {
-  return realloc(ptr, new_size);
-}
-SFUNC void *FIO_MEM_ALIGN FIO_NAME(FIO_MEMORY_NAME, realloc2)(void *ptr,
-                                                              size_t new_size,
-                                                              size_t copy_len) {
-  return realloc(ptr, new_size);
-  (void)copy_len;
-}
-SFUNC void *FIO_MEM_ALIGN_NEW FIO_NAME(FIO_MEMORY_NAME, mmap)(size_t size) {
-  return calloc(size, 1);
-}
-
-SFUNC void FIO_NAME(FIO_MEMORY_NAME, malloc_after_fork)(void) {}
-/** Prints the allocator's data structure. May be used for debugging. */
-SFUNC void FIO_NAME(FIO_MEMORY_NAME, malloc_print_state)(void) {}
-/** Prints the allocator's free block list. May be used for debugging. */
-SFUNC void FIO_NAME(FIO_MEMORY_NAME, malloc_print_free_block_list)(void) {}
-/** Prints the settings used to define the allocator. */
-SFUNC void FIO_NAME(FIO_MEMORY_NAME, malloc_print_settings)(void) {}
-SFUNC size_t FIO_NAME(FIO_MEMORY_NAME, malloc_block_size)(void) { return 0; }
-
-#ifdef FIO_TEST_CSTL
-SFUNC void FIO_NAME_TEST(FIO_NAME(stl, FIO_MEMORY_NAME), mem)(void) {
-  fprintf(stderr, "* Custom memory allocator bypassed.\n");
-}
-#endif /* FIO_TEST_CSTL */
-
-#else /* FIO_MEMORY_DISABLE */
 /* *****************************************************************************
 
 
@@ -7531,82 +7531,225 @@ Aligned memory copying
                                         size_t units) {                        \
     type *dest = (type *)dest_;                                                \
     type *src = (type *)src_;                                                  \
-    while (units >= 16) {                                                      \
-      dest[0] = src[0];                                                        \
-      dest[1] = src[1];                                                        \
-      dest[2] = src[2];                                                        \
-      dest[3] = src[3];                                                        \
-      dest[4] = src[4];                                                        \
-      dest[5] = src[5];                                                        \
-      dest[6] = src[6];                                                        \
-      dest[7] = src[7];                                                        \
-      dest[8] = src[8];                                                        \
-      dest[9] = src[9];                                                        \
-      dest[10] = src[10];                                                      \
-      dest[11] = src[11];                                                      \
-      dest[12] = src[12];                                                      \
-      dest[13] = src[13];                                                      \
-      dest[14] = src[14];                                                      \
-      dest[15] = src[15];                                                      \
-      dest += 16;                                                              \
-      src += 16;                                                               \
-      units -= 16;                                                             \
-    }                                                                          \
-    switch (units) {                                                           \
-    case 15:                                                                   \
-      *(dest++) = *(src++); /* fallthrough */                                  \
-    case 14:                                                                   \
-      *(dest++) = *(src++); /* fallthrough */                                  \
-    case 13:                                                                   \
-      *(dest++) = *(src++); /* fallthrough */                                  \
-    case 12:                                                                   \
-      *(dest++) = *(src++); /* fallthrough */                                  \
-    case 11:                                                                   \
-      *(dest++) = *(src++); /* fallthrough */                                  \
-    case 10:                                                                   \
-      *(dest++) = *(src++); /* fallthrough */                                  \
-    case 9:                                                                    \
-      *(dest++) = *(src++); /* fallthrough */                                  \
-    case 8:                                                                    \
-      *(dest++) = *(src++); /* fallthrough */                                  \
-    case 7:                                                                    \
-      *(dest++) = *(src++); /* fallthrough */                                  \
-    case 6:                                                                    \
-      *(dest++) = *(src++); /* fallthrough */                                  \
-    case 5:                                                                    \
-      *(dest++) = *(src++); /* fallthrough */                                  \
-    case 4:                                                                    \
-      *(dest++) = *(src++); /* fallthrough */                                  \
-    case 3:                                                                    \
-      *(dest++) = *(src++); /* fallthrough */                                  \
-    case 2:                                                                    \
-      *(dest++) = *(src++); /* fallthrough */                                  \
-    case 1:                                                                    \
-      *(dest++) = *(src++);                                                    \
+    if (src > dest || (src + units) <= dest) {                                 \
+      while (units >= 16) {                                                    \
+        dest[0] = src[0];                                                      \
+        dest[1] = src[1];                                                      \
+        dest[2] = src[2];                                                      \
+        dest[3] = src[3];                                                      \
+        dest[4] = src[4];                                                      \
+        dest[5] = src[5];                                                      \
+        dest[6] = src[6];                                                      \
+        dest[7] = src[7];                                                      \
+        dest[8] = src[8];                                                      \
+        dest[9] = src[9];                                                      \
+        dest[10] = src[10];                                                    \
+        dest[11] = src[11];                                                    \
+        dest[12] = src[12];                                                    \
+        dest[13] = src[13];                                                    \
+        dest[14] = src[14];                                                    \
+        dest[15] = src[15];                                                    \
+        dest += 16;                                                            \
+        src += 16;                                                             \
+        units -= 16;                                                           \
+      }                                                                        \
+      switch (units) {                                                         \
+      case 15:                                                                 \
+        *(dest++) = *(src++); /* fallthrough */                                \
+      case 14:                                                                 \
+        *(dest++) = *(src++); /* fallthrough */                                \
+      case 13:                                                                 \
+        *(dest++) = *(src++); /* fallthrough */                                \
+      case 12:                                                                 \
+        *(dest++) = *(src++); /* fallthrough */                                \
+      case 11:                                                                 \
+        *(dest++) = *(src++); /* fallthrough */                                \
+      case 10:                                                                 \
+        *(dest++) = *(src++); /* fallthrough */                                \
+      case 9:                                                                  \
+        *(dest++) = *(src++); /* fallthrough */                                \
+      case 8:                                                                  \
+        *(dest++) = *(src++); /* fallthrough */                                \
+      case 7:                                                                  \
+        *(dest++) = *(src++); /* fallthrough */                                \
+      case 6:                                                                  \
+        *(dest++) = *(src++); /* fallthrough */                                \
+      case 5:                                                                  \
+        *(dest++) = *(src++); /* fallthrough */                                \
+      case 4:                                                                  \
+        *(dest++) = *(src++); /* fallthrough */                                \
+      case 3:                                                                  \
+        *(dest++) = *(src++); /* fallthrough */                                \
+      case 2:                                                                  \
+        *(dest++) = *(src++); /* fallthrough */                                \
+      case 1:                                                                  \
+        *(dest++) = *(src++);                                                  \
+      }                                                                        \
+    } else {                                                                   \
+      dest += units;                                                           \
+      src += units;                                                            \
+      switch ((units & 15)) {                                                  \
+      case 15:                                                                 \
+        *(--dest) = *(--src); /* fallthrough */                                \
+      case 14:                                                                 \
+        *(--dest) = *(--src); /* fallthrough */                                \
+      case 13:                                                                 \
+        *(--dest) = *(--src); /* fallthrough */                                \
+      case 12:                                                                 \
+        *(--dest) = *(--src); /* fallthrough */                                \
+      case 11:                                                                 \
+        *(--dest) = *(--src); /* fallthrough */                                \
+      case 10:                                                                 \
+        *(--dest) = *(--src); /* fallthrough */                                \
+      case 9:                                                                  \
+        *(--dest) = *(--src); /* fallthrough */                                \
+      case 8:                                                                  \
+        *(--dest) = *(--src); /* fallthrough */                                \
+      case 7:                                                                  \
+        *(--dest) = *(--src); /* fallthrough */                                \
+      case 6:                                                                  \
+        *(--dest) = *(--src); /* fallthrough */                                \
+      case 5:                                                                  \
+        *(--dest) = *(--src); /* fallthrough */                                \
+      case 4:                                                                  \
+        *(--dest) = *(--src); /* fallthrough */                                \
+      case 3:                                                                  \
+        *(--dest) = *(--src); /* fallthrough */                                \
+      case 2:                                                                  \
+        *(--dest) = *(--src); /* fallthrough */                                \
+      case 1:                                                                  \
+        *(--dest) = *(--src);                                                  \
+      }                                                                        \
+      while (units >= 16) {                                                    \
+        dest -= 16;                                                            \
+        src -= 16;                                                             \
+        units -= 16;                                                           \
+        dest[15] = src[15];                                                    \
+        dest[14] = src[14];                                                    \
+        dest[13] = src[13];                                                    \
+        dest[12] = src[12];                                                    \
+        dest[11] = src[11];                                                    \
+        dest[10] = src[10];                                                    \
+        dest[9] = src[9];                                                      \
+        dest[8] = src[8];                                                      \
+        dest[7] = src[7];                                                      \
+        dest[6] = src[6];                                                      \
+        dest[5] = src[5];                                                      \
+        dest[4] = src[4];                                                      \
+        dest[3] = src[3];                                                      \
+        dest[2] = src[2];                                                      \
+        dest[1] = src[1];                                                      \
+        dest[0] = src[0];                                                      \
+      }                                                                        \
     }                                                                          \
   }
+
 FIO_MEMCOPY_FIO_IFUNC_ALIGNED(uint16_t, 2)
 FIO_MEMCOPY_FIO_IFUNC_ALIGNED(uint32_t, 4)
 FIO_MEMCOPY_FIO_IFUNC_ALIGNED(uint64_t, 8)
+
 #undef FIO_MEMCOPY_FIO_IFUNC_ALIGNED
 
 /** Copies 16 byte `units` of size_t aligned memory blocks */
-FIO_IFUNC void fio___memcpy_aligned(void *dest_,
-                                    const void *src_,
-                                    size_t bytes) {
+SFUNC void fio_memcpy_aligned(void *dest_, const void *src_, size_t bytes) {
+  if (src_ == dest_ || !bytes)
+    return;
+  if ((char *)src_ > (char *)dest_ || ((char *)src_ + bytes) <= (char *)dest_) {
 #if SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
-  fio___memcpy_8b(dest_, src_, bytes >> 3);
-#elif SIZE_MAX == 0xFFFFFFFF       /* 32 bit size_t */
-  fio___memcpy_4b(dest_, src_, bytes >> 2);
-#else                              /* unknown... assume 16 bit? */
-  fio___memcpy_2b(dest_, src_, bytes >> 1);
-#endif                             /* SIZE_MAX */
+    fio___memcpy_8b(dest_, src_, bytes >> 3);
+#elif SIZE_MAX == 0xFFFFFFFF /* 32 bit size_t */
+    fio___memcpy_4b(dest_, src_, bytes >> 2);
+#else                        /* unknown... assume 16 bit? */
+    fio___memcpy_2b(dest_, src_, bytes >> 1);
+    if (bytes & 1) {
+      uint8_t *dest = (uint8_t *)dest_;
+      uint8_t *src = (uint8_t *)src_;
+      dest[bytes - 1] = src[bytes - 1];
+    }
+#endif                       /* SIZE_MAX */
+#if SIZE_MAX == 0xFFFFFFFFFFFFFFFF || SIZE_MAX == 0xFFFFFFFF /* 64/32 bit */
+    uint8_t *dest = (uint8_t *)dest_;
+    uint8_t *src = (uint8_t *)src_;
+#if SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
+    const size_t offset = bytes & ((~0ULL) << 3);
+    dest += offset;
+    src += offset;
+    switch ((bytes & 7)) {
+    case 7:
+      *(dest++) = *(src++); /* fallthrough */
+    case 6:
+      *(dest++) = *(src++); /* fallthrough */
+    case 5:
+      *(dest++) = *(src++); /* fallthrough */
+    case 4:
+      *(dest++) = *(src++);  /* fallthrough */
+#elif SIZE_MAX == 0xFFFFFFFF /* 32 bit size_t */
+    const size_t offset = bytes & ((~0ULL) << 2);
+    dest += offset;
+    src += offset;
+    switch ((bytes & 3)) {
+#endif                       /* 32 bit */
+    /* fallthrough */
+    case 3:
+      *(dest++) = *(src++); /* fallthrough */
+    case 2:
+      *(dest++) = *(src++); /* fallthrough */
+    case 1:
+      *(dest++) = *(src++); /* fallthrough */
+    }
+#endif /* 32 / 64 bit */
+  } else {
+#if SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit */
+    uint8_t *dest = (uint8_t *)dest_ + bytes;
+    uint8_t *src = (uint8_t *)src_ + bytes;
+    switch ((bytes & 7)) {
+    case 7:
+      *(--dest) = *(--src); /* fallthrough */
+    case 6:
+      *(--dest) = *(--src); /* fallthrough */
+    case 5:
+      *(--dest) = *(--src); /* fallthrough */
+    case 4:
+      *(--dest) = *(--src); /* fallthrough */
+    case 3:
+      *(--dest) = *(--src); /* fallthrough */
+    case 2:
+      *(--dest) = *(--src); /* fallthrough */
+    case 1:
+      *(--dest) = *(--src); /* fallthrough */
+    }
+#elif SIZE_MAX == 0xFFFFFFFF /* 32 bit size_t */
+    uint8_t *dest = (uint8_t *)dest_ + bytes;
+    uint8_t *src = (uint8_t *)src_ + bytes;
+    switch ((bytes & 3)) {
+    case 3:
+      *(--dest) = *(--src); /* fallthrough */
+    case 2:
+      *(--dest) = *(--src); /* fallthrough */
+    case 1:
+      *(--dest) = *(--src); /* fallthrough */
+    }
+#endif                       /* 64 bit */
+
+#if SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
+    fio___memcpy_8b(dest_, src_, bytes >> 3);
+#elif SIZE_MAX == 0xFFFFFFFF /* 32 bit size_t */
+    fio___memcpy_4b(dest_, src_, bytes >> 2);
+#else                        /* unknown... assume 16 bit? */
+    if (bytes & 1) {
+      uint8_t *dest = (uint8_t *)dest_;
+      uint8_t *src = (uint8_t *)src_;
+      dest[bytes - 1] = src[bytes - 1];
+    }
+    fio___memcpy_2b(dest_, src_, bytes >> 1);
+#endif                       /* SIZE_MAX */
+  }
 }
 
 /** a 16 byte aligned memset implementation. */
-FIO_SFUNC void fio___memset_aligned(void *restrict dest_,
-                                    uint64_t data,
-                                    size_t bytes) {
+SFUNC void fio_memset_aligned(void *restrict dest_,
+                              uint64_t data,
+                              size_t bytes) {
   uint64_t *dest = (uint64_t *)dest_;
   bytes >>= 3;
   while (bytes >= 16) {
@@ -7781,8 +7924,8 @@ FIO_SFUNC void *FIO_MEM_SYS_REALLOC_def_func(void *mem,
       if (!result) {
         return (void *)NULL;
       }
-      fio___memcpy_aligned(result, mem, old_len); /* copy data */
-      munmap(mem, old_len);                       /* free original memory */
+      fio_memcpy_aligned(result, mem, old_len); /* copy data */
+      munmap(mem, old_len);                     /* free original memory */
     }
     return result;
   }
@@ -7871,7 +8014,7 @@ FIO_IFUNC void *FIO_MEM_SYS_REALLOC_def_func(void *mem,
       FIO_LOG_ERROR("sysem realloc failed to allocate memory.");
       return NULL;
     }
-    fio___memcpy_aligned(tmp, mem, old_len);
+    fio_memcpy_aligned(tmp, mem, old_len);
     FIO_MEM_SYS_FREE_def_func(mem, old_len);
     mem = tmp;
   } else if (old_len > new_len) {
@@ -7932,97 +8075,57 @@ Overridable system allocation macros
 #define FIO_MEM_SYS_FREE(ptr, pages) FIO_MEM_SYS_FREE_def_func((ptr), (pages))
 #endif /* FIO_MEM_SYS_ALLOC */
 
-/* *****************************************************************************
-Testing helpers
-***************************************************************************** */
-#ifdef FIO_TEST_CSTL
+#endif /* H___FIO_MEM_INCLUDE_ONCE___H */
 
-FIO_IFUNC void fio___memset_test_aligned(void *restrict dest_,
-                                         uint64_t data,
-                                         size_t bytes,
-                                         const char *msg) {
-  uint64_t *dest = (uint64_t *)dest_;
-  size_t units = bytes >> 3;
-  FIO_ASSERT(*(dest) = data,
-             "%s memory data was overwritten (first 8 bytes)",
-             msg);
-  while (units >= 16) {
-    FIO_ASSERT(dest[0] == data && dest[1] == data && dest[2] == data &&
-                   dest[3] == data && dest[4] == data && dest[5] == data &&
-                   dest[6] == data && dest[7] == data && dest[8] == data &&
-                   dest[9] == data && dest[10] == data && dest[11] == data &&
-                   dest[12] == data && dest[13] == data && dest[14] == data &&
-                   dest[15] == data,
-               "%s memory data was overwritten",
-               msg);
-    dest += 16;
-    units -= 16;
-  }
-  switch (units) {
-  case 15:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten",
-               msg); /* fallthrough */
-  case 14:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten",
-               msg); /* fallthrough */
-  case 13:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten",
-               msg); /* fallthrough */
-  case 12:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten",
-               msg); /* fallthrough */
-  case 11:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten",
-               msg); /* fallthrough */
-  case 10:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten",
-               msg); /* fallthrough */
-  case 9:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten",
-               msg); /* fallthrough */
-  case 8:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten",
-               msg); /* fallthrough */
-  case 7:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten",
-               msg); /* fallthrough */
-  case 6:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten",
-               msg); /* fallthrough */
-  case 5:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten",
-               msg); /* fallthrough */
-  case 4:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten",
-               msg); /* fallthrough */
-  case 3:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten",
-               msg); /* fallthrough */
-  case 2:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten",
-               msg); /* fallthrough */
-  case 1:
-    FIO_ASSERT(*(dest++) = data,
-               "%s memory data was overwritten (last 8 bytes)",
-               msg);
-  }
-  (void)msg; /* in case FIO_ASSERT is disabled */
+/* *****************************************************************************
+FIO_MEMORY_DISABLE - use the system allocator
+***************************************************************************** */
+#if defined(FIO_MEMORY_DISABLE)
+
+SFUNC void *FIO_MEM_ALIGN_NEW FIO_NAME(FIO_MEMORY_NAME, malloc)(size_t size) {
+#if FIO_MEMORY_INITIALIZE_ALLOCATIONS
+  return calloc(size, 1);
+#else
+  return malloc(size);
+#endif
+}
+SFUNC void *FIO_MEM_ALIGN_NEW FIO_NAME(FIO_MEMORY_NAME,
+                                       calloc)(size_t size_per_unit,
+                                               size_t unit_count) {
+  return calloc(size_per_unit, unit_count);
+}
+SFUNC void FIO_NAME(FIO_MEMORY_NAME, free)(void *ptr) { free(ptr); }
+SFUNC void *FIO_MEM_ALIGN FIO_NAME(FIO_MEMORY_NAME, realloc)(void *ptr,
+                                                             size_t new_size) {
+  return realloc(ptr, new_size);
+}
+SFUNC void *FIO_MEM_ALIGN FIO_NAME(FIO_MEMORY_NAME, realloc2)(void *ptr,
+                                                              size_t new_size,
+                                                              size_t copy_len) {
+  return realloc(ptr, new_size);
+  (void)copy_len;
+}
+SFUNC void *FIO_MEM_ALIGN_NEW FIO_NAME(FIO_MEMORY_NAME, mmap)(size_t size) {
+  return calloc(size, 1);
+}
+
+SFUNC void FIO_NAME(FIO_MEMORY_NAME, malloc_after_fork)(void) {}
+/** Prints the allocator's data structure. May be used for debugging. */
+SFUNC void FIO_NAME(FIO_MEMORY_NAME, malloc_print_state)(void) {}
+/** Prints the allocator's free block list. May be used for debugging. */
+SFUNC void FIO_NAME(FIO_MEMORY_NAME, malloc_print_free_block_list)(void) {}
+/** Prints the settings used to define the allocator. */
+SFUNC void FIO_NAME(FIO_MEMORY_NAME, malloc_print_settings)(void) {}
+SFUNC size_t FIO_NAME(FIO_MEMORY_NAME, malloc_block_size)(void) { return 0; }
+
+#ifdef FIO_TEST_CSTL
+SFUNC void FIO_NAME_TEST(FIO_NAME(stl, FIO_MEMORY_NAME), mem)(void) {
+  fprintf(stderr, "* Custom memory allocator bypassed.\n");
 }
 #endif /* FIO_TEST_CSTL */
+
+#else /* FIO_MEMORY_DISABLE */
+
 /* *****************************************************************************
 
 
@@ -8037,20 +8140,19 @@ FIO_IFUNC void fio___memset_test_aligned(void *restrict dest_,
 
 
 ***************************************************************************** */
-#endif /* H___FIO_MEM_INCLUDE_ONCE___H */
 
 /* *****************************************************************************
 memset / memcpy selectors
 ***************************************************************************** */
 
 #if FIO_MEMORY_USE_FIO_MEMSET
-#define FIO___MEMSET fio___memset_aligned
+#define FIO___MEMSET fio_memset_aligned
 #else
 #define FIO___MEMSET memset
 #endif /* FIO_MEMORY_USE_FIO_MEMSET */
 
 #if FIO_MEMORY_USE_FIO_MEMCOPY
-#define FIO___MEMCPY2 fio___memcpy_aligned
+#define FIO___MEMCPY2 fio_memcpy_aligned
 #else
 #define FIO___MEMCPY2 FIO_MEMCPY
 #endif /* FIO_MEMORY_USE_FIO_MEMCOPY */
@@ -8544,7 +8646,8 @@ FIO_CONSTRUCTOR(FIO_NAME(FIO_MEMORY_NAME, __mem_state_setup)) {
     FIO_ASSERT_ALLOC(FIO_NAME(FIO_MEMORY_NAME, __mem_state));
     FIO_NAME(FIO_MEMORY_NAME, __mem_state)->arena_count = arean_count;
   }
-  FIO_LIST_INIT(FIO_NAME(FIO_MEMORY_NAME, __mem_state)->blocks);
+  FIO_NAME(FIO_MEMORY_NAME, __mem_state)->blocks =
+      FIO_LIST_INIT(FIO_NAME(FIO_MEMORY_NAME, __mem_state)->blocks);
   FIO_NAME(FIO_MEMORY_NAME, malloc_after_fork)();
 
 #if defined(FIO_MEMORY_WARMUP) && FIO_MEMORY_WARMUP
@@ -9193,9 +9296,14 @@ FIO_IFUNC void *FIO_MEM_ALIGN_NEW FIO_NAME(FIO_MEMORY_NAME,
   void *p = NULL;
   if (!size)
     goto malloc_zero;
+#if FIO_MEMORY_ENABLE_BIG_ALLOC
   if ((is_realloc && size > (FIO_MEMORY_BIG_BLOCK_SIZE -
                              (FIO_MEMORY_BIG_BLOCK_HEADER_SIZE << 1))) ||
-      (!is_realloc && size > FIO_MEMORY_ALLOC_LIMIT)) {
+      (!is_realloc && size > FIO_MEMORY_ALLOC_LIMIT))
+#else
+  if (!is_realloc && size > FIO_MEMORY_ALLOC_LIMIT)
+#endif
+  {
 #ifdef DEBUG
     FIO_LOG_WARNING(
         "unintended " FIO_MACRO2STR(
@@ -9471,6 +9579,203 @@ Memory Allocation - test
 ***************************************************************************** */
 #ifdef FIO_TEST_CSTL
 
+#ifndef H___FIO_TEST_MEMORY_HELPERS_H
+#define H___FIO_TEST_MEMORY_HELPERS_H
+
+FIO_IFUNC void fio___memset_test_aligned(void *restrict dest_,
+                                         uint64_t data,
+                                         size_t bytes,
+                                         const char *msg) {
+  uint64_t *dest = (uint64_t *)dest_;
+  size_t units = bytes >> 3;
+  FIO_ASSERT(*(dest) = data,
+             "%s memory data was overwritten (first 8 bytes)",
+             msg);
+  while (units >= 16) {
+    FIO_ASSERT(dest[0] == data && dest[1] == data && dest[2] == data &&
+                   dest[3] == data && dest[4] == data && dest[5] == data &&
+                   dest[6] == data && dest[7] == data && dest[8] == data &&
+                   dest[9] == data && dest[10] == data && dest[11] == data &&
+                   dest[12] == data && dest[13] == data && dest[14] == data &&
+                   dest[15] == data,
+               "%s memory data was overwritten",
+               msg);
+    dest += 16;
+    units -= 16;
+  }
+  switch (units) {
+  case 15:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten",
+               msg); /* fallthrough */
+  case 14:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten",
+               msg); /* fallthrough */
+  case 13:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten",
+               msg); /* fallthrough */
+  case 12:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten",
+               msg); /* fallthrough */
+  case 11:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten",
+               msg); /* fallthrough */
+  case 10:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten",
+               msg); /* fallthrough */
+  case 9:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten",
+               msg); /* fallthrough */
+  case 8:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten",
+               msg); /* fallthrough */
+  case 7:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten",
+               msg); /* fallthrough */
+  case 6:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten",
+               msg); /* fallthrough */
+  case 5:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten",
+               msg); /* fallthrough */
+  case 4:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten",
+               msg); /* fallthrough */
+  case 3:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten",
+               msg); /* fallthrough */
+  case 2:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten",
+               msg); /* fallthrough */
+  case 1:
+    FIO_ASSERT(*(dest++) = data,
+               "%s memory data was overwritten (last 8 bytes)",
+               msg);
+  }
+  (void)msg; /* in case FIO_ASSERT is disabled */
+}
+
+/* main test function */
+FIO_SFUNC void FIO_NAME_TEST(stl, mem_helper_speeds)(void) {
+  uint64_t start, end;
+  const int repetitions = 8192;
+
+  fprintf(stderr,
+          "* Speed testing memset (%d repetitions per test):\n",
+          repetitions);
+
+  for (int len_i = 11; len_i < 20; ++len_i) {
+    const size_t mem_len = 1ULL << len_i;
+    void *mem = malloc(mem_len);
+    FIO_ASSERT_ALLOC(mem);
+    uint64_t sig = (uintptr_t)mem;
+    sig ^= sig >> 13;
+    sig ^= sig << 17;
+    sig ^= sig << 29;
+    sig ^= sig << 31;
+
+    start = fio_time_micro();
+    for (int i = 0; i < repetitions; ++i) {
+      fio_memset_aligned(mem, sig, mem_len);
+      FIO_COMPILER_GUARD;
+    }
+    end = fio_time_micro();
+    fio___memset_test_aligned(mem,
+                              sig,
+                              mem_len,
+                              "fio_memset_aligned sanity test FAILED");
+    fprintf(stderr,
+            "\tfio_memset_aligned\t(%zu bytes):\t%zu us\n",
+            mem_len,
+            (size_t)(end - start));
+    start = fio_time_micro();
+    for (int i = 0; i < repetitions; ++i) {
+      memset(mem, (int)sig, mem_len);
+      FIO_COMPILER_GUARD;
+    }
+    end = fio_time_micro();
+    fprintf(stderr,
+            "\tsystem memset\t\t(%zu bytes):\t%zu us\n",
+            mem_len,
+            (size_t)(end - start));
+
+    free(mem);
+  }
+
+  fprintf(stderr,
+          "* Speed testing memcpy (%d repetitions per test):\n",
+          repetitions);
+
+  for (int len_i = 11; len_i < 20; ++len_i) {
+    const size_t mem_len = 1ULL << len_i;
+    void *mem = malloc(mem_len << 1);
+    FIO_ASSERT_ALLOC(mem);
+    uint64_t sig = (uintptr_t)mem;
+    sig ^= sig >> 13;
+    sig ^= sig << 17;
+    sig ^= sig << 29;
+    sig ^= sig << 31;
+    fio_memset_aligned(mem, sig, mem_len);
+
+    start = fio_time_micro();
+    for (int i = 0; i < repetitions; ++i) {
+      fio_memcpy_aligned((char *)mem + mem_len, mem, mem_len);
+      FIO_COMPILER_GUARD;
+    }
+    end = fio_time_micro();
+
+    fio___memset_test_aligned((char *)mem + mem_len,
+                              sig,
+                              mem_len,
+                              "fio_memcpy_aligned sanity test FAILED");
+    fprintf(stderr,
+            "\tfio_memcpy_aligned\t(%zu bytes):\t%zu us\n",
+            mem_len,
+            (size_t)(end - start));
+    start = fio_time_micro();
+    for (int i = 0; i < repetitions; ++i) {
+      memcpy((char *)mem + mem_len, mem, mem_len);
+      FIO_COMPILER_GUARD;
+    }
+    end = fio_time_micro();
+    fprintf(stderr,
+            "\tsystem memcpy\t\t(%zu bytes):\t%zu us\n",
+            mem_len,
+            (size_t)(end - start));
+
+    free(mem);
+  }
+  {
+    /* test fio_memcpy_aligned as a memmove alternative. */
+    uint64_t buf1[64];
+    uint8_t *buf = (uint8_t *)buf1;
+    fio_memset_aligned(buf1, ~(uint64_t)0, sizeof(*buf1) * 64);
+    char *data = "This should be an uneven amount of characters, say 53";
+    fio_memcpy_aligned(buf, data, strlen(data));
+    FIO_ASSERT(!memcmp(buf, data, strlen(data)) && buf[strlen(data)] == 0xFF,
+               "fio_memcpy_aligned should not overflow or underflow on uneven "
+               "amounts of bytes.");
+    fio_memcpy_aligned(buf + 8, buf, strlen(data));
+    FIO_ASSERT(!memcmp(buf + 8, data, strlen(data)) &&
+                   buf[strlen(data) + 8] == 0xFF,
+               "fio_memcpy_aligned should not fail as memmove.");
+  }
+}
+#endif /* H___FIO_TEST_MEMORY_HELPERS_H */
+
 /* contention testing (multi-threaded) */
 FIO_IFUNC void *FIO_NAME_TEST(FIO_NAME(FIO_MEMORY_NAME, fio),
                               mem_tsk)(void *i_) {
@@ -9505,7 +9810,7 @@ FIO_IFUNC void *FIO_NAME_TEST(FIO_NAME(FIO_MEMORY_NAME, fio),
     FIO_ASSERT(!FIO_MEMORY_INITIALIZE_ALLOCATIONS || !ary[i][0],
                "allocated memory not zero (start): %p",
                (void *)ary[i]);
-    fio___memset_aligned(ary[i], marker, (cycles));
+    fio_memset_aligned(ary[i], marker, (cycles));
   }
   for (size_t i = 0; i < limit; ++i) {
     char *tmp = (char *)FIO_NAME(FIO_MEMORY_NAME,
@@ -9526,7 +9831,95 @@ FIO_IFUNC void *FIO_NAME_TEST(FIO_NAME(FIO_MEMORY_NAME, fio),
   for (size_t i = 0; i < limit; ++i) {
     fio___memset_test_aligned(ary[i], marker, (cycles), "mem review");
     FIO_NAME(FIO_MEMORY_NAME, free)(ary[i]);
+    ary[i] = NULL;
   }
+
+  uint64_t mark;
+  void *old = &mark;
+  mark = fio_risky_hash(&old, sizeof(mark), 0);
+
+  for (int repeat_cycle_test = 0; repeat_cycle_test < 4; ++repeat_cycle_test) {
+    for (size_t i = 0; i < limit - 4; i += 4) {
+      if (ary[i])
+        fio___memset_test_aligned(ary[i], mark, 16, "mark missing at ary[0]");
+      FIO_NAME(FIO_MEMORY_NAME, free)(ary[i]);
+      if (ary[i + 1])
+        fio___memset_test_aligned(ary[i + 1],
+                                  mark,
+                                  cycles,
+                                  "mark missing at ary[1]");
+      FIO_NAME(FIO_MEMORY_NAME, free)(ary[i + 1]);
+      if (ary[i + 2])
+        fio___memset_test_aligned(ary[i + 2],
+                                  mark,
+                                  cycles,
+                                  "mark missing at ary[2]");
+      FIO_NAME(FIO_MEMORY_NAME, free)(ary[i + 2]);
+      if (ary[i + 3])
+        fio___memset_test_aligned(ary[i + 3],
+                                  mark,
+                                  cycles,
+                                  "mark missing at ary[3]");
+      FIO_NAME(FIO_MEMORY_NAME, free)(ary[i + 3]);
+
+      ary[i] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+      fio_memset_aligned(ary[i], mark, cycles);
+
+      ary[i + 1] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+      FIO_NAME(FIO_MEMORY_NAME, free)(ary[i + 1]);
+      ary[i + 1] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+      fio_memset_aligned(ary[i + 1], mark, cycles);
+
+      ary[i + 2] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+      fio_memset_aligned(ary[i + 2], mark, cycles);
+      ary[i + 2] =
+          FIO_NAME(FIO_MEMORY_NAME, realloc2)(ary[i + 2], cycles * 2, cycles);
+
+      ary[i + 3] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+      FIO_NAME(FIO_MEMORY_NAME, free)(ary[i + 3]);
+      ary[i + 3] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+      fio_memset_aligned(ary[i + 3], mark, cycles);
+      ary[i + 3] =
+          FIO_NAME(FIO_MEMORY_NAME, realloc2)(ary[i + 3], cycles * 2, cycles);
+
+      for (int b = 0; b < 4; ++b) {
+        for (size_t pos = 0; pos < (cycles / sizeof(uint64_t)); ++pos) {
+          FIO_ASSERT(((uint64_t *)(ary[i + b]))[pos] == mark,
+                     "memory mark corrupted at test ptr %zu",
+                     i + b);
+        }
+      }
+      for (int b = 1; b < 4; ++b) {
+        FIO_NAME(FIO_MEMORY_NAME, free)(ary[b]);
+        ary[b] = NULL;
+        FIO_NAME(FIO_MEMORY_NAME, free)(ary[i + b]);
+      }
+      for (int b = 1; b < 4; ++b) {
+        ary[i + b] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+        if (i) {
+          ary[b] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+          fio_memset_aligned(ary[b], mark, cycles);
+        }
+        fio_memset_aligned(ary[i + b], mark, cycles);
+      }
+
+      for (int b = 0; b < 4; ++b) {
+        for (size_t pos = 0; pos < (cycles / sizeof(uint64_t)); ++pos) {
+          FIO_ASSERT(((uint64_t *)(ary[b]))[pos] == mark,
+                     "memory mark corrupted at test ptr %zu",
+                     i + b);
+          FIO_ASSERT(((uint64_t *)(ary[i + b]))[pos] == mark,
+                     "memory mark corrupted at test ptr %zu",
+                     i + b);
+        }
+      }
+    }
+  }
+  for (size_t i = 0; i < limit; ++i) {
+    FIO_NAME(FIO_MEMORY_NAME, free)(ary[i]);
+    ary[i] = NULL;
+  }
+
   FIO_NAME(FIO_MEMORY_NAME, free)(ary);
   return NULL;
 }
@@ -9550,7 +9943,15 @@ FIO_SFUNC void FIO_NAME_TEST(FIO_NAME(stl, FIO_MEMORY_NAME), mem)(void) {
   }
   const size_t thread_count =
       FIO_NAME(FIO_MEMORY_NAME, __mem_state)->arena_count +
-      (1 + (FIO_NAME(FIO_MEMORY_NAME, __mem_state)->arena_count >> 1));
+      (FIO_NAME(FIO_MEMORY_NAME, __mem_state)->arena_count >> 1);
+
+  for (uintptr_t cycles = 16; cycles <= (FIO_MEMORY_ALLOC_LIMIT); cycles *= 2) {
+    fprintf(stderr,
+            "* Testing %zu byte allocation blocks, single threaded.\n",
+            (size_t)(cycles));
+    FIO_NAME_TEST(FIO_NAME(FIO_MEMORY_NAME, fio), mem_tsk)((void *)cycles);
+  }
+
   for (uintptr_t cycles = 16; cycles <= (FIO_MEMORY_ALLOC_LIMIT); cycles *= 2) {
 #if _MSC_VER
     fio_thread_t threads[(FIO_MEMORY_ARENA_COUNT_MAX + 1) * 2];
@@ -9559,11 +9960,12 @@ FIO_SFUNC void FIO_NAME_TEST(FIO_NAME(stl, FIO_MEMORY_NAME), mem)(void) {
 #else
     fio_thread_t threads[thread_count];
 #endif
+
     fprintf(stderr,
-            "* Testing %zu byte allocation blocks with %zu threads.\n",
+            "* Testing %zu byte allocation blocks, using %zu threads.\n",
             (size_t)(cycles),
             (thread_count + 1));
-    for (size_t i = 1; i < thread_count; ++i) {
+    for (size_t i = 0; i < thread_count; ++i) {
       if (fio_thread_create(
               threads + i,
               FIO_NAME_TEST(FIO_NAME(FIO_MEMORY_NAME, fio), mem_tsk),
@@ -9572,7 +9974,7 @@ FIO_SFUNC void FIO_NAME_TEST(FIO_NAME(stl, FIO_MEMORY_NAME), mem)(void) {
       }
     }
     FIO_NAME_TEST(FIO_NAME(FIO_MEMORY_NAME, fio), mem_tsk)((void *)cycles);
-    for (size_t i = 1; i < thread_count; ++i) {
+    for (size_t i = 0; i < thread_count; ++i) {
       fio_thread_join(threads[i]);
     }
   }
@@ -10665,6 +11067,8 @@ SFUNC int fio_queue_push FIO_NOOP(fio_queue_s *q, fio_queue_task_s task) {
   return 0;
 no_mem:
   FIO___LOCK_UNLOCK(q->lock);
+  FIO_LOG_ERROR("No memory for Queue %p to increase task ring buffer.",
+                (void *)q);
   return -1;
 }
 
@@ -10692,6 +11096,8 @@ SFUNC int fio_queue_push_urgent FIO_NOOP(fio_queue_s *q,
   return 0;
 no_mem:
   FIO___LOCK_UNLOCK(q->lock);
+  FIO_LOG_ERROR("No memory for Queue %p to increase task ring buffer.",
+                (void *)q);
   return -1;
 }
 
@@ -16690,7 +17096,7 @@ Dynamic Arrays - test
 /* make suer the functions are defined for the testing */
 #ifdef FIO_REF_CONSTRUCTOR_ONLY
 IFUNC FIO_ARRAY_PTR FIO_NAME(FIO_ARRAY_NAME, new)(void);
-IFUNC int FIO_NAME(FIO_ARRAY_NAME, free)(FIO_ARRAY_PTR ary);
+IFUNC void FIO_NAME(FIO_ARRAY_NAME, free)(FIO_ARRAY_PTR ary);
 #endif /* FIO_REF_CONSTRUCTOR_ONLY */
 
 #define FIO_ARRAY_TEST_OBJ_SET(dest, val)                                      \
@@ -20275,6 +20681,14 @@ FIO_IFUNC FIO_STR_PTR FIO_NAME(FIO_STR_NAME, new)(void) {
   if (!FIO_MEM_REALLOC_IS_SAFE_ && s) {
     *s = (FIO_NAME(FIO_STR_NAME, s))FIO_STR_INIT;
   }
+#ifdef DEBUG
+  {
+    FIO_NAME(FIO_STR_NAME, s) tmp = {0};
+    FIO_ASSERT(!memcmp(&tmp, s, sizeof(tmp)),
+               "new " FIO_MACRO2STR(
+                   FIO_NAME(FIO_STR_NAME, s)) " object not initialized!");
+  }
+#endif
   return (FIO_STR_PTR)FIO_PTR_TAG(s);
 }
 
@@ -22485,12 +22899,8 @@ IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME, FIO_REF_CONSTRUCTOR)(void);
 FIO_IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME,
                                     FIO_REF_DUPNAME)(FIO_REF_TYPE_PTR wrapped);
 
-/**
- * Frees a reference counted object (or decreases the reference count).
- *
- * Returns 1 if the object was actually freed, returns 0 otherwise.
- */
-IFUNC int FIO_NAME(FIO_REF_NAME, FIO_REF_DESTRUCTOR)(FIO_REF_TYPE_PTR wrapped);
+/** Frees a reference counted object (or decreases the reference count). */
+IFUNC void FIO_NAME(FIO_REF_NAME, FIO_REF_DESTRUCTOR)(FIO_REF_TYPE_PTR wrapped);
 
 #ifdef FIO_REF_METADATA
 /** Returns a pointer to the object's metadata, if defined. */
@@ -22564,22 +22974,22 @@ IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME, FIO_REF_CONSTRUCTOR)(void) {
 }
 
 /** Frees a reference counted object (or decreases the reference count). */
-IFUNC int FIO_NAME(FIO_REF_NAME,
-                   FIO_REF_DESTRUCTOR)(FIO_REF_TYPE_PTR wrapped_) {
+IFUNC void FIO_NAME(FIO_REF_NAME,
+                    FIO_REF_DESTRUCTOR)(FIO_REF_TYPE_PTR wrapped_) {
   FIO_REF_TYPE *wrapped = (FIO_REF_TYPE *)(FIO_PTR_UNTAG(wrapped_));
   if (!wrapped || !wrapped_)
-    return -1;
+    return;
+  FIO_PTR_TAG_VALID_OR_RETURN_VOID(wrapped_);
   FIO_NAME(FIO_REF_NAME, _wrapper_s) *o =
       ((FIO_NAME(FIO_REF_NAME, _wrapper_s) *)wrapped) - 1;
   if (!o)
-    return -1;
+    return;
   if (fio_atomic_sub_fetch(&o->ref, 1))
-    return 0;
+    return;
   FIO_REF_DESTROY((wrapped[0]));
   FIO_REF_METADATA_DESTROY((o->metadata));
   FIO_MEM_FREE_(o, sizeof(*o) + sizeof(FIO_REF_TYPE));
   FIO_REF_ON_FREE();
-  return 1;
 }
 
 #ifdef FIO_REF_METADATA
@@ -23225,11 +23635,8 @@ typedef struct {
   /**
    * Decreases the reference count and/or frees the object, calling `free2` for
    * any nested objects.
-   *
-   * Returns 0 if the object is still alive or 1 if the object was freed. The
-   * return value is currently ignored, but this might change in the future.
    */
-  int (*free2)(FIOBJ o);
+  void (*free2)(FIOBJ o);
 } FIOBJ_class_vtable_s;
 
 FIOBJ_EXTERN_OBJ const FIOBJ_class_vtable_s FIOBJ___OBJECT_CLASS_VTBL;
@@ -25542,14 +25949,14 @@ static int ary____test_was_destroyed = 0;
 #define FIO_MEMORY_INITIALIZE_ALLOCATIONS 1
 #undef FIO_MEMORY_USE_THREAD_MUTEX
 #define FIO_MEMORY_USE_THREAD_MUTEX 0
-#define FIO_MEMORY_ARENA_COUNT      2
+#define FIO_MEMORY_ARENA_COUNT      4
 #include __FILE__
 
 #define FIO_MEMORY_NAME                   fio_mem_test_unsafe
 #define FIO_MEMORY_INITIALIZE_ALLOCATIONS 0
 #undef FIO_MEMORY_USE_THREAD_MUTEX
 #define FIO_MEMORY_USE_THREAD_MUTEX 0
-#define FIO_MEMORY_ARENA_COUNT      2
+#define FIO_MEMORY_ARENA_COUNT      4
 #include __FILE__
 
 #define FIO_FIOBJ
@@ -25572,7 +25979,7 @@ typedef struct {
 
 FIO_SFUNC void fio___dynamic_types_test___linked_list_test(void) {
   fprintf(stderr, "* Testing linked lists.\n");
-  FIO_LIST_HEAD FIO_LIST_INIT(ls);
+  FIO_LIST_HEAD ls = FIO_LIST_INIT(ls);
   for (int i = 0; i < TEST_REPEAT; ++i) {
     ls____test_s *node = ls____test_push(
         &ls,
@@ -26311,6 +26718,8 @@ void fio_test_dynamic_types(void) {
   FIO_NAME_TEST(stl, signal)();
   fprintf(stderr, "===============\n");
   FIO_NAME_TEST(stl, poll)();
+  fprintf(stderr, "===============\n");
+  FIO_NAME_TEST(stl, mem_helper_speeds)();
   fprintf(stderr, "===============\n");
   /* test memory allocator that initializes memory to zero */
   FIO_NAME_TEST(FIO_NAME(stl, fio_mem_test_safe), mem)();

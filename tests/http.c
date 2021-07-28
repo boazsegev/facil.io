@@ -65,7 +65,7 @@ int main(int argc, char const *argv[]) {
       FIO_CLI_STRING(
           "--bind -b (0.0.0.0:3000) The address to bind to, in URL format."),
       FIO_CLI_INT("--threads -t (1) The number of threads."),
-      FIO_CLI_INT("--workers -w (1) The number of worker processes."),
+      FIO_CLI_INT("--workers -w (0) The number of worker processes."),
       FIO_CLI_BOOL("--verbose -V -d print out debugging messages."),
       FIO_CLI_PRINT_LINE(
           "NOTE: requests are limited to 32Kb and 16 headers each."));
@@ -116,6 +116,7 @@ typedef struct {
   char buf[]; /* header and data buffer */
 } client_s;
 
+/* We don't really need reference counting, but this is easy. */
 #define FIO_REF_NAME client
 #define FIO_REF_CONSTRUCTOR_ONLY
 #define FIO_REF_FLEX_TYPE char
@@ -145,7 +146,7 @@ IO callback(s)
 FIO_SFUNC void on_open(int fd, void *udata) {
   client_s *c = client_new(HTTP_CLIENT_BUFFER);
   FIO_ASSERT_ALLOC(c);
-  fio_attach_fd(fd, &HTTP_PROTOCOL_1, c, NULL);
+  c->uuid = fio_attach_fd(fd, &HTTP_PROTOCOL_1, c, NULL);
   FIO_LOG_DEBUG2("Accepted a new HTTP connection (at %d): %p", fd, (void *)c);
   (void)udata;
 }
@@ -202,8 +203,8 @@ static int http1_on_request(http1_parser_s *parser) {
 #else
   char *response =
       "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World!\n";
-  fio_write2(c->fd,
-             .data.buf = response,
+  fio_write2(c->uuid,
+             .buf = response,
              .len = strlen(response),
              .dealloc = FIO_DEALLOC_NOOP);
   (void)http_send_response; /* unused in this branch */

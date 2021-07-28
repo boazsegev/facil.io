@@ -114,7 +114,7 @@ endif
 # optimization level. (-march=native fails with some ARM compilers)
 OPTIMIZATION=-O2 
 # optimization level in debug mode.
-OPTIMIZATION_DEBUG=-O0 -fsanitize=address -fsanitize=thread -fsanitize=undefined -fno-omit-frame-pointer
+OPTIMIZATION_DEBUG=-O0 -fsanitize=thread -fsanitize=undefined -fsanitize=address -fno-omit-frame-pointer
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
 WARNINGS=-Wshadow -Wall -Wextra -Wpedantic -Wno-missing-field-initializers
 # any extra include folders, space seperated list. (i.e. `pg_config --includedir`)

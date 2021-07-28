@@ -83,6 +83,8 @@ Additional Included files
 ***************************************************************************** */
 #if FIO_OS_POSIX
 #include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #endif
 
 /** The main protocol object type. See `struct fio_protocol_s`. */

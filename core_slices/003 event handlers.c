@@ -62,7 +62,7 @@ static void fio_ev_on_ready(void *uuid_, void *udata) {
         fio_stream_advance(&uuid->stream, len);
       } else if (r == 0 ||
                  (errno != EWOULDBLOCK && errno != EAGAIN && errno != EINTR)) {
-        fio_uuid_close(uuid);
+        fio_uuid_close_unsafe(uuid);
         goto finish;
       } else {
         break;
@@ -72,7 +72,7 @@ static void fio_ev_on_ready(void *uuid_, void *udata) {
       fio___touch(uuid, NULL);
     if (!fio_stream_any(&uuid->stream)) {
       if ((uuid->state & FIO_UUID_CLOSED_BIT)) {
-        fio_uuid_close(uuid); /* free the UUID again to close it..? */
+        fio_uuid_close_unsafe(uuid);
       } else {
         fio_queue_push_urgent(fio_queue_select(uuid->protocol->reserved.flags),
                               .fn = fio_ev_on_ready_user,
@@ -89,7 +89,7 @@ finish:
 
 static void fio_ev_on_data(void *uuid_, void *udata) {
   fio_uuid_s *const uuid = uuid_;
-  if ((uuid->state & FIO_UUID_OPEN)) {
+  if (!(uuid->state & FIO_UUID_CLOSED)) {
     if (fio_trylock(&uuid->lock))
       goto reschedule;
     uuid->protocol->on_data(uuid, uuid->udata);
@@ -100,7 +100,7 @@ static void fio_ev_on_data(void *uuid_, void *udata) {
     }
   } else {
     fio_uuid_monitor_add_write(uuid);
-    FIO_LOG_DEBUG("skipping on_data callback for uuid %p (closed?)", uuid_);
+    FIO_LOG_DEBUG("skipping on_data callback for uuid %p", uuid_);
   }
   fio_uuid_free(uuid);
   return;

@@ -10,9 +10,9 @@ static void fio_spawn_worker(void *ignr_1, void *ignr_2);
 /** Worker no-threads cycle */
 static void fio___worker_nothread_cycle(void) {
   for (;;) {
-    if (!fio_queue_perform(&tasks_io_core))
+    if (!fio_queue_perform(task_queues))
       continue;
-    if (!fio_queue_perform(&tasks_user))
+    if (!fio_queue_perform((task_queues + 1)))
       continue;
     if (!fio_data.running)
       break;
@@ -20,9 +20,9 @@ static void fio___worker_nothread_cycle(void) {
   }
   fio_cleanup_start_shutdown();
   for (;;) {
-    if (!fio_queue_perform(&tasks_io_core))
+    if (!fio_queue_perform(task_queues))
       continue;
-    if (!fio_queue_perform(&tasks_user))
+    if (!fio_queue_perform((task_queues + 1)))
       continue;
     break;
   }
@@ -32,7 +32,7 @@ static void fio___worker_nothread_cycle(void) {
 static void *fio___user_thread_cycle(void *ignr) {
   (void)ignr;
   while (fio_data.running) {
-    fio_queue_perform_all(&tasks_user);
+    fio_queue_perform_all((task_queues + 1));
     if (fio_data.running) {
       fio_user_thread_suspent();
     }
@@ -43,13 +43,13 @@ static void *fio___user_thread_cycle(void *ignr) {
 static void fio___worker_cycle(void) {
   while (fio_data.running) {
     fio___cycle_housekeeping_running();
-    fio_queue_perform_all(&tasks_io_core);
+    fio_queue_perform_all(task_queues);
   }
   fio_cleanup_start_shutdown();
   for (;;) {
-    if (!fio_queue_perform(&tasks_io_core))
+    if (!fio_queue_perform(task_queues))
       continue;
-    if (!fio_queue_perform(&tasks_user))
+    if (!fio_queue_perform((task_queues + 1)))
       continue;
     return;
   }
@@ -59,9 +59,12 @@ static void fio___worker_cleanup(void) {
   fio_cleanup_after_fork(NULL);
   do {
     fio___cycle_housekeeping();
-    fio_queue_perform_all(&tasks_io_core);
-    fio_queue_perform_all(&tasks_user);
-  } while (fio_queue_count(&tasks_io_core) + fio_queue_count(&tasks_user));
+    fio_queue_perform_all(task_queues);
+    fio_queue_perform_all((task_queues + 1));
+  } while (fio_queue_count(task_queues) + fio_queue_count((task_queues + 1)));
+  if (fio_data.io_wake_uuid)
+    fio_uuid_close_unsafe(fio_data.io_wake_uuid);
+  fio_queue_perform_all(task_queues);
   fio_close_wakeup_pipes();
   if (!fio_data.is_master)
     FIO_LOG_INFO("(%d) worker shutdown complete.", (int)getpid());
@@ -100,7 +103,7 @@ static void fio___worker(void) {
   if (threads) {
     fio_user_thread_wake_all();
     for (size_t i = 0; i < fio_data.threads; ++i) {
-      fio_queue_perform_all(&tasks_io_core);
+      fio_queue_perform_all(task_queues);
       fio___cycle_housekeeping();
       fio_thread_join(threads[i]);
     }
@@ -128,7 +131,7 @@ static void *fio_worker_sentinal(void *GIL) {
       FIO_ASSERT_DEBUG(
           0,
           "DEBUG mode prevents worker re-spawning, now crashing parent.");
-      fio_queue_push(&tasks_io_core, .fn = fio_spawn_worker);
+      fio_queue_push(task_queues, .fn = fio_spawn_worker);
     }
     return NULL;
   }

@@ -28,8 +28,9 @@ fio_uuid_s *fio_attach_fd(int fd,
                           void *udata,
                           fio_tls_s *tls) {
   if (!protocol || fd == -1)
-    return NULL;
+    goto error;
   fio_uuid_s *uuid = fio_uuid_new2();
+  FIO_ASSERT_ALLOC(uuid);
   uuid->udata = udata;
   uuid->tls = tls;
   uuid->fd = fd;
@@ -37,6 +38,13 @@ fio_uuid_s *fio_attach_fd(int fd,
   fio_protocol_set(uuid, protocol);
   FIO_LOG_DEBUG("uuid %p attached with fd %d", (void *)uuid, fd);
   return uuid;
+error:
+  if (protocol && protocol->on_close)
+    protocol->on_close(udata);
+  if (tls) {
+    /* TODO: TLS cleanup */
+  }
+  return NULL;
 }
 
 FIO_SFUNC void fio_protocol_set___task(void *uuid_, void *old_protocol_) {
@@ -59,10 +67,7 @@ void fio_protocol_set(fio_uuid_s *uuid, fio_protocol_s *protocol) {
   fio_protocol_validate(protocol);
   fio_protocol_s *old = uuid->protocol;
   uuid->protocol = protocol;
-  fio_queue_push(&tasks_io_core,
-                 fio_protocol_set___task,
-                 fio_uuid_dup(uuid),
-                 old);
+  fio_queue_push(task_queues, fio_protocol_set___task, fio_uuid_dup(uuid), old);
   fio_uuid_monitor_add(uuid);
 }
 
@@ -85,7 +90,7 @@ void *fio_udata_get(fio_uuid_s *uuid) { return uuid->udata; }
 size_t fio_read(fio_uuid_s *uuid, void *buf, size_t len) {
   ssize_t r = fio_sock_read(uuid->fd, buf, len);
   if (r > 0) {
-    fio___touch(uuid, NULL);
+    fio_touch(uuid);
     return r;
   }
   if (r == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
@@ -96,7 +101,7 @@ size_t fio_read(fio_uuid_s *uuid, void *buf, size_t len) {
 
 static void fio_write2___task(void *uuid_, void *packet) {
   fio_uuid_s *uuid = uuid_;
-  if (!(uuid->state & FIO_UUID_OPEN))
+  if (!uuid || !(uuid->state & FIO_UUID_OPEN))
     goto error;
   fio_stream_add(&uuid->stream, packet);
   fio_ev_on_ready(uuid, uuid->udata);
@@ -122,14 +127,20 @@ void fio_write2 FIO_NOOP(fio_uuid_s *uuid, fio_write_args_s args) {
   }
   if (!packet)
     goto error;
-  fio_queue_push(&tasks_io_core,
+  if (!uuid)
+    goto uuid_error;
+  fio_queue_push(task_queues,
                  .fn = fio_write2___task,
                  .udata1 = fio_uuid_dup(uuid),
                  .udata2 = packet);
   fio_io_thread_wake();
   return;
+uuid_error:
+  fio_stream_pack_free(packet);
 error:
   FIO_LOG_ERROR("couldn't create user-packet for uuid %p", (void *)uuid);
+  if (args.dealloc)
+    args.dealloc(args.buf);
 }
 
 /** Marks the UUID for closure as soon as the pending data was sent. */
@@ -150,13 +161,13 @@ int fio_uuid_is_busy(fio_uuid_s *uuid) { return (int)uuid->lock; }
 void fio_touch(fio_uuid_s *uuid) {
   static fio_uuid_s *last_uuid;
   static uint64_t last_call;
-  const uint64_t this_call =
-      ((uint64_t)fio_data.tick.tv_sec << 21) + fio_data.tick.tv_nsec;
+  const uint64_t this_call = ((uint64_t)fio_data.tick.tv_sec << 24) |
+                             ((uint64_t)fio_data.tick.tv_nsec & 0xFFFFFF);
   if (last_uuid == uuid && last_call == this_call)
     return;
   last_uuid = uuid;
   last_call = this_call;
-  fio_queue_push(&tasks_io_core,
+  fio_queue_push(task_queues,
                  .fn = fio___touch,
                  .udata1 = fio_uuid_dup2(uuid),
                  .udata2 = uuid);

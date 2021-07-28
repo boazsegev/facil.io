@@ -76,15 +76,17 @@ FIO_IFUNC void fio_uuid_monitor_remove(fio_uuid_s *uuid);
 /* *****************************************************************************
 Queue Helpers
 ***************************************************************************** */
-static fio_queue_s tasks_io_core = FIO_QUEUE_STATIC_INIT(tasks_io_core);
-static fio_queue_s tasks_user = FIO_QUEUE_STATIC_INIT(tasks_user);
 
+/*
+ * [0] System / IO task queue
+ * [1] User task queue
+ */
+static fio_queue_s task_queues[2] = {FIO_QUEUE_STATIC_INIT(task_queues[0]),
+                                     FIO_QUEUE_STATIC_INIT(task_queues[1])};
+
+/** Returns the protocol's task queue according to the flag specified. */
 FIO_IFUNC fio_queue_s *fio_queue_select(uintptr_t flag) {
-  fio_queue_s *queues[] = {
-      &tasks_user,
-      &tasks_io_core,
-  };
-  return queues[(flag & 1)];
+  return task_queues + (1UL ^ (flag & 1));
 }
 
 /* *****************************************************************************
@@ -158,6 +160,7 @@ FIO_IFUNC void fio_uuid_set_valid(fio_uuid_s *uuid) {
 }
 
 FIO_IFUNC void fio_uuid_set_invalid(fio_uuid_s *uuid) {
+  FIO_LOG_DEBUG("UUID %p is no longer valid", (void *)uuid);
   fio_uuid_validity_map_remove(&fio_uuid_validity_map,
                                fio_risky_ptr(uuid),
                                uuid,
@@ -202,23 +205,22 @@ static struct {
     .is_worker = 1,
 };
 
+FIO_IFUNC void fio_reset_pipes___(int *i, const char *msg) {
+  if (i[0] != -1)
+    close(i[0]);
+  if (i[1] != -1)
+    close(i[1]);
+  FIO_ASSERT(!pipe(i),
+             "%d - couldn't initiate %s thread wakeup pipes.",
+             (int)getpid(),
+             msg);
+  fio_sock_set_non_block(i[0]);
+  fio_sock_set_non_block(i[1]);
+}
+
 FIO_IFUNC void fio_reset_wakeup_pipes(void) {
-  if (fio_data.thread_suspenders.in != -1) {
-    close(fio_data.thread_suspenders.in);
-    close(fio_data.thread_suspenders.out);
-    close(fio_data.io_wake.in);
-    close(fio_data.io_wake.out);
-  }
-  FIO_ASSERT(!pipe(&fio_data.thread_suspenders.in),
-             "%d - couldn't initiate user thread wakeup pipes.",
-             (int)getpid());
-  FIO_ASSERT(!pipe(&fio_data.io_wake.in),
-             "%d - couldn't initiate core thread wakeup pipes.",
-             (int)getpid());
-  fio_sock_set_non_block(fio_data.thread_suspenders.in);
-  fio_sock_set_non_block(fio_data.thread_suspenders.out);
-  fio_sock_set_non_block(fio_data.io_wake.in);
-  fio_sock_set_non_block(fio_data.io_wake.out);
+  fio_reset_pipes___(&fio_data.thread_suspenders.in, "user");
+  fio_reset_pipes___(&fio_data.io_wake.in, "IO");
 }
 
 FIO_IFUNC void fio_close_wakeup_pipes(void) {
@@ -232,39 +234,6 @@ FIO_IFUNC void fio_close_wakeup_pipes(void) {
   fio_data.thread_suspenders.out = -1;
   fio_data.io_wake.in = -1;
   fio_data.io_wake.out = -1;
-}
-
-FIO_DESTRUCTOR(fio_cleanup_at_exit) {
-  fio_state_callback_force(FIO_CALL_AT_EXIT);
-  fio_thread_mutex_destroy(&fio_data.env_lock);
-  fio___uuid_env_destroy(&fio_data.env);
-  fio_data.protocols = FIO_LIST_INIT(fio_data.protocols);
-  fio_uuid_monitor_close();
-  if (fio_data.io_wake_uuid) {
-    fio_uuid_free(fio_data.io_wake_uuid);
-    fio_data.io_wake_uuid = NULL;
-  }
-  while (fio_queue_count(&tasks_io_core) + fio_queue_count(&tasks_user)) {
-    fio_queue_perform_all(&tasks_io_core);
-    fio_queue_perform_all(&tasks_user);
-  }
-  fio_close_wakeup_pipes();
-  fio_uuid_monitor_close();
-  fio_cli_end();
-  fio_uuid_invalidate_all();
-  for (int i = 0; i < FIO_CALL_NEVER; ++i)
-    fio_state_callback_clear((callback_type_e)i);
-}
-
-static void fio_cleanup_after_fork(void *ignr_);
-
-FIO_CONSTRUCTOR(fio_data_state_init) {
-  FIO_LOG_DEBUG("initializeing facio.io IO state.");
-  fio_data.protocols = FIO_LIST_INIT(fio_data.protocols);
-  fio_data.master = getpid();
-  fio_data.tick = fio_time_real();
-  fio_uuid_monitor_init();
-  fio_state_callback_add(FIO_CALL_IN_CHILD, fio_cleanup_after_fork, NULL);
 }
 
 /* *****************************************************************************
@@ -282,20 +251,12 @@ FIO_SFUNC void fio_user_thread_suspent(void) {
 
 FIO_IFUNC void fio_user_thread_wake(void) {
   char buf[2] = {0};
-  fio_sock_write(fio_data.thread_suspenders.out, buf, 2);
+  int i = fio_sock_write(fio_data.thread_suspenders.out, buf, 2);
+  (void)i;
 }
 
 FIO_IFUNC void fio_user_thread_wake_all(void) {
-  if (fio_data.thread_suspenders.in != -1) {
-    close(fio_data.thread_suspenders.in);
-    close(fio_data.thread_suspenders.out);
-    fio_data.thread_suspenders.in = fio_data.thread_suspenders.out = -1;
-  }
-  FIO_ASSERT(!pipe(&fio_data.thread_suspenders.in),
-             "%d - couldn't initiate user thread wakeup pipes.",
-             (int)getpid());
-  fio_sock_set_non_block(fio_data.thread_suspenders.in);
-  fio_sock_set_non_block(fio_data.thread_suspenders.out);
+  fio_reset_pipes___(&fio_data.thread_suspenders.in, "user");
 }
 
 /* *****************************************************************************
@@ -353,6 +314,8 @@ UUID data types
 #define FIO_MAX_ADDR_LEN 48
 #endif
 
+fio_protocol_s FIO_PROTOCOL_NOOP;
+
 typedef enum {
   FIO_UUID_OPEN = 1,          /* 0b0001 */
   FIO_UUID_SUSPENDED_BIT = 2, /* 0b0010 */
@@ -389,7 +352,7 @@ struct fio_uuid_s {
   uint8_t addr[FIO_MAX_ADDR_LEN];
 };
 FIO_IFUNC fio_uuid_s *fio_uuid_dup2(fio_uuid_s *uuid);
-FIO_IFUNC int fio_uuid_free2(fio_uuid_s *uuid);
+FIO_IFUNC void fio_uuid_free2(fio_uuid_s *uuid);
 
 FIO_SFUNC void fio___touch(void *uuid_, void *should_free) {
   fio_uuid_s *uuid = uuid_;
@@ -420,12 +383,13 @@ FIO_SFUNC void fio_uuid___init_task(void *uuid_, void *ignr_) {
 
 FIO_SFUNC void fio_uuid___init(fio_uuid_s *uuid) {
   *uuid = (fio_uuid_s){
+      .protocol = &FIO_PROTOCOL_NOOP,
       .state = FIO_UUID_OPEN,
       .stream = FIO_STREAM_INIT(uuid->stream),
-      .timeouts = FIO_LIST_INIT(uuid->timeouts),
+      .timeouts = {.next = &uuid->timeouts, .prev = &uuid->timeouts},
       .active = fio_time2milli(fio_data.tick),
   };
-  fio_queue_push_urgent(&tasks_io_core,
+  fio_queue_push_urgent(task_queues,
                         .fn = fio_uuid___init_task,
                         .udata1 = fio_uuid_dup2(uuid));
   FIO_LOG_DEBUG("UUID %p initialized.", (void *)uuid);
@@ -441,7 +405,7 @@ FIO_SFUNC void fio_uuid___destroy(fio_uuid_s *uuid) {
     void *p;
     void (*fn)(void *);
   } u = {.fn = uuid->protocol->on_close};
-  fio_queue_push(&tasks_user, fio___deferred_on_close, u.p, uuid->udata);
+  fio_queue_push((task_queues + 1), fio___deferred_on_close, u.p, uuid->udata);
 #if FIO_ENGINE_POLL
   fio_uuid_monitor_remove(uuid);
 #endif
@@ -468,17 +432,24 @@ fio_uuid_s *fio_uuid_dup(fio_uuid_s *uuid) { return fio_uuid_dup2(uuid); }
 #define fio_uuid_dup fio_uuid_dup2
 
 void fio_uuid_free(fio_uuid_s *uuid) {
-  fio_queue_push(&tasks_io_core, .fn = fio_uuid_free_task, .udata1 = uuid);
+  fio_queue_push(task_queues, .fn = fio_uuid_free_task, .udata1 = uuid);
+}
+
+FIO_IFUNC void fio_uuid_close___common(fio_uuid_s *uuid,
+                                       void (*free_fn)(fio_uuid_s *)) {
+  if ((fio_atomic_and(&uuid->state, 0xFE) & FIO_UUID_OPEN))
+    return;
+  uuid->state |= FIO_UUID_CLOSED;
+  fio_uuid_monitor_remove(uuid);
+  free_fn(uuid);
 }
 
 FIO_IFUNC void fio_uuid_close(fio_uuid_s *uuid) {
-  if (fio_atomic_and(&uuid->state,
-                     ((fio_uuid_state_e)(~(unsigned)FIO_UUID_OPEN))) &
-      FIO_UUID_OPEN) {
-    uuid->state |= FIO_UUID_CLOSED;
-    fio_uuid_monitor_remove(uuid);
-    fio_uuid_free(uuid);
-  }
+  fio_uuid_close___common(uuid, fio_uuid_free);
+}
+
+FIO_IFUNC void fio_uuid_close_unsafe(fio_uuid_s *uuid) {
+  fio_uuid_close___common(uuid, fio_uuid_free2);
 }
 
 /* *****************************************************************************
@@ -561,6 +532,7 @@ static void fio_io_wakeup_on_close(void *udata) {
     fio_reset_wakeup_pipes();
     fio_io_wakeup_prep();
   }
+  FIO_LOG_DEBUG("IO wakeup UUID freed");
   (void)udata;
 }
 
@@ -574,20 +546,15 @@ static fio_protocol_s FIO_IO_WAKEUP_PROTOCOL = {
 FIO_SFUNC void fio_io_wakeup_prep(void) {
   if (fio_data.io_wake_uuid)
     return;
-  fio_uuid_s *uuid = fio_data.io_wake_uuid = fio_uuid_new2();
-  FIO_ASSERT_ALLOC(uuid);
-  uuid->tls = NULL;
-  uuid->fd = fio_data.io_wake.in;
-  fio_protocol_validate(&FIO_IO_WAKEUP_PROTOCOL);
+  fio_data.io_wake_uuid =
+      fio_attach_fd(fio_data.io_wake.in, &FIO_IO_WAKEUP_PROTOCOL, NULL, NULL);
   FIO_IO_WAKEUP_PROTOCOL.reserved.flags |= 1; /* system protocol */
-  uuid->protocol = &FIO_IO_WAKEUP_PROTOCOL;
-  fio___touch(uuid, NULL);
-  fio_uuid_monitor_add_read(uuid);
 }
 
 FIO_IFUNC void fio_io_thread_wake(void) {
   char buf[1] = {0};
-  fio_sock_write(fio_data.io_wake.out, buf, 1);
+  int i = fio_sock_write(fio_data.io_wake.out, buf, 1);
+  (void)i;
 }
 
 FIO_IFUNC void fio_io_thread_wake_clear(void) {
@@ -603,7 +570,7 @@ Housekeeping cycle
 FIO_SFUNC void fio___cycle_housekeeping(void) {
   static int old = 0;
   static time_t last_to_review = 0;
-  if (fio_queue_count(&tasks_user))
+  if (fio_queue_count((task_queues + 1)))
     fio_user_thread_wake();
   int c = fio_uuid_monitor_review();
   fio_data.tick = fio_time_real();
@@ -629,11 +596,13 @@ FIO_SFUNC void fio___cycle_housekeeping(void) {
   if (last_to_review != fio_data.tick.tv_sec) {
     last_to_review = fio_data.tick.tv_sec;
     FIO_LIST_EACH(fio_protocol_s, reserved.protocols, &fio_data.protocols, pr) {
+      FIO_ASSERT_DEBUG(pr->reserved.flags, "protocol object flags unmarked?!");
       if (!pr->timeout || pr->timeout > FIO_UUID_TIMEOUT_MAX)
         pr->timeout = FIO_UUID_TIMEOUT_MAX;
       time_t limit =
           fio_time2milli(fio_data.tick) - ((time_t)pr->timeout * 1000);
       FIO_LIST_EACH(fio_uuid_s, timeouts, &pr->reserved.uuids, uuid) {
+        FIO_ASSERT_DEBUG(uuid->protocol == pr, "uuid protocol ownership error");
         if (uuid->active >= limit)
           break;
         fio_queue_push_urgent(fio_queue_select(pr->reserved.flags),
@@ -644,7 +613,7 @@ FIO_SFUNC void fio___cycle_housekeeping(void) {
       }
     }
   }
-  if (fio_queue_count(&tasks_user))
+  if (fio_queue_count((task_queues + 1)))
     fio_user_thread_wake();
 }
 
@@ -658,6 +627,19 @@ FIO_SFUNC void fio___cycle_housekeeping_running(void) {
 Cleanup helpers
 ***************************************************************************** */
 
+static void fio_uuid___post_cleanup_test(void *uuid, void *ignr_) {
+  /* UNSAFE: this code assumes cleanup is single threaded */
+#if 0 && DEBUG
+  FIO_ASSERT_DEBUG(!fio_uuid_is_valid(uuid), "UUID should have been freed.");
+#else
+  if (fio_uuid_is_valid(uuid))
+    FIO_LOG_ERROR("UUID ( %p ) should have been freed (fd %d)",
+                  (void *)uuid,
+                  ((fio_uuid_s *)uuid)->fd);
+#endif
+  (void)ignr_;
+}
+
 static void fio_cleanup_after_fork(void *ignr_) {
   (void)ignr_;
   if (!fio_data.is_master) {
@@ -669,11 +651,12 @@ static void fio_cleanup_after_fork(void *ignr_) {
 
   FIO_LIST_EACH(fio_protocol_s, reserved.protocols, &fio_data.protocols, pr) {
     FIO_LIST_EACH(fio_uuid_s, timeouts, &pr->reserved.uuids, uuid) {
+      FIO_ASSERT_DEBUG(uuid->protocol == pr, "uuid protocol ownership error");
       FIO_LOG_DEBUG("cleanup for fd %d ( %p )", uuid->fd, (void *)uuid);
-      fio_uuid_close(uuid);
-      fio_queue_perform_all(&tasks_io_core);
-      FIO_ASSERT_DEBUG(!fio_uuid_is_valid(uuid),
-                       "UUID should have been freed.");
+      fio_uuid_close_unsafe(uuid);
+      fio_queue_push(task_queues + 1,
+                     .fn = fio_uuid___post_cleanup_test,
+                     .udata1 = uuid);
     }
     FIO_LIST_REMOVE(&pr->reserved.protocols);
   }
@@ -689,6 +672,43 @@ static void fio_cleanup_start_shutdown() {
     }
   }
 }
+
+/* *****************************************************************************
+State data initialization
+***************************************************************************** */
+
+FIO_DESTRUCTOR(fio_cleanup_at_exit) {
+  fio_state_callback_force(FIO_CALL_AT_EXIT);
+  fio_thread_mutex_destroy(&fio_data.env_lock);
+  fio___uuid_env_destroy(&fio_data.env);
+  fio_data.protocols = FIO_LIST_INIT(fio_data.protocols);
+  fio_uuid_monitor_close();
+  if (fio_data.io_wake_uuid) {
+    fio_uuid_free(fio_data.io_wake_uuid);
+  }
+  while (fio_queue_count(task_queues) + fio_queue_count(task_queues + 1)) {
+    fio_queue_perform_all(task_queues);
+    fio_queue_perform_all(task_queues + 1);
+  }
+  fio_close_wakeup_pipes();
+  fio_uuid_monitor_close();
+  fio_cli_end();
+  fio_uuid_invalidate_all();
+  for (int i = 0; i < FIO_CALL_NEVER; ++i)
+    fio_state_callback_clear((callback_type_e)i);
+}
+
+FIO_CONSTRUCTOR(fio_data_state_init) {
+  FIO_LOG_DEBUG("initializing facio.io IO state.");
+  fio_data.protocols = FIO_LIST_INIT(fio_data.protocols);
+  fio_data.master = getpid();
+  fio_data.tick = fio_time_real();
+  fio_uuid_monitor_init();
+  fio_protocol_validate(&FIO_PROTOCOL_NOOP);
+  FIO_PROTOCOL_NOOP.reserved.flags |= 1;
+  fio_state_callback_add(FIO_CALL_IN_CHILD, fio_cleanup_after_fork, NULL);
+}
+
 /* *****************************************************************************
 Copy address to string
 ***************************************************************************** */
@@ -793,7 +813,7 @@ static void fio_ev_on_ready(void *uuid_, void *udata) {
         fio_stream_advance(&uuid->stream, len);
       } else if (r == 0 ||
                  (errno != EWOULDBLOCK && errno != EAGAIN && errno != EINTR)) {
-        fio_uuid_close(uuid);
+        fio_uuid_close_unsafe(uuid);
         goto finish;
       } else {
         break;
@@ -803,7 +823,7 @@ static void fio_ev_on_ready(void *uuid_, void *udata) {
       fio___touch(uuid, NULL);
     if (!fio_stream_any(&uuid->stream)) {
       if ((uuid->state & FIO_UUID_CLOSED_BIT)) {
-        fio_uuid_close(uuid); /* free the UUID again to close it..? */
+        fio_uuid_close_unsafe(uuid);
       } else {
         fio_queue_push_urgent(fio_queue_select(uuid->protocol->reserved.flags),
                               .fn = fio_ev_on_ready_user,
@@ -820,7 +840,7 @@ finish:
 
 static void fio_ev_on_data(void *uuid_, void *udata) {
   fio_uuid_s *const uuid = uuid_;
-  if ((uuid->state & FIO_UUID_OPEN)) {
+  if (!(uuid->state & FIO_UUID_CLOSED)) {
     if (fio_trylock(&uuid->lock))
       goto reschedule;
     uuid->protocol->on_data(uuid, uuid->udata);
@@ -831,7 +851,7 @@ static void fio_ev_on_data(void *uuid_, void *udata) {
     }
   } else {
     fio_uuid_monitor_add_write(uuid);
-    FIO_LOG_DEBUG("skipping on_data callback for uuid %p (closed?)", uuid_);
+    FIO_LOG_DEBUG("skipping on_data callback for uuid %p", uuid_);
   }
   fio_uuid_free(uuid);
   return;
@@ -876,19 +896,19 @@ IO Polling
 #define FIO_POLL_MAX_EVENTS 96
 #endif
 
-#if FIO_ENGINE_POLL
+// #if FIO_ENGINE_POLL
 /* fio_poll_remove might not work when polling from multiple threads */
 #define FIO_POLL_EV_VALIDATE_UUID(uuid)                                        \
   do {                                                                         \
-    fio_queue_perform_all(&tasks_io_core);                                     \
+    fio_queue_perform_all(task_queues);                                        \
     if (!fio_uuid_is_valid(uuid)) {                                            \
       FIO_LOG_DEBUG("uuid validation failed for uuid %p", (void *)uuid);       \
       return;                                                                  \
     }                                                                          \
   } while (0);
-#else
-#define FIO_POLL_EV_VALIDATE_UUID(uuid)
-#endif
+// #else
+// #define FIO_POLL_EV_VALIDATE_UUID(uuid)
+// #endif
 
 FIO_IFUNC void fio___poll_ev_wrap_data(int fd, void *uuid_) {
   fio_uuid_s *uuid = uuid_;
@@ -904,10 +924,7 @@ FIO_IFUNC void fio___poll_ev_wrap_ready(int fd, void *uuid_) {
   fio_uuid_s *uuid = uuid_;
   // FIO_LOG_DEBUG("event on_ready detected for uuid %p", uuid_);
   FIO_POLL_EV_VALIDATE_UUID(uuid);
-  fio_queue_push(&tasks_io_core,
-                 fio_ev_on_ready,
-                 fio_uuid_dup(uuid),
-                 uuid->udata);
+  fio_queue_push(task_queues, fio_ev_on_ready, fio_uuid_dup(uuid), uuid->udata);
   (void)fd;
 }
 
@@ -915,7 +932,7 @@ FIO_IFUNC void fio___poll_ev_wrap_close(int fd, void *uuid_) {
   fio_uuid_s *uuid = uuid_;
   // FIO_LOG_DEBUG("event on_close detected for uuid %p", uuid_);
   FIO_POLL_EV_VALIDATE_UUID(uuid);
-  fio_uuid_close(uuid);
+  fio_uuid_close_unsafe(uuid);
   (void)fd;
 }
 
@@ -949,7 +966,7 @@ FIO_IFUNC void fio_uuid_monitor_close(void) {
 }
 
 FIO_IFUNC void fio_uuid_monitor_init(void) {
-  fio_poll_close();
+  fio_uuid_monitor_close();
   for (int i = 0; i < 3; ++i) {
     evio_fd[i] = epoll_create1(EPOLL_CLOEXEC);
     if (evio_fd[i] == -1)
@@ -966,12 +983,12 @@ FIO_IFUNC void fio_uuid_monitor_init(void) {
   return;
 error:
   FIO_LOG_FATAL("couldn't initialize epoll.");
-  fio_poll_close();
+  fio_uuid_monitor_close();
   exit(errno);
   return;
 }
 
-FIO_IFUNC int fio___peoll_add2(fio_uuid_s *uuid, uint32_t events, int ep_fd) {
+FIO_IFUNC int fio___epoll_add2(fio_uuid_s *uuid, uint32_t events, int ep_fd) {
   int ret = -1;
   struct epoll_event chevent;
   int fd = uuid->fd;
@@ -998,25 +1015,25 @@ FIO_IFUNC int fio___peoll_add2(fio_uuid_s *uuid, uint32_t events, int ep_fd) {
 }
 
 FIO_IFUNC void fio_uuid_monitor_add_read(fio_uuid_s *uuid) {
-  fio___peoll_add2(uuid,
+  fio___epoll_add2(uuid,
                    (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
                    evio_fd[1]);
   return;
 }
 
 FIO_IFUNC void fio_uuid_monitor_add_write(fio_uuid_s *uuid) {
-  fio___peoll_add2(uuid,
+  fio___epoll_add2(uuid,
                    (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
                    evio_fd[2]);
   return;
 }
 
 FIO_IFUNC void fio_uuid_monitor_add(fio_uuid_s *uuid) {
-  if (fio___peoll_add2(uuid,
+  if (fio___epoll_add2(uuid,
                        (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
                        evio_fd[1]) == -1)
     return;
-  fio___peoll_add2(uuid,
+  fio___epoll_add2(uuid,
                    (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
                    evio_fd[2]);
   return;
@@ -1025,11 +1042,11 @@ FIO_IFUNC void fio_uuid_monitor_add(fio_uuid_s *uuid) {
 FIO_IFUNC void fio_uuid_monitor_remove(fio_uuid_s *uuid) {
   struct epoll_event chevent = {.events = (EPOLLOUT | EPOLLIN),
                                 .data.ptr = uuid};
-  epoll_ctl(evio_fd[1], EPOLL_CTL_DEL, uuid, &chevent);
-  epoll_ctl(evio_fd[2], EPOLL_CTL_DEL, uuid, &chevent);
+  epoll_ctl(evio_fd[1], EPOLL_CTL_DEL, uuid->fd, &chevent);
+  epoll_ctl(evio_fd[2], EPOLL_CTL_DEL, uuid->fd, &chevent);
 }
 
-FIO_SFUNC size_t fio_uuid_monitor(void) {
+FIO_SFUNC size_t fio_uuid_monitor_review(void) {
   int timeout_millisec = fio_uuid_monitor_tick_len();
   struct epoll_event internal[2];
   struct epoll_event events[FIO_POLL_MAX_EVENTS];
@@ -1076,7 +1093,10 @@ char const *fio_engine(void) { return "kqueue"; }
 
 static int evio_fd = -1;
 
-FIO_IFUNC void fio_uuid_monitor_close(void) { close(evio_fd); }
+FIO_IFUNC void fio_uuid_monitor_close(void) {
+  if (evio_fd != -1)
+    close(evio_fd);
+}
 
 FIO_IFUNC void fio_uuid_monitor_init(void) {
   fio_uuid_monitor_close();
@@ -1145,8 +1165,8 @@ FIO_IFUNC void fio_uuid_monitor_remove(fio_uuid_s *uuid) {
   if (evio_fd < 0)
     return;
   struct kevent chevent[2];
-  EV_SET(chevent, uuid->fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
-  EV_SET(chevent + 1, uuid->fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
+  EV_SET(chevent, uuid->fd, EVFILT_READ, EV_DELETE, 0, 0, (void *)uuid);
+  EV_SET(chevent + 1, uuid->fd, EVFILT_WRITE, EV_DELETE, 0, 0, (void *)uuid);
   do {
     errno = 0;
     kevent(evio_fd, chevent, 2, NULL, 0, NULL);
@@ -1170,12 +1190,12 @@ FIO_SFUNC size_t fio_uuid_monitor_review(void) {
     for (int i = 0; i < active_count; i++) {
       // test for event(s) type
       if (events[i].filter == EVFILT_WRITE) {
-        fio___poll_ev_wrap_ready(0, (void *)events[i].udata);
+        fio___poll_ev_wrap_ready(0, events[i].udata);
       } else if (events[i].filter == EVFILT_READ) {
-        fio___poll_ev_wrap_data(0, (void *)events[i].udata);
+        fio___poll_ev_wrap_data(0, events[i].udata);
       }
       if (events[i].flags & (EV_EOF | EV_ERROR)) {
-        fio___poll_ev_wrap_close(0, (void *)events[i].udata);
+        fio___poll_ev_wrap_close(0, events[i].udata);
       }
     }
   } else if (active_count < 0) {
@@ -1258,9 +1278,9 @@ static void fio_spawn_worker(void *ignr_1, void *ignr_2);
 /** Worker no-threads cycle */
 static void fio___worker_nothread_cycle(void) {
   for (;;) {
-    if (!fio_queue_perform(&tasks_io_core))
+    if (!fio_queue_perform(task_queues))
       continue;
-    if (!fio_queue_perform(&tasks_user))
+    if (!fio_queue_perform((task_queues + 1)))
       continue;
     if (!fio_data.running)
       break;
@@ -1268,9 +1288,9 @@ static void fio___worker_nothread_cycle(void) {
   }
   fio_cleanup_start_shutdown();
   for (;;) {
-    if (!fio_queue_perform(&tasks_io_core))
+    if (!fio_queue_perform(task_queues))
       continue;
-    if (!fio_queue_perform(&tasks_user))
+    if (!fio_queue_perform((task_queues + 1)))
       continue;
     break;
   }
@@ -1280,7 +1300,7 @@ static void fio___worker_nothread_cycle(void) {
 static void *fio___user_thread_cycle(void *ignr) {
   (void)ignr;
   while (fio_data.running) {
-    fio_queue_perform_all(&tasks_user);
+    fio_queue_perform_all((task_queues + 1));
     if (fio_data.running) {
       fio_user_thread_suspent();
     }
@@ -1291,13 +1311,13 @@ static void *fio___user_thread_cycle(void *ignr) {
 static void fio___worker_cycle(void) {
   while (fio_data.running) {
     fio___cycle_housekeeping_running();
-    fio_queue_perform_all(&tasks_io_core);
+    fio_queue_perform_all(task_queues);
   }
   fio_cleanup_start_shutdown();
   for (;;) {
-    if (!fio_queue_perform(&tasks_io_core))
+    if (!fio_queue_perform(task_queues))
       continue;
-    if (!fio_queue_perform(&tasks_user))
+    if (!fio_queue_perform((task_queues + 1)))
       continue;
     return;
   }
@@ -1307,9 +1327,12 @@ static void fio___worker_cleanup(void) {
   fio_cleanup_after_fork(NULL);
   do {
     fio___cycle_housekeeping();
-    fio_queue_perform_all(&tasks_io_core);
-    fio_queue_perform_all(&tasks_user);
-  } while (fio_queue_count(&tasks_io_core) + fio_queue_count(&tasks_user));
+    fio_queue_perform_all(task_queues);
+    fio_queue_perform_all((task_queues + 1));
+  } while (fio_queue_count(task_queues) + fio_queue_count((task_queues + 1)));
+  if (fio_data.io_wake_uuid)
+    fio_uuid_close_unsafe(fio_data.io_wake_uuid);
+  fio_queue_perform_all(task_queues);
   fio_close_wakeup_pipes();
   if (!fio_data.is_master)
     FIO_LOG_INFO("(%d) worker shutdown complete.", (int)getpid());
@@ -1348,7 +1371,7 @@ static void fio___worker(void) {
   if (threads) {
     fio_user_thread_wake_all();
     for (size_t i = 0; i < fio_data.threads; ++i) {
-      fio_queue_perform_all(&tasks_io_core);
+      fio_queue_perform_all(task_queues);
       fio___cycle_housekeeping();
       fio_thread_join(threads[i]);
     }
@@ -1376,7 +1399,7 @@ static void *fio_worker_sentinal(void *GIL) {
       FIO_ASSERT_DEBUG(
           0,
           "DEBUG mode prevents worker re-spawning, now crashing parent.");
-      fio_queue_push(&tasks_io_core, .fn = fio_spawn_worker);
+      fio_queue_push(task_queues, .fn = fio_spawn_worker);
     }
     return NULL;
   }
@@ -1663,8 +1686,9 @@ fio_uuid_s *fio_attach_fd(int fd,
                           void *udata,
                           fio_tls_s *tls) {
   if (!protocol || fd == -1)
-    return NULL;
+    goto error;
   fio_uuid_s *uuid = fio_uuid_new2();
+  FIO_ASSERT_ALLOC(uuid);
   uuid->udata = udata;
   uuid->tls = tls;
   uuid->fd = fd;
@@ -1672,6 +1696,13 @@ fio_uuid_s *fio_attach_fd(int fd,
   fio_protocol_set(uuid, protocol);
   FIO_LOG_DEBUG("uuid %p attached with fd %d", (void *)uuid, fd);
   return uuid;
+error:
+  if (protocol && protocol->on_close)
+    protocol->on_close(udata);
+  if (tls) {
+    /* TODO: TLS cleanup */
+  }
+  return NULL;
 }
 
 FIO_SFUNC void fio_protocol_set___task(void *uuid_, void *old_protocol_) {
@@ -1694,10 +1725,7 @@ void fio_protocol_set(fio_uuid_s *uuid, fio_protocol_s *protocol) {
   fio_protocol_validate(protocol);
   fio_protocol_s *old = uuid->protocol;
   uuid->protocol = protocol;
-  fio_queue_push(&tasks_io_core,
-                 fio_protocol_set___task,
-                 fio_uuid_dup(uuid),
-                 old);
+  fio_queue_push(task_queues, fio_protocol_set___task, fio_uuid_dup(uuid), old);
   fio_uuid_monitor_add(uuid);
 }
 
@@ -1720,7 +1748,7 @@ void *fio_udata_get(fio_uuid_s *uuid) { return uuid->udata; }
 size_t fio_read(fio_uuid_s *uuid, void *buf, size_t len) {
   ssize_t r = fio_sock_read(uuid->fd, buf, len);
   if (r > 0) {
-    fio___touch(uuid, NULL);
+    fio_touch(uuid);
     return r;
   }
   if (r == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
@@ -1731,7 +1759,7 @@ size_t fio_read(fio_uuid_s *uuid, void *buf, size_t len) {
 
 static void fio_write2___task(void *uuid_, void *packet) {
   fio_uuid_s *uuid = uuid_;
-  if (!(uuid->state & FIO_UUID_OPEN))
+  if (!uuid || !(uuid->state & FIO_UUID_OPEN))
     goto error;
   fio_stream_add(&uuid->stream, packet);
   fio_ev_on_ready(uuid, uuid->udata);
@@ -1757,14 +1785,20 @@ void fio_write2 FIO_NOOP(fio_uuid_s *uuid, fio_write_args_s args) {
   }
   if (!packet)
     goto error;
-  fio_queue_push(&tasks_io_core,
+  if (!uuid)
+    goto uuid_error;
+  fio_queue_push(task_queues,
                  .fn = fio_write2___task,
                  .udata1 = fio_uuid_dup(uuid),
                  .udata2 = packet);
   fio_io_thread_wake();
   return;
+uuid_error:
+  fio_stream_pack_free(packet);
 error:
   FIO_LOG_ERROR("couldn't create user-packet for uuid %p", (void *)uuid);
+  if (args.dealloc)
+    args.dealloc(args.buf);
 }
 
 /** Marks the UUID for closure as soon as the pending data was sent. */
@@ -1785,13 +1819,13 @@ int fio_uuid_is_busy(fio_uuid_s *uuid) { return (int)uuid->lock; }
 void fio_touch(fio_uuid_s *uuid) {
   static fio_uuid_s *last_uuid;
   static uint64_t last_call;
-  const uint64_t this_call =
-      ((uint64_t)fio_data.tick.tv_sec << 21) + fio_data.tick.tv_nsec;
+  const uint64_t this_call = ((uint64_t)fio_data.tick.tv_sec << 24) |
+                             ((uint64_t)fio_data.tick.tv_nsec & 0xFFFFFF);
   if (last_uuid == uuid && last_call == this_call)
     return;
   last_uuid = uuid;
   last_call = this_call;
-  fio_queue_push(&tasks_io_core,
+  fio_queue_push(task_queues,
                  .fn = fio___touch,
                  .udata1 = fio_uuid_dup2(uuid),
                  .udata2 = uuid);
@@ -2223,7 +2257,10 @@ Task Scheduling
 
 /** Schedules a task for delayed execution. */
 void fio_defer(void (*task)(void *, void *), void *udata1, void *udata2) {
-  fio_queue_push(&tasks_user, .fn = task, .udata1 = udata1, .udata2 = udata2);
+  fio_queue_push((task_queues + 1),
+                 .fn = task,
+                 .udata1 = udata1,
+                 .udata2 = udata2);
 }
 
 FIO_SFUNC void fio_io_task_wrapper(void *task_, void *ignr_) {
@@ -2242,7 +2279,7 @@ FIO_SFUNC void fio_io_task_wrapper(void *task_, void *ignr_) {
   fio_uuid_free(uuid);
   return;
 reschedule:
-  fio_queue_push(&tasks_user,
+  fio_queue_push(fio_queue_select(uuid->protocol->reserved.flags),
                  .fn = fio_io_task_wrapper,
                  .udata1 = task_,
                  .udata2 = ignr_);
@@ -2263,7 +2300,7 @@ void fio_defer_io(fio_uuid_s *uuid,
   *t = (fio_queue_task_s){.fn = u.fn2,
                           .udata1 = fio_uuid_dup(uuid),
                           .udata2 = udata};
-  fio_queue_push(&tasks_user,
+  fio_queue_push(fio_queue_select(uuid->protocol->reserved.flags),
                  .fn = fio_io_task_wrapper,
                  .udata1 = uuid,
                  .udata2 = udata);
