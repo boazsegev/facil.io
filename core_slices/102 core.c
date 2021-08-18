@@ -1,0 +1,324 @@
+/* *****************************************************************************
+Global State
+***************************************************************************** */
+#ifndef H_FACIL_IO_H /* development sugar, ignore */
+#include "999 dev.h" /* development sugar, ignore */
+#endif               /* development sugar, ignore */
+
+/* *****************************************************************************
+IO Registry - NOT thread safe (access from IO core thread only)
+***************************************************************************** */
+
+#define FIO_UMAP_NAME             fio_validity_map
+#define FIO_MEMORY_NAME           fio_validity_map_mem
+#define FIO_MALLOC_TMP_USE_SYSTEM 1
+#define FIO_MAP_TYPE              fio_s *
+#define FIO_MAP_HASH_FN(o)        fio_risky_ptr(o)
+#define FIO_MAP_TYPE_CMP(a, b)    ((a) == (b))
+#include <fio-stl.h>
+
+/* *****************************************************************************
+Global State
+***************************************************************************** */
+
+static struct {
+  FIO_LIST_HEAD protocols;
+  fio_thread_mutex_t env_lock;
+  env_s env;
+  int64_t tick;
+  fio_validity_map_s valid;
+  fio_s *io_wake_io;
+  struct {
+    int in;
+    int out;
+  } thread_suspenders, io_wake;
+  pid_t master;
+  uint16_t threads;
+  uint16_t workers;
+  uint8_t is_master;
+  uint8_t is_worker;
+  volatile uint8_t running;
+  fio_timer_queue_s timers;
+  fio_queue_s tasks[2];
+} fio_data = {
+    .env_lock = FIO_THREAD_MUTEX_INIT,
+    .env = FIO_MAP_INIT,
+    .valid = FIO_MAP_INIT,
+    .thread_suspenders = {-1, -1},
+    .io_wake = {-1, -1},
+    .is_master = 1,
+    .is_worker = 1,
+};
+
+/* *****************************************************************************
+Queue Helpers
+***************************************************************************** */
+
+/** Returns the task queue according to the flag specified. */
+FIO_IFUNC fio_queue_s *fio_queue_select(uintptr_t flag) {
+  return fio_data.tasks + (flag & 1);
+}
+
+/* *****************************************************************************
+Wakeup Pipe Helpers
+***************************************************************************** */
+
+FIO_IFUNC void fio_reset_pipes___(int *i, const char *msg) {
+  if (i[0] != -1)
+    close(i[0]);
+  if (i[1] != -1)
+    close(i[1]);
+  FIO_ASSERT(!pipe(i),
+             "%d - couldn't initiate %s thread wakeup pipes.",
+             (int)getpid(),
+             msg);
+  fio_sock_set_non_block(i[0]);
+  fio_sock_set_non_block(i[1]);
+}
+
+FIO_IFUNC void fio_reset_wakeup_pipes(void) {
+  fio_reset_pipes___(&fio_data.thread_suspenders.in, "user");
+  fio_reset_pipes___(&fio_data.io_wake.in, "IO");
+}
+
+FIO_IFUNC void fio_close_wakeup_pipes(void) {
+  if (fio_data.thread_suspenders.in == -1)
+    return;
+  close(fio_data.thread_suspenders.in);
+  close(fio_data.thread_suspenders.out);
+  close(fio_data.io_wake.in);
+  close(fio_data.io_wake.out);
+  fio_data.thread_suspenders.in = -1;
+  fio_data.thread_suspenders.out = -1;
+  fio_data.io_wake.in = -1;
+  fio_data.io_wake.out = -1;
+}
+
+/* *****************************************************************************
+IO Registry Helpers
+***************************************************************************** */
+
+FIO_IFUNC void fio_set_valid(fio_s *io) {
+  fio_validity_map_set(&fio_data.valid, fio_risky_ptr(io), io, NULL);
+  FIO_LOG_DEBUG("IO %p is now valid", (void *)io);
+}
+
+FIO_IFUNC void fio_set_invalid(fio_s *io) {
+  fio_validity_map_remove(&fio_data.valid, fio_risky_ptr(io), io, NULL);
+  FIO_LOG_DEBUG("IO %p is no longer valid", (void *)io);
+}
+
+FIO_IFUNC fio_s *fio_is_valid(fio_s *io) {
+  fio_s *r = fio_validity_map_get(&fio_data.valid, fio_risky_ptr(io), io);
+  return r;
+}
+
+FIO_IFUNC void fio_invalidate_all() {
+  fio_validity_map_destroy(&fio_data.valid);
+}
+
+/* *****************************************************************************
+Cleanup helpers
+***************************************************************************** */
+
+static void fio___after_fork___core(void) {
+  if (!fio_data.is_master) {
+    fio_monitor_destroy();
+    fio_monitor_init();
+  }
+  fio_reset_wakeup_pipes();
+}
+
+/* *****************************************************************************
+Thread suspension helpers
+***************************************************************************** */
+
+FIO_SFUNC void fio_user_thread_suspent(void) {
+  short e = fio_sock_wait_io(fio_data.thread_suspenders.in, POLLIN, 2000);
+  if (e != -1 && (e & POLLIN)) {
+    char buf[2];
+    int r = fio_sock_read(fio_data.thread_suspenders.in, buf, 1);
+    (void)r;
+  }
+}
+
+FIO_IFUNC void fio_user_thread_wake(void) {
+  char buf[2] = {0};
+  int i = fio_sock_write(fio_data.thread_suspenders.out, buf, 2);
+  (void)i;
+}
+
+FIO_IFUNC void fio_user_thread_wake_all(void) {
+  fio_reset_pipes___(&fio_data.thread_suspenders.in, "user");
+}
+
+FIO_IFUNC void fio_io_thread_wake(void) {
+  char buf[2] = {0};
+  int i = fio_sock_write(fio_data.thread_suspenders.out, buf, 2);
+  (void)i;
+}
+
+FIO_IFUNC void fio_io_thread_wake_clear(void) {
+  char buf[1024];
+  ssize_t l;
+  while ((l = fio_sock_read(fio_data.io_wake.in, buf, 1024)) > 0)
+    ;
+}
+
+/* *****************************************************************************
+IO Wakeup Pipe Protocol
+***************************************************************************** */
+
+FIO_SFUNC void fio_io_wakeup_prep(void);
+
+static void fio_io_wakeup_on_data(fio_s *io) {
+  fio_io_thread_wake_clear();
+  (void)io;
+}
+
+static void fio_io_wakeup_on_close(void *udata) {
+  fio_data.io_wake_io = NULL;
+  fio_data.io_wake.in = -1;
+  if (fio_data.running) {
+    fio_reset_wakeup_pipes();
+    fio_io_wakeup_prep();
+  }
+  FIO_LOG_DEBUG("IO wakeup fio_s freed");
+  (void)udata;
+}
+
+static fio_protocol_s FIO_IO_WAKEUP_PROTOCOL = {
+    .on_data = fio_io_wakeup_on_data,
+    .on_timeout = mock_ping_eternal,
+    .on_close = fio_io_wakeup_on_close,
+};
+
+FIO_SFUNC void fio_io_wakeup_prep(void) {
+  if (fio_data.io_wake_io || !fio_data.running)
+    return;
+  fio_data.io_wake_io =
+      fio_attach_fd(fio_data.io_wake.in, &FIO_IO_WAKEUP_PROTOCOL, NULL, NULL);
+  FIO_IO_WAKEUP_PROTOCOL.reserved.flags |= 1; /* system protocol */
+}
+
+/* *****************************************************************************
+Signal Helpers
+***************************************************************************** */
+#define FIO_SIGNAL
+#include "fio-stl.h"
+
+/* Handles signals */
+static void fio_signal_handler___stop(int sig, void *ignr_) {
+  static int64_t last_signal = 0;
+  if (last_signal + 2000 >= fio_data.tick)
+    return;
+  last_signal = fio_data.tick;
+  if (fio_data.running) {
+    fio_data.running = 0;
+    FIO_LOG_INFO("(%d) received shutdown signal.", getpid());
+    if (fio_data.is_master && fio_data.workers) {
+      kill(0, sig);
+    }
+    fio_io_thread_wake();
+    fio_user_thread_wake_all();
+  } else {
+    FIO_LOG_FATAL("(%d) received another shutdown signal while shutting down.",
+                  getpid());
+    exit(-1);
+  }
+  (void)ignr_;
+}
+
+/* Handles signals */
+static void fio_signal_handler___worker_reset(int sig, void *ignr_) {
+  if (!fio_data.workers || !fio_data.running)
+    return;
+  static int64_t last_signal = 0;
+  if (last_signal + 2000 >= fio_data.tick)
+    return;
+  last_signal = fio_data.tick;
+  if (fio_data.is_worker) {
+    fio_data.running = 0;
+    FIO_LOG_INFO("(%d) received worker restart signal.", getpid());
+  } else {
+    FIO_LOG_INFO("(%d) forwarding worker restart signal.",
+                 (int)fio_data.master);
+    kill(0, sig);
+  }
+  (void)ignr_;
+}
+
+/** Initializes the signal handlers (except child reaping). */
+FIO_IFUNC void fio_signal_handler_init(void) {
+  fio_signal_monitor(SIGINT, fio_signal_handler___stop, NULL);
+  fio_signal_monitor(SIGTERM, fio_signal_handler___stop, NULL);
+  fio_signal_monitor(SIGPIPE, NULL, NULL);
+#if FIO_OS_POSIX
+  fio_signal_monitor(SIGUSR1, fio_signal_handler___worker_reset, NULL);
+#else
+  (void)fio___worker_reset_signal_handler;
+#endif
+}
+
+/**
+ * Resets any existing signal handlers, restoring their state to before they
+ * were set by facil.io.
+ *
+ * This stops both child reaping (`fio_reap_children`) and the default facil.io
+ * signal handlers (i.e., CTRL-C).
+ *
+ * This function will be called automatically by facil.io whenever facil.io
+ * stops.
+ */
+void fio_signal_handler_reset(void) {
+  fio_signal_forget(SIGINT);
+  fio_signal_forget(SIGTERM);
+  fio_signal_forget(SIGPIPE);
+#if FIO_OS_POSIX
+  fio_signal_forget(SIGUSR1);
+  fio_signal_forget(SIGCHLD);
+#endif
+}
+
+/* *****************************************************************************
+Public API accessing the Core data structure
+***************************************************************************** */
+
+/**
+ * Returns the last time the server reviewed any pending IO events.
+ */
+struct timespec fio_last_tick(void) {
+  struct timespec r = {
+      .tv_sec = fio_data.tick / 1000,
+      .tv_nsec = ((fio_data.tick % 1000) * 1000000),
+  };
+  return r;
+}
+
+/**
+ * Returns the number of worker processes if facil.io is running.
+ *
+ * (1 is returned when in single process mode, otherwise the number of workers)
+ */
+int16_t fio_is_running(void) { return (int)fio_data.running; }
+
+/**
+ * Returns 1 if the current process is a worker process or a single process.
+ *
+ * Otherwise returns 0.
+ *
+ * NOTE: When cluster mode is off, the root process is also the worker process.
+ *       This means that single process instances don't automatically respawn
+ *       after critical errors.
+ */
+int fio_is_worker(void) { return (int)fio_data.is_worker; }
+
+/**
+ * Returns 1 if the current process is the master (root) process.
+ *
+ * Otherwise returns 0.
+ */
+int fio_is_master(void) { return (int)fio_data.is_master; }
+
+/** Returns facil.io's parent (root) process pid. */
+pid_t fio_master_pid(void) { return fio_data.master; }

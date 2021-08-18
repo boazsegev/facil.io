@@ -25,6 +25,8 @@ Note: This is a **TOY** example, no security whatsoever!!!
 
 /* response string helper */
 #define FIO_STR_NAME str
+#define FIO_REF_NAME str
+
 #include "fio-stl.h"
 
 #define HTTP_CLIENT_BUFFER 32768
@@ -97,7 +99,7 @@ IO "Objects"and helpers
 
 typedef struct {
   http1_parser_s parser;
-  fio_uuid_s *uuid; /* valid only within an IO callback */
+  fio_s *io; /* valid only within an IO callback */
   struct {
     char *name;
     char *value;
@@ -130,11 +132,11 @@ static void http_send_response(client_s *c,
                                fio_str_info_s body);
 
 /** Called there's incoming data (from STDIN / the client socket. */
-FIO_SFUNC void on_data(fio_uuid_s *uuid, void *udata);
+FIO_SFUNC void on_data(fio_s *io);
 
 fio_protocol_s HTTP_PROTOCOL_1 = {
     .on_data = on_data,
-    .on_close = (void (*)(void *))(uintptr_t)client_free,
+    .on_close = (void (*)(void *))client_free,
     .timeout = 5,
 };
 
@@ -146,17 +148,17 @@ IO callback(s)
 FIO_SFUNC void on_open(int fd, void *udata) {
   client_s *c = client_new(HTTP_CLIENT_BUFFER);
   FIO_ASSERT_ALLOC(c);
-  c->uuid = fio_attach_fd(fd, &HTTP_PROTOCOL_1, c, NULL);
+  c->io = fio_attach_fd(fd, &HTTP_PROTOCOL_1, c, NULL);
   FIO_LOG_DEBUG2("Accepted a new HTTP connection (at %d): %p", fd, (void *)c);
   (void)udata;
 }
 
 /** Called there's incoming data (from STDIN / the client socket. */
-FIO_SFUNC void on_data(fio_uuid_s *uuid, void *udata) {
-  client_s *c = udata;
-  c->uuid = uuid;
+FIO_SFUNC void on_data(fio_s *io) {
+  client_s *c = fio_udata_get(io);
+  c->io = io;
   ssize_t r =
-      fio_read(uuid, c->buf + c->buf_pos, HTTP_CLIENT_BUFFER - c->buf_pos);
+      fio_read(io, c->buf + c->buf_pos, HTTP_CLIENT_BUFFER - c->buf_pos);
   if (r > 0) {
     c->buf_pos += r;
     c->buf[c->buf_pos] = 0;
@@ -203,7 +205,7 @@ static int http1_on_request(http1_parser_s *parser) {
 #else
   char *response =
       "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World!\n";
-  fio_write2(c->uuid,
+  fio_write2(c->io,
              .buf = response,
              .len = strlen(response),
              .dealloc = FIO_DEALLOC_NOOP);
@@ -302,7 +304,7 @@ static int http1_on_body_chunk(http1_parser_s *parser,
 /** called when a protocol error occurred. */
 static int http1_on_error(http1_parser_s *parser) {
   client_s *c = FIO_PTR_FROM_FIELD(client_s, parser, parser);
-  fio_close(c->uuid);
+  fio_close(c->io);
   return -1;
 }
 
@@ -333,7 +335,8 @@ static void http_send_response(client_s *c,
   }
   if (status < 100 || status > 999)
     status = 500;
-  str_s *response = str_new();
+  // FIO_LOG_DEBUG2("[--] %s - %d %zu bytes", http_date_buf, status, total_len);
+  str_s *response = str_new2();
   str_reserve(response, total_len);
   str_write(response, "HTTP/1.1 ", 9);
   str_write_i(response, status);
@@ -354,10 +357,10 @@ static void http_send_response(client_s *c,
   fio_str_info_s final = str_write(response, "\r\n", 2);
   if (body.len && body.buf)
     final = str_write(response, body.buf, body.len);
-  fio_write2(c->uuid,
+  fio_write2(c->io,
              .buf = response,
              .len = final.len,
              .offset = (((uintptr_t) final.buf - (uintptr_t)response)),
-             .dealloc = (void (*)(void *))str_free);
-  FIO_LOG_DEBUG2("Sending response %d, %zu bytes", status, final.len);
+             .dealloc = (void (*)(void *))str_free2);
+  // FIO_LOG_DEBUG2("Sending response %d, %zu bytes", status, final.len);
 }

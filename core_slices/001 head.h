@@ -37,8 +37,8 @@ General Compile Time Settings
 #define FIO_SOCKET_BUFFER_PER_WRITE (1UL << 16)
 #endif
 
-#ifndef FIO_UUID_TIMEOUT_MAX
-#define FIO_UUID_TIMEOUT_MAX 600
+#ifndef FIO_IO_TIMEOUT_MAX
+#define FIO_IO_TIMEOUT_MAX 600
 #endif
 /* *****************************************************************************
 CSTL modules
@@ -78,6 +78,9 @@ CSTL modules
 #define FIO_FIOBJ
 #include "fio-stl.h"
 
+/* Should be automatic, but why not... */
+#undef FIO_EXTERN
+#undef FIO_EXTERN_COMPLETE
 /* *****************************************************************************
 Additional Included files
 ***************************************************************************** */
@@ -91,7 +94,7 @@ Additional Included files
 typedef struct fio_protocol_s fio_protocol_s;
 
 /** The main protocol object type. See `struct fio_protocol_s`. */
-typedef struct fio_uuid_s fio_uuid_s;
+typedef struct fio_s fio_s;
 
 /** TLS context object, if any. */
 typedef struct fio_tls_s fio_tls_s;

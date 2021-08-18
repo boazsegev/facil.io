@@ -8,10 +8,14 @@ Development Sugar (ignore)
 #define TEST                    /* Development inclusion - ignore line */
 #include "001 head.h"           /* Development inclusion - ignore line */
 #include "011 startup.h"        /* Development inclusion - ignore line */
-#include "012 uuid.h"           /* Development inclusion - ignore line */
-#include "020 state.h"          /* Development inclusion - ignore line */
-#include "021 tasks.h"          /* Development inclusion - ignore line */
-#include "999 footer.h"         /* Development inclusion - ignore line */
-
-#include "002 helpers.c" /* Development inclusion - ignore line */
+#include "012 io.h"             /* Development inclusion - ignore line */
+#include "020 tasks.h"          /* Development inclusion - ignore line */
+#include "021 state.h"          /* Development inclusion - ignore line */
+#include "099 footer.h"         /* Development inclusion - ignore line */
+#include "101 helpers.c"        /* Development inclusion - ignore line */
+#include "102 core.c"           /* Development inclusion - ignore line */
+#include "103 io.c"             /* Development inclusion - ignore line */
+#include "104 events.c"         /* Development inclusion - ignore line */
+#include "109 polling.c"        /* Development inclusion - ignore line */
+#include "110 reactor.c"        /* Development inclusion - ignore line */
 #endif

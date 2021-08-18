@@ -98,9 +98,6 @@ int fio_is_master(void);
 /** Returns facil.io's parent (root) process pid. */
 pid_t fio_master_pid(void);
 
-/** Returns the current process pid. */
-pid_t fio_getpid(void);
-
 /**
  * Initializes zombie reaping for the process. Call before `fio_start` to enable
  * global zombie reaping.

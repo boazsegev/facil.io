@@ -37,8 +37,8 @@ General Compile Time Settings
 #define FIO_SOCKET_BUFFER_PER_WRITE (1UL << 16)
 #endif
 
-#ifndef FIO_UUID_TIMEOUT_MAX
-#define FIO_UUID_TIMEOUT_MAX 600
+#ifndef FIO_IO_TIMEOUT_MAX
+#define FIO_IO_TIMEOUT_MAX 600
 #endif
 /* *****************************************************************************
 CSTL modules
@@ -78,6 +78,9 @@ CSTL modules
 #define FIO_FIOBJ
 #include "fio-stl.h"
 
+/* Should be automatic, but why not... */
+#undef FIO_EXTERN
+#undef FIO_EXTERN_COMPLETE
 /* *****************************************************************************
 Additional Included files
 ***************************************************************************** */
@@ -91,7 +94,7 @@ Additional Included files
 typedef struct fio_protocol_s fio_protocol_s;
 
 /** The main protocol object type. See `struct fio_protocol_s`. */
-typedef struct fio_uuid_s fio_uuid_s;
+typedef struct fio_s fio_s;
 
 /** TLS context object, if any. */
 typedef struct fio_tls_s fio_tls_s;
@@ -207,9 +210,6 @@ int fio_is_master(void);
 /** Returns facil.io's parent (root) process pid. */
 pid_t fio_master_pid(void);
 
-/** Returns the current process pid. */
-pid_t fio_getpid(void);
-
 /**
  * Initializes zombie reaping for the process. Call before `fio_start` to enable
  * global zombie reaping.
@@ -228,7 +228,7 @@ void fio_reap_children(void);
  */
 void fio_signal_handler_reset(void);
 /* *****************************************************************************
-UUID related operations (set protocol, read, write, etc')
+IO related operations (set protocol, read, write, etc')
 ***************************************************************************** */
 #ifndef H_FACIL_IO_H /* development sugar, ignore */
 #include "999 dev.h" /* development sugar, ignore */
@@ -253,40 +253,36 @@ struct fio_protocol_s {
    * MUST be initialized to zero
    */
   struct {
-    /* A linked list of currently attached UUIDs - do NOT alter. */
-    FIO_LIST_HEAD uuids;
+    /* A linked list of currently attached IOs - do NOT alter. */
+    FIO_LIST_HEAD ios;
     /* A linked list of other protocols used by IO core - do NOT alter. */
     FIO_LIST_NODE protocols;
-    /* internal flags - set to zero, do NOT alter. */
+    /* internal flags - do NOT alter after initial initialization to zero. */
     uintptr_t flags;
   } reserved;
-  /** Called when a data is available. Locks the UUID's task lock. */
-  void (*on_data)(fio_uuid_s *uuid, void *udata);
+  /** Called when a data is available. Locks the IO's task lock. */
+  void (*on_data)(fio_s *io);
   /** called once all pending `fio_write` calls are finished. */
-  void (*on_ready)(fio_uuid_s *uuid, void *udata);
-  /**
-   * Called when the server is shutting down, immediately before closing the
-   * connection.
-   *
-   * Locks the UUID's task lock.
-   *
-   * The `on_shutdown` callback should return 0 to close the socket or a
-   * non-zero value to delay the closure of the socket.
-   *
-   * Once the socket was marked for closure, facil.io will allow a limited
-   * amount of time for data to be sent, after which the socket will be closed
-   * even if the client did not consume all buffered data.
-   *
-   * If the socket closure is delayed, it will might be abruptly terminated when
-   * all other sockets have finished their graceful shutdown procedure.
-   */
-  uint8_t (*on_shutdown)(fio_uuid_s *uuid, void *udata);
+  void (*on_ready)(fio_s *io);
   /**
    * Called when the connection was closed, and all pending tasks are complete.
    */
   void (*on_close)(void *udata);
+  /**
+   * Called when the server is shutting down, immediately before closing the
+   * connection.
+   *
+   * Locks the IO's task lock.
+   *
+   * After the `on_shutdown` callback returns, the socket is marked for closure.
+   *
+   * Once the socket was marked for closure, facil.io will allow a limited
+   * amount of time for data to be sent, after which the socket might be closed
+   * even if the client did not consume all buffered data.
+   */
+  void (*on_shutdown)(fio_s *io);
   /** Called when a connection's timeout was reached */
-  void (*on_timeout)(fio_uuid_s *uuid, void *udata);
+  void (*on_timeout)(fio_s *io);
   /**
    * The timeout value in seconds for all connections using this protocol.
    *
@@ -296,7 +292,7 @@ struct fio_protocol_s {
 };
 
 /** Points to a function that keeps the connection alive. */
-extern void (*FIO_PING_ETERNAL)(fio_uuid_s *uuid, void *udata);
+extern void (*FIO_PING_ETERNAL)(fio_s *io);
 
 /* *****************************************************************************
 Listening to Incoming Connections
@@ -373,12 +369,12 @@ Controlling the connection
  * * `tls` is a context for Transport Layer Security and can be used to redirect
  *   read/write operations. NULL will result in unencrypted transmissions.
  *
- * Returns NULL on error.
+ * Returns -1 on error.
  */
-fio_uuid_s *fio_attach_fd(int fd,
-                          fio_protocol_s *protocol,
-                          void *udata,
-                          fio_tls_s *tls);
+fio_s *fio_attach_fd(int fd,
+                     fio_protocol_s *protocol,
+                     void *udata,
+                     fio_tls_s *tls);
 
 /**
  * Sets a new protocol object.
@@ -386,13 +382,24 @@ fio_uuid_s *fio_attach_fd(int fd,
  * If `protocol` is NULL, the function silently fails and the old protocol will
  * remain active.
  */
-void fio_protocol_set(fio_uuid_s *uuid, fio_protocol_s *protocol);
+void fio_protocol_set(fio_s *io, fio_protocol_s *protocol);
 
-/** Associates a new `udata` pointer with the UUID, returning the old `udata` */
-void *fio_udata_set(fio_uuid_s *uuid, void *udata);
+/**
+ * Returns a pointer to the current protocol object.
+ *
+ * If `protocol` wasn't properly set, the pointer might be invalid.
+ */
+fio_protocol_s *fio_protocol_get(fio_s *io);
 
-/** Returns the `udata` pointer associated with the UUID. */
-void *fio_udata_get(fio_uuid_s *uuid);
+/** Associates a new `udata` pointer with the IO, returning the old `udata` */
+FIO_IFUNC void *fio_udata_set(fio_s *io, void *udata) {
+  void *old = *(void **)io;
+  *(void **)io = udata;
+  return old;
+}
+
+/** Returns the `udata` pointer associated with the IO. */
+FIO_IFUNC void *fio_udata_get(fio_s *io) { return *(void **)io; }
 
 /**
  * Reads data to the buffer, if any data exists. Returns the number of bytes
@@ -400,7 +407,7 @@ void *fio_udata_get(fio_uuid_s *uuid);
  *
  * NOTE: zero (`0`) is a valid return value meaning no data was available.
  */
-size_t fio_read(fio_uuid_s *uuid, void *buf, size_t len);
+size_t fio_read(fio_s *io, void *buf, size_t len);
 
 typedef struct {
   /** The buffer with the data to send (if no file descriptor) */
@@ -424,48 +431,61 @@ typedef struct {
 /**
  * Writes data to the outgoing buffer and schedules the buffer to be sent.
  */
-void fio_write2(fio_uuid_s *uuid, fio_write_args_s args);
-#define fio_write2(uuid, ...) fio_write2(uuid, (fio_write_args_s){__VA_ARGS__})
+void fio_write2(fio_s *io, fio_write_args_s args);
+#define fio_write2(io, ...) fio_write2(io, (fio_write_args_s){__VA_ARGS__})
 
 /** Helper macro for a common fio_write2 (copies the buffer). */
-#define fio_write(uuid, buf_, len_)                                            \
-  fio_write2(uuid, .buf = (buf_), .len = (len_), .copy = 1)
+#define fio_write(io, buf_, len_)                                              \
+  fio_write2(io, .buf = (buf_), .len = (len_), .copy = 1)
 
-/** Marks the UUID for closure as soon as scheduled data was sent. */
-void fio_close(fio_uuid_s *uuid);
+/** Marks the IO for closure as soon as scheduled data was sent. */
+void fio_close(fio_s *io);
 
-/** Marks the UUID for immediate closure. */
-void fio_close_now(fio_uuid_s *uuid);
+/** Marks the IO for immediate closure. */
+void fio_close_now(fio_s *io);
 
 /**
- * Increases a UUID's reference count, so it won't be automatically destroyed
+ * Increases a IO's reference count, so it won't be automatically destroyed
  * when all tasks have completed.
  *
- * Use this function in order to use the UUID outside of a scheduled task.
+ * Use this function in order to use the IO outside of a scheduled task.
  */
-fio_uuid_s *fio_uuid_dup(fio_uuid_s *uuid);
-/**
- * Decreases a UUID's reference count, so it could be automatically destroyed
- * when all other tasks have completed.
- *
- * Use this function in order to use the UUID outside of a scheduled task.
- */
-void fio_uuid_free(fio_uuid_s *uuid);
+fio_s *fio_dup(fio_s *io);
 
 /**
- * Returns true if a UUID is busy with an ongoing task.
+ * Decreases a IO's reference count, so it could be automatically destroyed
+ * when all other tasks have completed.
  *
- * This is only valid if the UUID was copied to a deferred task or if called
- * within an on_timeout or on_ready callback, allowing the user to speculate
- * about the IO task lock being engaged.
+ * Use this function once finished with a IO that was `dup`-ed.
+ */
+void fio_undup(fio_s *io);
+
+/** Suspends future "on_data" events for the IO. */
+void fio_suspend(fio_s *io);
+
+/**
+ * Returns true if a IO is busy with an ongoing task.
+ *
+ * This is only valid if the IO was copied to a deferred task or if called
+ * within an on_timeout callback, allowing the user to speculate about the IO
+ * task lock being engaged.
  *
  * Note that the information provided is speculative as the situation may change
  * between the moment the data is collected and the moment the function returns.
  */
-int fio_uuid_is_busy(fio_uuid_s *uuid);
+int fio_is_busy(fio_s *io);
 
 /* Resets a socket's timeout counter. */
-void fio_touch(fio_uuid_s *uuid);
+void fio_touch(fio_s *io);
+/* *****************************************************************************
+Task Scheduling
+***************************************************************************** */
+
+/** Schedules a task for delayed execution. */
+void fio_defer(void (*task)(void *, void *), void *udata1, void *udata2);
+
+/** Schedules an IO task for delayed execution. */
+void fio_defer_io(fio_s *io, void (*task)(fio_s *io, void *udata), void *udata);
 /* *****************************************************************************
 Startup / State Callbacks (fork, start up, idle, etc')
 ***************************************************************************** */
@@ -537,37 +557,6 @@ void fio_state_callback_clear(callback_type_e);
 FIO_SFUNC void FIO_NAME_TEST(io, state)(void); /* development sugar, ignore */
 #endif                                         /* development sugar, ignore */
 /* *****************************************************************************
-Task Scheduling
-***************************************************************************** */
-#ifndef H_FACIL_IO_H /* development sugar, ignore */
-#include "999 dev.h" /* development sugar, ignore */
-#endif               /* development sugar, ignore */
-
-/** Schedules a task for delayed execution. */
-void fio_defer(void (*task)(void *, void *), void *udata1, void *udata2);
-
-/** Schedules an IO task for delayed execution. */
-void fio_defer_io(fio_uuid_s *uuid,
-                  void (*task)(fio_uuid_s *uuid, void *udata),
-                  void *udata);
-/* *****************************************************************************
-Development Sugar (ignore)
-***************************************************************************** */
-#ifndef H_FACIL_IO_H
-#define FIO_EXTERN_COMPLETE   1 /* Development inclusion - ignore line */
-#define FIOBJ_EXTERN_COMPLETE 1 /* Development inclusion - ignore line */
-#define FIO_VERSION_GUARD       /* Development inclusion - ignore line */
-#define TEST                    /* Development inclusion - ignore line */
-#include "001 head.h"           /* Development inclusion - ignore line */
-#include "011 startup.h"        /* Development inclusion - ignore line */
-#include "012 uuid.h"           /* Development inclusion - ignore line */
-#include "020 state.h"          /* Development inclusion - ignore line */
-#include "021 tasks.h"          /* Development inclusion - ignore line */
-#include "999 footer.h"         /* Development inclusion - ignore line */
-
-#include "002 helpers.c" /* Development inclusion - ignore line */
-#endif
-/* *****************************************************************************
 Testing
 ***************************************************************************** */
 #ifdef TEST
@@ -584,3 +573,24 @@ C++ extern end
 #endif
 
 #endif /* H_FACIL_IO_H */
+/* *****************************************************************************
+Development Sugar (ignore)
+***************************************************************************** */
+#ifndef H_FACIL_IO_H
+#define FIO_EXTERN_COMPLETE   1 /* Development inclusion - ignore line */
+#define FIOBJ_EXTERN_COMPLETE 1 /* Development inclusion - ignore line */
+#define FIO_VERSION_GUARD       /* Development inclusion - ignore line */
+#define TEST                    /* Development inclusion - ignore line */
+#include "001 head.h"           /* Development inclusion - ignore line */
+#include "011 startup.h"        /* Development inclusion - ignore line */
+#include "012 io.h"             /* Development inclusion - ignore line */
+#include "020 tasks.h"          /* Development inclusion - ignore line */
+#include "021 state.h"          /* Development inclusion - ignore line */
+#include "099 footer.h"         /* Development inclusion - ignore line */
+#include "101 helpers.c"        /* Development inclusion - ignore line */
+#include "102 core.c"           /* Development inclusion - ignore line */
+#include "103 io.c"             /* Development inclusion - ignore line */
+#include "104 events.c"         /* Development inclusion - ignore line */
+#include "109 polling.c"        /* Development inclusion - ignore line */
+#include "110 reactor.c"        /* Development inclusion - ignore line */
+#endif

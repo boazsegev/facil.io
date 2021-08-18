@@ -47,6 +47,8 @@ This file also contains common helper macros / primitives, such as:
 
 * OS portable Threads - defined by `FIO_THREADS`
 
+* OS portable file helpers - defined by `FIO_FILES`
+
 * Sleep / Thread Scheduling Macros - i.e., `FIO_THREAD_RESCHEDULE`
 
 * Logging and Assertion (no heap allocation) - defined by `FIO_LOG`
@@ -728,8 +730,15 @@ Miscellaneous helper macros
 // clang-format on
 
 #ifdef DEBUG
-/** If `DEBUG` is defined, acts as `FIO_ASSERT`, otherwise a NOOP. */
-#define FIO_ASSERT_DEBUG(cond, ...) FIO_ASSERT(cond, __VA_ARGS__)
+/** If `DEBUG` is defined, raises SIGINT if assertion fails, otherwise NOOP. */
+#define FIO_ASSERT_DEBUG(cond, ...)                                            \
+  if (!(cond)) {                                                               \
+    FIO_LOG_FATAL("(" FIO__FILE__                                              \
+                  ":" FIO_MACRO2STR(__LINE__) ") " __VA_ARGS__);               \
+    fprintf(stderr, "     errno(%d): %s\n", errno, strerror(errno));           \
+    kill(0, SIGINT);                                                           \
+    exit(-1);                                                                  \
+  }
 #else
 #define FIO_ASSERT_DEBUG(...)
 #endif
@@ -803,6 +812,7 @@ Locking selector
 
 #if FIO_USE_THREAD_MUTEX_TMP
 #define FIO_THREAD
+#define FIO___LOCK_NAME          "OS mutex"
 #define FIO___LOCK_TYPE          fio_thread_mutex_t
 #define FIO___LOCK_INIT          ((FIO___LOCK_TYPE)FIO_THREAD_MUTEX_INIT)
 #define FIO___LOCK_DESTROY(lock) fio_thread_mutex_destroy(&(lock))
@@ -828,6 +838,7 @@ Locking selector
   } while (0)
 
 #else
+#define FIO___LOCK_NAME          "facil.io spinlocks"
 #define FIO___LOCK_TYPE          fio_lock_i
 #define FIO___LOCK_INIT          (FIO_LOCK_INIT)
 #define FIO___LOCK_DESTROY(lock) ((lock) = FIO___LOCK_INIT)
@@ -947,16 +958,14 @@ Common macros
 #endif
 #endif /* FIO_MALLOC */
 
-/* Modules that require randomness */
-#if defined(FIO_MEMORY_NAME) || defined(FIO_MALLOC)
-#ifndef FIO_RAND
-#define FIO_RAND
-#endif
-#endif /* FIO_MALLOC */
-
 /* Modules that require FIO_SOCK */
 #if defined(FIO_POLL)
 #define FIO_SOCK
+#endif
+
+/* Modules that require FIO_URL */
+#if defined(FIO_SOCK)
+#define FIO_URL
 #endif
 
 /* Modules that require Threads data */
@@ -966,12 +975,24 @@ Common macros
 #define FIO_THREADS
 #endif
 
+/* Modules that require File Utils */
+#if defined(FIO_STR_NAME)
+#define FIO_FILES
+#endif
+
 /* Modules that require FIO_TIME */
 #if defined(FIO_QUEUE) || defined(FIO_RAND)
 #ifndef FIO_TIME
 #define FIO_TIME
 #endif
 #endif /* FIO_QUEUE */
+
+/* Modules that require randomness */
+#if defined(FIO_MEMORY_NAME) || defined(FIO_MALLOC) || defined(FIO_FILES)
+#ifndef FIO_RAND
+#define FIO_RAND
+#endif
+#endif /* FIO_MALLOC */
 
 /* Modules that require FIO_RISKY_HASH */
 #if defined(FIO_RAND) || defined(FIO_STR_NAME) || defined(FIO_STR_SMALL) ||    \
@@ -1009,7 +1030,8 @@ Common macros
 
 /* Modules that require FIO_ATOL */
 #if defined(FIO_STR_NAME) || defined(FIO_STR_SMALL) || defined(FIO_QUEUE) ||   \
-    defined(FIO_TIME) || defined(FIO_CLI) || defined(FIO_JSON)
+    defined(FIO_TIME) || defined(FIO_CLI) || defined(FIO_JSON) ||              \
+    defined(FIO_FILES)
 #ifndef FIO_ATOL
 #define FIO_ATOL
 #endif
@@ -1119,6 +1141,8 @@ FIO_IFUNC struct tm *gmtime_r(const time_t *timep, struct tm *result) {
 #define fstat         _fstat64
 #define open          _open
 #define close         _close
+#define write         _write
+#define read          _read
 #define O_APPEND      _O_APPEND
 #define O_BINARY      _O_BINARY
 #define O_CREAT       _O_CREAT
@@ -1402,9 +1426,9 @@ FIO_LOG_WARNING("number invalid: %d", i); // => WARNING: number invalid: 3
 
 #if FIO_LOG_LENGTH_LIMIT > 128
 #define FIO_LOG____LENGTH_ON_STACK FIO_LOG_LENGTH_LIMIT
-#define FIO_LOG____LENGTH_BORDER   (FIO_LOG_LENGTH_LIMIT - 32)
+#define FIO_LOG____LENGTH_BORDER   (FIO_LOG_LENGTH_LIMIT - 34)
 #else
-#define FIO_LOG____LENGTH_ON_STACK (FIO_LOG_LENGTH_LIMIT + 32)
+#define FIO_LOG____LENGTH_ON_STACK (FIO_LOG_LENGTH_LIMIT + 34)
 #define FIO_LOG____LENGTH_BORDER   FIO_LOG_LENGTH_LIMIT
 #endif
 
@@ -1414,25 +1438,25 @@ __attribute__((format(FIO___PRINTF_STYLE, 1, 0), weak)) void FIO_LOG2STDERR(
     const char *format,
     ...) {
   va_list argv;
-  char tmp___log[FIO_LOG____LENGTH_ON_STACK];
+  char tmp___log[FIO_LOG____LENGTH_ON_STACK + 32];
   va_start(argv, format);
   int len___log = vsnprintf(tmp___log, FIO_LOG_LENGTH_LIMIT - 2, format, argv);
   va_end(argv);
   if (len___log > 0) {
     if (len___log >= FIO_LOG_LENGTH_LIMIT - 2) {
       FIO_MEMCPY(tmp___log + FIO_LOG____LENGTH_BORDER,
-                 "...\n\tWARNING: TRUNCATED!",
-                 24);
-      len___log = FIO_LOG____LENGTH_BORDER + 24;
+                 "...\n\t\x1B[2mWARNING:\x1B[0m TRUNCATED!",
+                 32);
+      len___log = FIO_LOG____LENGTH_BORDER + 32;
     }
     tmp___log[len___log++] = '\n';
     tmp___log[len___log] = '0';
     fwrite(tmp___log, 1, len___log, stderr);
     return;
   }
-  fwrite("\x1B[1mERROR\x1B[0m: log output error (can't write).\n",
+  fwrite("\x1B[1mERROR:\x1B[0m log output error (can't write).\n",
          1,
-         39,
+         47,
          stderr);
 }
 #undef FIO_LOG____LENGTH_ON_STACK
@@ -1600,11 +1624,11 @@ Feel free to copy, use and enjoy according to the license provided.
 #elif __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_ATOMICS__)
 #include <stdatomic.h>
 #ifdef _MSC_VER
-#pragma message ("Fallback to C11 atomics, might be missing some features.")
+#pragma message ("Fallback to C11 atomic header, might be missing some features.")
 #undef FIO_COMPILER_GUARD
 #define FIO_COMPILER_GUARD atomic_thread_fence(memory_order_seq_cst)
 #else
-#warning Fallback to C11 atomics, might be missing some features.
+#warning Fallback to C11 atomic header, might be missing some features.
 #endif /* _MSC_VER */
 /** An atomic load operation, returns value in pointer. */
 #define fio_atomic_load(dest, p_obj)  (dest = atomic_load(p_obj))
@@ -2799,6 +2823,14 @@ FIO_IFUNC uintptr_t fio_ct_if(uintptr_t cond, uintptr_t a, uintptr_t b) {
   return fio_ct_if_bool(fio_ct_true(cond), a, b);
 }
 
+/** Returns `a` if a >= `b`. */
+FIO_IFUNC intptr_t fio_ct_max(intptr_t a_, intptr_t b_) {
+  // if b - a is negative, a > b, unless both / one are negative.
+  const uintptr_t a = a_, b = b_;
+  return (
+      intptr_t)fio_ct_if_bool(((a - b) >> ((sizeof(a) << 3) - 1)) & 1, b, a);
+}
+
 /* *****************************************************************************
 SIMD emulation helpers
 ***************************************************************************** */
@@ -3359,6 +3391,14 @@ FIO_SFUNC void FIO_NAME_TEST(stl, bitwise)(void) {
              "fio_ct_if_bool selection error (true).");
   FIO_ASSERT(fio_ct_if(0, 1, 2) == 2, "fio_ct_if selection error (false).");
   FIO_ASSERT(fio_ct_if(8, 1, 2) == 1, "fio_ct_if selection error (true).");
+  FIO_ASSERT(fio_ct_max(1, 2) == 2, "fio_ct_max error.");
+  FIO_ASSERT(fio_ct_max(2, 1) == 2, "fio_ct_max error.");
+  FIO_ASSERT(fio_ct_max(-1, 2) == 2, "fio_ct_max error.");
+  FIO_ASSERT(fio_ct_max(2, -1) == 2, "fio_ct_max error.");
+  FIO_ASSERT(fio_ct_max(1, -2) == 1, "fio_ct_max error.");
+  FIO_ASSERT(fio_ct_max(-2, 1) == 1, "fio_ct_max error.");
+  FIO_ASSERT(fio_ct_max(-1, -2) == -1, "fio_ct_max error.");
+  FIO_ASSERT(fio_ct_max(-2, -1) == -1, "fio_ct_max error.");
   {
     uint8_t bitmap[1024];
     memset(bitmap, 0, 1024);
@@ -3540,7 +3580,11 @@ Here's a few resources about hashes that might explain more:
 /** Adds bit entropy to a pointer values. Designed to be unsafe. */
 FIO_IFUNC uint64_t fio_risky_ptr(void *ptr) {
   uint64_t n = (uint64_t)(uintptr_t)ptr;
-  n ^= ((n >> 3) ^ FIO_RISKY3_PRIME0) * FIO_RISKY3_PRIME2;
+  n ^= (n + FIO_RISKY3_PRIME0) * FIO_RISKY3_PRIME1;
+  n ^= fio_rrot64(n, 7);
+  n ^= fio_rrot64(n, 13);
+  n ^= fio_rrot64(n, 17);
+  n ^= fio_rrot64(n, 31);
   return n;
 }
 
@@ -7141,7 +7185,7 @@ Memory Allocation - Setup Alignment Info
 /* *****************************************************************************
 Memory Helpers - API
 ***************************************************************************** */
-
+#ifndef H___FIO_MEM_INCLUDE_ONCE___H
 /**
  * A 16 byte aligned memset (almost) naive implementation.
  *
@@ -7160,6 +7204,7 @@ SFUNC void fio_memset_aligned(void *restrict dest, uint64_t data, size_t bytes);
  */
 SFUNC void fio_memcpy_aligned(void *dest_, const void *src_, size_t bytes);
 
+#endif /* H___FIO_MEM_INCLUDE_ONCE___H */
 /* *****************************************************************************
 Memory Allocation - API
 ***************************************************************************** */
@@ -7337,7 +7382,7 @@ NOTE: most configuration values should be a power of 2 or a logarithmic value.
 #endif
 
 #ifndef FIO_MEMORY_USE_THREAD_MUTEX
-#if FIO_USE_THREAD_MUTEX
+#if FIO_USE_THREAD_MUTEX_TMP
 /*
  * If arena count isn't linked to the CPU count, threads might busy-spin.
  * It is better to slow wait than fast busy spin when the work in the lock is
@@ -8034,7 +8079,7 @@ free_mem:
 /* *****************************************************************************
 
 
-Unsupported?
+Unknown OS... Unsupported?
 
 
 ***************************************************************************** */
@@ -8080,7 +8125,7 @@ Overridable system allocation macros
 /* *****************************************************************************
 FIO_MEMORY_DISABLE - use the system allocator
 ***************************************************************************** */
-#if defined(FIO_MEMORY_DISABLE)
+#if defined(FIO_MEMORY_DISABLE) || defined(FIO_MALLOC_TMP_USE_SYSTEM)
 
 SFUNC void *FIO_MEM_ALIGN_NEW FIO_NAME(FIO_MEMORY_NAME, malloc)(size_t size) {
 #if FIO_MEMORY_INITIALIZE_ALLOCATIONS
@@ -8161,10 +8206,11 @@ memset / memcpy selectors
 Lock type choice
 ***************************************************************************** */
 #if FIO_MEMORY_USE_THREAD_MUTEX
-#define FIO_MEMORY_LOCK_TYPE            fio_thread_mutex_t
-#define FIO_MEMORY_LOCK_TYPE_INIT(lock) fio_thread_mutex_init(&(lock))
-#define FIO_MEMORY_TRYLOCK(lock)        fio_thread_mutex_trylock(&(lock))
-#define FIO_MEMORY_LOCK(lock)           fio_thread_mutex_lock(&(lock))
+#define FIO_MEMORY_LOCK_TYPE fio_thread_mutex_t
+#define FIO_MEMORY_LOCK_TYPE_INIT(lock)                                        \
+  ((lock) = (fio_thread_mutex_t)FIO_THREAD_MUTEX_INIT)
+#define FIO_MEMORY_TRYLOCK(lock) fio_thread_mutex_trylock(&(lock))
+#define FIO_MEMORY_LOCK(lock)    fio_thread_mutex_lock(&(lock))
 #define FIO_MEMORY_UNLOCK(lock)                                                \
   do {                                                                         \
     int tmp__ = fio_thread_mutex_unlock(&(lock));                              \
@@ -8399,23 +8445,29 @@ FIO_SFUNC FIO_NAME(FIO_MEMORY_NAME, __mem_arena_s) *
   static size_t warning_printed = 0;
 #endif
   /** thread arena value */
-  size_t FIO_NAME(FIO_MEMORY_NAME, __mem_arena_var);
+  size_t thread_default_arena;
   {
     /* select the default arena selection using a thread ID. */
     union {
       void *p;
       fio_thread_t t;
     } u = {.t = fio_thread_current()};
-    FIO_NAME(FIO_MEMORY_NAME, __mem_arena_var) = (size_t)fio_risky_ptr(u.p);
+    thread_default_arena = (size_t)fio_risky_ptr(u.p) %
+                           FIO_NAME(FIO_MEMORY_NAME, __mem_state)->arena_count;
+    // FIO_LOG_DEBUG("thread %p (%p) associated with arena %zu / %zu",
+    //               u.p,
+    //               (void *)fio_risky_ptr(u.p),
+    //               thread_default_arena,
+    //               (size_t)FIO_NAME(FIO_MEMORY_NAME,
+    //               __mem_state)->arena_count);
   }
   for (;;) {
     /* rotate all arenas to find one that's available */
     for (size_t i = 0; i < FIO_NAME(FIO_MEMORY_NAME, __mem_state)->arena_count;
          ++i) {
       /* first attempt is the last used arena, then cycle with offset */
-      size_t index = i + FIO_NAME(FIO_MEMORY_NAME, __mem_arena_var);
-      if (index >= FIO_NAME(FIO_MEMORY_NAME, __mem_state)->arena_count)
-        index = 0;
+      size_t index = i + thread_default_arena;
+      index %= FIO_NAME(FIO_MEMORY_NAME, __mem_state)->arena_count;
 
       if (FIO_MEMORY_TRYLOCK(
               FIO_NAME(FIO_MEMORY_NAME, __mem_state)->arena[index].lock))
@@ -8433,12 +8485,11 @@ FIO_SFUNC FIO_NAME(FIO_MEMORY_NAME, __mem_arena_s) *
 #if FIO_MEMORY_USE_THREAD_MUTEX && FIO_OS_POSIX
     /* slow wait for last arena used by the thread */
     FIO_MEMORY_LOCK(FIO_NAME(FIO_MEMORY_NAME, __mem_state)
-                        ->arena[FIO_NAME(FIO_MEMORY_NAME, __mem_arena_var)]
+                        ->arena[thread_default_arena]
                         .lock);
-    return FIO_NAME(FIO_MEMORY_NAME, __mem_state)->arena +
-           FIO_NAME(FIO_MEMORY_NAME, __mem_arena_var);
+    return FIO_NAME(FIO_MEMORY_NAME, __mem_state)->arena + thread_default_arena;
 #else
-    FIO_THREAD_RESCHEDULE();
+    // FIO_THREAD_RESCHEDULE();
 #endif /* FIO_MEMORY_USE_THREAD_MUTEX */
   }
 #endif /* FIO_MEMORY_ARENA_COUNT != 1 */
@@ -9763,7 +9814,8 @@ FIO_SFUNC void FIO_NAME_TEST(stl, mem_helper_speeds)(void) {
     uint64_t buf1[64];
     uint8_t *buf = (uint8_t *)buf1;
     fio_memset_aligned(buf1, ~(uint64_t)0, sizeof(*buf1) * 64);
-    char *data = "This should be an uneven amount of characters, say 53";
+    char *data =
+        (char *)"This should be an uneven amount of characters, say 53";
     fio_memcpy_aligned(buf, data, strlen(data));
     FIO_ASSERT(!memcmp(buf, data, strlen(data)) && buf[strlen(data)] == 0xFF,
                "fio_memcpy_aligned should not overflow or underflow on uneven "
@@ -9862,25 +9914,25 @@ FIO_IFUNC void *FIO_NAME_TEST(FIO_NAME(FIO_MEMORY_NAME, fio),
                                   "mark missing at ary[3]");
       FIO_NAME(FIO_MEMORY_NAME, free)(ary[i + 3]);
 
-      ary[i] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+      ary[i] = (char *)FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
       fio_memset_aligned(ary[i], mark, cycles);
 
-      ary[i + 1] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+      ary[i + 1] = (char *)FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
       FIO_NAME(FIO_MEMORY_NAME, free)(ary[i + 1]);
-      ary[i + 1] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+      ary[i + 1] = (char *)FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
       fio_memset_aligned(ary[i + 1], mark, cycles);
 
-      ary[i + 2] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+      ary[i + 2] = (char *)FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
       fio_memset_aligned(ary[i + 2], mark, cycles);
-      ary[i + 2] =
-          FIO_NAME(FIO_MEMORY_NAME, realloc2)(ary[i + 2], cycles * 2, cycles);
+      ary[i + 2] = (char *)FIO_NAME(FIO_MEMORY_NAME,
+                                    realloc2)(ary[i + 2], cycles * 2, cycles);
 
-      ary[i + 3] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+      ary[i + 3] = (char *)FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
       FIO_NAME(FIO_MEMORY_NAME, free)(ary[i + 3]);
-      ary[i + 3] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+      ary[i + 3] = (char *)FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
       fio_memset_aligned(ary[i + 3], mark, cycles);
-      ary[i + 3] =
-          FIO_NAME(FIO_MEMORY_NAME, realloc2)(ary[i + 3], cycles * 2, cycles);
+      ary[i + 3] = (char *)FIO_NAME(FIO_MEMORY_NAME,
+                                    realloc2)(ary[i + 3], cycles * 2, cycles);
 
       for (int b = 0; b < 4; ++b) {
         for (size_t pos = 0; pos < (cycles / sizeof(uint64_t)); ++pos) {
@@ -9895,9 +9947,9 @@ FIO_IFUNC void *FIO_NAME_TEST(FIO_NAME(FIO_MEMORY_NAME, fio),
         FIO_NAME(FIO_MEMORY_NAME, free)(ary[i + b]);
       }
       for (int b = 1; b < 4; ++b) {
-        ary[i + b] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+        ary[i + b] = (char *)FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
         if (i) {
-          ary[b] = FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
+          ary[b] = (char *)FIO_NAME(FIO_MEMORY_NAME, malloc)(cycles);
           fio_memset_aligned(ary[b], mark, cycles);
         }
         fio_memset_aligned(ary[i + b], mark, cycles);
@@ -10939,7 +10991,7 @@ struct fio___timer_event_s {
 /*
  * Returns the millisecond at which the next event should occur.
  *
- * If no timer is due (list is empty), returns `(uint64_t)-1`.
+ * If no timer is due (list is empty), returns `-1`.
  *
  * NOTE: unless manually specified, millisecond timers are relative to
  * `fio_time_milli()`.
@@ -11117,7 +11169,7 @@ SFUNC fio_queue_task_s fio_queue_pop(fio_queue_s *q) {
     t = fio___task_ring_pop(q->r);
   }
   if (t.fn && !(--q->count) && q->r != &q->mem) {
-    if (to_free && to_free != &q->mem) { // edge case? never happens?
+    if (to_free && to_free != &q->mem) { // edge case
       FIO_MEM_FREE_(to_free, sizeof(*to_free));
     }
     to_free = q->r;
@@ -11306,6 +11358,19 @@ FIO_SFUNC void fio___queue_test_sample_task(void *i_count, void *unused2) {
   fio_atomic_add((uintptr_t *)i_count, 1);
 }
 
+FIO_SFUNC void fio___queue_test_static_task(void *i_count1, void *i_count2) {
+  static intptr_t counter = 0;
+  if (!i_count1 && !i_count2) {
+    counter = 0;
+    return;
+  }
+  FIO_ASSERT((intptr_t)i_count1 == (intptr_t)counter + 1,
+             "udata1 value error in task");
+  FIO_ASSERT((intptr_t)i_count2 == (intptr_t)counter + 2,
+             "udata2 value error in task");
+  ++counter;
+}
+
 FIO_SFUNC void fio___queue_test_sched_sample_task(void *t_, void *i_count) {
   fio___queue_test_s *t = (fio___queue_test_s *)t_;
   for (size_t i = 0; i < t->count; i++) {
@@ -11333,6 +11398,27 @@ FIO_SFUNC void FIO_NAME_TEST(stl, queue)(void) {
   fprintf(stderr,
           "\t- event slots per queue allocation: %zu\n",
           (size_t)FIO_QUEUE_TASKS_PER_ALLOC);
+
+  /* test task user data integrity. */
+  fio___queue_test_static_task(NULL, NULL);
+  for (intptr_t i = 0; i < (FIO_QUEUE_TASKS_PER_ALLOC << 2); ++i) {
+    fio_queue_push(q,
+                   .fn = fio___queue_test_static_task,
+                   .udata1 = (void *)(i + 1),
+                   .udata2 = (void *)(i + 2));
+  }
+  fio_queue_perform_all(q);
+  for (intptr_t i = (FIO_QUEUE_TASKS_PER_ALLOC << 2);
+       i < (FIO_QUEUE_TASKS_PER_ALLOC << 3);
+       ++i) {
+    fio_queue_push(q,
+                   .fn = fio___queue_test_static_task,
+                   .udata1 = (void *)(i + 1),
+                   .udata2 = (void *)(i + 2));
+  }
+  fio_queue_perform_all(q);
+  FIO_ASSERT(!fio_queue_count(q) && fio_queue_perform(q) == -1,
+             "fio_queue_perform_all didn't perform all");
 
   const size_t max_threads = 12; // assumption / pure conjuncture...
   uintptr_t i_count;
@@ -12353,6 +12439,8 @@ CLI Data Access API
 
 /** Returns the argument's value as a NUL terminated C String. */
 SFUNC char const *fio_cli_get(char const *name) {
+  if (!name)
+    return NULL;
   fio___cli_cstr_s n = {.buf = name, .len = strlen(name)};
   if (!fio___cli_hash_count(&fio___cli_values)) {
     return NULL;
@@ -12470,6 +12558,7 @@ License: ISC / MIT (choose your license)
 Feel free to copy, use and enjoy according to the license provided.
 ***************************************************************************** */
 #ifndef H___FIO_CSTL_INCLUDE_ONCE_H /* Development inclusion - ignore line */
+#define FIO_SOCK                    /* Development inclusion - ignore line */
 #include "000 header.h"             /* Development inclusion - ignore line */
 #endif                              /* Development inclusion - ignore line */
 /* *****************************************************************************
@@ -12644,8 +12733,10 @@ FIO_IFUNC int fio_sock_accept(int s, struct sockaddr *addr, int *addrlen) {
 #include <fcntl.h>
 #include <netdb.h>
 #include <poll.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -12696,6 +12787,9 @@ FIO_IFUNC int fio_sock_open(const char *restrict address,
                             const char *restrict port,
                             uint16_t flags);
 
+/** Creates a new socket, according to the provided flags. */
+SFUNC int fio_sock_open2(const char *url, uint16_t flags);
+
 /**
  * Attempts to resolve an address to a valid IP6 / IP4 address pointer.
  *
@@ -12724,6 +12818,9 @@ SFUNC int fio_sock_open_unix(const char *address, int is_client, int nonblock);
 
 /** Sets a file descriptor / socket to non blocking state. */
 SFUNC int fio_sock_set_non_block(int fd);
+
+/** Attempts to maximize the allowed open file limits. returns known limit */
+SFUNC size_t fio_sock_maximize_limits(void);
 
 /**
  * Returns 0 on timeout, -1 on error or the events that are valid.
@@ -12927,7 +13024,10 @@ FIO_IFUNC struct addrinfo *fio_sock_address_new(
   addr_hints.ai_flags = AI_PASSIVE; // use my IP
 
   if ((e = getaddrinfo(address, (port ? port : "0"), &addr_hints, &a)) != 0) {
-    FIO_LOG_ERROR("(fio_sock_address_new) error: %s", gai_strerror(e));
+    FIO_LOG_ERROR("(fio_sock_address_new(\"%s\", \"%s\")) error: %s",
+                  (address ? address : "NULL"),
+                  (port ? port : "0"),
+                  gai_strerror(e));
     return NULL;
   }
   return a;
@@ -12939,6 +13039,77 @@ FIO_IFUNC void fio_sock_address_free(struct addrinfo *a) { freeaddrinfo(a); }
 FIO_SOCK - Implementation
 ***************************************************************************** */
 #if defined(FIO_EXTERN_COMPLETE)
+
+/** Creates a new socket, according to the provided flags. */
+SFUNC int fio_sock_open2(const char *url, uint16_t flags) {
+  char buf[2048];
+  char port[64];
+  char *addr = buf;
+  char *pr = port;
+
+  /* parse URL */
+  fio_url_s u = fio_url_parse(url, strlen(url));
+#if FIO_OS_POSIX
+  if (!u.host.buf && !u.port.buf && u.path.buf) {
+    /* unix socket */
+    flags &= FIO_SOCK_SERVER | FIO_SOCK_CLIENT | FIO_SOCK_NONBLOCK;
+    flags |= FIO_SOCK_UNIX;
+    if (u.path.len >= 2048) {
+      errno = EINVAL;
+      FIO_LOG_ERROR("Couldn't open socket to %s - host name too long.", url);
+      return -1;
+    }
+    FIO_MEMCPY(buf, u.path.buf, u.path.len);
+    buf[u.path.len] = 0;
+    pr = NULL;
+  } else
+#endif
+  {
+    if (!u.port.len)
+      u.port = u.scheme;
+    if (!u.port.len) {
+      pr = NULL;
+    } else {
+      if (u.port.len >= 64) {
+        errno = EINVAL;
+        FIO_LOG_ERROR("Couldn't open socket to %s - port / scheme too long.",
+                      url);
+        return -1;
+      }
+      FIO_MEMCPY(port, u.port.buf, u.port.len);
+      port[u.port.len] = 0;
+      if (!(flags & (FIO_SOCK_TCP | FIO_SOCK_UDP))) {
+        /* TODO? prefer...? TCP? */
+        if (u.scheme.len == 3 && (u.scheme.buf[0] | 32) == 'u' &&
+            (u.scheme.buf[1] | 32) == 'd' && (u.scheme.buf[2] | 32) == 'p')
+          flags |= FIO_SOCK_UDP;
+        else if (u.scheme.len == 3 && (u.scheme.buf[0] | 32) == 't' &&
+                 (u.scheme.buf[1] | 32) == 'c' && (u.scheme.buf[2] | 32) == 'p')
+          flags |= FIO_SOCK_TCP;
+        else if ((u.scheme.len == 4 || u.scheme.len == 5) &&
+                 (u.scheme.buf[0] | 32) == 'h' &&
+                 (u.scheme.buf[1] | 32) == 't' &&
+                 (u.scheme.buf[2] | 32) == 't' &&
+                 (u.scheme.buf[3] | 32) == 'p' &&
+                 (u.scheme.len == 4 ||
+                  (u.scheme.len == 5 && (u.scheme.buf[4] | 32) == 's')))
+          flags |= FIO_SOCK_TCP;
+      }
+    }
+    if (u.host.len) {
+      if (u.host.len >= 2048) {
+        errno = EINVAL;
+        FIO_LOG_ERROR("Couldn't open socket to %s - host name too long.", url);
+        return -1;
+      }
+      FIO_MEMCPY(buf, u.host.buf, u.host.len);
+      buf[u.host.len] = 0;
+    } else {
+      addr = NULL;
+    }
+  }
+  return fio_sock_open(addr, pr, flags);
+}
 
 /** Sets a file descriptor / socket to non blocking state. */
 SFUNC int fio_sock_set_non_block(int fd) {
@@ -13112,6 +13283,48 @@ SFUNC short fio_sock_wait_io(int fd, short events, int timeout) {
   if (r == 1)
     r = events;
   return r;
+}
+
+/** Attempts to maximize the allowed open file limits. returns known limit */
+SFUNC size_t fio_sock_maximize_limits(void) {
+  ssize_t capa = 0;
+#if FIO_OS_POSIX
+
+#ifdef _SC_OPEN_MAX
+  capa = sysconf(_SC_OPEN_MAX);
+#elif defined(FOPEN_MAX)
+  capa = FOPEN_MAX;
+#endif
+  // try to maximize limits - collect max and set to max
+  struct rlimit rlim = {.rlim_max = 0};
+  if (getrlimit(RLIMIT_NOFILE, &rlim) == -1) {
+    FIO_LOG_WARNING("`getrlimit` failed (%d): %s", errno, strerror(errno));
+    return capa;
+  }
+
+  FIO_LOG_DEBUG2("existing / maximum open file limit detected: %zd / %zd",
+                 (ssize_t)rlim.rlim_cur,
+                 (ssize_t)rlim.rlim_max);
+
+  rlim_t original = rlim.rlim_cur;
+  rlim.rlim_cur = rlim.rlim_max;
+  while (setrlimit(RLIMIT_NOFILE, &rlim) == -1 && rlim.rlim_cur > original)
+    rlim.rlim_cur -= 32;
+
+  FIO_LOG_DEBUG2("new open file limit: %zd", (ssize_t)rlim.rlim_cur);
+
+  getrlimit(RLIMIT_NOFILE, &rlim);
+  capa = rlim.rlim_cur;
+#elif FIO_OS_WIN
+  capa = 1ULL << 10;
+  while (_setmaxstdio(capa) > 0)
+    capa <<= 1;
+  capa >>= 1;
+  FIO_LOG_DEBUG("new open file limit: %zd", (ssize_t)capa);
+#else
+  FIO_LOG_ERROR("No OS detected, couldn't maximize open file limit.");
+#endif
+  return capa;
 }
 
 #if FIO_OS_POSIX
@@ -13869,7 +14082,7 @@ SFUNC int fio_poll_review(fio_poll_s *p, int timeout) {
     int c = 0; /* count events handled, to stop loop if no more events. */
     do {
       if ((int)fds_ary[i].fd != -1) {
-        if ((fds_ary[i].revents & (POLLIN | POLLPRI))) {
+        if ((fds_ary[i].revents & (POLLIN /* | POLLPRI */))) {
           cpy.settings.on_data(fds_ary[i].fd, FIO___POLL_UDATA_GET(i));
           FIO_POLL_DEBUG_LOG("fio_poll_review calling `on_data` for %d.",
                              fds_ary[i].fd);
@@ -14206,7 +14419,7 @@ FIO_IFUNC int fio_stream_free(fio_stream_s *stream);
 
 #endif /* FIO_REF_CONSTRUCTOR_ONLY */
 
-/** Destroys the object, reinitializing its container. */
+/** Destroys the object, re-initializing its container. */
 SFUNC void fio_stream_destroy(fio_stream_s *stream);
 
 /* *****************************************************************************
@@ -14265,14 +14478,14 @@ SFUNC void fio_stream_advance(fio_stream_s *stream, size_t len);
 /**
  * Returns true if there's any data in the stream.
  *
- * Note: this isn't truely thread safe.
+ * Note: this isn't truly thread safe.
  */
 FIO_IFUNC uint8_t fio_stream_any(fio_stream_s *stream);
 
 /**
  * Returns the number of packets waiting in the stream.
  *
- * Note: this isn't truely thread safe.
+ * Note: this isn't truly thread safe.
  */
 FIO_IFUNC uint32_t fio_stream_packets(fio_stream_s *stream);
 
@@ -14318,18 +14531,10 @@ FIO_IFUNC int fio_stream_free(fio_stream_s *s) {
 }
 #endif /* FIO_REF_CONSTRUCTOR_ONLY */
 
-/**
- * Returns true if there's any data iin the stream.
- *
- * Note: this isn't thread safe.
- */
+/* Returns true if there's any data in the stream */
 FIO_IFUNC uint8_t fio_stream_any(fio_stream_s *s) { return s && !!s->next; }
 
-/**
- * Returns the number of packets waiting in the stream.
- *
- * Note: this isn't truely thread safe.
- */
+/* Returns the number of packets waiting in the stream */
 FIO_IFUNC uint32_t fio_stream_packets(fio_stream_s *s) { return s->packets; }
 
 /* *****************************************************************************
@@ -14741,6 +14946,13 @@ SFUNC void fio_stream_advance(fio_stream_s *s, size_t len) {
 Stream Testing
 ***************************************************************************** */
 #ifdef FIO_TEST_CSTL
+
+FIO_SFUNC size_t FIO_NAME_TEST(stl, stream___noop_dealloc_count) = 0;
+FIO_SFUNC void FIO_NAME_TEST(stl, stream___noop_dealloc)(void *ignr_) {
+  fio_atomic_add(&FIO_NAME_TEST(stl, stream___noop_dealloc_count), 1);
+  (void)ignr_;
+}
+
 FIO_SFUNC void FIO_NAME_TEST(stl, stream)(void) {
   char *const str =
       (char *)"My Hello World string should be long enough so it can be used "
@@ -14755,15 +14967,30 @@ FIO_SFUNC void FIO_NAME_TEST(stl, stream)(void) {
   char mem[4000];
   char *buf = mem;
   size_t len = 4000;
+  size_t expect_dealloc = FIO_NAME_TEST(stl, stream___noop_dealloc_count);
+
   fprintf(stderr, "* Testing fio_stream for streaming buffer storage.\n");
-  fio_stream_add(&s, fio_stream_pack_data(str, 11, 3, 1, NULL));
+  fio_stream_add(
+      &s,
+      fio_stream_pack_data(str,
+                           11,
+                           3,
+                           1,
+                           FIO_NAME_TEST(stl, stream___noop_dealloc)));
+  ++expect_dealloc;
   FIO_ASSERT(fio_stream_any(&s),
              "stream is empty after `fio_stream_add` (data, copy)");
+  FIO_ASSERT(FIO_NAME_TEST(stl, stream___noop_dealloc_count) == expect_dealloc,
+             "copying a packet should deallocate the original");
   for (int i = 0; i < 3; ++i) {
     /* test that read operrations are immutable */
     buf = mem;
     len = 4000;
+
     fio_stream_read(&s, &buf, &len);
+    FIO_ASSERT(FIO_NAME_TEST(stl, stream___noop_dealloc_count) ==
+                   expect_dealloc,
+               "reading a packet shouldn't deallocate anything");
     FIO_ASSERT(len == 11,
                "fio_stream_read didn't read all data from stream? (%zu)",
                len);
@@ -14776,6 +15003,8 @@ FIO_SFUNC void FIO_NAME_TEST(stl, stream)(void) {
         "fio_stream_read should have been performed with zero-copy");
   }
   fio_stream_advance(&s, len);
+  FIO_ASSERT(FIO_NAME_TEST(stl, stream___noop_dealloc_count) == expect_dealloc,
+             "advancing an embedded packet shouldn't deallocate anything");
   FIO_ASSERT(
       !fio_stream_any(&s),
       "after advance, at this point, the stream should have been consumed.");
@@ -14786,14 +15015,24 @@ FIO_SFUNC void FIO_NAME_TEST(stl, stream)(void) {
       !buf && !len,
       "reading from an empty stream should set buf and len to NULL and zero.");
   fio_stream_destroy(&s);
+  FIO_ASSERT(FIO_NAME_TEST(stl, stream___noop_dealloc_count) == expect_dealloc,
+             "destroying an empty stream shouldn't deallocate anything");
   FIO_ASSERT(!fio_stream_any(&s), "destroyed stream should be empty.");
 
   fio_stream_add(&s, fio_stream_pack_data(str, 11, 0, 1, NULL));
-  fio_stream_add(&s, fio_stream_pack_data(str, 49, 11, 0, NULL));
+  fio_stream_add(
+      &s,
+      fio_stream_pack_data(str,
+                           49,
+                           11,
+                           0,
+                           FIO_NAME_TEST(stl, stream___noop_dealloc)));
   fio_stream_add(&s, fio_stream_pack_data(str, 20, 60, 0, NULL));
 
   FIO_ASSERT(fio_stream_any(&s), "stream with data shouldn't be empty.");
   FIO_ASSERT(fio_stream_packets(&s) == 3, "packet counut error.");
+  FIO_ASSERT(FIO_NAME_TEST(stl, stream___noop_dealloc_count) == expect_dealloc,
+             "adding a stream shouldn't deallocate it.");
 
   buf = mem;
   len = 4000;
@@ -14806,6 +15045,8 @@ FIO_SFUNC void FIO_NAME_TEST(stl, stream)(void) {
              "fio_stream_read data error? (%.*s)",
              (int)len,
              buf);
+  FIO_ASSERT(FIO_NAME_TEST(stl, stream___noop_dealloc_count) == expect_dealloc,
+             "reading a stream shouldn't deallocate any packets.");
 
   buf = mem;
   len = 8;
@@ -14818,8 +15059,12 @@ FIO_SFUNC void FIO_NAME_TEST(stl, stream)(void) {
              "fio_stream_read partial read data error? (%.*s)",
              (int)len,
              buf);
+  FIO_ASSERT(FIO_NAME_TEST(stl, stream___noop_dealloc_count) == expect_dealloc,
+             "failing to read a stream shouldn't deallocate any packets.");
 
   fio_stream_advance(&s, 20);
+  FIO_ASSERT(FIO_NAME_TEST(stl, stream___noop_dealloc_count) == expect_dealloc,
+             "partial advancing shouldn't deallocate any packets.");
   FIO_ASSERT(fio_stream_packets(&s) == 2, "packet counut error (2).");
   buf = mem;
   len = 4000;
@@ -14831,6 +15076,8 @@ FIO_SFUNC void FIO_NAME_TEST(stl, stream)(void) {
              "fio_stream_read data error? (%.*s)",
              (int)len,
              buf);
+  FIO_ASSERT(FIO_NAME_TEST(stl, stream___noop_dealloc_count) == expect_dealloc,
+             "reading shouldn't deallocate packets the head packet.");
 
   fio_stream_add(&s, fio_stream_pack_fd(open(__FILE__, O_RDONLY), 20, 0, 0));
   FIO_ASSERT(fio_stream_packets(&s) == 3, "packet counut error (3).");
@@ -14844,6 +15091,8 @@ FIO_SFUNC void FIO_NAME_TEST(stl, stream)(void) {
              "fio_stream_read file read data error?\n%.*s",
              (int)len,
              buf);
+  FIO_ASSERT(FIO_NAME_TEST(stl, stream___noop_dealloc_count) == expect_dealloc,
+             "reading more than one packet shouldn't deallocate anything.");
   buf = mem;
   len = 4000;
   fio_stream_read(&s, &buf, &len);
@@ -14856,7 +15105,34 @@ FIO_SFUNC void FIO_NAME_TEST(stl, stream)(void) {
              buf);
 
   fio_stream_destroy(&s);
+  ++expect_dealloc;
+
   FIO_ASSERT(!fio_stream_any(&s), "destroyed stream should be empty.");
+  FIO_ASSERT(FIO_NAME_TEST(stl, stream___noop_dealloc_count) == expect_dealloc,
+             "destroying a stream should deallocate it's packets.");
+  fio_stream_add(
+      &s,
+      fio_stream_pack_data(str,
+                           49,
+                           11,
+                           0,
+                           FIO_NAME_TEST(stl, stream___noop_dealloc)));
+  buf = mem;
+  len = 4000;
+  fio_stream_read(&s, &buf, &len);
+  FIO_ASSERT(len == 49,
+             "fio_stream_read didn't read all data from stream? (%zu)",
+             len);
+  FIO_ASSERT(!memcmp(str + 11, buf, len),
+             "fio_stream_read data error? (%.*s)",
+             (int)len,
+             buf);
+  fio_stream_advance(&s, 80);
+  ++expect_dealloc;
+  FIO_ASSERT(FIO_NAME_TEST(stl, stream___noop_dealloc_count) == expect_dealloc,
+             "partial advancing shouldn't deallocate any packets.");
+  FIO_ASSERT(!fio_stream_any(&s), "stream should be empty at this point.");
+  fio_stream_destroy(&s);
 }
 
 #endif /* FIO_TEST_CSTL */
@@ -15455,6 +15731,290 @@ Module Cleanup
 #undef FIO_GLOB_MATCH_MONITOR_MAX
 #endif /* FIO_GLOB_MATCH */
 #undef FIO_GLOB_MATCH
+/* *****************************************************************************
+Copyright: Boaz Segev, 2019-2021
+License: ISC / MIT (choose your license)
+
+Feel free to copy, use and enjoy according to the license provided.
+***************************************************************************** */
+#ifndef H___FIO_CSTL_INCLUDE_ONCE_H /* Development inclusion - ignore line */
+#define FIO_FILES                   /* Development inclusion - ignore line */
+#include "000 header.h"             /* Development inclusion - ignore line */
+#include "005 riskyhash.h"          /* Development inclusion - ignore line */
+#include "006 atol.h"               /* Development inclusion - ignore line */
+#include "100 mem.h"                /* Development inclusion - ignore line */
+#endif                              /* Development inclusion - ignore line */
+/* *****************************************************************************
+
+
+
+
+                   Common File Operations (POSIX style)
+
+
+
+
+***************************************************************************** */
+#if defined(FIO_FILES) && !defined(H___FIO_FILES___H)
+#define H___FIO_FILES___H
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
+/* *****************************************************************************
+File Helper API
+***************************************************************************** */
+
+/**
+ * Opens `filename`, returning the same as values as `open` on POSIX systems.
+ *
+ * If `path` starts with a `"~/"` than it will be relative to the user's home
+ * folder (on Windows, testing for `"~\"`).
+ */
+SFUNC int fio_filename_open(const char *filename, int flags);
+
+/** Returns 1 if `path` does folds backwards (has "/../" or "//"). */
+SFUNC int fio_filename_is_unsafe(const char *path);
+
+/** Creates a temporary file, returning its file descriptor. */
+SFUNC int fio_filename_tmp(void);
+
+/**
+ * Overwrites `filename` with the data in the buffer.
+ *
+ * If `path` starts with a `"~/"` than it will be relative to the user's home
+ * folder (on Windows, testing for `"~\"`).
+ *
+ * Returns -1 on error or 0 on success. On error, the state of the file is
+ * undefined (may be doesn't exit / nothing written / partially written).
+ */
+FIO_IFUNC int fio_filename_overwrite(const char *filename,
+                                     const void *buf,
+                                     size_t len);
+
+/**
+ * Writes data to a file, returning the number of bytes written.
+ *
+ * Returns -1 on error.
+ *
+ * Since some systems have a limit on the number of bytes that can be written at
+ * a single time, this function fragments the system calls into smaller `write`
+ * blocks, allowing large data to be written.
+ *
+ * If the file descriptor is non-blocking, test errno for EAGAIN / EWOULDBLOCK.
+ */
+FIO_IFUNC ssize_t fio_fd_write(int fd, const void *buf, size_t len);
+
+/* *****************************************************************************
+File Helper Inline Implementation
+***************************************************************************** */
+
+/**
+ * Writes data to a file, returning the number of bytes written.
+ *
+ * Returns -1 on error.
+ *
+ * Since some systems have a limit on the number of bytes that can be written at
+ * a single time, this function fragments the system calls into smaller `write`
+ * blocks, allowing large data to be written.
+ *
+ * If the file descriptor is non-blocking, test errno for EAGAIN / EWOULDBLOCK.
+ */
+FIO_IFUNC ssize_t fio_fd_write(int fd, const void *buf_, size_t len) {
+  ssize_t total = 0;
+  const char *buf = (const char *)buf_;
+  const size_t write_limit = (1ULL << 17);
+  while (len > write_limit) {
+    ssize_t w = write(fd, buf, write_limit);
+    if (w > 0) {
+      len -= w;
+      buf += w;
+      total += w;
+      continue;
+    }
+    /* if (w == -1 && errno == EINTR) continue; */
+    if (total == 0)
+      return -1;
+    return total;
+  }
+  while (len) {
+    ssize_t w = write(fd, buf, len);
+    if (w > 0) {
+      len -= w;
+      buf += w;
+      continue;
+    }
+    if (total == 0)
+      return -1;
+    return total;
+  }
+  return total;
+}
+
+/**
+ * Overwrites `filename` with the data in the buffer.
+ *
+ * If `path` starts with a `"~/"` than it will be relative to the user's home
+ * folder (on Windows, testing for `"~\"`).
+ */
+FIO_IFUNC int fio_filename_overwrite(const char *filename,
+                                     const void *buf,
+                                     size_t len) {
+  int fd = fio_filename_open(filename, O_RDWR | O_CREAT | O_TRUNC);
+  if (fd == -1)
+    return -1;
+  ssize_t w = fio_fd_write(fd, buf, len);
+  close(fd);
+  if ((size_t)w != len)
+    return -1;
+  return 0;
+}
+
+/* *****************************************************************************
+File Helper Implementation
+***************************************************************************** */
+#ifdef FIO_EXTERN_COMPLETE
+
+/**
+ * Opens `filename`, returning the same as values as `open` on POSIX systems.
+ *
+ * If `path` starts with a `"~/"` than it will be relative to the user's home
+ * folder (on Windows, testing for `"~\"`).
+ */
+SFUNC int fio_filename_open(const char *filename, int flags) {
+  int fd = -1;
+  /* POSIX implementations. */
+  if (filename == NULL)
+    return fd;
+  char *path = NULL;
+  size_t path_len = 0;
+#if FIO_OS_WIN
+  const char sep = '\\';
+#else
+  const char sep = '/';
+#endif
+
+  if (filename[0] == '~' && filename[1] == sep) {
+    char *home = getenv("HOME");
+    if (home) {
+      size_t filename_len = strlen(filename);
+      size_t home_len = strlen(home);
+      if ((home_len + filename_len) >= (1 << 16)) {
+        /* too long */
+        FIO_LOG_ERROR("couldn't open file, as filename is too long %.*s...",
+                      (int)16,
+                      (filename_len >= 16 ? filename : home));
+        return fd;
+      }
+      if (home[home_len - 1] == sep)
+        --home_len;
+      path_len = home_len + filename_len - 1;
+      path =
+          (char *)FIO_MEM_REALLOC_(NULL, 0, sizeof(*path) * (path_len + 1), 0);
+      if (!path)
+        return fd;
+      FIO_MEMCPY(path, home, home_len);
+      FIO_MEMCPY(path + home_len, filename + 1, filename_len);
+      path[path_len] = 0;
+      filename = path;
+    }
+  }
+  fd = open(filename, flags);
+  if (path) {
+    FIO_MEM_FREE_(path, path_len + 1);
+  }
+  return fd;
+}
+
+/** Returns 1 if `path` does folds backwards (has "/../" or "//"). */
+SFUNC int fio_filename_is_unsafe(const char *path) {
+#if FIO_OS_WIN
+  const char sep = '\\';
+#else
+  const char sep = '/';
+#endif
+  for (;;) {
+    if (!path)
+      return 0;
+    if (path[0] == sep && path[1] == sep)
+      return 1;
+    if (path[0] == sep && path[1] == '.' && path[2] == '.' && path[3] == sep)
+      return 1;
+    ++path;
+    path = strchr(path, sep);
+  }
+}
+
+/** Creates a temporary file, returning its file descriptor. */
+SFUNC int fio_filename_tmp(void) {
+  // create a temporary file to contain the data.
+  int fd;
+  char name_template[512];
+  size_t len = 0;
+#if FIO_OS_WIN
+  const char sep = '\\';
+  const char *tmp = NULL;
+#else
+  const char sep = '/';
+  const char *tmp = NULL;
+#endif
+
+  if (!tmp)
+    tmp = getenv("TMPDIR");
+  if (!tmp)
+    tmp = getenv("TMP");
+  if (!tmp)
+    tmp = getenv("TEMP");
+#if defined(P_tmpdir)
+  if (!tmp && sizeof(P_tmpdir) <= 464 && sizeof(P_tmpdir) > 0) {
+    tmp = P_tmpdir;
+  }
+#endif
+  if (tmp && (len = strlen(tmp))) {
+    FIO_MEMCPY(name_template, tmp, len);
+    if (tmp[len - 1] != sep) {
+      name_template[len++] = sep;
+    }
+  } else {
+    /* use current folder */
+    name_template[len++] = '.';
+    name_template[len++] = sep;
+  }
+
+  FIO_MEMCPY(name_template + len, "facil_io_tmpfile_", 17);
+  len += 17;
+  do {
+#ifdef O_TMPFILE
+    uint64_t r = fio_rand64();
+    size_t delta = fio_ltoa(name_template + len, r, 32);
+    name_template[delta + len] = 0;
+    fd = open(name_template, O_CREAT | O_TMPFILE | O_EXCL | O_RDWR);
+#else
+    FIO_MEMCPY(name_template + len, "XXXXXXXXXXXX", 12);
+    name_template[12 + len] = 0;
+    fd = mkstemp(name_template);
+#endif
+  } while (fd == -1 && errno == EEXIST);
+  return fd;
+  (void)tmp;
+}
+
+/* *****************************************************************************
+Module Testing
+***************************************************************************** */
+#ifdef FIO_TEST_CSTL
+FIO_SFUNC void FIO_NAME_TEST(stl, filename)(void) { /* TODO: test module */
+}
+
+#endif /* FIO_TEST_CSTL */
+/* *****************************************************************************
+Module Cleanup
+***************************************************************************** */
+
+#endif /* FIO_EXTERN_COMPLETE */
+#endif /* FIO_FILES */
+#undef FIO_FILES
 /* *****************************************************************************
 Copyright: Boaz Segev, 2019-2021
 License: ISC / MIT (choose your license)
@@ -22155,14 +22715,6 @@ s.length.times {|i| a[s[i]] = (i << 1) | 1 }; a.map!{ |i| i.to_i }; a
 String - read file
 ***************************************************************************** */
 
-#if FIO_HAVE_UNIX_TOOLS && !defined(H___FIO_UNIX_TOOLS4STR_INCLUDED_H)
-#define H___FIO_UNIX_TOOLS4STR_INCLUDED_H
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-#endif /* FIO_HAVE_UNIX_TOOLS && !H___FIO_UNIX_TOOLS4STR_INCLUDED_H */
-
 /**
  * Reads data from a file descriptor `fd` at offset `start_at` and pastes it's
  * contents (or a slice of it) at the end of the String. If `limit == 0`, than
@@ -22238,45 +22790,11 @@ SFUNC fio_str_info_s FIO_NAME(FIO_STR_NAME, readfile)(FIO_STR_PTR s_,
                                                       intptr_t limit) {
   fio_str_info_s state = {.buf = NULL};
   /* POSIX implementations. */
-  if (filename == NULL || !s_)
+  int fd = fio_filename_open(filename, O_RDONLY);
+  if (fd == -1)
     return state;
-  int file = -1;
-  char *path = NULL;
-  size_t path_len = 0;
-
-  if (filename[0] == '~' && (filename[1] == '/' || filename[1] == '\\')) {
-    char *home = getenv("HOME");
-    if (home) {
-      size_t filename_len = strlen(filename);
-      size_t home_len = strlen(home);
-      if ((home_len + filename_len) >= (1 << 16)) {
-        /* too long */
-        return state;
-      }
-      if (home[home_len - 1] == '/' || home[home_len - 1] == '\\')
-        --home_len;
-      path_len = home_len + filename_len - 1;
-      path =
-          (char *)FIO_MEM_REALLOC_(NULL, 0, sizeof(*path) * (path_len + 1), 0);
-      if (!path)
-        return state;
-      FIO_MEMCPY(path, home, home_len);
-      FIO_MEMCPY(path + home_len, filename + 1, filename_len);
-      path[path_len] = 0;
-      filename = path;
-    }
-  }
-  file = open(filename, O_RDONLY);
-  if (-1 == file) {
-    goto finish;
-  }
-  state = FIO_NAME(FIO_STR_NAME, readfd)(s_, file, start_at, limit);
-  close(file);
-
-finish:
-  if (path) {
-    FIO_MEM_FREE_(path, path_len + 1);
-  }
+  state = FIO_NAME(FIO_STR_NAME, readfd)(s_, fd, start_at, limit);
+  close(fd);
   return state;
 }
 
@@ -22909,7 +23427,7 @@ IFUNC FIO_REF_METADATA *FIO_NAME(FIO_REF_NAME,
 #endif
 
 /* *****************************************************************************
-Inlined Implementation
+Inline Implementation
 ***************************************************************************** */
 /** Increases the reference count. */
 FIO_IFUNC FIO_REF_TYPE_PTR
@@ -22917,6 +23435,8 @@ FIO_NAME(FIO_REF_NAME, FIO_REF_DUPNAME)(FIO_REF_TYPE_PTR wrapped_) {
   FIO_REF_TYPE *wrapped = (FIO_REF_TYPE *)(FIO_PTR_UNTAG(wrapped_));
   FIO_NAME(FIO_REF_NAME, _wrapper_s) *o =
       ((FIO_NAME(FIO_REF_NAME, _wrapper_s) *)wrapped) - 1;
+  if (!o)
+    return wrapped_;
   fio_atomic_add(&o->ref, 1);
   return wrapped_;
 }

@@ -5,10 +5,10 @@ Listening to Incoming Connections
 #include "999 dev.h" /* development sugar, ignore */
 #endif               /* development sugar, ignore */
 
-FIO_SFUNC void fio_listen_on_data(fio_uuid_s *uuid, void *udata) {
-  struct fio_listen_args *l = udata;
+FIO_SFUNC void fio_listen_on_data(fio_s *io) {
+  struct fio_listen_args *l = fio_udata_get(io);
   int fd;
-  while ((fd = accept(uuid->fd, NULL, NULL)) != -1) {
+  while ((fd = accept(io->fd, NULL, NULL)) != -1) {
     FIO_LOG_DEBUG("accepting a new connection (fd %d) at %s", fd, l->url);
     l->on_open(fd, l->udata);
   }
@@ -20,12 +20,11 @@ FIO_SFUNC void fio_listen_on_close(void *udata) {
                l->url);
 }
 
-FIO_SFUNC void fio_listen_on_ready(fio_uuid_s *uuid, void *udata) {
-  struct fio_listen_args *l = udata;
+FIO_SFUNC void fio_listen_on_ready(fio_s *io) {
+  struct fio_listen_args *l = fio_udata_get(io);
   FIO_LOG_INFO("(%d) started listening on %s",
                (fio_data.is_master ? (int)fio_data.master : (int)getpid()),
                l->url);
-  (void)uuid;
 }
 
 static fio_protocol_s FIO_PROTOCOL_LISTEN = {
@@ -37,8 +36,6 @@ static fio_protocol_s FIO_PROTOCOL_LISTEN = {
 
 FIO_SFUNC void fio_listen___attach(void *udata) {
   struct fio_listen_args *l = udata;
-  FIO_LOG_DEBUG("Calling dup(%d) to attach as a listening socket.",
-                l->reserved);
 #if FIO_OS_WIN
   int fd = -1;
   {
@@ -58,6 +55,9 @@ FIO_SFUNC void fio_listen___attach(void *udata) {
   int fd = dup(l->reserved);
 #endif
   FIO_ASSERT(fd != -1, "listening socket failed to `dup`");
+  FIO_LOG_DEBUG("Called dup(%d) to attach %d as a listening socket.",
+                l->reserved,
+                fd);
   fio_attach_fd(fd, &FIO_PROTOCOL_LISTEN, l, NULL);
 }
 
