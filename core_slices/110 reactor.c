@@ -11,8 +11,8 @@ The Reactor event scheduler
 FIO_SFUNC void fio___schedule_events(void) {
   static int old = 0;
   /* make sure the user thread is active */
-  if (fio_queue_count(FIO_QUEUE_USER))
-    fio_user_thread_wake();
+  // if (fio_queue_count(FIO_QUEUE_USER))
+  //   fio_user_thread_wake();
   /* schedule IO events */
   fio_io_wakeup_prep();
   /* make sure all system events were processed */
@@ -24,7 +24,8 @@ FIO_SFUNC void fio___schedule_events(void) {
   /* review IO timeouts */
   fio___review_timeouts();
   /* schedule timer events */
-  fio_timer_push2queue(FIO_QUEUE_USER, &fio_data.timers, fio_data.tick);
+  if (fio_timer_push2queue(FIO_QUEUE_USER, &fio_data.timers, fio_data.tick))
+    fio_user_thread_wake();
   /* schedule on_idle events */
   if (!c) {
     if (old) {
@@ -44,8 +45,8 @@ FIO_SFUNC void fio___schedule_events(void) {
   }
   old = c;
   /* make sure the user thread is active after all events were scheduled */
-  if (fio_queue_count(FIO_QUEUE_USER))
-    fio_user_thread_wake();
+  // if (fio_queue_count(FIO_QUEUE_USER))
+  //   fio_user_thread_wake();
 }
 
 /* *****************************************************************************
@@ -54,6 +55,7 @@ Shutdown cycle
 
 /* cycles until all existing IO objects were closed. */
 static void fio___shutdown_cycle(void) {
+  const int64_t limit = fio_data.tick + (FIO_SHOTDOWN_TIMEOUT * 1000);
   for (;;) {
     if (!fio_queue_perform(FIO_QUEUE_SYSTEM))
       continue;
@@ -63,9 +65,20 @@ static void fio___shutdown_cycle(void) {
     if (fio___review_timeouts())
       continue;
     fio_data.tick = fio_time2milli(fio_time_real());
+    if (fio_data.tick >= limit)
+      break;
     if (fio_monitor_review(FIO_POLL_SHUTDOWN_TICK))
       continue;
     if (fio___is_waiting_on_io())
+      continue;
+    break;
+  }
+  fio___close_all_io();
+  for (;;) {
+    if (!fio_queue_perform(FIO_QUEUE_SYSTEM))
+      continue;
+    fio_signal_review();
+    if (!fio_queue_perform(FIO_QUEUE_USER))
       continue;
     break;
   }
@@ -94,7 +107,7 @@ static void *fio___user_thread_cycle(void *ignr) {
   for (;;) {
     fio_queue_perform_all(FIO_QUEUE_USER);
     if (fio_data.running) {
-      fio_user_thread_suspent();
+      fio_user_thread_suspend();
       continue;
     }
     return NULL;
@@ -119,7 +132,7 @@ static void fio___worker(void) {
   fio_state_callback_force(FIO_CALL_ON_START);
   fio_thread_t *threads = NULL;
   if (fio_data.threads) {
-    threads = calloc(sizeof(threads), fio_data.threads);
+    threads = calloc(sizeof(*threads), fio_data.threads);
     FIO_ASSERT_ALLOC(threads);
     for (size_t i = 0; i < fio_data.threads; ++i) {
       FIO_ASSERT(!fio_thread_create(threads + i, fio___user_thread_cycle, NULL),
@@ -134,6 +147,7 @@ static void fio___worker(void) {
     for (size_t i = 0; i < fio_data.threads; ++i) {
       fio_monitor_review(FIO_POLL_SHUTDOWN_TICK);
       fio_queue_perform_all(FIO_QUEUE_SYSTEM);
+      fio_user_thread_wake_all();
       if (fio_thread_join(threads[i]))
         FIO_LOG_ERROR("Couldn't join worker thread.");
     }

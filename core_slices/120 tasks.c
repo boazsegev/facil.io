@@ -26,10 +26,10 @@ FIO_SFUNC void fio_io_task_wrapper(void *task_, void *ignr_) {
   u.fn(io, t->udata2);
   fio_unlock(&io->lock);
   fio_free(t);
-  fio_free(io);
+  fio_undup(io);
   return;
 reschedule:
-  fio_queue_push(fio_queue_select(io->protocol->reserved.flags),
+  fio_queue_push(FIO_QUEUE_IO(io),
                  .fn = fio_io_task_wrapper,
                  .udata1 = task_,
                  .udata2 = ignr_);
@@ -48,8 +48,5 @@ void fio_defer_io(fio_s *io,
   fio_queue_task_s *t = fio_malloc(sizeof(*t));
   FIO_ASSERT_ALLOC(t);
   *t = (fio_queue_task_s){.fn = u.fn2, .udata1 = fio_dup(io), .udata2 = udata};
-  fio_queue_push(fio_queue_select(io->protocol->reserved.flags),
-                 .fn = fio_io_task_wrapper,
-                 .udata1 = io,
-                 .udata2 = udata);
+  fio_queue_push(FIO_QUEUE_IO(io), .fn = fio_io_task_wrapper, .udata1 = t);
 }

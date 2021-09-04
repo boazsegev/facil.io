@@ -37,9 +37,20 @@ General Compile Time Settings
 #define FIO_SOCKET_BUFFER_PER_WRITE (1UL << 16)
 #endif
 
+#ifndef FIO_SOCKET_THROTTLE_LIMIT
+/** Throttle the client (prevent `on_data`) at outgoing byte queue limit. */
+#define FIO_SOCKET_THROTTLE_LIMIT (1UL << 20)
+#endif
+
 #ifndef FIO_IO_TIMEOUT_MAX
 #define FIO_IO_TIMEOUT_MAX 600
 #endif
+
+#ifndef FIO_SHOTDOWN_TIMEOUT
+/** The number of shutdown seconds after which unsent data is ignored. */
+#define FIO_SHOTDOWN_TIMEOUT 5
+#endif
+
 /* *****************************************************************************
 CSTL modules
 ***************************************************************************** */
@@ -504,7 +515,7 @@ typedef enum {
   FIO_CALL_IN_CHILD,
   /** Called by the master process after spawning a worker (after forking). */
   FIO_CALL_IN_MASTER,
-  /** Called every time a *Worker* proceess starts. */
+  /** Called every time a *Worker* process starts. */
   FIO_CALL_ON_START,
   /** SHOULD be called by pub/sub engines after they (re)connect to backend. */
   FIO_CALL_ON_PUBSUB_CONNECT,
@@ -518,7 +529,7 @@ typedef enum {
   FIO_CALL_ON_USR_REVERSE,
   /** Called before starting the shutdown sequence. */
   FIO_CALL_ON_SHUTDOWN,
-  /** Called just before finishing up (both on chlid and parent processes). */
+  /** Called just before finishing up (both on child and parent processes). */
   FIO_CALL_ON_FINISH,
   /** Called by each worker the moment it detects the master process crashed. */
   FIO_CALL_ON_PARENT_CRUSH,

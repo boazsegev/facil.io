@@ -37,9 +37,20 @@ General Compile Time Settings
 #define FIO_SOCKET_BUFFER_PER_WRITE (1UL << 16)
 #endif
 
+#ifndef FIO_SOCKET_THROTTLE_LIMIT
+/** Throttle the client (prevent `on_data`) at outgoing byte queue limit. */
+#define FIO_SOCKET_THROTTLE_LIMIT (1UL << 20)
+#endif
+
 #ifndef FIO_IO_TIMEOUT_MAX
 #define FIO_IO_TIMEOUT_MAX 600
 #endif
+
+#ifndef FIO_SHOTDOWN_TIMEOUT
+/** The number of shutdown seconds after which unsent data is ignored. */
+#define FIO_SHOTDOWN_TIMEOUT 5
+#endif
+
 /* *****************************************************************************
 CSTL modules
 ***************************************************************************** */

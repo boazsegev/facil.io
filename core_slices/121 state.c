@@ -41,6 +41,28 @@ typedef struct {
 static fio_state_tasks_s fio_state_tasks_array[FIO_CALL_NEVER];
 static fio_lock_i fio_state_tasks_array_lock[FIO_CALL_NEVER + 1];
 
+/** a callback type */
+static const char *fio_state_tasks_names[FIO_CALL_NEVER + 1] = {
+    [FIO_CALL_ON_INITIALIZE] = "ON_INITIALIZE",
+    [FIO_CALL_PRE_START] = "PRE_START",
+    [FIO_CALL_BEFORE_FORK] = "BEFORE_FORK",
+    [FIO_CALL_AFTER_FORK] = "AFTER_FORK",
+    [FIO_CALL_IN_CHILD] = "IN_CHILD",
+    [FIO_CALL_IN_MASTER] = "IN_MASTER",
+    [FIO_CALL_ON_START] = "ON_START",
+    [FIO_CALL_ON_PUBSUB_CONNECT] = "ON_PUBSUB_CONNECT",
+    [FIO_CALL_ON_PUBSUB_ERROR] = "ON_PUBSUB_ERROR",
+    [FIO_CALL_ON_USR] = "ON_USR",
+    [FIO_CALL_ON_IDLE] = "ON_IDLE",
+    [FIO_CALL_ON_USR_REVERSE] = "ON_USR_REVERSE",
+    [FIO_CALL_ON_SHUTDOWN] = "ON_SHUTDOWN",
+    [FIO_CALL_ON_FINISH] = "ON_FINISH",
+    [FIO_CALL_ON_PARENT_CRUSH] = "ON_PARENT_CRUSH",
+    [FIO_CALL_ON_CHILD_CRUSH] = "ON_CHILD_CRUSH",
+    [FIO_CALL_AT_EXIT] = "AT_EXIT",
+    [FIO_CALL_NEVER] = "NEVER",
+};
+
 FIO_IFUNC uint64_t fio___state_callback_hash(void (*func)(void *), void *arg) {
   uint64_t hash = (uint64_t)(uintptr_t)func + (uint64_t)(uintptr_t)arg;
   hash = fio_risky_ptr((void *)(uintptr_t)hash);
@@ -118,6 +140,8 @@ void fio_state_callback_force(callback_type_e e) {
     return;
   fio___state_task_s *ary = NULL;
   size_t len = 0;
+
+  FIO_LOG_DEBUG("Calling %s callbacks.", fio_state_tasks_names[e]);
 
   /* copy task queue */
   fio_lock(fio_state_tasks_array_lock + (uintptr_t)e);

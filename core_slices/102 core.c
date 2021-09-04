@@ -9,12 +9,23 @@ Global State
 IO Registry - NOT thread safe (access from IO core thread only)
 ***************************************************************************** */
 
-#define FIO_UMAP_NAME             fio_validity_map
-#define FIO_MEMORY_NAME           fio_validity_map_mem
+#define FIO_UMAP_NAME          fio_validity_map
+#define FIO_MAP_TYPE           fio_s *
+#define FIO_MAP_HASH_FN(o)     fio_risky_ptr(o)
+#define FIO_MAP_TYPE_CMP(a, b) ((a) == (b))
+
+#if 0
 #define FIO_MALLOC_TMP_USE_SYSTEM 1
-#define FIO_MAP_TYPE              fio_s *
-#define FIO_MAP_HASH_FN(o)        fio_risky_ptr(o)
-#define FIO_MAP_TYPE_CMP(a, b)    ((a) == (b))
+#else
+#define FIO_MEMORY_NAME        fio_validity_map_mem
+#define FIO_MEMORY_ARENA_COUNT 1
+#endif
+
+#ifndef FIO_VALIDATE_IO_MUTEX
+/* required only if exposing fio_is_valid to users. */
+#define FIO_VALIDATE_IO_MUTEX 0
+#endif
+
 #include <fio-stl.h>
 
 /* *****************************************************************************
@@ -27,6 +38,10 @@ static struct {
   env_s env;
   int64_t tick;
   fio_validity_map_s valid;
+#if FIO_VALIDATE_IO_MUTEX
+  fio_thread_mutex_t valid_lock;
+#endif
+
   fio_s *io_wake_io;
   struct {
     int in;
@@ -39,7 +54,6 @@ static struct {
   uint8_t is_worker;
   volatile uint8_t running;
   fio_timer_queue_s timers;
-  fio_queue_s tasks[2];
 } fio_data = {
     .env_lock = FIO_THREAD_MUTEX_INIT,
     .env = FIO_MAP_INIT,
@@ -49,6 +63,7 @@ static struct {
     .is_master = 1,
     .is_worker = 1,
 };
+static fio_queue_s fio_tasks[2];
 
 /* *****************************************************************************
 Queue Helpers
@@ -56,7 +71,7 @@ Queue Helpers
 
 /** Returns the task queue according to the flag specified. */
 FIO_IFUNC fio_queue_s *fio_queue_select(uintptr_t flag) {
-  return fio_data.tasks + (flag & 1);
+  return fio_tasks + (flag & 1U);
 }
 
 /* *****************************************************************************
@@ -98,23 +113,51 @@ FIO_IFUNC void fio_close_wakeup_pipes(void) {
 IO Registry Helpers
 ***************************************************************************** */
 
+#if FIO_VALIDATE_IO_MUTEX
+#define FIO_VALIDATE_LOCK()    fio_thread_mutex_lock(&fio_data.valid_lock)
+#define FIO_VALIDATE_UNLOCK()  fio_thread_mutex_unlock(&fio_data.valid_lock)
+#define FIO_VALIDATE_DESTROY() fio_thread_mutex_destroy(&fio_data.valid_lock)
+#else
+#define FIO_VALIDATE_LOCK()
+#define FIO_VALIDATE_UNLOCK()
+#define FIO_VALIDATE_DESTROY()
+#endif
+
+FIO_IFUNC int fio_is_valid(fio_s *io) {
+  FIO_VALIDATE_LOCK();
+  fio_s *r = fio_validity_map_get(&fio_data.valid, fio_risky_ptr(io), io);
+  FIO_VALIDATE_UNLOCK();
+  return r == io;
+}
+
 FIO_IFUNC void fio_set_valid(fio_s *io) {
+  FIO_VALIDATE_LOCK();
   fio_validity_map_set(&fio_data.valid, fio_risky_ptr(io), io, NULL);
+  FIO_VALIDATE_UNLOCK();
+  FIO_ASSERT_DEBUG(fio_is_valid(io),
+                   "IO validity set, but map reported as invalid!");
   FIO_LOG_DEBUG("IO %p is now valid", (void *)io);
 }
 
 FIO_IFUNC void fio_set_invalid(fio_s *io) {
-  fio_validity_map_remove(&fio_data.valid, fio_risky_ptr(io), io, NULL);
+  fio_s *old = NULL;
   FIO_LOG_DEBUG("IO %p is no longer valid", (void *)io);
-}
-
-FIO_IFUNC fio_s *fio_is_valid(fio_s *io) {
-  fio_s *r = fio_validity_map_get(&fio_data.valid, fio_risky_ptr(io), io);
-  return r;
+  FIO_VALIDATE_LOCK();
+  fio_validity_map_remove(&fio_data.valid, fio_risky_ptr(io), io, &old);
+  FIO_VALIDATE_UNLOCK();
+  FIO_ASSERT_DEBUG(!old || old == io,
+                   "invalidity map corruption (%p != %p)!",
+                   io,
+                   old);
+  FIO_ASSERT_DEBUG(!fio_is_valid(io),
+                   "IO validity removed, but map reported as valid!");
 }
 
 FIO_IFUNC void fio_invalidate_all() {
+  FIO_VALIDATE_LOCK();
   fio_validity_map_destroy(&fio_data.valid);
+  FIO_VALIDATE_UNLOCK();
+  FIO_VALIDATE_DESTROY();
 }
 
 /* *****************************************************************************
@@ -133,18 +176,18 @@ static void fio___after_fork___core(void) {
 Thread suspension helpers
 ***************************************************************************** */
 
-FIO_SFUNC void fio_user_thread_suspent(void) {
-  short e = fio_sock_wait_io(fio_data.thread_suspenders.in, POLLIN, 2000);
-  if (e != -1 && (e & POLLIN)) {
-    char buf[2];
-    int r = fio_sock_read(fio_data.thread_suspenders.in, buf, 1);
-    (void)r;
-  }
+FIO_SFUNC void fio_user_thread_suspend(void) {
+  char buf[sizeof(size_t)];
+  int r = fio_sock_read(fio_data.thread_suspenders.in, buf, sizeof(size_t));
+  if (!fio_queue_perform(FIO_QUEUE_USER))
+    return;
+  fio_sock_wait_io(fio_data.thread_suspenders.in, POLLIN, 2000);
+  (void)r;
 }
 
 FIO_IFUNC void fio_user_thread_wake(void) {
-  char buf[2] = {0};
-  int i = fio_sock_write(fio_data.thread_suspenders.out, buf, 2);
+  char buf[sizeof(size_t)] = {0};
+  int i = fio_sock_write(fio_data.thread_suspenders.out, buf, sizeof(size_t));
   (void)i;
 }
 
@@ -153,8 +196,8 @@ FIO_IFUNC void fio_user_thread_wake_all(void) {
 }
 
 FIO_IFUNC void fio_io_thread_wake(void) {
-  char buf[2] = {0};
-  int i = fio_sock_write(fio_data.thread_suspenders.out, buf, 2);
+  char buf[sizeof(size_t)] = {0};
+  int i = fio_sock_write(fio_data.thread_suspenders.out, buf, sizeof(size_t));
   (void)i;
 }
 

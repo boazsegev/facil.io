@@ -26,7 +26,8 @@ Note: This is a **TOY** example, no security whatsoever!!!
 /* response string helper */
 #define FIO_STR_NAME str
 #define FIO_REF_NAME str
-
+#define FIO_REF_CONSTRUCTOR_ONLY
+#define FIO_REF_DESTROY(s) str_destroy(&(s))
 #include "fio-stl.h"
 
 #define HTTP_CLIENT_BUFFER 32768
@@ -56,7 +57,7 @@ int main(int argc, char const *argv[]) {
       0, /* require 1 unnamed argument - the address to connect to */
       1,
       "A simple HTTP \"hello world\" example, listening on the "
-      "speciified URL. i.e.\n"
+      "specified URL. i.e.\n"
       "\tNAME <url>\n\n"
       "Unix socket examples:\n"
       "\tNAME unix://./my.sock\n"
@@ -119,6 +120,7 @@ typedef struct {
 } client_s;
 
 /* We don't really need reference counting, but this is easy. */
+#define FIO_MALLOC_TMP_USE_SYSTEM
 #define FIO_REF_NAME client
 #define FIO_REF_CONSTRUCTOR_ONLY
 #define FIO_REF_FLEX_TYPE char
@@ -149,14 +151,15 @@ FIO_SFUNC void on_open(int fd, void *udata) {
   client_s *c = client_new(HTTP_CLIENT_BUFFER);
   FIO_ASSERT_ALLOC(c);
   c->io = fio_attach_fd(fd, &HTTP_PROTOCOL_1, c, NULL);
-  FIO_LOG_DEBUG2("Accepted a new HTTP connection (at %d): %p", fd, (void *)c);
+  FIO_LOG_DEBUG2("Accepted a new HTTP connection (at %d): %p",
+                 fd,
+                 (void *)c->io);
   (void)udata;
 }
 
 /** Called there's incoming data (from STDIN / the client socket. */
 FIO_SFUNC void on_data(fio_s *io) {
   client_s *c = fio_udata_get(io);
-  c->io = io;
   ssize_t r =
       fio_read(io, c->buf + c->buf_pos, HTTP_CLIENT_BUFFER - c->buf_pos);
   if (r > 0) {
@@ -336,7 +339,7 @@ static void http_send_response(client_s *c,
   if (status < 100 || status > 999)
     status = 500;
   // FIO_LOG_DEBUG2("[--] %s - %d %zu bytes", http_date_buf, status, total_len);
-  str_s *response = str_new2();
+  str_s *response = str_new();
   str_reserve(response, total_len);
   str_write(response, "HTTP/1.1 ", 9);
   str_write_i(response, status);
@@ -361,6 +364,6 @@ static void http_send_response(client_s *c,
              .buf = response,
              .len = final.len,
              .offset = (((uintptr_t) final.buf - (uintptr_t)response)),
-             .dealloc = (void (*)(void *))str_free2);
+             .dealloc = (void (*)(void *))str_free);
   // FIO_LOG_DEBUG2("Sending response %d, %zu bytes", status, final.len);
 }

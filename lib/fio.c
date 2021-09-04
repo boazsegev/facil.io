@@ -45,15 +45,88 @@ Internal helpers
 #include "999 dev.h" /* development sugar, ignore */
 #endif               /* development sugar, ignore */
 
-#define FIO_STREAM
+#define FIO_MALLOC_TMP_USE_SYSTEM
+#define FIO_SIGNAL
 #include "fio-stl.h"
 
-#define FIO_MALLOC_TMP_USE_SYSTEM
+#define FIO_STREAM
 #define FIO_QUEUE
-#define FIO_SIGNAL
 #define FIO_SOCK /* should be public? */
 #include "fio-stl.h"
 
+/* for storing ENV string keys and all sorts of stuff */
+#define FIO_STR_SMALL sstr
+#include "fio-stl.h"
+
+/* *****************************************************************************
+Reference Counter Debugging
+***************************************************************************** */
+#ifndef FIO_DEBUG_REF
+#if DEBUG
+#define FIO_DEBUG_REF 1
+#else
+#define FIO_DEBUG_REF 1
+#endif
+#endif
+
+#if FIO_DEBUG_REF
+
+#define FIO_MALLOC_TMP_USE_SYSTEM
+#define FIO_UMAP_NAME               ref_dbg
+#define FIO_MAP_TYPE                uintptr_t
+#define FIO_MAP_KEY                 sstr_s
+#define FIO_MAP_KEY_COPY(dest, src) sstr_init_copy2(&(dest), &(src))
+#define FIO_MAP_KEY_DESTROY(k)      sstr_destroy(&k)
+#define FIO_MAP_KEY_DISCARD         FIO_MAP_KEY_DESTROY
+#define FIO_MAP_KEY_CMP(a, b)       sstr_is_eq(&(a), &(b))
+#include <fio-stl.h>
+
+ref_dbg_s ref_dbg[8] = {FIO_MAP_INIT};
+fio_thread_mutex_t ref_dbg_lock = FIO_THREAD_MUTEX_INIT;
+
+FIO_IFUNC void fio_func_called(const char *func, uint_fast8_t i) {
+  sstr_s s;
+  sstr_init_const(&s, func, strlen(func));
+  fio_thread_mutex_lock(&ref_dbg_lock);
+  uintptr_t *a = ref_dbg_get_ptr(ref_dbg + i, sstr_hash(&s, 0), s);
+  if (a)
+    ++a[0];
+  else
+    ref_dbg_set(ref_dbg + i, sstr_hash(&s, 0), s, 1, NULL);
+  fio_thread_mutex_unlock(&ref_dbg_lock);
+}
+
+#define MARK_FUNC() fio_func_called(__func__, 0)
+
+FIO_DESTRUCTOR(fio_io_ref_dbg) {
+  const char *name[] = {
+      "call counter",
+      "fio_dup",
+      "fio_undup",
+      "fio_free2 (internal)",
+      // "fio_malloc",
+      // "fio_calloc",
+      // "fio_free",
+  };
+  for (int i = 0; i < 4; ++i) {
+    size_t total = 0;
+    fprintf(stderr, "\n\t%s called by:\n", name[i]);
+    FIO_MAP_EACH(ref_dbg, (ref_dbg + i), c) {
+      total += c->obj.value;
+      fprintf(stderr,
+              "\t- %*.*s: %zu\n",
+              (int)35,
+              (int)35,
+              sstr2ptr(&c->obj.key),
+              (size_t)c->obj.value);
+    }
+    fprintf(stderr, "\t- total: %zu\n", total);
+    ref_dbg_destroy(ref_dbg + i);
+  }
+}
+#else
+#define MARK_FUNC()
+#endif
 /* *****************************************************************************
 Polling Helpers
 ***************************************************************************** */
@@ -74,7 +147,7 @@ Polling Helpers
 #endif
 
 #ifndef FIO_POLL_SHUTDOWN_TICK
-#define FIO_POLL_SHUTDOWN_TICK 10
+#define FIO_POLL_SHUTDOWN_TICK 100
 #endif
 
 FIO_SFUNC void fio_monitor_init(void);
@@ -95,6 +168,7 @@ FIO_IFUNC fio_queue_s *fio_queue_select(uintptr_t flag);
 
 #define FIO_QUEUE_SYSTEM fio_queue_select(1)
 #define FIO_QUEUE_USER   fio_queue_select(0)
+#define FIO_QUEUE_IO(io) fio_queue_select((io)->protocol->reserved.flags)
 
 /* *****************************************************************************
 ENV data maps (must be defined before the IO object that owns them)
@@ -128,10 +202,6 @@ FIO_IFUNC void env_obj_call_callback(env_obj_s o) {
                           o.udata);
   }
 }
-
-/* for storing ENV string keys */
-#define FIO_STR_SMALL sstr
-#include "fio-stl.h"
 
 #define FIO_UMAP_NAME              env
 #define FIO_MAP_TYPE               env_obj_s
@@ -197,6 +267,7 @@ static void mock_ping_eternal(fio_s *io) { fio_touch(io); }
 
 FIO_IFUNC void fio_protocol_validate(fio_protocol_s *p) {
   if (p && !(p->reserved.flags & 8)) {
+    MARK_FUNC();
     if (!p->on_data)
       p->on_data = mock_on_data;
     if (!p->on_timeout)
@@ -250,12 +321,23 @@ Global State
 IO Registry - NOT thread safe (access from IO core thread only)
 ***************************************************************************** */
 
-#define FIO_UMAP_NAME             fio_validity_map
-#define FIO_MEMORY_NAME           fio_validity_map_mem
+#define FIO_UMAP_NAME          fio_validity_map
+#define FIO_MAP_TYPE           fio_s *
+#define FIO_MAP_HASH_FN(o)     fio_risky_ptr(o)
+#define FIO_MAP_TYPE_CMP(a, b) ((a) == (b))
+
+#if 0
 #define FIO_MALLOC_TMP_USE_SYSTEM 1
-#define FIO_MAP_TYPE              fio_s *
-#define FIO_MAP_HASH_FN(o)        fio_risky_ptr(o)
-#define FIO_MAP_TYPE_CMP(a, b)    ((a) == (b))
+#else
+#define FIO_MEMORY_NAME        fio_validity_map_mem
+#define FIO_MEMORY_ARENA_COUNT 1
+#endif
+
+#ifndef FIO_VALIDATE_IO_MUTEX
+/* required only if exposing fio_is_valid to users. */
+#define FIO_VALIDATE_IO_MUTEX 0
+#endif
+
 #include <fio-stl.h>
 
 /* *****************************************************************************
@@ -268,6 +350,10 @@ static struct {
   env_s env;
   int64_t tick;
   fio_validity_map_s valid;
+#if FIO_VALIDATE_IO_MUTEX
+  fio_thread_mutex_t valid_lock;
+#endif
+
   fio_s *io_wake_io;
   struct {
     int in;
@@ -280,7 +366,6 @@ static struct {
   uint8_t is_worker;
   volatile uint8_t running;
   fio_timer_queue_s timers;
-  fio_queue_s tasks[2];
 } fio_data = {
     .env_lock = FIO_THREAD_MUTEX_INIT,
     .env = FIO_MAP_INIT,
@@ -290,6 +375,7 @@ static struct {
     .is_master = 1,
     .is_worker = 1,
 };
+static fio_queue_s fio_tasks[2];
 
 /* *****************************************************************************
 Queue Helpers
@@ -297,7 +383,7 @@ Queue Helpers
 
 /** Returns the task queue according to the flag specified. */
 FIO_IFUNC fio_queue_s *fio_queue_select(uintptr_t flag) {
-  return fio_data.tasks + (flag & 1);
+  return fio_tasks + (flag & 1U);
 }
 
 /* *****************************************************************************
@@ -339,23 +425,51 @@ FIO_IFUNC void fio_close_wakeup_pipes(void) {
 IO Registry Helpers
 ***************************************************************************** */
 
+#if FIO_VALIDATE_IO_MUTEX
+#define FIO_VALIDATE_LOCK()    fio_thread_mutex_lock(&fio_data.valid_lock)
+#define FIO_VALIDATE_UNLOCK()  fio_thread_mutex_unlock(&fio_data.valid_lock)
+#define FIO_VALIDATE_DESTROY() fio_thread_mutex_destroy(&fio_data.valid_lock)
+#else
+#define FIO_VALIDATE_LOCK()
+#define FIO_VALIDATE_UNLOCK()
+#define FIO_VALIDATE_DESTROY()
+#endif
+
+FIO_IFUNC int fio_is_valid(fio_s *io) {
+  FIO_VALIDATE_LOCK();
+  fio_s *r = fio_validity_map_get(&fio_data.valid, fio_risky_ptr(io), io);
+  FIO_VALIDATE_UNLOCK();
+  return r == io;
+}
+
 FIO_IFUNC void fio_set_valid(fio_s *io) {
+  FIO_VALIDATE_LOCK();
   fio_validity_map_set(&fio_data.valid, fio_risky_ptr(io), io, NULL);
+  FIO_VALIDATE_UNLOCK();
+  FIO_ASSERT_DEBUG(fio_is_valid(io),
+                   "IO validity set, but map reported as invalid!");
   FIO_LOG_DEBUG("IO %p is now valid", (void *)io);
 }
 
 FIO_IFUNC void fio_set_invalid(fio_s *io) {
-  fio_validity_map_remove(&fio_data.valid, fio_risky_ptr(io), io, NULL);
+  fio_s *old = NULL;
   FIO_LOG_DEBUG("IO %p is no longer valid", (void *)io);
-}
-
-FIO_IFUNC fio_s *fio_is_valid(fio_s *io) {
-  fio_s *r = fio_validity_map_get(&fio_data.valid, fio_risky_ptr(io), io);
-  return r;
+  FIO_VALIDATE_LOCK();
+  fio_validity_map_remove(&fio_data.valid, fio_risky_ptr(io), io, &old);
+  FIO_VALIDATE_UNLOCK();
+  FIO_ASSERT_DEBUG(!old || old == io,
+                   "invalidity map corruption (%p != %p)!",
+                   io,
+                   old);
+  FIO_ASSERT_DEBUG(!fio_is_valid(io),
+                   "IO validity removed, but map reported as valid!");
 }
 
 FIO_IFUNC void fio_invalidate_all() {
+  FIO_VALIDATE_LOCK();
   fio_validity_map_destroy(&fio_data.valid);
+  FIO_VALIDATE_UNLOCK();
+  FIO_VALIDATE_DESTROY();
 }
 
 /* *****************************************************************************
@@ -374,18 +488,18 @@ static void fio___after_fork___core(void) {
 Thread suspension helpers
 ***************************************************************************** */
 
-FIO_SFUNC void fio_user_thread_suspent(void) {
-  short e = fio_sock_wait_io(fio_data.thread_suspenders.in, POLLIN, 2000);
-  if (e != -1 && (e & POLLIN)) {
-    char buf[2];
-    int r = fio_sock_read(fio_data.thread_suspenders.in, buf, 1);
-    (void)r;
-  }
+FIO_SFUNC void fio_user_thread_suspend(void) {
+  char buf[sizeof(size_t)];
+  int r = fio_sock_read(fio_data.thread_suspenders.in, buf, sizeof(size_t));
+  if (!fio_queue_perform(FIO_QUEUE_USER))
+    return;
+  fio_sock_wait_io(fio_data.thread_suspenders.in, POLLIN, 2000);
+  (void)r;
 }
 
 FIO_IFUNC void fio_user_thread_wake(void) {
-  char buf[2] = {0};
-  int i = fio_sock_write(fio_data.thread_suspenders.out, buf, 2);
+  char buf[sizeof(size_t)] = {0};
+  int i = fio_sock_write(fio_data.thread_suspenders.out, buf, sizeof(size_t));
   (void)i;
 }
 
@@ -394,8 +508,8 @@ FIO_IFUNC void fio_user_thread_wake_all(void) {
 }
 
 FIO_IFUNC void fio_io_thread_wake(void) {
-  char buf[2] = {0};
-  int i = fio_sock_write(fio_data.thread_suspenders.out, buf, 2);
+  char buf[sizeof(size_t)] = {0};
+  int i = fio_sock_write(fio_data.thread_suspenders.out, buf, sizeof(size_t));
   (void)i;
 }
 
@@ -581,12 +695,11 @@ IO data types
 fio_protocol_s FIO_PROTOCOL_HIJACK;
 
 typedef enum {
-  FIO_IO_OPEN = 1,          /* 0b0001 */
-  FIO_IO_SUSPENDED_BIT = 2, /* 0b0010 */
-  FIO_IO_SUSPENDED = 3,     /* 0b0011 */
-  FIO_IO_CLOSED_BIT = 4,    /* 0b0100 */
-  FIO_IO_CLOSED = 6,        /* 0b0110 */
-  FIO_IO_CLOSING = 7,       /* 0b0111 */
+  FIO_IO_OPEN = 1,      /* 0b00001 */
+  FIO_IO_SUSPENDED = 2, /* 0b00010 */
+  FIO_IO_THROTTLED = 4, /* 0b00100 */
+  FIO_IO_CLOSING = 8,   /* 0b01000 */
+  FIO_IO_CLOSED = 14,   /* 0b01110 */
 } fio_state_e;
 
 struct fio_s {
@@ -608,10 +721,6 @@ struct fio_s {
   int64_t active;
   /* socket */
   int fd;
-#ifdef DEBUG
-  /* debug into: close_now counter */
-  unsigned int count;
-#endif
   /** Task lock */
   fio_lock_i lock;
   /** Connection state */
@@ -631,10 +740,12 @@ FIO_SFUNC void fio___deferred_on_close(void *fn, void *udata) {
     void (*fn)(void *);
   } u = {.p = fn};
   u.fn(udata);
+  MARK_FUNC();
 }
 
 FIO_SFUNC void fio___init_task(void *io, void *ignr_) {
   fio_set_valid(io);
+  fio_free2(io);
   (void)ignr_;
 }
 /* IO object constructor (MUST be thread safe). */
@@ -647,31 +758,28 @@ FIO_SFUNC void fio___init(fio_s *io) {
       .env_lock = FIO_THREAD_MUTEX_INIT,
       .fd = -1,
   };
-  fio_queue_push_urgent(FIO_QUEUE_SYSTEM, .fn = fio___init_task, .udata1 = io);
-  FIO_LOG_DEBUG("IO %p allocated.", (void *)io);
+  fio_queue_push(FIO_QUEUE_SYSTEM, fio___init_task, fio_dup2(io));
 }
 
 /* IO object destructor (NOT thread safe). */
 FIO_SFUNC void fio___destroy(fio_s *io) {
+  union {
+    void *p;
+    void (*fn)(void *);
+  } u = {.fn = io->protocol->on_close};
+
   fio_set_invalid(io);
   env_destroy(&io->env);
   fio_thread_mutex_destroy(&io->env_lock);
   fio_stream_destroy(&io->stream);
   // o->rw_hooks->cleanup(io->rw_udata);
   FIO_LIST_REMOVE(&io->timeouts);
-  union {
-    void *p;
-    void (*fn)(void *);
-  } u = {.fn = io->protocol->on_close};
   fio_monitor_forget(io->fd);
   fio_sock_close(io->fd);
   if (io->protocol->reserved.ios.next == io->protocol->reserved.ios.prev) {
     FIO_LIST_REMOVE(&io->protocol->reserved.protocols);
   }
-  fio_queue_push(fio_queue_select(io->protocol->reserved.flags),
-                 fio___deferred_on_close,
-                 u.p,
-                 io->udata);
+  fio_queue_push(FIO_QUEUE_IO(io), fio___deferred_on_close, u.p, io->udata);
   FIO_LOG_DEBUG("IO %p (fd %d) freed.", (void *)io, (int)(io->fd));
 }
 
@@ -680,37 +788,50 @@ FIO_SFUNC void fio___destroy(fio_s *io) {
 #define FIO_REF_DESTROY(obj) fio___destroy(&(obj))
 #include <fio-stl.h>
 
-#if 0
-#define fio_undup(io)                                                          \
-  do {                                                                         \
-    FIO_LOG_DEBUG("calling fio_undup %p from %s", io, __func__);               \
-    fio_undup(io);                                                             \
-  } while (0)
-#define fio_free2(io)                                                          \
-  do {                                                                         \
-    FIO_LOG_DEBUG("calling fio_free2 %p from %s", io, __func__);               \
-    fio_free2(io);                                                             \
-  } while (0)
+/* *****************************************************************************
+Reference Counter Debugging
+***************************************************************************** */
+#if FIO_DEBUG_REF
 
+FIO_IFUNC fio_s *fio_dup2_dbg(fio_s *io, const char *func) {
+  fio_func_called(func, 1);
+  return fio_dup2(io);
+}
+
+FIO_IFUNC void fio_undup_dbg(fio_s *io, const char *func) {
+  fio_func_called(func, 2);
+  fio_undup(io);
+}
+
+FIO_IFUNC void fio_free2_dbg(fio_s *io, const char *func) {
+  fio_func_called(func, 3);
+  fio_free2(io);
+}
+
+#define fio_dup2(io)  fio_dup2_dbg(io, __func__)
+#define fio_undup(io) fio_undup_dbg(io, __func__)
+#define fio_free2(io) fio_free2_dbg(io, __func__)
 #endif
-
 /* *****************************************************************************
 Managing reference counting (decrease only in the IO thread)
 ***************************************************************************** */
 
 /* perform reference count decrease. */
-FIO_SFUNC void fio_undup_task(void *io, void *ignr) {
+FIO_SFUNC void fio_undup___task(void *io, void *ignr) {
   (void)ignr;
+  MARK_FUNC();
   /* don't trust users to manage reference counts? */
   if (fio_is_valid(io))
     fio_free2(io);
   else
-    FIO_LOG_WARNING("user code attempted to double-free IO %p", io);
+    FIO_LOG_ERROR("user event attempted to double-free IO %p", io);
 }
 
+void fio_undup___(void); /* sublime text marker */
 /** Route reference count decrease to the IO thread. */
 void fio_undup FIO_NOOP(fio_s *io) {
-  fio_queue_push(FIO_QUEUE_SYSTEM, .fn = fio_undup_task, .udata1 = io);
+  MARK_FUNC();
+  fio_queue_push(FIO_QUEUE_SYSTEM, .fn = fio_undup___task, .udata1 = io);
 }
 
 /** Increase reference count. */
@@ -722,26 +843,29 @@ Closing the IO connection
 ***************************************************************************** */
 
 /** common safe / unsafe implementation (unsafe = called from user thread). */
-FIO_IFUNC void fio_close_now___common(fio_s *io, void (*free_fn)(fio_s *)) {
-  if (!(fio_atomic_and(&io->state, (~FIO_IO_OPEN)) & FIO_IO_OPEN)) {
+FIO_IFUNC void fio_close_now___task(void *io_, void *ignr_) {
+  (void)ignr_;
+  fio_s *io = io_;
+  if (!fio_is_valid(io) || !(io->state & FIO_IO_OPEN)) {
     FIO_LOG_DEBUG("fio_close_now called for closed IO %p", io);
     return;
   }
-  io->state |= FIO_IO_CLOSED;
-#ifdef DEBUG
-  if (fio_atomic_add(&io->count, 1))
-    FIO_LOG_ERROR("close_now called %u times", io->count);
-#endif
+  fio_atomic_exchange(&io->state, FIO_IO_CLOSED);
   fio_monitor_forget(io->fd);
-  free_fn(io);
+  fio_free2(io);
 }
 
-/** Public / safe IO immediate closure. */
-void fio_close_now(fio_s *io) { fio_close_now___common(io, fio_undup); }
+/* Public / safe IO immediate closure. */
+void fio_close_now(fio_s *io) {
+  fio_atomic_or(&io->state, FIO_IO_CLOSING);
+  fio_queue_push(FIO_QUEUE_SYSTEM, fio_close_now___task, io);
+  MARK_FUNC();
+}
 
 /** Unsafe IO immediate closure (callable only from IO threads). */
 FIO_IFUNC void fio_close_now_unsafe(fio_s *io) {
-  fio_close_now___common(io, fio_free2);
+  MARK_FUNC();
+  fio_close_now___task(io, NULL);
 }
 
 /* *****************************************************************************
@@ -769,7 +893,8 @@ FIO_SFUNC void fio_touch___unsafe(void *io_, void *should_free) {
     FIO_LIST_PUSH(&fio_data.protocols, &io->protocol->reserved.protocols);
   }
 finish:
-  fio_free2(should_free);
+  if (should_free)
+    fio_free2(should_free);
 }
 
 /* Resets a socket's timeout counter. */
@@ -803,12 +928,12 @@ FIO_SFUNC int fio___review_timeouts(void) {
       FIO_ASSERT_DEBUG(io->protocol == pr, "io protocol ownership error");
       if (io->active >= limit)
         break;
-      fio_queue_push_urgent(fio_queue_select(pr->reserved.flags),
-                            .fn = fio_ev_on_timeout,
-                            .udata1 = fio_dup(io),
-                            .udata2 = NULL);
-      ++c;
       FIO_LOG_DEBUG("scheduling timeout for %p (fd %d)", (void *)io, io->fd);
+      fio_queue_push(FIO_QUEUE_IO(io),
+                     .fn = fio_ev_on_timeout,
+                     .udata1 = fio_dup(io),
+                     .udata2 = NULL);
+      ++c;
     }
   }
   return c;
@@ -825,10 +950,23 @@ FIO_SFUNC int fio___is_waiting_on_io(void) {
     FIO_LIST_EACH(fio_s, timeouts, &pr->reserved.ios, io) {
       c = 1;
       FIO_LOG_DEBUG("waiting for IO %p (fd %d)", (void *)io, io->fd);
-      fio_close(io);
+      if ((io->state & FIO_IO_OPEN))
+        fio_close(io);
+      else
+        fio_queue_push(FIO_QUEUE_SYSTEM, fio_ev_on_ready, fio_dup(io));
     }
   }
   return c;
+}
+
+/* *****************************************************************************
+Testing for any open IO objects
+***************************************************************************** */
+
+FIO_SFUNC void fio___close_all_io(void) {
+  FIO_LIST_EACH(fio_protocol_s, reserved.protocols, &fio_data.protocols, pr) {
+    FIO_LIST_EACH(fio_s, timeouts, &pr->reserved.ios, io) { fio_free2(io); }
+  }
 }
 
 /* *****************************************************************************
@@ -885,7 +1023,7 @@ Copy address to string
 FIO_SFUNC void fio___addr_cpy(fio_s *io) {
   /* TODO: Fix Me */
   struct sockaddr addrinfo;
-  size_t len = sizeof(addrinfo);
+  // size_t len = sizeof(addrinfo);
   const char *result =
       inet_ntop(addrinfo.sa_family,
                 addrinfo.sa_family == AF_INET
@@ -928,13 +1066,14 @@ fio_s *fio_attach_fd(int fd,
     goto error;
   fio_s *io = fio_new2();
   FIO_ASSERT_ALLOC(io);
-  io->udata = udata;
-  io->tls = tls;
   io->fd = fd;
+  io->tls = tls;
+  io->udata = udata;
   fio_sock_set_non_block(fd); /* never accept a blocking socket */
   /* fio___addr_cpy(io); // ??? */
   fio_protocol_set(io, protocol);
   FIO_LOG_DEBUG("attaching fd %d to IO %p", fd, (void *)io);
+  MARK_FUNC();
   return io;
 error:
   if (protocol && protocol->on_close)
@@ -953,7 +1092,7 @@ Misc
 int fio_is_busy(fio_s *io) { return (int)io->lock; }
 
 /** Suspends future "on_data" events for the IO. */
-void fio_suspend(fio_s *io) { io->state |= FIO_IO_SUSPENDED_BIT; }
+void fio_suspend(fio_s *io) { fio_atomic_or(&io->state, FIO_IO_SUSPENDED); }
 
 /* *****************************************************************************
 Monitoring IO
@@ -963,7 +1102,7 @@ FIO_IFUNC void fio_monitor_read(fio_s *io) {
 #if 0
   short e = fio_sock_wait_io(io->fd, POLLIN, 0);
   if (e != -1 && (POLLIN & e)) {
-    fio_queue_push(fio_queue_select(io->protocol->reserved.flags),
+    fio_queue_push(FIO_QUEUE_IO(io),
                    fio_ev_on_data,
                    io,
                    NULL);
@@ -977,15 +1116,15 @@ FIO_IFUNC void fio_monitor_write(fio_s *io) {
 #if 0
   short e = fio_sock_wait_io(io->fd, POLLOUT, 0);
   if (e != -1 && (POLLOUT & e)) {
-    fio_queue_push(fio_queue_select(io->protocol->reserved.flags),
-                   fio_ev_on_data,
+    fio_queue_push(FIO_QUEUE_SYSTEM,
+                   fio_ev_on_ready,
                    io,
                    NULL);
   }
   if (e)
     return;
 #endif
-  fio_monitor_monitor(io->fd, io, POLLIN);
+  fio_monitor_monitor(io->fd, io, POLLOUT);
 }
 FIO_IFUNC void fio_monitor_all(fio_s *io) {
   fio_monitor_monitor(io->fd, io, POLLIN | POLLOUT);
@@ -1007,7 +1146,7 @@ size_t fio_read(fio_s *io, void *buf, size_t len) {
     fio_touch(io);
     return r;
   }
-  if (r == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
+  if (r == -1 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
     return 0;
   fio_close(io);
   return 0;
@@ -1019,10 +1158,11 @@ Write
 
 static void fio_write2___task(void *io_, void *packet) {
   fio_s *io = io_;
-  if (!io || (io->state & FIO_IO_CLOSED_BIT))
+  if ((io->state & FIO_IO_CLOSING))
     goto error;
+  MARK_FUNC();
   fio_stream_add(&io->stream, packet);
-  fio_ev_on_ready(io, io->udata); /* will call fio_free2 */
+  fio_ev_on_ready(io, io); /* will call fio_free2 */
   return;
 error:
   fio_stream_pack_free(packet);
@@ -1048,11 +1188,16 @@ void fio_write2 FIO_NOOP(fio_s *io, fio_write_args_s args) {
     goto error;
   if (!io)
     goto io_error;
+  MARK_FUNC();
   fio_queue_push(FIO_QUEUE_SYSTEM,
                  .fn = fio_write2___task,
                  .udata1 = fio_dup(io),
                  .udata2 = packet);
+#if FIO_ENGINE_POLL
   fio_io_thread_wake();
+#else
+  fio_monitor_write(io);
+#endif
   return;
 error:
   FIO_LOG_ERROR("couldn't create user-packet for IO %p", (void *)io);
@@ -1068,12 +1213,11 @@ io_error:
 /** Marks the IO for closure as soon as the pending data was sent. */
 void fio_close(fio_s *io) {
   if (io && (io->state & FIO_IO_OPEN) &&
-      !(fio_atomic_or(&io->state, FIO_IO_CLOSED_BIT) & FIO_IO_CLOSED_BIT)) {
+      !(fio_atomic_or(&io->state, FIO_IO_CLOSING) & FIO_IO_CLOSING)) {
     FIO_LOG_DEBUG("scheduling IO %p (fd %d) for closure", (void *)io, io->fd);
     fio_monitor_forget(io->fd);
-    fio_queue_push(FIO_QUEUE_SYSTEM,
-                   .fn = fio_ev_on_ready,
-                   .udata1 = fio_dup(io));
+    fio_queue_push(FIO_QUEUE_SYSTEM, fio_ev_on_ready, fio_dup(io));
+    MARK_FUNC();
   }
 }
 
@@ -1096,10 +1240,10 @@ static void fio___start_shutdown(void) {
   fio_state_callback_force(FIO_CALL_ON_SHUTDOWN);
   FIO_LIST_EACH(fio_protocol_s, reserved.protocols, &fio_data.protocols, pr) {
     FIO_LIST_EACH(fio_s, timeouts, &pr->reserved.ios, io) {
-      fio_queue_push_urgent(fio_queue_select(pr->reserved.flags),
-                            .fn = fio_ev_on_shutdown,
-                            .udata1 = fio_dup(io),
-                            .udata2 = NULL);
+      fio_queue_push(FIO_QUEUE_IO(io),
+                     .fn = fio_ev_on_shutdown,
+                     .udata1 = fio_dup(io),
+                     .udata2 = NULL);
     }
   }
 }
@@ -1116,20 +1260,24 @@ On Ready (User Callback Handling)
 
 static void fio_ev_on_ready_user(void *io_, void *udata) {
   fio_s *const io = io_;
+#if FIO_VALIDATE_IO_MUTEX
+  FIO_ASSERT_DEBUG(fio_is_valid(io), "on_ready_user - invalid IO: %p", io);
+#endif
   if ((io->state & FIO_IO_OPEN) && !fio_stream_any(&io->stream)) {
     if (fio_trylock(&io->lock))
       goto reschedule;
     io->protocol->on_ready(io);
     fio_unlock(&io->lock);
   }
+  MARK_FUNC();
   fio_undup(io);
   return;
 
 reschedule:
-  fio_queue_push_urgent(fio_queue_select(io->protocol->reserved.flags),
-                        .fn = fio_ev_on_ready_user,
-                        .udata1 = io,
-                        .udata2 = udata);
+  fio_queue_push(FIO_QUEUE_IO(io),
+                 .fn = fio_ev_on_ready_user,
+                 .udata1 = io,
+                 .udata2 = udata);
 }
 
 /* *****************************************************************************
@@ -1138,6 +1286,8 @@ On Ready (System Callback Handling)
 
 static void fio_ev_on_ready(void *io_, void *udata) {
   fio_s *const io = io_;
+  FIO_ASSERT_DEBUG(fio_is_valid(io), "on_ready - invalid IO: %p", io);
+  MARK_FUNC();
   if ((io->state & FIO_IO_OPEN)) {
     char buf_mem[FIO_SOCKET_BUFFER_PER_WRITE];
     size_t total = 0;
@@ -1152,8 +1302,8 @@ static void fio_ev_on_ready(void *io_, void *udata) {
         total += r;
         fio_stream_advance(&io->stream, len);
         continue;
-      } else if (r == -1 || errno == EWOULDBLOCK || errno == EAGAIN ||
-                 errno == EINTR) {
+      } else if (r == -1 &&
+                 (errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR)) {
         break;
       } else {
         fio_close_now_unsafe(io);
@@ -1163,16 +1313,27 @@ static void fio_ev_on_ready(void *io_, void *udata) {
     if (total)
       fio_touch___unsafe(io, NULL);
     if (!fio_stream_any(&io->stream)) {
-      if ((io->state & FIO_IO_CLOSED_BIT)) {
+      if ((io->state & FIO_IO_CLOSING)) {
         fio_close_now_unsafe(io);
       } else {
-        fio_queue_push_urgent(fio_queue_select(io->protocol->reserved.flags),
-                              .fn = fio_ev_on_ready_user,
-                              .udata1 = io,
-                              .udata2 = udata);
+        if ((io->state & FIO_IO_THROTTLED)) {
+          fio_atomic_and(&io->state, ~FIO_IO_THROTTLED);
+          fio_monitor_read(io);
+        }
+        fio_queue_push(FIO_QUEUE_IO(io),
+                       .fn = fio_ev_on_ready_user,
+                       .udata1 = io,
+                       .udata2 = udata);
         return; /* fio_undup will be called after the user's on_ready event */
       }
-    } else {
+    } else if ((io->state & FIO_IO_OPEN)) {
+      if (fio_stream_length(&io->stream) >= FIO_SOCKET_THROTTLE_LIMIT) {
+#ifdef DEBUG
+        if (!(io->state & FIO_IO_THROTTLED))
+          FIO_LOG_DEBUG("throttled IO %p (fd %d)", (void *)io, io->fd);
+#endif
+        fio_atomic_or(&io->state, FIO_IO_THROTTLED);
+      }
       fio_monitor_write(io);
     }
   }
@@ -1186,7 +1347,11 @@ On Data
 
 static void fio_ev_on_data(void *io_, void *udata) {
   fio_s *const io = io_;
+#if FIO_VALIDATE_IO_MUTEX
+  FIO_ASSERT_DEBUG(fio_is_valid(io), "on_data - invalid IO: %p", io);
+#endif
   if (!(io->state & FIO_IO_CLOSED)) {
+    /* test for closed/suspended/throttled */
     if (fio_trylock(&io->lock))
       goto reschedule;
     io->protocol->on_data(io);
@@ -1197,14 +1362,16 @@ static void fio_ev_on_data(void *io_, void *udata) {
     }
   } else if ((io->state & FIO_IO_OPEN)) {
     fio_monitor_write(io);
-    FIO_LOG_DEBUG("skipping on_data callback for IO %p (fd %d)", io_, io->fd);
+    // FIO_LOG_DEBUG("skipping on_data callback for IO %p (fd %d)", io_,
+    // io->fd);
   }
+  MARK_FUNC();
   fio_undup(io);
   return;
 
 reschedule:
   FIO_LOG_DEBUG("rescheduling on_data for IO %p (fd %d)", io_, io->fd);
-  fio_queue_push(fio_queue_select(io->protocol->reserved.flags),
+  fio_queue_push(FIO_QUEUE_IO(io),
                  .fn = fio_ev_on_data,
                  .udata1 = io,
                  .udata2 = udata);
@@ -1216,12 +1383,16 @@ On Timeout
 
 static void fio_ev_on_timeout(void *io_, void *udata) {
   fio_s *const io = io_;
+#if FIO_VALIDATE_IO_MUTEX
+  FIO_ASSERT_DEBUG(fio_is_valid(io), "on_timeout - invalid IO: %p", io);
+#endif
   if ((io->state & FIO_IO_OPEN)) {
     io->protocol->on_timeout(io);
   } else {
-    FIO_LOG_WARNING("timeout event on a non-open IO %p (fd %d)", io_, io->fd);
+    FIO_LOG_DEBUG2("timeout event on a non-open IO %p (fd %d)", io_, io->fd);
   }
   fio_undup(io);
+  MARK_FUNC();
   return;
   (void)udata;
 }
@@ -1232,16 +1403,20 @@ On Shutdown
 
 static void fio_ev_on_shutdown(void *io_, void *udata) {
   fio_s *const io = io_;
+#if FIO_VALIDATE_IO_MUTEX
+  FIO_ASSERT_DEBUG(fio_is_valid(io), "on_shutdown - invalid IO: %p", io);
+#endif
   if (fio_trylock(&io->lock))
     goto reschedule;
   io->protocol->on_shutdown(io);
-  fio_close(io);
   fio_unlock(&io->lock);
+  fio_close(io);
   fio_undup(io);
+  MARK_FUNC();
   return;
 
 reschedule:
-  fio_queue_push(fio_queue_select(io->protocol->reserved.flags),
+  fio_queue_push(FIO_QUEUE_IO(io),
                  .fn = fio_ev_on_shutdown,
                  .udata1 = io,
                  .udata2 = udata);
@@ -1253,6 +1428,8 @@ On Close
 
 static void fio_ev_on_close(void *io, void *udata) {
   (void)udata;
+  MARK_FUNC();
+  FIO_ASSERT_DEBUG(fio_is_valid(io), "on_close - invalid IO: %p", io);
   fio_close_now_unsafe(io);
   fio_free2(io);
 }
@@ -1295,13 +1472,13 @@ FIO_IFUNC void fio___poll_ev_wrap__user_task(void *fn_, void *io_) {
   fio_s *io = io_;
   if (!fio_is_valid(io))
     goto io_invalid;
+  MARK_FUNC();
 
-  fio_queue_push(fio_queue_select(io->protocol->reserved.flags),
-                 .fn = u.fn,
-                 .udata1 = fio_dup(io));
+  fio_queue_push(FIO_QUEUE_IO(io), .fn = u.fn, .udata1 = fio_dup(io));
+  fio_user_thread_wake();
   return;
 io_invalid:
-  FIO_LOG_DEBUG("IO validation failed for IO %p", (void *)io);
+  FIO_LOG_DEBUG("IO validation failed for IO %p (User task)", (void *)io);
 }
 
 FIO_IFUNC void fio___poll_ev_wrap__io_task(void *fn_, void *io_) {
@@ -1312,13 +1489,15 @@ FIO_IFUNC void fio___poll_ev_wrap__io_task(void *fn_, void *io_) {
   fio_s *io = io_;
   if (!fio_is_valid(io))
     goto io_invalid;
+  MARK_FUNC();
 
   fio_queue_push(FIO_QUEUE_SYSTEM, .fn = u.fn, .udata1 = fio_dup(io));
   return;
 io_invalid:
-  FIO_LOG_DEBUG("IO validation failed for IO %p", (void *)io);
+  FIO_LOG_DEBUG("IO validation failed for IO %p (IO task)", (void *)io);
 }
 
+/* delays callback scheduling so it occurs after pending free / init events. */
 FIO_IFUNC void fio___poll_ev_wrap__schedule(void (*wrapper)(void *, void *),
                                             void (*fn)(void *, void *),
                                             void *io) {
@@ -1327,10 +1506,7 @@ FIO_IFUNC void fio___poll_ev_wrap__schedule(void (*wrapper)(void *, void *),
     void (*fn)(void *, void *);
     void *p;
   } u = {.fn = fn};
-  fio_queue_push(FIO_QUEUE_SYSTEM,
-                 .fn = fio___poll_ev_wrap__user_task,
-                 .udata1 = u.p,
-                 .udata2 = io);
+  fio_queue_push(FIO_QUEUE_SYSTEM, .fn = wrapper, .udata1 = u.p, .udata2 = io);
 }
 
 /* *****************************************************************************
@@ -1343,6 +1519,7 @@ FIO_IFUNC void fio___poll_on_data(int fd, void *io) {
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__user_task,
                                fio_ev_on_data,
                                io);
+  MARK_FUNC();
 }
 FIO_IFUNC void fio___poll_on_ready(int fd, void *io) {
   (void)fd;
@@ -1350,6 +1527,7 @@ FIO_IFUNC void fio___poll_on_ready(int fd, void *io) {
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__io_task,
                                fio_ev_on_ready,
                                io);
+  MARK_FUNC();
 }
 
 FIO_IFUNC void fio___poll_on_close(int fd, void *io) {
@@ -1358,6 +1536,7 @@ FIO_IFUNC void fio___poll_on_close(int fd, void *io) {
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__io_task,
                                fio_ev_on_close,
                                io);
+  MARK_FUNC();
 }
 
 /* *****************************************************************************
@@ -1437,12 +1616,11 @@ FIO_IFUNC int fio___epoll_add2(int fd,
 }
 
 FIO_IFUNC void fio_monitor_monitor(int fd, void *udata, uintptr_t flags) {
-  if ((flags & POLLIN) &&
-      fio___epoll_add2(fd,
-                       udata,
-                       (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
-                       evio_fd[1]) == -1)
-    return;
+  if ((flags & POLLIN))
+    fio___epoll_add2(fd,
+                     udata,
+                     (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                     evio_fd[1]);
   if ((flags & POLLOUT))
     fio___epoll_add2(fd,
                      udata,
@@ -1537,6 +1715,7 @@ FIO_IFUNC void fio_monitor_monitor(int fd, void *udata, uintptr_t flags) {
            0,
            0,
            udata);
+    ++i;
   }
   do {
     errno = 0;
@@ -1639,8 +1818,8 @@ The Reactor event scheduler
 FIO_SFUNC void fio___schedule_events(void) {
   static int old = 0;
   /* make sure the user thread is active */
-  if (fio_queue_count(FIO_QUEUE_USER))
-    fio_user_thread_wake();
+  // if (fio_queue_count(FIO_QUEUE_USER))
+  //   fio_user_thread_wake();
   /* schedule IO events */
   fio_io_wakeup_prep();
   /* make sure all system events were processed */
@@ -1652,7 +1831,8 @@ FIO_SFUNC void fio___schedule_events(void) {
   /* review IO timeouts */
   fio___review_timeouts();
   /* schedule timer events */
-  fio_timer_push2queue(FIO_QUEUE_USER, &fio_data.timers, fio_data.tick);
+  if (fio_timer_push2queue(FIO_QUEUE_USER, &fio_data.timers, fio_data.tick))
+    fio_user_thread_wake();
   /* schedule on_idle events */
   if (!c) {
     if (old) {
@@ -1672,8 +1852,8 @@ FIO_SFUNC void fio___schedule_events(void) {
   }
   old = c;
   /* make sure the user thread is active after all events were scheduled */
-  if (fio_queue_count(FIO_QUEUE_USER))
-    fio_user_thread_wake();
+  // if (fio_queue_count(FIO_QUEUE_USER))
+  //   fio_user_thread_wake();
 }
 
 /* *****************************************************************************
@@ -1682,6 +1862,7 @@ Shutdown cycle
 
 /* cycles until all existing IO objects were closed. */
 static void fio___shutdown_cycle(void) {
+  const int64_t limit = fio_data.tick + (FIO_SHOTDOWN_TIMEOUT * 1000);
   for (;;) {
     if (!fio_queue_perform(FIO_QUEUE_SYSTEM))
       continue;
@@ -1691,9 +1872,20 @@ static void fio___shutdown_cycle(void) {
     if (fio___review_timeouts())
       continue;
     fio_data.tick = fio_time2milli(fio_time_real());
+    if (fio_data.tick >= limit)
+      break;
     if (fio_monitor_review(FIO_POLL_SHUTDOWN_TICK))
       continue;
     if (fio___is_waiting_on_io())
+      continue;
+    break;
+  }
+  fio___close_all_io();
+  for (;;) {
+    if (!fio_queue_perform(FIO_QUEUE_SYSTEM))
+      continue;
+    fio_signal_review();
+    if (!fio_queue_perform(FIO_QUEUE_USER))
       continue;
     break;
   }
@@ -1722,7 +1914,7 @@ static void *fio___user_thread_cycle(void *ignr) {
   for (;;) {
     fio_queue_perform_all(FIO_QUEUE_USER);
     if (fio_data.running) {
-      fio_user_thread_suspent();
+      fio_user_thread_suspend();
       continue;
     }
     return NULL;
@@ -1747,7 +1939,7 @@ static void fio___worker(void) {
   fio_state_callback_force(FIO_CALL_ON_START);
   fio_thread_t *threads = NULL;
   if (fio_data.threads) {
-    threads = calloc(sizeof(threads), fio_data.threads);
+    threads = calloc(sizeof(*threads), fio_data.threads);
     FIO_ASSERT_ALLOC(threads);
     for (size_t i = 0; i < fio_data.threads; ++i) {
       FIO_ASSERT(!fio_thread_create(threads + i, fio___user_thread_cycle, NULL),
@@ -1762,6 +1954,7 @@ static void fio___worker(void) {
     for (size_t i = 0; i < fio_data.threads; ++i) {
       fio_monitor_review(FIO_POLL_SHUTDOWN_TICK);
       fio_queue_perform_all(FIO_QUEUE_SYSTEM);
+      fio_user_thread_wake_all();
       if (fio_thread_join(threads[i]))
         FIO_LOG_ERROR("Couldn't join worker thread.");
     }
@@ -2013,10 +2206,10 @@ FIO_SFUNC void fio_io_task_wrapper(void *task_, void *ignr_) {
   u.fn(io, t->udata2);
   fio_unlock(&io->lock);
   fio_free(t);
-  fio_free(io);
+  fio_undup(io);
   return;
 reschedule:
-  fio_queue_push(fio_queue_select(io->protocol->reserved.flags),
+  fio_queue_push(FIO_QUEUE_IO(io),
                  .fn = fio_io_task_wrapper,
                  .udata1 = task_,
                  .udata2 = ignr_);
@@ -2035,10 +2228,7 @@ void fio_defer_io(fio_s *io,
   fio_queue_task_s *t = fio_malloc(sizeof(*t));
   FIO_ASSERT_ALLOC(t);
   *t = (fio_queue_task_s){.fn = u.fn2, .udata1 = fio_dup(io), .udata2 = udata};
-  fio_queue_push(fio_queue_select(io->protocol->reserved.flags),
-                 .fn = fio_io_task_wrapper,
-                 .udata1 = io,
-                 .udata2 = udata);
+  fio_queue_push(FIO_QUEUE_IO(io), .fn = fio_io_task_wrapper, .udata1 = t);
 }
 /* *****************************************************************************
 Copyright: Boaz Segev, 2019-2020
@@ -2082,6 +2272,28 @@ typedef struct {
 
 static fio_state_tasks_s fio_state_tasks_array[FIO_CALL_NEVER];
 static fio_lock_i fio_state_tasks_array_lock[FIO_CALL_NEVER + 1];
+
+/** a callback type */
+static const char *fio_state_tasks_names[FIO_CALL_NEVER + 1] = {
+    [FIO_CALL_ON_INITIALIZE] = "ON_INITIALIZE",
+    [FIO_CALL_PRE_START] = "PRE_START",
+    [FIO_CALL_BEFORE_FORK] = "BEFORE_FORK",
+    [FIO_CALL_AFTER_FORK] = "AFTER_FORK",
+    [FIO_CALL_IN_CHILD] = "IN_CHILD",
+    [FIO_CALL_IN_MASTER] = "IN_MASTER",
+    [FIO_CALL_ON_START] = "ON_START",
+    [FIO_CALL_ON_PUBSUB_CONNECT] = "ON_PUBSUB_CONNECT",
+    [FIO_CALL_ON_PUBSUB_ERROR] = "ON_PUBSUB_ERROR",
+    [FIO_CALL_ON_USR] = "ON_USR",
+    [FIO_CALL_ON_IDLE] = "ON_IDLE",
+    [FIO_CALL_ON_USR_REVERSE] = "ON_USR_REVERSE",
+    [FIO_CALL_ON_SHUTDOWN] = "ON_SHUTDOWN",
+    [FIO_CALL_ON_FINISH] = "ON_FINISH",
+    [FIO_CALL_ON_PARENT_CRUSH] = "ON_PARENT_CRUSH",
+    [FIO_CALL_ON_CHILD_CRUSH] = "ON_CHILD_CRUSH",
+    [FIO_CALL_AT_EXIT] = "AT_EXIT",
+    [FIO_CALL_NEVER] = "NEVER",
+};
 
 FIO_IFUNC uint64_t fio___state_callback_hash(void (*func)(void *), void *arg) {
   uint64_t hash = (uint64_t)(uintptr_t)func + (uint64_t)(uintptr_t)arg;
@@ -2160,6 +2372,8 @@ void fio_state_callback_force(callback_type_e e) {
     return;
   fio___state_task_s *ary = NULL;
   size_t len = 0;
+
+  FIO_LOG_DEBUG("Calling %s callbacks.", fio_state_tasks_names[e]);
 
   /* copy task queue */
   fio_lock(fio_state_tasks_array_lock + (uintptr_t)e);
@@ -2479,29 +2693,31 @@ State data initialization
 ***************************************************************************** */
 
 FIO_DESTRUCTOR(fio_cleanup_at_exit) {
-  FIO_LOG_DEBUG("Calling AT_EXIT callbacks.");
   fio_state_callback_force(FIO_CALL_AT_EXIT);
   fio_thread_mutex_destroy(&fio_data.env_lock);
   env_destroy(&fio_data.env);
   fio_data.protocols = FIO_LIST_INIT(fio_data.protocols);
-  while (fio_queue_count(FIO_QUEUE_SYSTEM) + fio_queue_count(FIO_QUEUE_USER)) {
-    fio_queue_perform_all(FIO_QUEUE_SYSTEM);
-    fio_queue_perform_all(FIO_QUEUE_USER);
-  }
+  while (!fio_queue_perform(FIO_QUEUE_SYSTEM) ||
+         !fio_queue_perform(FIO_QUEUE_USER))
+    ;
   fio_close_wakeup_pipes();
   if (fio_data.io_wake_io) {
     fio_free2(fio_data.io_wake_io);
     fio_data.io_wake_io = NULL;
   }
-  while (fio_queue_count(FIO_QUEUE_SYSTEM) + fio_queue_count(FIO_QUEUE_USER)) {
-    fio_queue_perform_all(FIO_QUEUE_SYSTEM);
-    fio_queue_perform_all(FIO_QUEUE_USER);
-  }
+  while (!fio_queue_perform(FIO_QUEUE_SYSTEM) ||
+         !fio_queue_perform(FIO_QUEUE_USER))
+    ;
   fio_monitor_destroy();
   fio_cli_end();
   fio_invalidate_all();
   for (int i = 0; i < FIO_CALL_NEVER; ++i)
     fio_state_callback_clear((callback_type_e)i);
+  while (!fio_queue_perform(FIO_QUEUE_SYSTEM) ||
+         !fio_queue_perform(FIO_QUEUE_USER))
+    ;
+  fio_queue_destroy(fio_tasks);
+  fio_queue_destroy(fio_tasks + 1);
 }
 
 FIO_CONSTRUCTOR(fio_data_state_init) {
@@ -2511,16 +2727,20 @@ FIO_CONSTRUCTOR(fio_data_state_init) {
   fio_data.tick = fio_time2milli(fio_time_real());
   fio_data.protocols = FIO_LIST_INIT(fio_data.protocols);
   fio_data.timers = (fio_timer_queue_s)FIO_TIMER_QUEUE_INIT;
-  fio_data.tasks[0] = (fio_queue_s)FIO_QUEUE_STATIC_INIT(fio_data.tasks[0]);
-  fio_data.tasks[1] = (fio_queue_s)FIO_QUEUE_STATIC_INIT(fio_data.tasks[1]);
+  fio_tasks[0] = (fio_queue_s)FIO_QUEUE_STATIC_INIT(fio_tasks[0]);
+  fio_tasks[1] = (fio_queue_s)FIO_QUEUE_STATIC_INIT(fio_tasks[1]);
   fio_monitor_init();
   fio_protocol_validate(&FIO_PROTOCOL_HIJACK);
+  fio_validity_map_reserve(&fio_data.valid, 300);
   FIO_PROTOCOL_HIJACK.on_timeout = FIO_PING_ETERNAL;
   FIO_PROTOCOL_HIJACK.reserved.protocols =
       FIO_LIST_INIT(FIO_PROTOCOL_HIJACK.reserved.protocols);
   FIO_PROTOCOL_HIJACK.reserved.ios =
       FIO_LIST_INIT(FIO_PROTOCOL_HIJACK.reserved.ios);
   FIO_PROTOCOL_HIJACK.reserved.flags |= 1;
+#if FIO_VALIDATE_IO_MUTEX
+  fio_data.valid_lock = (fio_thread_mutex_t)FIO_THREAD_MUTEX_INIT;
+#endif
 
   fio_state_callback_add(FIO_CALL_IN_CHILD, fio___after_fork, NULL);
 }

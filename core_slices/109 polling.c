@@ -37,13 +37,13 @@ FIO_IFUNC void fio___poll_ev_wrap__user_task(void *fn_, void *io_) {
   fio_s *io = io_;
   if (!fio_is_valid(io))
     goto io_invalid;
+  MARK_FUNC();
 
-  fio_queue_push(fio_queue_select(io->protocol->reserved.flags),
-                 .fn = u.fn,
-                 .udata1 = fio_dup(io));
+  fio_queue_push(FIO_QUEUE_IO(io), .fn = u.fn, .udata1 = fio_dup(io));
+  fio_user_thread_wake();
   return;
 io_invalid:
-  FIO_LOG_DEBUG("IO validation failed for IO %p", (void *)io);
+  FIO_LOG_DEBUG("IO validation failed for IO %p (User task)", (void *)io);
 }
 
 FIO_IFUNC void fio___poll_ev_wrap__io_task(void *fn_, void *io_) {
@@ -54,13 +54,15 @@ FIO_IFUNC void fio___poll_ev_wrap__io_task(void *fn_, void *io_) {
   fio_s *io = io_;
   if (!fio_is_valid(io))
     goto io_invalid;
+  MARK_FUNC();
 
   fio_queue_push(FIO_QUEUE_SYSTEM, .fn = u.fn, .udata1 = fio_dup(io));
   return;
 io_invalid:
-  FIO_LOG_DEBUG("IO validation failed for IO %p", (void *)io);
+  FIO_LOG_DEBUG("IO validation failed for IO %p (IO task)", (void *)io);
 }
 
+/* delays callback scheduling so it occurs after pending free / init events. */
 FIO_IFUNC void fio___poll_ev_wrap__schedule(void (*wrapper)(void *, void *),
                                             void (*fn)(void *, void *),
                                             void *io) {
@@ -69,10 +71,7 @@ FIO_IFUNC void fio___poll_ev_wrap__schedule(void (*wrapper)(void *, void *),
     void (*fn)(void *, void *);
     void *p;
   } u = {.fn = fn};
-  fio_queue_push(FIO_QUEUE_SYSTEM,
-                 .fn = fio___poll_ev_wrap__user_task,
-                 .udata1 = u.p,
-                 .udata2 = io);
+  fio_queue_push(FIO_QUEUE_SYSTEM, .fn = wrapper, .udata1 = u.p, .udata2 = io);
 }
 
 /* *****************************************************************************
@@ -85,6 +84,7 @@ FIO_IFUNC void fio___poll_on_data(int fd, void *io) {
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__user_task,
                                fio_ev_on_data,
                                io);
+  MARK_FUNC();
 }
 FIO_IFUNC void fio___poll_on_ready(int fd, void *io) {
   (void)fd;
@@ -92,6 +92,7 @@ FIO_IFUNC void fio___poll_on_ready(int fd, void *io) {
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__io_task,
                                fio_ev_on_ready,
                                io);
+  MARK_FUNC();
 }
 
 FIO_IFUNC void fio___poll_on_close(int fd, void *io) {
@@ -100,6 +101,7 @@ FIO_IFUNC void fio___poll_on_close(int fd, void *io) {
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__io_task,
                                fio_ev_on_close,
                                io);
+  MARK_FUNC();
 }
 
 /* *****************************************************************************
@@ -179,12 +181,11 @@ FIO_IFUNC int fio___epoll_add2(int fd,
 }
 
 FIO_IFUNC void fio_monitor_monitor(int fd, void *udata, uintptr_t flags) {
-  if ((flags & POLLIN) &&
-      fio___epoll_add2(fd,
-                       udata,
-                       (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
-                       evio_fd[1]) == -1)
-    return;
+  if ((flags & POLLIN))
+    fio___epoll_add2(fd,
+                     udata,
+                     (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                     evio_fd[1]);
   if ((flags & POLLOUT))
     fio___epoll_add2(fd,
                      udata,
@@ -279,6 +280,7 @@ FIO_IFUNC void fio_monitor_monitor(int fd, void *udata, uintptr_t flags) {
            0,
            0,
            udata);
+    ++i;
   }
   do {
     errno = 0;

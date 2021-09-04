@@ -5,15 +5,88 @@ Internal helpers
 #include "999 dev.h" /* development sugar, ignore */
 #endif               /* development sugar, ignore */
 
-#define FIO_STREAM
+#define FIO_MALLOC_TMP_USE_SYSTEM
+#define FIO_SIGNAL
 #include "fio-stl.h"
 
-#define FIO_MALLOC_TMP_USE_SYSTEM
+#define FIO_STREAM
 #define FIO_QUEUE
-#define FIO_SIGNAL
 #define FIO_SOCK /* should be public? */
 #include "fio-stl.h"
 
+/* for storing ENV string keys and all sorts of stuff */
+#define FIO_STR_SMALL sstr
+#include "fio-stl.h"
+
+/* *****************************************************************************
+Reference Counter Debugging
+***************************************************************************** */
+#ifndef FIO_DEBUG_REF
+#if DEBUG
+#define FIO_DEBUG_REF 1
+#else
+#define FIO_DEBUG_REF 1
+#endif
+#endif
+
+#if FIO_DEBUG_REF
+
+#define FIO_MALLOC_TMP_USE_SYSTEM
+#define FIO_UMAP_NAME               ref_dbg
+#define FIO_MAP_TYPE                uintptr_t
+#define FIO_MAP_KEY                 sstr_s
+#define FIO_MAP_KEY_COPY(dest, src) sstr_init_copy2(&(dest), &(src))
+#define FIO_MAP_KEY_DESTROY(k)      sstr_destroy(&k)
+#define FIO_MAP_KEY_DISCARD         FIO_MAP_KEY_DESTROY
+#define FIO_MAP_KEY_CMP(a, b)       sstr_is_eq(&(a), &(b))
+#include <fio-stl.h>
+
+ref_dbg_s ref_dbg[8] = {FIO_MAP_INIT};
+fio_thread_mutex_t ref_dbg_lock = FIO_THREAD_MUTEX_INIT;
+
+FIO_IFUNC void fio_func_called(const char *func, uint_fast8_t i) {
+  sstr_s s;
+  sstr_init_const(&s, func, strlen(func));
+  fio_thread_mutex_lock(&ref_dbg_lock);
+  uintptr_t *a = ref_dbg_get_ptr(ref_dbg + i, sstr_hash(&s, 0), s);
+  if (a)
+    ++a[0];
+  else
+    ref_dbg_set(ref_dbg + i, sstr_hash(&s, 0), s, 1, NULL);
+  fio_thread_mutex_unlock(&ref_dbg_lock);
+}
+
+#define MARK_FUNC() fio_func_called(__func__, 0)
+
+FIO_DESTRUCTOR(fio_io_ref_dbg) {
+  const char *name[] = {
+      "call counter",
+      "fio_dup",
+      "fio_undup",
+      "fio_free2 (internal)",
+      // "fio_malloc",
+      // "fio_calloc",
+      // "fio_free",
+  };
+  for (int i = 0; i < 4; ++i) {
+    size_t total = 0;
+    fprintf(stderr, "\n\t%s called by:\n", name[i]);
+    FIO_MAP_EACH(ref_dbg, (ref_dbg + i), c) {
+      total += c->obj.value;
+      fprintf(stderr,
+              "\t- %*.*s: %zu\n",
+              (int)35,
+              (int)35,
+              sstr2ptr(&c->obj.key),
+              (size_t)c->obj.value);
+    }
+    fprintf(stderr, "\t- total: %zu\n", total);
+    ref_dbg_destroy(ref_dbg + i);
+  }
+}
+#else
+#define MARK_FUNC()
+#endif
 /* *****************************************************************************
 Polling Helpers
 ***************************************************************************** */
@@ -34,7 +107,7 @@ Polling Helpers
 #endif
 
 #ifndef FIO_POLL_SHUTDOWN_TICK
-#define FIO_POLL_SHUTDOWN_TICK 10
+#define FIO_POLL_SHUTDOWN_TICK 100
 #endif
 
 FIO_SFUNC void fio_monitor_init(void);
@@ -55,6 +128,7 @@ FIO_IFUNC fio_queue_s *fio_queue_select(uintptr_t flag);
 
 #define FIO_QUEUE_SYSTEM fio_queue_select(1)
 #define FIO_QUEUE_USER   fio_queue_select(0)
+#define FIO_QUEUE_IO(io) fio_queue_select((io)->protocol->reserved.flags)
 
 /* *****************************************************************************
 ENV data maps (must be defined before the IO object that owns them)
@@ -88,10 +162,6 @@ FIO_IFUNC void env_obj_call_callback(env_obj_s o) {
                           o.udata);
   }
 }
-
-/* for storing ENV string keys */
-#define FIO_STR_SMALL sstr
-#include "fio-stl.h"
 
 #define FIO_UMAP_NAME              env
 #define FIO_MAP_TYPE               env_obj_s
@@ -157,6 +227,7 @@ static void mock_ping_eternal(fio_s *io) { fio_touch(io); }
 
 FIO_IFUNC void fio_protocol_validate(fio_protocol_s *p) {
   if (p && !(p->reserved.flags & 8)) {
+    MARK_FUNC();
     if (!p->on_data)
       p->on_data = mock_on_data;
     if (!p->on_timeout)

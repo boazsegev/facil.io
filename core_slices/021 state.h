@@ -16,7 +16,7 @@ typedef enum {
   FIO_CALL_IN_CHILD,
   /** Called by the master process after spawning a worker (after forking). */
   FIO_CALL_IN_MASTER,
-  /** Called every time a *Worker* proceess starts. */
+  /** Called every time a *Worker* process starts. */
   FIO_CALL_ON_START,
   /** SHOULD be called by pub/sub engines after they (re)connect to backend. */
   FIO_CALL_ON_PUBSUB_CONNECT,
@@ -30,7 +30,7 @@ typedef enum {
   FIO_CALL_ON_USR_REVERSE,
   /** Called before starting the shutdown sequence. */
   FIO_CALL_ON_SHUTDOWN,
-  /** Called just before finishing up (both on chlid and parent processes). */
+  /** Called just before finishing up (both on child and parent processes). */
   FIO_CALL_ON_FINISH,
   /** Called by each worker the moment it detects the master process crashed. */
   FIO_CALL_ON_PARENT_CRUSH,
