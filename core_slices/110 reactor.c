@@ -22,7 +22,8 @@ FIO_SFUNC void fio___schedule_events(void) {
   /* schedule Signal events */
   c += fio_signal_review();
   /* review IO timeouts */
-  fio___review_timeouts();
+  if (fio___review_timeouts())
+    fio_user_thread_wake();
   /* schedule timer events */
   if (fio_timer_push2queue(FIO_QUEUE_USER, &fio_data.timers, fio_data.tick))
     fio_user_thread_wake();

@@ -139,7 +139,7 @@ static void fio_ev_on_timeout(void *io_, void *udata) {
 #endif
   if ((io->state & FIO_IO_OPEN)) {
     io->protocol->on_timeout(io);
-  } else {
+  } else { /* TODO: FIXME: why does this occur? ... What to do? */
     FIO_LOG_DEBUG2("timeout event on a non-open IO %p (fd %d)", io_, io->fd);
   }
   fio_undup(io);

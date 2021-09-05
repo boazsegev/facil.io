@@ -19,6 +19,29 @@ Internal helpers
 #include "fio-stl.h"
 
 /* *****************************************************************************
+IO Registry - NOT thread safe (access from IO core thread only)
+***************************************************************************** */
+
+#define FIO_UMAP_NAME          fio_validity_map
+#define FIO_MAP_TYPE           fio_s *
+#define FIO_MAP_HASH_FN(o)     fio_risky_ptr(o)
+#define FIO_MAP_TYPE_CMP(a, b) ((a) == (b))
+
+#if 1
+#define FIO_MALLOC_TMP_USE_SYSTEM 1
+#else
+#define FIO_MEMORY_NAME        fio___val_mem
+#define FIO_MEMORY_ARENA_COUNT 1
+#endif
+
+#ifndef FIO_VALIDATE_IO_MUTEX
+/* required only if exposing fio_is_valid to users. */
+#define FIO_VALIDATE_IO_MUTEX 0
+#endif
+
+#include <fio-stl.h>
+
+/* *****************************************************************************
 Reference Counter Debugging
 ***************************************************************************** */
 #ifndef FIO_DEBUG_REF
@@ -41,7 +64,7 @@ Reference Counter Debugging
 #define FIO_MAP_KEY_CMP(a, b)       sstr_is_eq(&(a), &(b))
 #include <fio-stl.h>
 
-ref_dbg_s ref_dbg[8] = {FIO_MAP_INIT};
+ref_dbg_s ref_dbg[4] = {FIO_MAP_INIT};
 fio_thread_mutex_t ref_dbg_lock = FIO_THREAD_MUTEX_INIT;
 
 FIO_IFUNC void fio_func_called(const char *func, uint_fast8_t i) {
@@ -64,9 +87,6 @@ FIO_DESTRUCTOR(fio_io_ref_dbg) {
       "fio_dup",
       "fio_undup",
       "fio_free2 (internal)",
-      // "fio_malloc",
-      // "fio_calloc",
-      // "fio_free",
   };
   for (int i = 0; i < 4; ++i) {
     size_t total = 0;

@@ -6,29 +6,6 @@ Global State
 #endif               /* development sugar, ignore */
 
 /* *****************************************************************************
-IO Registry - NOT thread safe (access from IO core thread only)
-***************************************************************************** */
-
-#define FIO_UMAP_NAME          fio_validity_map
-#define FIO_MAP_TYPE           fio_s *
-#define FIO_MAP_HASH_FN(o)     fio_risky_ptr(o)
-#define FIO_MAP_TYPE_CMP(a, b) ((a) == (b))
-
-#if 0
-#define FIO_MALLOC_TMP_USE_SYSTEM 1
-#else
-#define FIO_MEMORY_NAME        fio_validity_map_mem
-#define FIO_MEMORY_ARENA_COUNT 1
-#endif
-
-#ifndef FIO_VALIDATE_IO_MUTEX
-/* required only if exposing fio_is_valid to users. */
-#define FIO_VALIDATE_IO_MUTEX 0
-#endif
-
-#include <fio-stl.h>
-
-/* *****************************************************************************
 Global State
 ***************************************************************************** */
 

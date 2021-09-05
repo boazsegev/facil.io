@@ -164,7 +164,6 @@ FIO_SFUNC void on_data(fio_s *io) {
       fio_read(io, c->buf + c->buf_pos, HTTP_CLIENT_BUFFER - c->buf_pos);
   if (r > 0) {
     c->buf_pos += r;
-    // c->buf[c->buf_pos] = 0;
     while ((r = http1_parse(&c->parser,
                             c->buf + c->buf_consumed,
                             (size_t)(c->buf_pos - c->buf_consumed)))) {

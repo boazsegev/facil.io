@@ -20,7 +20,7 @@ Polling Timeout Calculation
 
 static int fio_poll_timeout_calc(void) {
   int t = fio_timer_next_at(&fio_data.timers) - fio_data.tick;
-  if (t <= 0 || t > FIO_POLL_TICK)
+  if (t == -1 || t > FIO_POLL_TICK)
     t = FIO_POLL_TICK;
   return t;
 }
