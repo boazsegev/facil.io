@@ -120,7 +120,7 @@ typedef struct {
 } client_s;
 
 /* We don't really need reference counting, but this is easy. */
-#define FIO_MALLOC_TMP_USE_SYSTEM
+// #define FIO_MALLOC_TMP_USE_SYSTEM
 #define FIO_REF_NAME client
 #define FIO_REF_CONSTRUCTOR_ONLY
 #define FIO_REF_FLEX_TYPE char
@@ -164,7 +164,7 @@ FIO_SFUNC void on_data(fio_s *io) {
       fio_read(io, c->buf + c->buf_pos, HTTP_CLIENT_BUFFER - c->buf_pos);
   if (r > 0) {
     c->buf_pos += r;
-    c->buf[c->buf_pos] = 0;
+    // c->buf[c->buf_pos] = 0;
     while ((r = http1_parse(&c->parser,
                             c->buf + c->buf_consumed,
                             (size_t)(c->buf_pos - c->buf_consumed)))) {
@@ -299,9 +299,10 @@ static int http1_on_body_chunk(http1_parser_s *parser,
   if (parser->state.content_length >= HTTP_CLIENT_BUFFER)
     return -1;
   client_s *c = FIO_PTR_FROM_FIELD(client_s, parser, parser);
-  if (!c->body)
-    c->body = data;
   c->body_len += data_len;
+  if (c->body)
+    return 0;
+  c->body = data;
   return 0;
 }
 /** called when a protocol error occurred. */

@@ -8622,7 +8622,7 @@ FIO_DESTRUCTOR(FIO_NAME(FIO_MEMORY_NAME, __mem_state_cleanup)) {
 #if FIO_MEMORY_ENABLE_BIG_ALLOC
   /* cleanup big-alloc chunk */
   if (FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_block) {
-    if (FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_block->ref > 1) {
+    if ((uint32_t)FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_block->ref > 1) {
       FIO_LOG_WARNING("(" FIO_MACRO2STR(FIO_NAME(
           FIO_MEMORY_NAME,
           malloc)) ") active big-block reference count error at %p\n"
@@ -8973,7 +8973,13 @@ FIO_IFUNC void FIO_NAME(FIO_MEMORY_NAME, __mem_block_free)(void *p) {
   FIO_NAME(FIO_MEMORY_NAME, __mem_chunk_s) *c =
       FIO_NAME(FIO_MEMORY_NAME, __mem_ptr2chunk)(p);
   size_t b = FIO_NAME(FIO_MEMORY_NAME, __mem_ptr2index)(c, p);
-  if (!c || fio_atomic_sub_fetch(&c->blocks[b].ref, 1))
+  if (!c)
+    return;
+  FIO_ASSERT_DEBUG((uint32_t)c->blocks[b].ref <= FIO_MEMORY_UNITS_PER_BLOCK + 1,
+                   "block reference count corrupted, possible double free?")
+  FIO_ASSERT_DEBUG((uint32_t)c->blocks[b].pos <= FIO_MEMORY_UNITS_PER_BLOCK + 1,
+                   "block allocation position corrupted, possible double free?")
+  if (fio_atomic_sub_fetch(&c->blocks[b].ref, 1))
     return;
 
   /* reset memory */
@@ -9880,10 +9886,11 @@ FIO_IFUNC void *FIO_NAME_TEST(FIO_NAME(FIO_MEMORY_NAME, fio),
   uintptr_t cycles = (uintptr_t)i_;
   const size_t test_byte_count =
       FIO_MEMORY_SYS_ALLOCATION_SIZE + (FIO_MEMORY_SYS_ALLOCATION_SIZE >> 1);
-  uint64_t marker;
+  uint64_t marker[2];
   do {
-    marker = fio_rand64();
-  } while (!marker);
+    marker[0] = fio_rand64();
+    marker[1] = fio_rand64();
+  } while (!marker[0] || !marker[1] || marker[0] == marker[1]);
 
   const size_t limit = (test_byte_count / cycles);
   char **ary = (char **)FIO_NAME(FIO_MEMORY_NAME, calloc)(sizeof(*ary), limit);
@@ -9908,7 +9915,7 @@ FIO_IFUNC void *FIO_NAME_TEST(FIO_NAME(FIO_MEMORY_NAME, fio),
     FIO_ASSERT(!FIO_MEMORY_INITIALIZE_ALLOCATIONS || !ary[i][0],
                "allocated memory not zero (start): %p",
                (void *)ary[i]);
-    fio_memset_aligned(ary[i], marker, (cycles));
+    fio_memset_aligned(ary[i], marker[i & 1], (cycles));
   }
   for (size_t i = 0; i < limit; ++i) {
     char *tmp = (char *)FIO_NAME(FIO_MEMORY_NAME,
@@ -9919,15 +9926,18 @@ FIO_IFUNC void *FIO_NAME_TEST(FIO_NAME(FIO_MEMORY_NAME, fio),
                "allocation alignment error!");
     FIO_ASSERT(!FIO_MEMORY_INITIALIZE_ALLOCATIONS || !ary[i][(cycles)],
                "realloc2 copy overflow!");
-    fio___memset_test_aligned(ary[i], marker, (cycles), "realloc grow");
+    fio___memset_test_aligned(ary[i], marker[i & 1], (cycles), "realloc grow");
     tmp =
         (char *)FIO_NAME(FIO_MEMORY_NAME, realloc2)(ary[i], (cycles), (cycles));
     FIO_ASSERT(tmp, "re-allocation (shrinking) failed!")
     ary[i] = tmp;
-    fio___memset_test_aligned(ary[i], marker, (cycles), "realloc shrink");
+    fio___memset_test_aligned(ary[i],
+                              marker[i & 1],
+                              (cycles),
+                              "realloc shrink");
   }
   for (size_t i = 0; i < limit; ++i) {
-    fio___memset_test_aligned(ary[i], marker, (cycles), "mem review");
+    fio___memset_test_aligned(ary[i], marker[i & 1], (cycles), "mem review");
     FIO_NAME(FIO_MEMORY_NAME, free)(ary[i]);
     ary[i] = NULL;
   }
@@ -23581,6 +23591,16 @@ FIO_NAME(FIO_REF_NAME, FIO_REF_DUPNAME)(FIO_REF_TYPE_PTR wrapped_) {
   return wrapped_;
 }
 
+/** Debugging helper, do not use for data, as returned value is unstable. */
+FIO_IFUNC size_t FIO_NAME(FIO_REF_NAME, references)(FIO_REF_TYPE_PTR wrapped_) {
+  FIO_REF_TYPE *wrapped = (FIO_REF_TYPE *)(FIO_PTR_UNTAG(wrapped_));
+  FIO_NAME(FIO_REF_NAME, _wrapper_s) *o =
+      ((FIO_NAME(FIO_REF_NAME, _wrapper_s) *)wrapped) - 1;
+  if (!o)
+    return 0;
+  return o->ref;
+}
+
 /* *****************************************************************************
 Reference Counter (Wrapper) Implementation
 ***************************************************************************** */
@@ -23631,6 +23651,7 @@ IFUNC FIO_REF_TYPE_PTR FIO_NAME(FIO_REF_NAME, FIO_REF_CONSTRUCTOR)(void) {
   FIO_REF_TYPE *ret = (FIO_REF_TYPE *)(o + 1);
   FIO_REF_INIT((ret[0]));
   return (FIO_REF_TYPE_PTR)(FIO_PTR_TAG(ret));
+  (void)FIO_NAME(FIO_REF_NAME, references);
 }
 
 /** Frees a reference counted object (or decreases the reference count). */
