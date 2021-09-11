@@ -713,32 +713,35 @@ Miscellaneous helper macros
 #define FIO_LOG_LENGTH_LIMIT 1024
 #endif
 
-// clang-format off
 /* Asserts a condition is true, or kills the application using SIGINT. */
 #define FIO_ASSERT(cond, ...)                                                  \
-  if (!(cond)) {                                                               \
-    FIO_LOG_FATAL("(" FIO__FILE__ ":" FIO_MACRO2STR(__LINE__) ") " __VA_ARGS__);  \
-    fprintf(stderr, "     errno(%d): %s\n", errno, strerror(errno));                                                      \
-    kill(0, SIGINT);                                                           \
-    exit(-1);                                                                  \
-  }
+  do {                                                                         \
+    if (!(cond)) {                                                             \
+      FIO_LOG_FATAL("(" FIO__FILE__                                            \
+                    ":" FIO_MACRO2STR(__LINE__) ") " __VA_ARGS__);             \
+      fprintf(stderr, "     errno(%d): %s\n", errno, strerror(errno));         \
+      kill(0, SIGINT);                                                         \
+      exit(-1);                                                                \
+    }                                                                          \
+  } while (0)
 
 #ifndef FIO_ASSERT_ALLOC
 /** Tests for an allocation failure. The behavior can be overridden. */
-#define FIO_ASSERT_ALLOC(ptr)  FIO_ASSERT((ptr), "memory allocation failed.")
+#define FIO_ASSERT_ALLOC(ptr) FIO_ASSERT((ptr), "memory allocation failed.")
 #endif
-// clang-format on
 
 #ifdef DEBUG
 /** If `DEBUG` is defined, raises SIGINT if assertion fails, otherwise NOOP. */
 #define FIO_ASSERT_DEBUG(cond, ...)                                            \
-  if (!(cond)) {                                                               \
-    FIO_LOG_FATAL("(" FIO__FILE__                                              \
-                  ":" FIO_MACRO2STR(__LINE__) ") " __VA_ARGS__);               \
-    fprintf(stderr, "     errno(%d): %s\n", errno, strerror(errno));           \
-    kill(0, SIGINT);                                                           \
-    exit(-1);                                                                  \
-  }
+  do {                                                                         \
+    if (!(cond)) {                                                             \
+      FIO_LOG_FATAL("(" FIO__FILE__                                            \
+                    ":" FIO_MACRO2STR(__LINE__) ") " __VA_ARGS__);             \
+      fprintf(stderr, "     errno(%d): %s\n", errno, strerror(errno));         \
+      kill(0, SIGINT);                                                         \
+      exit(-1);                                                                \
+    }                                                                          \
+  } while (0)
 #else
 #define FIO_ASSERT_DEBUG(...)
 #endif
@@ -5355,7 +5358,7 @@ FIO_SFUNC void FIO_NAME_TEST(stl, atol)(void) {
                i2);
   }
   for (unsigned char i = 0; i < 36; ++i) {
-    FIO_ASSERT(i == fio_c2i(fio_i2c(i)), "fio_c2i / fio_i2c roundtrip error.")
+    FIO_ASSERT(i == fio_c2i(fio_i2c(i)), "fio_c2i / fio_i2c roundtrip error.");
   }
   fprintf(stderr, "* Testing fio_atol samples.\n");
 #define TEST_ATOL(s_, n)                                                       \
@@ -8975,10 +8978,14 @@ FIO_IFUNC void FIO_NAME(FIO_MEMORY_NAME, __mem_block_free)(void *p) {
   size_t b = FIO_NAME(FIO_MEMORY_NAME, __mem_ptr2index)(c, p);
   if (!c)
     return;
-  FIO_ASSERT_DEBUG((uint32_t)c->blocks[b].ref <= FIO_MEMORY_UNITS_PER_BLOCK + 1,
-                   "block reference count corrupted, possible double free?")
-  FIO_ASSERT_DEBUG((uint32_t)c->blocks[b].pos <= FIO_MEMORY_UNITS_PER_BLOCK + 1,
-                   "block allocation position corrupted, possible double free?")
+  FIO_ASSERT_DEBUG(
+      (uint32_t)c->blocks[b].ref <= FIO_MEMORY_UNITS_PER_BLOCK + 1,
+      "block reference count corrupted, possible double free? (%zd)",
+      (size_t)c->blocks[b].ref);
+  FIO_ASSERT_DEBUG(
+      (uint32_t)c->blocks[b].pos <= FIO_MEMORY_UNITS_PER_BLOCK + 1,
+      "block allocation position corrupted, possible double free? (%zd)",
+      (size_t)c->blocks[b].pos);
   if (fio_atomic_sub_fetch(&c->blocks[b].ref, 1))
     return;
 
@@ -9054,16 +9061,15 @@ void fio___mem_slice_new___(void);
 FIO_SFUNC void *FIO_MEM_ALIGN_NEW FIO_NAME(FIO_MEMORY_NAME,
                                            __mem_slice_new)(size_t bytes,
                                                             void *is_realloc) {
-  int32_t last_pos = 0;
   void *p = NULL;
   bytes = (bytes + ((1UL << FIO_MEMORY_ALIGN_LOG) - 1)) >> FIO_MEMORY_ALIGN_LOG;
   FIO_NAME(FIO_MEMORY_NAME, __mem_arena_s) *a =
       FIO_NAME(FIO_MEMORY_NAME, __mem_arena_lock)();
 
-  if (!a->block)
+  if (!a->block) {
     a->block = FIO_NAME(FIO_MEMORY_NAME, __mem_block_new)();
-  else if (is_realloc)
-    last_pos = a->last_pos;
+    a->last_pos = 0;
+  }
   for (;;) {
     if (!a->block)
       goto no_mem;
@@ -9073,42 +9079,43 @@ FIO_SFUNC void *FIO_MEM_ALIGN_NEW FIO_NAME(FIO_MEMORY_NAME,
         FIO_NAME(FIO_MEMORY_NAME, __mem_ptr2chunk)(block);
     const size_t b = FIO_NAME(FIO_MEMORY_NAME, __mem_ptr2index)(c, block);
 
-    /* if we are the only thread holding a reference to this block... reset. */
+    /* add allocation reference */
+    /* if we are the only thread holding a reference to this block - reset. */
     if (fio_atomic_add(&c->blocks[b].ref, 1) == 1 && c->blocks[b].pos) {
       FIO_NAME(FIO_MEMORY_NAME, __mem_block__reset_memory)(c, b);
       FIO_MEMORY_ON_BLOCK_RESET_IN_LOCK(c, b);
-    }
-
-    /* a lucky realloc? */
-    if (last_pos && is_realloc == FIO_NAME(FIO_MEMORY_NAME,
-                                           __mem_chunk2ptr)(c, b, last_pos)) {
-      c->blocks[b].pos = bytes + last_pos;
-      fio_atomic_sub(&c->blocks[b].ref, 1);
-      FIO_NAME(FIO_MEMORY_NAME, __mem_arena_unlock)(a);
-      return is_realloc;
+      a->last_pos = 0;
     }
 
     /* enough space? allocate */
     if (c->blocks[b].pos + bytes < FIO_MEMORY_UNITS_PER_BLOCK) {
+      /* a lucky realloc? */
+      if (is_realloc &&
+          is_realloc ==
+              FIO_NAME(FIO_MEMORY_NAME, __mem_chunk2ptr)(c, b, a->last_pos)) {
+        c->blocks[b].pos += bytes;
+        fio_atomic_sub(&c->blocks[b].ref, 1); /* release reference added */
+        FIO_NAME(FIO_MEMORY_NAME, __mem_arena_unlock)(a);
+        return is_realloc;
+      }
       p = FIO_NAME(FIO_MEMORY_NAME, __mem_chunk2ptr)(c, b, c->blocks[b].pos);
       a->last_pos = c->blocks[b].pos;
       c->blocks[b].pos += bytes;
       FIO_NAME(FIO_MEMORY_NAME, __mem_arena_unlock)(a);
       return p;
     }
+    is_realloc = NULL;
+
     /* release reference added */
-    if (is_realloc)
-      fio_atomic_sub(&c->blocks[b].ref, 1);
-    else
-      FIO_NAME(FIO_MEMORY_NAME, __mem_block_free)(a->block);
+    fio_atomic_sub(&c->blocks[b].ref, 1);
 
     /*
      * allocate a new block before freeing the existing block
      * this prevents the last chunk from de-allocating and reallocating
      */
     a->block = FIO_NAME(FIO_MEMORY_NAME, __mem_block_new)();
-    last_pos = 0;
-    /* release the reference held by the allocator */
+    a->last_pos = 0;
+    /* release the reference held by the arena (allocator) */
     FIO_NAME(FIO_MEMORY_NAME, __mem_block_free)(block);
   }
 
@@ -9236,16 +9243,16 @@ FIO_IFUNC void *FIO_NAME(FIO_MEMORY_NAME, __mem_big2ptr)(
 void fio___mem_big_slice_new___(void);
 FIO_SFUNC void *FIO_MEM_ALIGN_NEW
 FIO_NAME(FIO_MEMORY_NAME, __mem_big_slice_new)(size_t bytes, void *is_realloc) {
-  int32_t last_pos = 0;
   void *p = NULL;
   bytes = (bytes + ((1UL << FIO_MEMORY_ALIGN_LOG) - 1)) >> FIO_MEMORY_ALIGN_LOG;
   for (;;) {
     FIO_MEMORY_LOCK(FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_lock);
-    if (!FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_block)
+    if (!FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_block) {
       FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_block =
           FIO_NAME(FIO_MEMORY_NAME, __mem_big_block_new)();
-    else if (is_realloc)
-      last_pos = FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_last_pos;
+      FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_last_pos = 0;
+    }
+
     if (!FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_block)
       goto done;
     FIO_NAME(FIO_MEMORY_NAME, __mem_big_block_s) *b =
@@ -9256,18 +9263,22 @@ FIO_NAME(FIO_MEMORY_NAME, __mem_big_slice_new)(size_t bytes, void *is_realloc) {
       FIO_NAME(FIO_MEMORY_NAME, __mem_big_block__reset_memory)(b);
       FIO_MEMORY_ON_BLOCK_RESET_IN_LOCK(b, 0);
       b->marker = FIO_MEMORY_BIG_BLOCK_MARKER;
-    }
-
-    /* a lucky realloc? */
-    if (last_pos &&
-        is_realloc == FIO_NAME(FIO_MEMORY_NAME, __mem_big2ptr)(b, last_pos)) {
-      FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_last_pos = bytes + last_pos;
-      FIO_MEMORY_UNLOCK(FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_lock);
-      return is_realloc;
+      FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_last_pos = 0;
     }
 
     /* enough space? */
     if (b->pos + bytes < FIO_MEMORY_UNITS_PER_BIG_BLOCK) {
+      /* a lucky realloc? */
+      if (is_realloc &&
+          is_realloc ==
+              FIO_NAME(FIO_MEMORY_NAME, __mem_big2ptr)(
+                  b,
+                  FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_last_pos)) {
+        b->pos += bytes;
+        FIO_MEMORY_UNLOCK(FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_lock);
+        return is_realloc;
+      }
+
       p = FIO_NAME(FIO_MEMORY_NAME, __mem_big2ptr)(b, b->pos);
       fio_atomic_add(&b->ref, 1); /* keep inside lock to enable reset */
       FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_last_pos = b->pos;
@@ -9276,6 +9287,7 @@ FIO_NAME(FIO_MEMORY_NAME, __mem_big_slice_new)(size_t bytes, void *is_realloc) {
       return p;
     }
 
+    is_realloc = NULL;
     FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_block = NULL;
     FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_last_pos = 0;
     FIO_MEMORY_UNLOCK(FIO_NAME(FIO_MEMORY_NAME, __mem_state)->big_lock);
@@ -9497,8 +9509,10 @@ SFUNC void FIO_NAME(FIO_MEMORY_NAME, free)(void *ptr) {
   /* big mmap allocation? */
   if (((uintptr_t)c + FIO_MEMORY_ALIGN_SIZE) == (uintptr_t)ptr && c->marker)
     goto mmap_free;
+
   FIO_NAME(FIO_MEMORY_NAME, __mem_slice_free)(ptr);
   return;
+
 mmap_free:
   /* zero out memory before returning it to the system */
   FIO___MEMSET(ptr,
@@ -9901,7 +9915,7 @@ FIO_IFUNC void *FIO_NAME_TEST(FIO_NAME(FIO_MEMORY_NAME, fio),
       /* add some fragmentation */
       char *tmp = (char *)FIO_NAME(FIO_MEMORY_NAME, malloc)(16);
       FIO_NAME(FIO_MEMORY_NAME, free)(tmp);
-      FIO_ASSERT(tmp, "small allocation failed!")
+      FIO_ASSERT(tmp, "small allocation failed!");
       FIO_ASSERT(!((uintptr_t)tmp & alignment_mask),
                  "allocation alignment error!");
     }
@@ -9920,7 +9934,7 @@ FIO_IFUNC void *FIO_NAME_TEST(FIO_NAME(FIO_MEMORY_NAME, fio),
   for (size_t i = 0; i < limit; ++i) {
     char *tmp = (char *)FIO_NAME(FIO_MEMORY_NAME,
                                  realloc2)(ary[i], (cycles << 1), (cycles));
-    FIO_ASSERT(tmp, "re-allocation failed!")
+    FIO_ASSERT(tmp, "re-allocation failed!");
     ary[i] = tmp;
     FIO_ASSERT(!((uintptr_t)ary[i] & alignment_mask),
                "allocation alignment error!");
@@ -9929,7 +9943,7 @@ FIO_IFUNC void *FIO_NAME_TEST(FIO_NAME(FIO_MEMORY_NAME, fio),
     fio___memset_test_aligned(ary[i], marker[i & 1], (cycles), "realloc grow");
     tmp =
         (char *)FIO_NAME(FIO_MEMORY_NAME, realloc2)(ary[i], (cycles), (cycles));
-    FIO_ASSERT(tmp, "re-allocation (shrinking) failed!")
+    FIO_ASSERT(tmp, "re-allocation (shrinking) failed!");
     ary[i] = tmp;
     fio___memset_test_aligned(ary[i],
                               marker[i & 1],
@@ -20395,8 +20409,8 @@ FIO_SFUNC FIO_NAME(FIO_MAP_NAME, node_s) *
         }
         row >>= 8;
       }
-      i += 8;
     }
+    i += 8;
   }
   while (i < FIO_MAP_CAPA(m->bits)) {
     if (imap[i] && imap[i] != 255)
@@ -20431,6 +20445,13 @@ FIO_SFUNC int FIO_NAME_TEST(stl, FIO_NAME(FIO_MAP_NAME, task))(
   *(size_t *)e->udata -= (size_t)e->value;
   return 0;
 }
+
+#if FIO_MAP_HASH_CACHED
+#define FIO_MAP_TEST_I2H(i) (FIO_MAP_HASH) i
+#else
+#define FIO_MAP_TEST_I2H(i) FIO_MAP_HASH_FN((FIO_MAP_TYPE)i)
+#endif
+
 FIO_SFUNC void FIO_NAME_TEST(stl, FIO_MAP_NAME)(void) {
   /*
    * test unrodered maps here
@@ -20453,57 +20474,62 @@ FIO_SFUNC void FIO_NAME_TEST(stl, FIO_MAP_NAME)(void) {
     total += i;
     FIO_MAP_TYPE old = (FIO_MAP_TYPE)i;
 #ifdef FIO_MAP_KEY
-    FIO_ASSERT((FIO_MAP_TYPE)i == FIO_NAME(FIO_MAP_NAME, set)(&m,
-                                                              (FIO_MAP_HASH)i,
-                                                              (FIO_MAP_KEY)i,
-                                                              (FIO_MAP_TYPE)i,
-                                                              &old),
+    FIO_ASSERT((FIO_MAP_TYPE)i ==
+                   FIO_NAME(FIO_MAP_NAME, set)(&m,
+                                               FIO_MAP_TEST_I2H(i),
+                                               (FIO_MAP_KEY)i,
+                                               (FIO_MAP_TYPE)i,
+                                               &old),
                "insertion failed at %zu",
                i);
 #else
-    FIO_ASSERT((FIO_MAP_TYPE)i ==
-                   FIO_NAME(FIO_MAP_NAME,
-                            set)(&m, (FIO_MAP_HASH)i, (FIO_MAP_TYPE)i, &old),
-               "insertion failed at %zu",
-               i);
+    FIO_ASSERT(
+        (FIO_MAP_TYPE)i ==
+            FIO_NAME(FIO_MAP_NAME,
+                     set)(&m, FIO_MAP_TEST_I2H(i), (FIO_MAP_TYPE)i, &old),
+        "insertion failed at %zu",
+        i);
 #endif
     FIO_ASSERT(old == FIO_MAP_TYPE_INVALID,
                "old value should be set to the invalid value (%zu != %zu @%zu)",
                old,
                (size_t)FIO_MAP_TYPE_INVALID,
                i);
-    FIO_ASSERT(
-        FIO_NAME(FIO_MAP_NAME, get)(&m, (FIO_MAP_HASH)i, (FIO_MAP_TEST_KEY)i) ==
-            (FIO_MAP_TYPE)i,
-        "set-get roundtrip error for %zu",
-        i);
+    FIO_ASSERT(FIO_NAME(FIO_MAP_NAME,
+                        get)(&m, FIO_MAP_TEST_I2H(i), (FIO_MAP_TEST_KEY)i) ==
+                   (FIO_MAP_TYPE)i,
+               "set-get roundtrip error for %zu",
+               i);
     if (1) {
-      FIO_ASSERT(
-          !FIO_NAME(FIO_MAP_NAME,
-                    remove)(&m, (FIO_MAP_HASH)i, (FIO_MAP_TEST_KEY)i, &old) &&
-              old == (FIO_MAP_TYPE)i,
-          "remove failure after set-get roundtrip for %zu",
-          i);
+      FIO_ASSERT(!FIO_NAME(FIO_MAP_NAME, remove)(&m,
+                                                 FIO_MAP_TEST_I2H(i),
+                                                 (FIO_MAP_TEST_KEY)i,
+                                                 &old) &&
+                     old == (FIO_MAP_TYPE)i,
+                 "remove failure after set-get roundtrip for %zu",
+                 i);
       FIO_ASSERT(FIO_NAME(FIO_MAP_NAME,
-                          get)(&m, (FIO_MAP_HASH)i, (FIO_MAP_TEST_KEY)i) ==
+                          get)(&m, FIO_MAP_TEST_I2H(i), (FIO_MAP_TEST_KEY)i) ==
                      FIO_MAP_TYPE_INVALID,
                  "set-remove-get error for %zu (not removed?)",
                  i);
 
 #ifdef FIO_MAP_KEY
-      FIO_ASSERT((FIO_MAP_TYPE)i == FIO_NAME(FIO_MAP_NAME, set)(&m,
-                                                                (FIO_MAP_HASH)i,
-                                                                (FIO_MAP_KEY)i,
-                                                                (FIO_MAP_TYPE)i,
-                                                                &old),
+      FIO_ASSERT((FIO_MAP_TYPE)i ==
+                     FIO_NAME(FIO_MAP_NAME, set)(&m,
+                                                 FIO_MAP_TEST_I2H(i),
+                                                 (FIO_MAP_KEY)i,
+                                                 (FIO_MAP_TYPE)i,
+                                                 &old),
                  "insertion failed at %zu",
                  i);
 #else
-      FIO_ASSERT((FIO_MAP_TYPE)i ==
-                     FIO_NAME(FIO_MAP_NAME,
-                              set)(&m, (FIO_MAP_HASH)i, (FIO_MAP_TYPE)i, &old),
-                 "insertion failed at %zu",
-                 i);
+      FIO_ASSERT(
+          (FIO_MAP_TYPE)i ==
+              FIO_NAME(FIO_MAP_NAME,
+                       set)(&m, FIO_MAP_TEST_I2H(i), (FIO_MAP_TYPE)i, &old),
+          "insertion failed at %zu",
+          i);
 #endif
       FIO_ASSERT(
           old == FIO_MAP_TYPE_INVALID,
@@ -20512,7 +20538,7 @@ FIO_SFUNC void FIO_NAME_TEST(stl, FIO_MAP_NAME)(void) {
           (size_t)FIO_MAP_TYPE_INVALID,
           i);
       FIO_ASSERT(FIO_NAME(FIO_MAP_NAME,
-                          get)(&m, (FIO_MAP_HASH)i, (FIO_MAP_TEST_KEY)i) ==
+                          get)(&m, FIO_MAP_TEST_I2H(i), (FIO_MAP_TEST_KEY)i) ==
                      (FIO_MAP_TYPE)i,
                  "set-remove-set-get roundtrip error for %zu",
                  i);
@@ -20521,82 +20547,87 @@ FIO_SFUNC void FIO_NAME_TEST(stl, FIO_MAP_NAME)(void) {
   size_t old_capa = FIO_NAME(FIO_MAP_NAME, capa)(&m);
 
   for (size_t i = 1; i < MEMBERS; ++i) {
-    FIO_ASSERT(
-        FIO_NAME(FIO_MAP_NAME, get)(&m, (FIO_MAP_HASH)i, (FIO_MAP_TEST_KEY)i) ==
-            (FIO_MAP_TYPE)i,
-        "get error for %zu (!= %zu)",
-        i,
-        FIO_NAME(FIO_MAP_NAME, get)(&m, (FIO_MAP_HASH)i, (FIO_MAP_TEST_KEY)i));
+    FIO_ASSERT(FIO_NAME(FIO_MAP_NAME,
+                        get)(&m, FIO_MAP_TEST_I2H(i), (FIO_MAP_TEST_KEY)i) ==
+                   (FIO_MAP_TYPE)i,
+               "get error for %zu (!= %zu)",
+               i,
+               FIO_NAME(FIO_MAP_NAME,
+                        get)(&m, FIO_MAP_TEST_I2H(i), (FIO_MAP_TEST_KEY)i));
   }
   for (size_t i = 1; i < MEMBERS; ++i) {
     FIO_MAP_TYPE old = (FIO_MAP_TYPE)i;
 #ifdef FIO_MAP_KEY
-    FIO_ASSERT((FIO_MAP_TYPE)i == FIO_NAME(FIO_MAP_NAME, set)(&m,
-                                                              (FIO_MAP_HASH)i,
-                                                              (FIO_MAP_KEY)i,
-                                                              (FIO_MAP_TYPE)i,
-                                                              &old),
+    FIO_ASSERT((FIO_MAP_TYPE)i ==
+                   FIO_NAME(FIO_MAP_NAME, set)(&m,
+                                               FIO_MAP_TEST_I2H(i),
+                                               (FIO_MAP_KEY)i,
+                                               (FIO_MAP_TYPE)i,
+                                               &old),
                "overwrite failed at %zu",
                i);
 #else
-    FIO_ASSERT((FIO_MAP_TYPE)i ==
-                   FIO_NAME(FIO_MAP_NAME,
-                            set)(&m, (FIO_MAP_HASH)i, (FIO_MAP_TYPE)i, &old),
-               "overwrite failed at %zu",
-               i);
+    FIO_ASSERT(
+        (FIO_MAP_TYPE)i ==
+            FIO_NAME(FIO_MAP_NAME,
+                     set)(&m, FIO_MAP_TEST_I2H(i), (FIO_MAP_TYPE)i, &old),
+        "overwrite failed at %zu",
+        i);
 #endif
     FIO_ASSERT(
         !memcmp(&old, &i, sizeof(old) > sizeof(i) ? sizeof(i) : sizeof(old)),
         "old value should be set to the replaced value");
-    FIO_ASSERT(
-        FIO_NAME(FIO_MAP_NAME, get)(&m, (FIO_MAP_HASH)i, (FIO_MAP_TEST_KEY)i) ==
-            (FIO_MAP_TYPE)i,
-        "set-get overwrite roundtrip error for %zu",
-        i);
+    FIO_ASSERT(FIO_NAME(FIO_MAP_NAME,
+                        get)(&m, FIO_MAP_TEST_I2H(i), (FIO_MAP_TEST_KEY)i) ==
+                   (FIO_MAP_TYPE)i,
+               "set-get overwrite roundtrip error for %zu",
+               i);
   }
   for (size_t i = 1; i < MEMBERS; ++i) {
-    FIO_ASSERT(
-        FIO_NAME(FIO_MAP_NAME, get)(&m, (FIO_MAP_HASH)i, (FIO_MAP_TEST_KEY)i) ==
-            (FIO_MAP_TYPE)i,
-        "get (overwrite) error for %zu",
-        i);
+    FIO_ASSERT(FIO_NAME(FIO_MAP_NAME,
+                        get)(&m, FIO_MAP_TEST_I2H(i), (FIO_MAP_TEST_KEY)i) ==
+                   (FIO_MAP_TYPE)i,
+               "get (overwrite) error for %zu",
+               i);
   }
   for (size_t i = 1; i < MEMBERS; ++i) {
 
     FIO_ASSERT(FIO_NAME(FIO_MAP_NAME, count)(&m) == MEMBERS - 1,
                "unexpected member count");
     FIO_NAME(FIO_MAP_NAME, remove)
-    (&m, (FIO_MAP_HASH)i, (FIO_MAP_TEST_KEY)i, NULL);
+    (&m, FIO_MAP_TEST_I2H(i), (FIO_MAP_TEST_KEY)i, NULL);
     FIO_ASSERT(FIO_NAME(FIO_MAP_NAME, count)(&m) == MEMBERS - 2,
                "removing member didn't count removal");
 #ifdef FIO_MAP_KEY
-    FIO_ASSERT((FIO_MAP_TYPE)i == FIO_NAME(FIO_MAP_NAME, set)(&m,
-                                                              (FIO_MAP_HASH)i,
-                                                              (FIO_MAP_KEY)i,
-                                                              (FIO_MAP_TYPE)i,
-                                                              NULL),
+    FIO_ASSERT((FIO_MAP_TYPE)i ==
+                   FIO_NAME(FIO_MAP_NAME, set)(&m,
+                                               FIO_MAP_TEST_I2H(i),
+                                               (FIO_MAP_KEY)i,
+                                               (FIO_MAP_TYPE)i,
+                                               NULL),
                "re-insertion failed at %zu",
                i);
 #else
-    FIO_ASSERT((FIO_MAP_TYPE)i ==
-                   FIO_NAME(FIO_MAP_NAME,
-                            set)(&m, (FIO_MAP_HASH)i, (FIO_MAP_TYPE)i, NULL),
-               "re-insertion failed at %zu",
-               i);
+    FIO_ASSERT(
+        (FIO_MAP_TYPE)i ==
+            FIO_NAME(FIO_MAP_NAME,
+                     set)(&m, FIO_MAP_TEST_I2H(i), (FIO_MAP_TYPE)i, NULL),
+        "re-insertion failed at %zu",
+        i);
 #endif
 
-    FIO_ASSERT(
-        FIO_NAME(FIO_MAP_NAME, get)(&m, (FIO_MAP_HASH)i, (FIO_MAP_TEST_KEY)i) ==
-            (FIO_MAP_TYPE)i,
-        "remove-set-get roundtrip error for %zu",
-        i);
+    FIO_ASSERT(FIO_NAME(FIO_MAP_NAME,
+                        get)(&m, FIO_MAP_TEST_I2H(i), (FIO_MAP_TEST_KEY)i) ==
+                   (FIO_MAP_TYPE)i,
+               "remove-set-get roundtrip error for %zu",
+               i);
   }
   for (size_t i = 1; i < MEMBERS; ++i) {
-    FIO_ASSERT(
-        FIO_NAME(FIO_MAP_NAME, get)(&m, (FIO_MAP_HASH)i, (FIO_MAP_TEST_KEY)i) ==
-            (FIO_MAP_TYPE)i,
-        "get (remove/re-insert) error for %zu",
-        i);
+    FIO_ASSERT(FIO_NAME(FIO_MAP_NAME,
+                        get)(&m, FIO_MAP_TEST_I2H(i), (FIO_MAP_TEST_KEY)i) ==
+                   (FIO_MAP_TYPE)i,
+               "get (remove/re-insert) error for %zu",
+               i);
   }
   if (FIO_NAME(FIO_MAP_NAME, capa)(&m) != old_capa) {
     FIO_LOG_WARNING("capacity shouldn't change when re-inserting the same "
@@ -20634,9 +20665,9 @@ FIO_SFUNC void FIO_NAME_TEST(stl, FIO_MAP_NAME)(void) {
                count);
   }
 #if FIO_MAP_HASH_CACHED && !FIO_MAP_TYPE_CMP_SIMPLE
-  {
-  fprintf(stderr,
-          "\ttesting attack pattern, expecting a SECURITY log message.\n");
+  if (!FIO_MAP_TYPE_CMP((FIO_MAP_TYPE)1, (FIO_MAP_TYPE)2)) {
+    fprintf(stderr,
+            "\ttesting attack pattern, expecting a SECURITY log message.\n");
     FIO_NAME(FIO_MAP_NAME, destroy)(&m);
     for (size_t i = 0; i < MEMBERS; ++i) {
 #ifdef FIO_MAP_KEY
@@ -20763,6 +20794,7 @@ Map - cleanup
 
 #undef FIO_MAP___IMAP_FREE
 #undef FIO_MAP___IMAP_DELETED
+#undef FIO_MAP_TEST_I2H
 #undef FIO_MAP_TEST
 /* *****************************************************************************
 Copyright: Boaz Segev, 2019-2021
@@ -25596,6 +25628,7 @@ FIOBJ_FUNC unsigned char fiobj___test_eq_nested(FIOBJ restrict a,
       if (!fiobj___test_eq_nested(val, pos->obj.value, nesting))
         return 0;
     }
+    return 1;
   case FIOBJ_T_OTHER:
     if (!fiobj____each2_element_count(a) &&
         (*fiobj_object_metadata(a))->is_eq(a, b))
@@ -26822,7 +26855,7 @@ FIO_SFUNC size_t map_____test_key_copy_counter = 0;
 FIO_SFUNC void map_____test_key_copy(char **dest, char *src) {
   *dest =
       (char *)FIO_MEM_REALLOC(NULL, 0, (strlen(src) + 1) * sizeof(*dest), 0);
-  FIO_ASSERT(*dest, "no memory to allocate key in map_test")
+  FIO_ASSERT(*dest, "no memory to allocate key in map_test");
   strcpy(*dest, src);
   ++map_____test_key_copy_counter;
 }
@@ -26858,7 +26891,7 @@ FIO_SFUNC void fio___dynamic_types_test___map_test(void) {
   {
     set_____test_s m = FIO_MAP_INIT;
     fprintf(stderr, "* Testing set (hash map where value == key).\n");
-    FIO_NAME_TEST(stl, set_____test);
+    FIO_NAME_TEST(stl, set_____test)();
     FIO_ASSERT(set_____test_count(&m) == 0,
                "freshly initialized map should have no objects");
     FIO_ASSERT(set_____test_capa(&m) == 0,
@@ -26900,10 +26933,10 @@ FIO_SFUNC void fio___dynamic_types_test___map_test(void) {
       size_t i = 0;
       FIO_MAP_EACH(set_____test, &m, pos) {
         FIO_ASSERT(pos->obj == pos->hash + 1 || !i,
-                   "FIO_MAP_EACH loop out of order?")
+                   "FIO_MAP_EACH loop out of order?");
         ++i;
       }
-      FIO_ASSERT(i == set_____test_count(&m), "FIO_MAP_EACH loop incomplete?")
+      FIO_ASSERT(i == set_____test_count(&m), "FIO_MAP_EACH loop incomplete?");
     }
     FIO_ASSERT(set_____test_count(&m) == TEST_REPEAT,
                "Inserting existing object should keep existing object.");
@@ -26977,12 +27010,12 @@ FIO_SFUNC void fio___dynamic_types_test___map_test(void) {
                                            data_ary[i]));
     }
     set_hashless_____test_destroy(&m);
-    FIO_NAME_TEST(stl, set_hashless_____test);
+    FIO_NAME_TEST(stl, set_hashless_____test)();
   }
   {
     set2_____test_s m = FIO_MAP_INIT;
     fprintf(stderr, "* Testing set map without value comparison.\n");
-    FIO_NAME_TEST(stl, set2_____test);
+    FIO_NAME_TEST(stl, set2_____test)();
     for (size_t i = 0; i < TEST_REPEAT; ++i) {
       set2_____test_set_if_missing(&m, HASHOFi(i), i + 1);
     }
@@ -27056,8 +27089,7 @@ FIO_SFUNC void fio___dynamic_types_test___map_test(void) {
 
   {
     map_____test_s *m = map_____test_new();
-    fprintf(stderr, "* Testing hash map.\n");
-    FIO_NAME_TEST(stl, map_____test);
+    fprintf(stderr, "* Testing hash map with string keys.\n");
     FIO_ASSERT(map_____test_count(m) == 0,
                "freshly initialized map should have no objects");
     FIO_ASSERT(map_____test_capa(m) == 0,
@@ -27139,10 +27171,10 @@ FIO_SFUNC void FIO_NAME_TEST(stl, type_sizes)(void) {
   if (page > 0) {
     fprintf(stderr, "\t%-17s%ld bytes.\n", "Page", page);
     if (page != (1UL << FIO_MEM_PAGE_SIZE_LOG))
-      FIO_LOG_WARNING("unexpected page size != 4096\n          "
-                      "facil.io could be recompiled with:\n          "
-                      "`CFLAGS=\"-DFIO_MEM_PAGE_SIZE_LOG=%.0lf\"`",
-                      log2(page));
+      FIO_LOG_INFO("unexpected page size != 4096\n          "
+                   "facil.io could be recompiled with:\n          "
+                   "`CFLAGS=\"-DFIO_MEM_PAGE_SIZE_LOG=%.0lf\"`",
+                   log2(page));
   }
 #endif /* FIO_OS_POSIX */
 }
