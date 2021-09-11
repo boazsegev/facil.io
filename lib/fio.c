@@ -86,9 +86,9 @@ Reference Counter Debugging
 ***************************************************************************** */
 #ifndef FIO_DEBUG_REF
 #if DEBUG
-#define FIO_DEBUG_REF 1
+#define FIO_DEBUG_REF 0
 #else
-#define FIO_DEBUG_REF 1
+#define FIO_DEBUG_REF 0
 #endif
 #endif
 
@@ -1987,13 +1987,15 @@ Spawning Worker Processes
 
 static void fio_spawn_worker(void *ignr_1, void *ignr_2);
 
+static fio_lock_i fio_spawn_GIL = FIO_LOCK_INIT;
+
 /** Worker sentinel */
-static void *fio_worker_sentinal(void *GIL) {
+static void *fio_worker_sentinel(void *thr_ptr) {
   fio_state_callback_force(FIO_CALL_BEFORE_FORK);
   pid_t pid = fork();
   FIO_ASSERT(pid != (pid_t)-1, "system call `fork` failed.");
   fio_state_callback_force(FIO_CALL_AFTER_FORK);
-  fio_unlock(GIL);
+  fio_unlock(&fio_spawn_GIL);
   if (pid) {
     int status = 0;
     (void)status;
@@ -2007,7 +2009,7 @@ static void *fio_worker_sentinal(void *GIL) {
       FIO_ASSERT_DEBUG(
           0,
           "DEBUG mode prevents worker re-spawning, now crashing parent.");
-      fio_queue_push(FIO_QUEUE_SYSTEM, .fn = fio_spawn_worker);
+      fio_queue_push(FIO_QUEUE_SYSTEM, fio_spawn_worker, thr_ptr);
     }
     return NULL;
   }
@@ -2019,22 +2021,24 @@ static void *fio_worker_sentinal(void *GIL) {
   return NULL;
 }
 
-static void fio_spawn_worker(void *ignr_1, void *ignr_2) {
-  static fio_lock_i GIL = FIO_LOCK_INIT;
+static void fio_spawn_worker(void *thr_ptr, void *ignr_2) {
   fio_thread_t t;
+  fio_thread_t *pt = thr_ptr;
+  if (!pt)
+    pt = &t;
   if (!fio_data.is_master)
     return;
-  fio_lock(&GIL);
-  if (fio_thread_create(&t, fio_worker_sentinal, (void *)&GIL)) {
-    fio_unlock(&GIL);
+  fio_lock(&fio_spawn_GIL);
+  if (fio_thread_create(pt, fio_worker_sentinel, (void *)&fio_spawn_GIL)) {
+    fio_unlock(&fio_spawn_GIL);
     FIO_LOG_FATAL(
         "sentinel thread creation failed, no worker will be spawned.");
     fio_stop();
   }
-  fio_thread_detach(t);
-  fio_lock(&GIL);
-  fio_unlock(&GIL);
-  (void)ignr_1;
+  if (!thr_ptr)
+    fio_thread_detach(t);
+  fio_lock(&fio_spawn_GIL);
+  fio_unlock(&fio_spawn_GIL);
   (void)ignr_2;
 }
 /* *****************************************************************************
@@ -2078,12 +2082,16 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
   fio_reset_wakeup_pipes();
   if (fio_data.workers) {
     fio_data.is_worker = 0;
+    fio_thread_t *sentinels = calloc(sizeof(*sentinels), fio_data.workers);
     for (size_t i = 0; i < fio_data.workers; ++i) {
-      fio_spawn_worker(NULL, NULL);
+      fio_spawn_worker((void *)(sentinels + i), NULL);
     }
     fio___worker_nothread_cycle();
     fio___start_shutdown();
     fio___shutdown_cycle();
+    for (size_t i = 0; i < fio_data.workers; ++i) {
+      fio_thread_join(sentinels[i]);
+    }
   } else {
     fio___worker();
   }
@@ -2494,16 +2502,8 @@ FIO_SFUNC void fio_listen_on_close(void *udata) {
                l->url);
 }
 
-FIO_SFUNC void fio_listen_on_ready(fio_s *io) {
-  struct fio_listen_args *l = fio_udata_get(io);
-  FIO_LOG_INFO("(%d) started listening on %s",
-               (fio_data.is_master ? (int)fio_data.master : (int)getpid()),
-               l->url);
-}
-
 static fio_protocol_s FIO_PROTOCOL_LISTEN = {
     .on_data = fio_listen_on_data,
-    .on_ready = fio_listen_on_ready,
     .on_close = fio_listen_on_close,
     .on_timeout = mock_ping_eternal,
 };
@@ -2533,6 +2533,9 @@ FIO_SFUNC void fio_listen___attach(void *udata) {
                 l->reserved,
                 fd);
   fio_attach_fd(fd, &FIO_PROTOCOL_LISTEN, l, NULL);
+  FIO_LOG_INFO("(%d) started listening on %s",
+               (fio_data.is_master ? (int)fio_data.master : (int)getpid()),
+               l->url);
 }
 
 FIO_SFUNC void fio_listen___free(void *udata) {

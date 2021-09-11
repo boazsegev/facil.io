@@ -39,12 +39,16 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
   fio_reset_wakeup_pipes();
   if (fio_data.workers) {
     fio_data.is_worker = 0;
+    fio_thread_t *sentinels = calloc(sizeof(*sentinels), fio_data.workers);
     for (size_t i = 0; i < fio_data.workers; ++i) {
-      fio_spawn_worker(NULL, NULL);
+      fio_spawn_worker((void *)(sentinels + i), NULL);
     }
     fio___worker_nothread_cycle();
     fio___start_shutdown();
     fio___shutdown_cycle();
+    for (size_t i = 0; i < fio_data.workers; ++i) {
+      fio_thread_join(sentinels[i]);
+    }
   } else {
     fio___worker();
   }

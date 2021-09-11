@@ -46,9 +46,9 @@ Reference Counter Debugging
 ***************************************************************************** */
 #ifndef FIO_DEBUG_REF
 #if DEBUG
-#define FIO_DEBUG_REF 1
+#define FIO_DEBUG_REF 0
 #else
-#define FIO_DEBUG_REF 1
+#define FIO_DEBUG_REF 0
 #endif
 #endif
 

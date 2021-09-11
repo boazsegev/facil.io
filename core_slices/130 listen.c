@@ -20,16 +20,8 @@ FIO_SFUNC void fio_listen_on_close(void *udata) {
                l->url);
 }
 
-FIO_SFUNC void fio_listen_on_ready(fio_s *io) {
-  struct fio_listen_args *l = fio_udata_get(io);
-  FIO_LOG_INFO("(%d) started listening on %s",
-               (fio_data.is_master ? (int)fio_data.master : (int)getpid()),
-               l->url);
-}
-
 static fio_protocol_s FIO_PROTOCOL_LISTEN = {
     .on_data = fio_listen_on_data,
-    .on_ready = fio_listen_on_ready,
     .on_close = fio_listen_on_close,
     .on_timeout = mock_ping_eternal,
 };
@@ -59,6 +51,9 @@ FIO_SFUNC void fio_listen___attach(void *udata) {
                 l->reserved,
                 fd);
   fio_attach_fd(fd, &FIO_PROTOCOL_LISTEN, l, NULL);
+  FIO_LOG_INFO("(%d) started listening on %s",
+               (fio_data.is_master ? (int)fio_data.master : (int)getpid()),
+               l->url);
 }
 
 FIO_SFUNC void fio_listen___free(void *udata) {

@@ -183,13 +183,15 @@ Spawning Worker Processes
 
 static void fio_spawn_worker(void *ignr_1, void *ignr_2);
 
+static fio_lock_i fio_spawn_GIL = FIO_LOCK_INIT;
+
 /** Worker sentinel */
-static void *fio_worker_sentinal(void *GIL) {
+static void *fio_worker_sentinel(void *thr_ptr) {
   fio_state_callback_force(FIO_CALL_BEFORE_FORK);
   pid_t pid = fork();
   FIO_ASSERT(pid != (pid_t)-1, "system call `fork` failed.");
   fio_state_callback_force(FIO_CALL_AFTER_FORK);
-  fio_unlock(GIL);
+  fio_unlock(&fio_spawn_GIL);
   if (pid) {
     int status = 0;
     (void)status;
@@ -203,7 +205,7 @@ static void *fio_worker_sentinal(void *GIL) {
       FIO_ASSERT_DEBUG(
           0,
           "DEBUG mode prevents worker re-spawning, now crashing parent.");
-      fio_queue_push(FIO_QUEUE_SYSTEM, .fn = fio_spawn_worker);
+      fio_queue_push(FIO_QUEUE_SYSTEM, fio_spawn_worker, thr_ptr);
     }
     return NULL;
   }
@@ -215,21 +217,23 @@ static void *fio_worker_sentinal(void *GIL) {
   return NULL;
 }
 
-static void fio_spawn_worker(void *ignr_1, void *ignr_2) {
-  static fio_lock_i GIL = FIO_LOCK_INIT;
+static void fio_spawn_worker(void *thr_ptr, void *ignr_2) {
   fio_thread_t t;
+  fio_thread_t *pt = thr_ptr;
+  if (!pt)
+    pt = &t;
   if (!fio_data.is_master)
     return;
-  fio_lock(&GIL);
-  if (fio_thread_create(&t, fio_worker_sentinal, (void *)&GIL)) {
-    fio_unlock(&GIL);
+  fio_lock(&fio_spawn_GIL);
+  if (fio_thread_create(pt, fio_worker_sentinel, (void *)&fio_spawn_GIL)) {
+    fio_unlock(&fio_spawn_GIL);
     FIO_LOG_FATAL(
         "sentinel thread creation failed, no worker will be spawned.");
     fio_stop();
   }
-  fio_thread_detach(t);
-  fio_lock(&GIL);
-  fio_unlock(&GIL);
-  (void)ignr_1;
+  if (!thr_ptr)
+    fio_thread_detach(t);
+  fio_lock(&fio_spawn_GIL);
+  fio_unlock(&fio_spawn_GIL);
   (void)ignr_2;
 }
