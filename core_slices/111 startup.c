@@ -53,6 +53,7 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
     fio___worker();
   }
   fio_state_callback_force(FIO_CALL_ON_FINISH);
+  FIO_LOG_INFO("shutdown complete.");
 }
 
 /**

@@ -1966,19 +1966,6 @@ static void fio___worker(void) {
   fio_close_wakeup_pipes();
   if (!fio_data.is_master)
     FIO_LOG_INFO("(%d) worker shutdown complete.", (int)getpid());
-  else {
-#if FIO_OS_POSIX
-    /*
-     * Wait for some of the children, assuming at least one of them will be a
-     * worker.
-     */
-    for (size_t i = 0; i < fio_data.workers; ++i) {
-      int jnk = 0;
-      waitpid(-1, &jnk, 0);
-    }
-#endif
-    FIO_LOG_INFO("(%d) IO shutdown complete.", (int)fio_data.master);
-  }
 }
 
 /* *****************************************************************************
@@ -2009,6 +1996,10 @@ static void *fio_worker_sentinel(void *thr_ptr) {
       FIO_ASSERT_DEBUG(
           0,
           "DEBUG mode prevents worker re-spawning, now crashing parent.");
+      if (thr_ptr) {
+        fio_thread_detach(thr_ptr);
+        memset(thr_ptr, 0, sizeof(fio_thread_t));
+      }
       fio_queue_push(FIO_QUEUE_SYSTEM, fio_spawn_worker, thr_ptr);
     }
     return NULL;
@@ -2029,7 +2020,7 @@ static void fio_spawn_worker(void *thr_ptr, void *ignr_2) {
   if (!fio_data.is_master)
     return;
   fio_lock(&fio_spawn_GIL);
-  if (fio_thread_create(pt, fio_worker_sentinel, (void *)&fio_spawn_GIL)) {
+  if (fio_thread_create(pt, fio_worker_sentinel, thr_ptr)) {
     fio_unlock(&fio_spawn_GIL);
     FIO_LOG_FATAL(
         "sentinel thread creation failed, no worker will be spawned.");
@@ -2096,6 +2087,7 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
     fio___worker();
   }
   fio_state_callback_force(FIO_CALL_ON_FINISH);
+  FIO_LOG_INFO("shutdown complete.");
 }
 
 /**
