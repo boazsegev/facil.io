@@ -9,6 +9,7 @@ Development Sugar (ignore)
 #include "001 head.h"           /* Development inclusion - ignore line */
 #include "011 startup.h"        /* Development inclusion - ignore line */
 #include "012 io.h"             /* Development inclusion - ignore line */
+#include "013 env.h"            /* Development inclusion - ignore line */
 #include "020 tasks.h"          /* Development inclusion - ignore line */
 #include "021 state.h"          /* Development inclusion - ignore line */
 #include "099 footer.h"         /* Development inclusion - ignore line */

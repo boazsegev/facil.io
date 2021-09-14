@@ -11,8 +11,7 @@ Global State
 
 static struct {
   FIO_LIST_HEAD protocols;
-  fio_thread_mutex_t env_lock;
-  env_s env;
+  env_safe_s env;
   int64_t tick;
   fio_validity_map_s valid;
 #if FIO_VALIDATE_IO_MUTEX
@@ -32,8 +31,11 @@ static struct {
   volatile uint8_t running;
   fio_timer_queue_s timers;
 } fio_data = {
-    .env_lock = FIO_THREAD_MUTEX_INIT,
-    .env = FIO_MAP_INIT,
+    .env =
+        {
+            .lock = FIO_THREAD_MUTEX_INIT,
+            .env = FIO_MAP_INIT,
+        },
     .valid = FIO_MAP_INIT,
     .thread_suspenders = {-1, -1},
     .io_wake = {-1, -1},

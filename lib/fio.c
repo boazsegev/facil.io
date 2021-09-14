@@ -236,6 +236,40 @@ FIO_IFUNC void env_obj_call_callback(env_obj_s o) {
 #define FIO_MAP_KEY_CMP(a, b)       sstr_is_eq(&(a), &(b))
 #include <fio-stl.h>
 
+typedef struct {
+  fio_thread_mutex_t lock;
+  env_s env;
+} env_safe_s;
+
+FIO_IFUNC void env_safe_set(env_safe_s *e,
+                            sstr_s key,
+                            intptr_t type,
+                            env_obj_s val) {
+  const uint64_t hash = sstr_hash(&key, (uint64_t)type);
+  fio_thread_mutex_lock(&e->lock);
+  env_set(&e->env, hash, key, val, NULL);
+  fio_thread_mutex_unlock(&e->lock);
+}
+
+FIO_IFUNC int env_safe_unset(env_safe_s *e, sstr_s key, intptr_t type) {
+  int r;
+  const uint64_t hash = sstr_hash(&key, (uint64_t)type);
+  env_obj_s old;
+  fio_thread_mutex_lock(&e->lock);
+  r = env_remove(&e->env, hash, key, &old);
+  fio_thread_mutex_unlock(&e->lock);
+  return r;
+}
+
+FIO_IFUNC int env_safe_remove(env_safe_s *e, sstr_s key, intptr_t type) {
+  int r;
+  const uint64_t hash = sstr_hash(&key, (uint64_t)type);
+  fio_thread_mutex_lock(&e->lock);
+  r = env_remove(&e->env, hash, key, NULL);
+  fio_thread_mutex_unlock(&e->lock);
+  return r;
+}
+
 /* *****************************************************************************
 CPU Core Counting
 ***************************************************************************** */
@@ -343,8 +377,7 @@ Global State
 
 static struct {
   FIO_LIST_HEAD protocols;
-  fio_thread_mutex_t env_lock;
-  env_s env;
+  env_safe_s env;
   int64_t tick;
   fio_validity_map_s valid;
 #if FIO_VALIDATE_IO_MUTEX
@@ -364,8 +397,11 @@ static struct {
   volatile uint8_t running;
   fio_timer_queue_s timers;
 } fio_data = {
-    .env_lock = FIO_THREAD_MUTEX_INIT,
-    .env = FIO_MAP_INIT,
+    .env =
+        {
+            .lock = FIO_THREAD_MUTEX_INIT,
+            .env = FIO_MAP_INIT,
+        },
     .valid = FIO_MAP_INIT,
     .thread_suspenders = {-1, -1},
     .io_wake = {-1, -1},
@@ -710,10 +746,8 @@ struct fio_s {
   FIO_LIST_NODE timeouts;
   /* current data to be send */
   fio_stream_s stream;
-  /* env lock */
-  fio_thread_mutex_t env_lock;
-  /* env: objects linked to the io */
-  env_s env;
+  /* env */
+  env_safe_s env;
   /* timer handler */
   int64_t active;
   /* socket */
@@ -752,7 +786,7 @@ FIO_SFUNC void fio___init(fio_s *io) {
       .state = FIO_IO_OPEN,
       .stream = FIO_STREAM_INIT(io->stream),
       .timeouts = FIO_LIST_INIT(io->timeouts),
-      .env_lock = FIO_THREAD_MUTEX_INIT,
+      .env.lock = FIO_THREAD_MUTEX_INIT,
       .fd = -1,
   };
   fio_queue_push(FIO_QUEUE_SYSTEM, fio___init_task, fio_dup2(io));
@@ -766,8 +800,8 @@ FIO_SFUNC void fio___destroy(fio_s *io) {
   } u = {.fn = io->protocol->on_close};
 
   fio_set_invalid(io);
-  env_destroy(&io->env);
-  fio_thread_mutex_destroy(&io->env_lock);
+  env_destroy(&io->env.env);
+  fio_thread_mutex_destroy(&io->env.lock);
   fio_stream_destroy(&io->stream);
   // o->rw_hooks->cleanup(io->rw_udata);
   FIO_LIST_REMOVE(&io->timeouts);
@@ -2687,8 +2721,8 @@ State data initialization
 
 FIO_DESTRUCTOR(fio_cleanup_at_exit) {
   fio_state_callback_force(FIO_CALL_AT_EXIT);
-  fio_thread_mutex_destroy(&fio_data.env_lock);
-  env_destroy(&fio_data.env);
+  fio_thread_mutex_destroy(&fio_data.env.lock);
+  env_destroy(&fio_data.env.env);
   fio_data.protocols = FIO_LIST_INIT(fio_data.protocols);
   while (!fio_queue_perform(FIO_QUEUE_SYSTEM) ||
          !fio_queue_perform(FIO_QUEUE_USER))
@@ -2736,6 +2770,74 @@ FIO_CONSTRUCTOR(fio_data_state_init) {
 #endif
 
   fio_state_callback_add(FIO_CALL_IN_CHILD, fio___after_fork, NULL);
+}
+/* *****************************************************************************
+IO related operations (set protocol, read, write, etc')
+***************************************************************************** */
+#ifndef H_FACIL_IO_H /* development sugar, ignore */
+#include "999 dev.h" /* development sugar, ignore */
+#endif               /* development sugar, ignore */
+
+/* *****************************************************************************
+Connection Object Links / Environment
+***************************************************************************** */
+
+/** Named arguments for the `fio_env_set` function. */
+// typedef struct {
+//   intptr_t type;
+//   fio_str_info_s name;
+//   void *udata;
+//   void (*on_close)(void *data);
+//   uint8_t const_name;
+// } fio_env_set_args_s;
+
+/** Named arguments for the `fio_env_unset` function. */
+// typedef struct {
+//   intptr_t type;
+//   fio_str_info_s name;
+// } fio_env_unset_args_s;
+
+FIO_IFUNC sstr_s fio_env_name2str(fio_str_info_s name, uint8_t is_const) {
+  sstr_s s;
+  if (is_const) {
+    sstr_init_const(&s, name.buf, name.len);
+  } else {
+    sstr_init_copy(&s, name.buf, name.len);
+  }
+  return s;
+}
+
+/**
+ * Links an object to a connection's lifetime / environment.
+ */
+void fio_env_set FIO_NOOP(fio_s *io, fio_env_set_args_s args) {
+  sstr_s key = fio_env_name2str(args.name, args.const_name);
+  env_obj_s val = {
+      .udata = args.udata,
+      .on_close = args.on_close,
+  };
+  env_safe_s *e = io ? &io->env : &fio_data.env;
+  env_safe_set(e, key, args.type, val);
+}
+
+/**
+ * Un-links an object from the connection's lifetime, so it's `on_close`
+ * callback will NOT be called.
+ */
+int fio_env_unset FIO_NOOP(fio_s *io, fio_env_unset_args_s args) {
+  sstr_s key = fio_env_name2str(args.name, 1);
+  env_safe_s *e = io ? &io->env : &fio_data.env;
+  return env_safe_unset(e, key, args.type);
+}
+
+/**
+ * Removes an object from the connection's lifetime / environment, calling it's
+ * `on_close` callback as if the connection was closed.
+ */
+int fio_env_remove FIO_NOOP(fio_s *io, fio_env_unset_args_s args) {
+  sstr_s key = fio_env_name2str(args.name, 1);
+  env_safe_s *e = io ? &io->env : &fio_data.env;
+  return env_safe_remove(e, key, args.type);
 }
 /* *****************************************************************************
 Testing

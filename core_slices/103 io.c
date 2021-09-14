@@ -34,10 +34,8 @@ struct fio_s {
   FIO_LIST_NODE timeouts;
   /* current data to be send */
   fio_stream_s stream;
-  /* env lock */
-  fio_thread_mutex_t env_lock;
-  /* env: objects linked to the io */
-  env_s env;
+  /* env */
+  env_safe_s env;
   /* timer handler */
   int64_t active;
   /* socket */
@@ -76,7 +74,7 @@ FIO_SFUNC void fio___init(fio_s *io) {
       .state = FIO_IO_OPEN,
       .stream = FIO_STREAM_INIT(io->stream),
       .timeouts = FIO_LIST_INIT(io->timeouts),
-      .env_lock = FIO_THREAD_MUTEX_INIT,
+      .env.lock = FIO_THREAD_MUTEX_INIT,
       .fd = -1,
   };
   fio_queue_push(FIO_QUEUE_SYSTEM, fio___init_task, fio_dup2(io));
@@ -90,8 +88,8 @@ FIO_SFUNC void fio___destroy(fio_s *io) {
   } u = {.fn = io->protocol->on_close};
 
   fio_set_invalid(io);
-  env_destroy(&io->env);
-  fio_thread_mutex_destroy(&io->env_lock);
+  env_destroy(&io->env.env);
+  fio_thread_mutex_destroy(&io->env.lock);
   fio_stream_destroy(&io->stream);
   // o->rw_hooks->cleanup(io->rw_udata);
   FIO_LIST_REMOVE(&io->timeouts);

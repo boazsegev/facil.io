@@ -196,6 +196,40 @@ FIO_IFUNC void env_obj_call_callback(env_obj_s o) {
 #define FIO_MAP_KEY_CMP(a, b)       sstr_is_eq(&(a), &(b))
 #include <fio-stl.h>
 
+typedef struct {
+  fio_thread_mutex_t lock;
+  env_s env;
+} env_safe_s;
+
+FIO_IFUNC void env_safe_set(env_safe_s *e,
+                            sstr_s key,
+                            intptr_t type,
+                            env_obj_s val) {
+  const uint64_t hash = sstr_hash(&key, (uint64_t)type);
+  fio_thread_mutex_lock(&e->lock);
+  env_set(&e->env, hash, key, val, NULL);
+  fio_thread_mutex_unlock(&e->lock);
+}
+
+FIO_IFUNC int env_safe_unset(env_safe_s *e, sstr_s key, intptr_t type) {
+  int r;
+  const uint64_t hash = sstr_hash(&key, (uint64_t)type);
+  env_obj_s old;
+  fio_thread_mutex_lock(&e->lock);
+  r = env_remove(&e->env, hash, key, &old);
+  fio_thread_mutex_unlock(&e->lock);
+  return r;
+}
+
+FIO_IFUNC int env_safe_remove(env_safe_s *e, sstr_s key, intptr_t type) {
+  int r;
+  const uint64_t hash = sstr_hash(&key, (uint64_t)type);
+  fio_thread_mutex_lock(&e->lock);
+  r = env_remove(&e->env, hash, key, NULL);
+  fio_thread_mutex_unlock(&e->lock);
+  return r;
+}
+
 /* *****************************************************************************
 CPU Core Counting
 ***************************************************************************** */

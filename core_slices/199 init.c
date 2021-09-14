@@ -20,8 +20,8 @@ State data initialization
 
 FIO_DESTRUCTOR(fio_cleanup_at_exit) {
   fio_state_callback_force(FIO_CALL_AT_EXIT);
-  fio_thread_mutex_destroy(&fio_data.env_lock);
-  env_destroy(&fio_data.env);
+  fio_thread_mutex_destroy(&fio_data.env.lock);
+  env_destroy(&fio_data.env.env);
   fio_data.protocols = FIO_LIST_INIT(fio_data.protocols);
   while (!fio_queue_perform(FIO_QUEUE_SYSTEM) ||
          !fio_queue_perform(FIO_QUEUE_USER))
