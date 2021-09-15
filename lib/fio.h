@@ -449,6 +449,26 @@ void fio_write2(fio_s *io, fio_write_args_s args);
 #define fio_write(io, buf_, len_)                                              \
   fio_write2(io, .buf = (buf_), .len = (len_), .copy = 1)
 
+/**
+ * Sends data from a file as if it were a single atomic packet (sends up to
+ * length bytes or until EOF is reached).
+ *
+ * Once the file was sent, the `source_fd` will be closed using `close`.
+ *
+ * The file will be buffered to the socket chunk by chunk, so that memory
+ * consumption is capped.
+ *
+ * `offset` dictates the starting point for the data to be sent and length sets
+ * the maximum amount of data to be sent.
+ *
+ * Returns -1 and closes the file on error. Returns 0 on success.
+ */
+#define fio_sendfile(io, source_fd, offset, bytes)                             \
+  fio_write2((io),                                                             \
+             .fd = (source_fd),                                                \
+             .offset = (size_t)(offset),                                       \
+             .len = (bytes))
+
 /** Marks the IO for closure as soon as scheduled data was sent. */
 void fio_close(fio_s *io);
 
@@ -690,7 +710,7 @@ Development Sugar (ignore)
 #include "101 helpers.c"        /* Development inclusion - ignore line */
 #include "102 core.c"           /* Development inclusion - ignore line */
 #include "103 io.c"             /* Development inclusion - ignore line */
-#include "104 events.c"         /* Development inclusion - ignore line */
+#include "105 events.c"         /* Development inclusion - ignore line */
 #include "109 polling.c"        /* Development inclusion - ignore line */
 #include "110 reactor.c"        /* Development inclusion - ignore line */
 #endif

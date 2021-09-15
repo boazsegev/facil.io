@@ -390,20 +390,21 @@ supports macros that will help detect and validate it's version.
 #define FIO_VERSION_MINOR 8
 /** PATCH version: Bug fixes, minor features may be added. */
 #define FIO_VERSION_PATCH 0
-/** BETA version: pre-version development marker. Nothing is stable. */
-#define FIO_VERSION_BETA 1
+/** Build version: optional build info (string), i.e. "beta.02" */
+#define FIO_VERSION_BUILD "alpha.1"
 
-#if FIO_VERSION_BETA
+#ifdef FIO_VERSION_BUILD
 /** Version as a String literal (MACRO). */
 #define FIO_VERSION_STRING                                                     \
   FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
   "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(                      \
-      FIO_VERSION_PATCH) "-beta" FIO_MACRO2STR(FIO_VERSION_BETA)
+      FIO_VERSION_PATCH) "-" FIO_VERSION_BUILD
 #else
 /** Version as a String literal (MACRO). */
 #define FIO_VERSION_STRING                                                     \
   FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
   "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(FIO_VERSION_PATCH)
+#define FIO_VERSION_BUILD ""
 #endif
 
 /** If implemented, returns the major version number. */
@@ -412,16 +413,15 @@ size_t fio_version_major(void);
 size_t fio_version_minor(void);
 /** If implemented, returns the patch version number. */
 size_t fio_version_patch(void);
-/** If implemented, returns the beta version number. */
-size_t fio_version_beta(void);
+/** If implemented, returns the build version string. */
+const char *fio_version_build(void);
 /** If implemented, returns the version number as a string. */
 char *fio_version_string(void);
 
 #define FIO_VERSION_VALIDATE()                                                 \
   FIO_ASSERT(fio_version_major() == FIO_VERSION_MAJOR &&                       \
                  fio_version_minor() == FIO_VERSION_MINOR &&                   \
-                 fio_version_patch() == FIO_VERSION_PATCH &&                   \
-                 fio_version_beta() == FIO_VERSION_BETA,                       \
+                 fio_version_patch() == FIO_VERSION_PATCH,                     \
              "facil.io version mismatch, not %s",                              \
              fio_version_string())
 
@@ -439,7 +439,9 @@ size_t __attribute__((weak)) fio_version_minor(void) {
 size_t __attribute__((weak)) fio_version_patch(void) {
   return FIO_VERSION_PATCH;
 }
-size_t __attribute__((weak)) fio_version_beta(void) { return FIO_VERSION_BETA; }
+const char *__attribute__((weak)) fio_version_build(void) {
+  return FIO_VERSION_BUILD;
+}
 char *__attribute__((weak)) fio_version_string(void) {
   return FIO_VERSION_STRING;
 }
@@ -18623,7 +18625,7 @@ Iteration
 ***************************************************************************** */
 
 /** Takes a previous (or NULL) item's position and returns the next. */
-FIO_SFUNC FIO_NAME(FIO_MAP_NAME, node_s) *
+SFUNC FIO_NAME(FIO_MAP_NAME, node_s) *
     FIO_NAME(FIO_MAP_NAME, each_next)(FIO_MAP_PTR map,
                                       FIO_NAME(FIO_MAP_NAME, node_s) * *first,
                                       FIO_NAME(FIO_MAP_NAME, node_s) * pos);
@@ -19493,7 +19495,7 @@ FIO_NAME(FIO_MAP_NAME, each)(FIO_MAP_PTR map,
   return e.index;
 }
 
-FIO_SFUNC FIO_NAME(FIO_MAP_NAME, node_s) *
+SFUNC FIO_NAME(FIO_MAP_NAME, node_s) *
     FIO_NAME(FIO_MAP_NAME, each_next)(FIO_MAP_PTR map,
                                       FIO_NAME(FIO_MAP_NAME, node_s) * *first,
                                       FIO_NAME(FIO_MAP_NAME, node_s) * pos) {
@@ -20371,7 +20373,7 @@ finish:
   return (FIO_MAP_SIZE_TYPE)e.index;
 }
 
-FIO_SFUNC FIO_NAME(FIO_MAP_NAME, node_s) *
+SFUNC FIO_NAME(FIO_MAP_NAME, node_s) *
     FIO_NAME(FIO_MAP_NAME, each_next)(FIO_MAP_PTR map,
                                       FIO_NAME(FIO_MAP_NAME, node_s) * *first,
                                       FIO_NAME(FIO_MAP_NAME, node_s) * pos) {
