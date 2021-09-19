@@ -9,11 +9,6 @@ Internal helpers
 #define FIO_SIGNAL
 #include "fio-stl.h"
 
-#define FIO_STREAM
-#define FIO_QUEUE
-#define FIO_SOCK /* should be public? */
-#include "fio-stl.h"
-
 /* for storing ENV string keys and all sorts of stuff */
 #define FIO_STR_SMALL sstr
 #include "fio-stl.h"

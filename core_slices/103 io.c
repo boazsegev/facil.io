@@ -138,6 +138,8 @@ Managing reference counting (decrease only in the IO thread)
 /* perform reference count decrease. */
 FIO_SFUNC void fio_undup___task(void *io, void *ignr) {
   (void)ignr;
+  if (!io)
+    return;
   MARK_FUNC();
   /* don't trust users to manage reference counts? */
   if (fio_is_valid(io))
@@ -149,6 +151,8 @@ FIO_SFUNC void fio_undup___task(void *io, void *ignr) {
 void fio_undup___(void); /* sublime text marker */
 /** Route reference count decrease to the IO thread. */
 void fio_undup FIO_NOOP(fio_s *io) {
+  if (!io)
+    return;
   MARK_FUNC();
   fio_queue_push(FIO_QUEUE_SYSTEM, .fn = fio_undup___task, .udata1 = io);
 }

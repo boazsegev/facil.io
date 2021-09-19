@@ -39,6 +39,9 @@ FIO_DESTRUCTOR(fio_cleanup_at_exit) {
   fio_invalidate_all();
   for (int i = 0; i < FIO_CALL_NEVER; ++i)
     fio_state_callback_clear((callback_type_e)i);
+  for (int i = 0; i < CHANNEL_TYPE_NONE; ++i)
+    channel_store_destroy(postoffice.channels + i);
+
   while (!fio_queue_perform(FIO_QUEUE_SYSTEM) ||
          !fio_queue_perform(FIO_QUEUE_USER))
     ;

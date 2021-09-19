@@ -50,3 +50,27 @@ void fio_defer_io(fio_s *io,
   *t = (fio_queue_task_s){.fn = u.fn2, .udata1 = fio_dup(io), .udata2 = udata};
   fio_queue_push(FIO_QUEUE_IO(io), .fn = fio_io_task_wrapper, .udata1 = t);
 }
+
+/** Schedules a timer bound task, see `fio_timer_schedule` in the CSTL. */
+void fio_run_every FIO_NOOP(fio_timer_schedule_args_s args) {
+  args.start_at += fio_data.tick * (!args.start_at);
+  fio_timer_schedule FIO_NOOP(&fio_data.timers, args);
+}
+/**
+ * Schedules a timer bound task, see `fio_timer_schedule` in the CSTL.
+ *
+ * Possible "named arguments" (fio_timer_schedule_args_s members) include:
+ *
+ * * The timer function. If it returns a non-zero value, the timer stops:
+ *        int (*fn)(void *, void *)
+ * * Opaque user data:
+ *        void *udata1
+ * * Opaque user data:
+ *        void *udata2
+ * * Called when the timer is done (finished):
+ *        void (*on_finish)(void *, void *)
+ * * Timer interval, in milliseconds:
+ *        uint32_t every
+ * * The number of times the timer should be performed. -1 == infinity:
+ *        int32_t repetitions
+ */

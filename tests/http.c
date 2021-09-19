@@ -189,7 +189,7 @@ HTTP/1.1 callback(s)
 /** called when a request was received. */
 static int http1_on_request(http1_parser_s *parser) {
   client_s *c = FIO_PTR_FROM_FIELD(client_s, parser, parser);
-#ifdef HTTP_RESPONSE_ECHO
+#if HTTP_RESPONSE_ECHO
   http_send_response(c,
                      200,
                      (fio_str_info_s){"OK", 2},
@@ -207,10 +207,7 @@ static int http1_on_request(http1_parser_s *parser) {
 #else
   char *response =
       "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World!\n";
-  fio_write2(c->io,
-             .buf = response,
-             .len = strlen(response),
-             .dealloc = FIO_DEALLOC_NOOP);
+  fio_write2(c->io, .buf = response, .len = strlen(response));
   (void)http_send_response; /* unused in this branch */
 #endif
 

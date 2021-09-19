@@ -49,7 +49,7 @@ void fio_env_set(fio_s *io, fio_env_set_args_s);
  * This is a helper MACRO that allows the function to be called using named
  * arguments.
  */
-#define fio_env_set(io, ...) fio_env_set(io, (fio_env_args_s){__VA_ARGS__})
+#define fio_env_set(io, ...) fio_env_set(io, (fio_env_set_args_s){__VA_ARGS__})
 
 /**
  * Un-links an object from the connection's lifetime, so it's `on_close`

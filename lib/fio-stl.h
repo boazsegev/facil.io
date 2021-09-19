@@ -418,13 +418,20 @@ const char *fio_version_build(void);
 /** If implemented, returns the version number as a string. */
 char *fio_version_string(void);
 
+#if FIO_VERSION_MAJOR
+#define FIO_VERSION_VALIDATE()                                                 \
+  FIO_ASSERT(fio_version_major() == FIO_VERSION_MAJOR &&                       \
+                 fio_version_minor() == FIO_VERSION_MINOR,                     \
+             "facil.io version mismatch, not %s",                              \
+             fio_version_string())
+#else
 #define FIO_VERSION_VALIDATE()                                                 \
   FIO_ASSERT(fio_version_major() == FIO_VERSION_MAJOR &&                       \
                  fio_version_minor() == FIO_VERSION_MINOR &&                   \
                  fio_version_patch() == FIO_VERSION_PATCH,                     \
              "facil.io version mismatch, not %s",                              \
              fio_version_string())
-
+#endif
 /**
  * To implement the fio_version_* functions and FIO_VERSION_VALIDATE guard, the
  * `FIO_VERSION_GUARD` must be defined (only) once per application / library.
@@ -511,11 +518,11 @@ typedef struct fio_str_info_s {
   size_t capa;
 } fio_str_info_s;
 
-/** An information type for reporting/storing buffer data. */
+/** An information type for reporting/storing buffer data (no `capa`). */
 typedef struct fio_buf_info_s {
-  /** The string's buffer (pointer to first byte) or NULL on error. */
+  /** The buffer's address (may be NULL if no buffer). */
   char *buf;
-  /** The string's length, if any. */
+  /** The buffer's length, if any. */
   size_t len;
 } fio_buf_info_s;
 
@@ -523,6 +530,24 @@ typedef struct fio_buf_info_s {
 #define FIO_STR_INFO_IS_EQ(s1, s2)                                             \
   ((s1).len == (s2).len && (!(s1).len || (s1).buf == (s2).buf ||               \
                             !memcmp((s1).buf, (s2).buf, (s1).len)))
+
+/** Converts a C String into a fio_str_info_s. */
+#define FIO_STR_INFO1(str) ((fio_str_info_s){(str), strlen((str))})
+
+/** Converts a String with a known length into a fio_str_info_s. */
+#define FIO_STR_INFO2(str, length) ((fio_str_info_s){(str), (length)})
+
+/** Converts a String with a known length and capacity into a fio_str_info_s. */
+#define FIO_STR_INFO3(str, length, capacity)                                   \
+  ((fio_str_info_s){(str), (length), (capacity)})
+
+/** Converts a fio_buf_info_s into a fio_str_info_s. */
+#define FIO_BUF2STR_INFO(buf_info)                                             \
+  ((fio_str_info_s){(buf_info).buf, (buf_info).len})
+
+/** Converts a fio_buf_info_s into a fio_str_info_s. */
+#define FIO_STR2BUF_INFO(str_info)                                             \
+  ((fio_buf_info_s){(str_info).buf, (str_info).len})
 
 /* *****************************************************************************
 Linked Lists Persistent Macros and Types
@@ -985,19 +1010,19 @@ Common macros
 #define FIO_FILES
 #endif
 
-/* Modules that require FIO_TIME */
-#if defined(FIO_QUEUE) || defined(FIO_RAND)
-#ifndef FIO_TIME
-#define FIO_TIME
-#endif
-#endif /* FIO_QUEUE */
-
 /* Modules that require randomness */
 #if defined(FIO_MEMORY_NAME) || defined(FIO_MALLOC) || defined(FIO_FILES)
 #ifndef FIO_RAND
 #define FIO_RAND
 #endif
 #endif /* FIO_MALLOC */
+
+/* Modules that require FIO_TIME */
+#if defined(FIO_QUEUE) || defined(FIO_RAND)
+#ifndef FIO_TIME
+#define FIO_TIME
+#endif
+#endif /* FIO_QUEUE */
 
 /* Modules that require FIO_RISKY_HASH */
 #if defined(FIO_RAND) || defined(FIO_STR_NAME) || defined(FIO_STR_SMALL) ||    \
@@ -5955,14 +5980,14 @@ Feel free to copy, use and enjoy according to the license provided.
 #define H___FIO_URL___H
 /** the result returned by `fio_url_parse` */
 typedef struct {
-  fio_str_info_s scheme;
-  fio_str_info_s user;
-  fio_str_info_s password;
-  fio_str_info_s host;
-  fio_str_info_s port;
-  fio_str_info_s path;
-  fio_str_info_s query;
-  fio_str_info_s target;
+  fio_buf_info_s scheme;
+  fio_buf_info_s user;
+  fio_buf_info_s password;
+  fio_buf_info_s host;
+  fio_buf_info_s port;
+  fio_buf_info_s path;
+  fio_buf_info_s query;
+  fio_buf_info_s target;
 } fio_url_s;
 
 /**
@@ -6057,27 +6082,28 @@ SFUNC fio_url_s fio_url_parse(const char *url, size_t len) {
 
   if (pos == end) {
     /* was only host (path starts with '/') */
-    r.host = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+    r.host = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     goto finish;
   }
+
   switch (pos[0]) {
   case '@':
     /* username@[host] */
-    r.user = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+    r.user = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     ++pos;
     goto start_host;
   case '/':
     /* host[/path] */
-    r.host = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+    r.host = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     goto start_path;
   case '?':
     /* host?[query] */
-    r.host = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+    r.host = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     ++pos;
     goto start_query;
   case '#':
     /* host#[target] */
-    r.host = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+    r.host = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     ++pos;
     goto start_target;
   case ':':
@@ -6088,7 +6114,7 @@ SFUNC fio_url_s fio_url_parse(const char *url, size_t len) {
     } else {
       /* username:[password] OR */
       /* host:[port] */
-      r.user = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+      r.user = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
       ++pos;
       goto start_password;
     }
@@ -6102,24 +6128,24 @@ SFUNC fio_url_s fio_url_parse(const char *url, size_t len) {
     ++pos;
 
   if (pos >= end) { /* scheme://host */
-    r.host = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+    r.host = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     goto finish;
   }
 
   switch (pos[0]) {
   case '/':
     /* scheme://host[/path] */
-    r.host = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+    r.host = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     goto start_path;
   case '@':
     /* scheme://username@[host]... */
-    r.user = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+    r.user = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     ++pos;
     goto start_host;
   case ':':
     /* scheme://username:[password]@[host]... OR */
     /* scheme://host:[port][/...] */
-    r.user = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+    r.user = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     ++pos;
     break;
   }
@@ -6131,7 +6157,7 @@ start_password:
 
   if (pos >= end) {
     /* was host:port */
-    r.port = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+    r.port = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     r.host = r.user;
     r.user.len = 0;
     goto finish;
@@ -6140,13 +6166,13 @@ start_password:
 
   switch (pos[0]) {
   case '/':
-    r.port = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+    r.port = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     r.host = r.user;
     r.user.len = 0;
     goto start_path;
   case '@':
     r.password =
-        (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+        (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
     ++pos;
     break;
   }
@@ -6157,7 +6183,7 @@ start_host:
          pos[0] != '?')
     ++pos;
 
-  r.host = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+  r.host = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
   if (pos >= end) {
     goto finish;
   }
@@ -6183,7 +6209,7 @@ start_host:
   while (pos < end && pos[0] != '/' && pos[0] != '#' && pos[0] != '?')
     ++pos;
 
-  r.port = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+  r.port = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
 
   if (pos >= end) {
     /* scheme://[...@]host:port */
@@ -6207,7 +6233,7 @@ start_path:
   while (pos < end && pos[0] != '#' && pos[0] != '?')
     ++pos;
 
-  r.path = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+  r.path = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
 
   if (pos >= end) {
     goto finish;
@@ -6221,14 +6247,14 @@ start_query:
   while (pos < end && pos[0] != '#')
     ++pos;
 
-  r.query = (fio_str_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
+  r.query = (fio_buf_info_s){.buf = (char *)url, .len = (size_t)(pos - url)};
   ++pos;
 
   if (pos >= end)
     goto finish;
 
 start_target:
-  r.target = (fio_str_info_s){.buf = (char *)pos, .len = (size_t)(end - pos)};
+  r.target = (fio_buf_info_s){.buf = (char *)pos, .len = (size_t)(end - pos)};
 
 finish:
 
@@ -7149,7 +7175,7 @@ Memory Allocation - fast setup for a global allocator
 #undef FIO_MEM_REALLOC_IS_SAFE
 #define FIO_MEM_REALLOC_IS_SAFE fio_realloc_is_safe()
 
-/* prevent double decleration of FIO_MALLOC */
+/* prevent double declaration of FIO_MALLOC */
 #define H___FIO_MALLOC___H
 #endif
 #undef FIO_MALLOC
@@ -15811,11 +15837,8 @@ FIO_SFUNC void FIO_NAME_TEST(stl, glob_matching)(void) {
   };
   fprintf(stderr, "* testing glob matching.\n");
   for (size_t i = 0; t[i].pat; ++i) {
-    fio_str_info_s p, s;
-    p.buf = t[i].pat;
-    p.len = strlen(t[i].pat);
-    s.buf = t[i].str;
-    s.len = strlen(t[i].str);
+    fio_str_info_s p = FIO_STR_INFO1(t[i].pat);
+    fio_str_info_s s = FIO_STR_INFO1(t[i].str);
     FIO_ASSERT(t[i].expect == fio_glob_match(p, s),
                "glob matching error for:\n\t String: %s\n\t Pattern: %s",
                s.buf,

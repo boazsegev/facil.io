@@ -12,6 +12,7 @@ Development Sugar (ignore)
 #include "013 env.h"            /* Development inclusion - ignore line */
 #include "020 tasks.h"          /* Development inclusion - ignore line */
 #include "021 state.h"          /* Development inclusion - ignore line */
+#include "030 pubsub.h"         /* Development inclusion - ignore line */
 #include "099 footer.h"         /* Development inclusion - ignore line */
 #include "101 helpers.c"        /* Development inclusion - ignore line */
 #include "102 core.c"           /* Development inclusion - ignore line */
@@ -19,4 +20,5 @@ Development Sugar (ignore)
 #include "105 events.c"         /* Development inclusion - ignore line */
 #include "109 polling.c"        /* Development inclusion - ignore line */
 #include "110 reactor.c"        /* Development inclusion - ignore line */
+#include "200 pubsub.c"         /* Development inclusion - ignore line */
 #endif

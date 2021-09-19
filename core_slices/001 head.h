@@ -89,6 +89,11 @@ CSTL modules
 #define FIO_FIOBJ
 #include "fio-stl.h"
 
+#define FIO_STREAM
+#define FIO_QUEUE
+#define FIO_SOCK
+#include "fio-stl.h"
+
 /* Should be automatic, but why not... */
 #undef FIO_EXTERN
 #undef FIO_EXTERN_COMPLETE
