@@ -141,7 +141,7 @@ void fio_state_callback_force(callback_type_e e) {
   fio___state_task_s *ary = NULL;
   size_t len = 0;
 
-  FIO_LOG_DEBUG("Calling %s callbacks.", fio_state_tasks_names[e]);
+  FIO_LOG_DEBUG2("Calling %s callbacks.", fio_state_tasks_names[e]);
 
   /* copy task queue */
   fio_lock(fio_state_tasks_array_lock + (uintptr_t)e);

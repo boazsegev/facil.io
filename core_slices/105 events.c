@@ -81,7 +81,7 @@ static void fio_ev_on_ready(void *io_, void *udata) {
       if (fio_stream_length(&io->stream) >= FIO_SOCKET_THROTTLE_LIMIT) {
 #ifdef DEBUG
         if (!(io->state & FIO_IO_THROTTLED))
-          FIO_LOG_DEBUG("throttled IO %p (fd %d)", (void *)io, io->fd);
+          FIO_LOG_DEBUG2("throttled IO %p (fd %d)", (void *)io, io->fd);
 #endif
         fio_atomic_or(&io->state, FIO_IO_THROTTLED);
       }
@@ -113,7 +113,7 @@ static void fio_ev_on_data(void *io_, void *udata) {
     }
   } else if ((io->state & FIO_IO_OPEN)) {
     fio_monitor_write(io);
-    // FIO_LOG_DEBUG("skipping on_data callback for IO %p (fd %d)", io_,
+    // FIO_LOG_DEBUG2("skipping on_data callback for IO %p (fd %d)", io_,
     // io->fd);
   }
   MARK_FUNC();
@@ -121,7 +121,7 @@ static void fio_ev_on_data(void *io_, void *udata) {
   return;
 
 reschedule:
-  FIO_LOG_DEBUG("rescheduling on_data for IO %p (fd %d)", io_, io->fd);
+  FIO_LOG_DEBUG2("rescheduling on_data for IO %p (fd %d)", io_, io->fd);
   fio_queue_push(FIO_QUEUE_IO(io),
                  .fn = fio_ev_on_data,
                  .udata1 = io,

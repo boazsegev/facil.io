@@ -996,49 +996,6 @@ int fio_message_metadata_add(fio_msg_metadata_fn builder,
 void fio_message_metadata_remove(int id);
 
 /* *****************************************************************************
- * Message data duplication and deferral (advance usage API)
- **************************************************************************** */
-
-/**
- * Message content data type (opaque, read only).
- *
- * Subscription messages are all based on a single letter that all subscribers
- * read (if it's "subject" matches their interests).
- *
- * This is type containing the raw letter data, which is network encoded.
- */
-typedef struct fio_letter_s fio_letter_s;
-
-/** Letter informatioin, as returned from the `fio_letter_info` function. */
-typedef struct {
-  fio_str_info_s header;
-  fio_str_info_s body;
-} fio_letter_info_s;
-
-/**
- * Increases a message's reference count, returning the published "letter".
- *
- * This is performed by reference, the value MUST be considered read-only.
- *
- * Note: subscription messages are all based on a single letter that all
- *       subscribers read (if its "subject" matches their interests).
- *       Letter objects are architecture agnostic, and may be sent on the net.
- */
-fio_letter_s *fio_message_dup(fio_msg_s *msg);
-
-/** Increases a letter's reference count by reference (for read-only access). */
-fio_letter_s *fio_letter_dup(fio_letter_s *msg);
-
-/** Decreases a letter's reference count and possibly frees its data. */
-void fio_letter_free(fio_letter_s *letter);
-
-/** Returns the total length of the letter. */
-size_t fio_letter_len(fio_letter_s *letter);
-
-/** Returns all information about the fio_letter_s object. Read Only! */
-fio_letter_info_s fio_letter_info(fio_letter_s *letter);
-
-/* *****************************************************************************
  * Cluster / Pub/Sub Middleware and Extensions ("Engines")
  **************************************************************************** */
 
@@ -1178,4 +1135,5 @@ Development Sugar (ignore)
 #include "105 events.c"         /* Development inclusion - ignore line */
 #include "109 polling.c"        /* Development inclusion - ignore line */
 #include "110 reactor.c"        /* Development inclusion - ignore line */
+#include "200 pubsub.c"         /* Development inclusion - ignore line */
 #endif

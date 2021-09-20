@@ -46,13 +46,16 @@ void fio_test(void) {
                 .on_message = fio_test___on_message,
                 .on_unsubscribe = fio_test___on_unsubscribe,
                 .udata = subscription_flags);
+  fio_subscribe(.channel = {"my channel", 10},
+                .on_message = fio_test___on_message,
+                .on_unsubscribe = fio_test___on_unsubscribe,
+                .udata = subscription_flags); /* should overwrite first */
   fio_publish(.channel = {"my channel", 10}, .message = {"payload", 7});
-  // fio_run_every
   fio_defer(fio_test___task, NULL, NULL);
   fio_start(.threads = -2, .workers = 0);
   FIO_ASSERT(subscription_flags[0] == 1,
              "subscription on_message never called");
-  FIO_ASSERT(subscription_flags[1] == 1,
+  FIO_ASSERT(subscription_flags[1] == 2,
              "subscription on_unsubscribe never called");
 }
 #endif

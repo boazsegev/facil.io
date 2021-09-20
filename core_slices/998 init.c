@@ -50,7 +50,7 @@ FIO_DESTRUCTOR(fio_cleanup_at_exit) {
 }
 
 FIO_CONSTRUCTOR(fio_data_state_init) {
-  FIO_LOG_DEBUG("initializing facio.io IO state.");
+  FIO_LOG_DEBUG2("initializing facio.io IO state.");
   fio_data.protocols = FIO_LIST_INIT(fio_data.protocols);
   fio_data.master = getpid();
   fio_data.tick = fio_time2milli(fio_time_real());
@@ -70,6 +70,8 @@ FIO_CONSTRUCTOR(fio_data_state_init) {
 #if FIO_VALIDATE_IO_MUTEX
   fio_data.valid_lock = (fio_thread_mutex_t)FIO_THREAD_MUTEX_INIT;
 #endif
-
   fio_state_callback_add(FIO_CALL_IN_CHILD, fio___after_fork, NULL);
+  fio_state_callback_add(FIO_CALL_PRE_START, postoffice_pre__start, NULL);
+  fio_state_callback_add(FIO_CALL_ON_START, postoffice_on_worker_start, NULL);
+  fio_state_callback_add(FIO_CALL_ON_FINISH, postoffice_on_finish, NULL);
 }

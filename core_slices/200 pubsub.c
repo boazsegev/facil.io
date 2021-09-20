@@ -9,18 +9,28 @@ Pub/Sub
 Letter / Message Object
 ***************************************************************************** */
 
+/*
+Letter network format in bytes:
+| 1 special info byte | 3 little endian channel length (24 bit value) |
+| 4 little endian Filter | 4 little endian message length (32 bit values) |
+| 8 message UUID |
+| X bytes channel name + 1 NUL terminator|
+| X bytes message length + 1 NUL terminator|
+*/
+
+#define LETTER_HEADER_LENGTH 20 /* without NUL terminators */
+
 enum {
-  FIO_PUBSUB_FILTER_BIT = 1,
-  FIO_PUBSUB_PROCESS_BIT = 2,
-  FIO_PUBSUB_ROOT_BIT = 4,
-  FIO_PUBSUB_SIBLINGS_BIT = 8,
-  FIO_PUBSUB_CLUSTER_BIT = 16,
-  FIO_PUBSUB_PATTERN_BIT = 64, /* TODO: do we need this one? */
+  FIO_PUBSUB_PROCESS_BIT = 1,
+  FIO_PUBSUB_ROOT_BIT = 2,
+  FIO_PUBSUB_SIBLINGS_BIT = 4,
+  FIO_PUBSUB_CLUSTER_BIT = 8,
   FIO_PUBSUB_JSON_BIT = 128,
 } letter_info_bits_e;
 
 typedef struct {
   fio_s *from;
+  int32_t filter;
   uint32_t channel_len;
   uint32_t message_len;
   char buf[];
@@ -30,118 +40,92 @@ typedef struct {
 #define FIO_REF_FLEX_TYPE char
 #include "fio-stl.h"
 
-/*
-Letter network format in bytes:
-| 1 special info byte |
-| 8 message UUID |
-| 4 little endian message length (32 bit value) |
-| 3 little endian channel length (32 bit value) |
-| X bytes channel name + 1 NUL terminator|
-| X bytes message length + 1 NUL terminator|
-
-when a filter is used instead of a channel name, format is:
-| 1 special info byte |
-| 8 message UUID |
-| 4 little endian message length |
-| 4 little endian filter number (32 bit value) |
-| X bytes message length + 1 NUL terminator|
-*/
-
-#define LETTER_HEADER_LENGTH 18 /* 16 + 2 NUL terminators */
-
 /* allocates a new letter. */
 FIO_IFUNC letter_s *letter_new(fio_s *from,
+                               int32_t filter,
                                uint32_t channel_len,
-                               uint32_t message_len,
-                               char first_byte) {
-  size_t is_filter =
-      (((uint32_t)first_byte & FIO_PUBSUB_FILTER_BIT) / FIO_PUBSUB_FILTER_BIT);
-  if ((!is_filter && (channel_len >> 24)) || (message_len >> 27))
-    return NULL;
-  size_t len =
-      LETTER_HEADER_LENGTH + message_len + (channel_len * (is_filter ^ 1));
+                               uint32_t message_len) {
+  size_t len = (LETTER_HEADER_LENGTH + 2) + message_len + channel_len;
   letter_s *l = letter_new2(len);
   FIO_ASSERT_ALLOC(l);
   l->from = from;
-  l->channel_len = channel_len & (0xFFFFFF | ((256 - is_filter) << 24));
+  l->filter = filter;
+  l->channel_len = channel_len;
   l->message_len = message_len;
   return l;
 }
 
-/** for filters place filter value in channel_len, channel will be ignored */
+/* allocates a new letter, and writes data to header */
 FIO_IFUNC letter_s *letter_author(fio_s *from,
                                   uint64_t message_id,
+                                  int32_t filter,
                                   char *channel,
                                   uint32_t channel_len,
                                   char *message,
                                   uint32_t message_len,
                                   uint8_t flags) {
-  uint8_t is_filter = ((flags & FIO_PUBSUB_FILTER_BIT) / FIO_PUBSUB_FILTER_BIT);
-  if ((!is_filter && (channel_len >> 24)) || (message_len >> 27))
-    return NULL;
-  size_t len =
-      LETTER_HEADER_LENGTH + message_len + (channel_len * (is_filter ^ 1));
-  letter_s *l = letter_new2(len);
+  if ((channel_len >> 24) || (message_len >> 27))
+    goto len_error;
+  letter_s *l = letter_new(from, filter, channel_len, message_len);
   FIO_ASSERT_ALLOC(l);
-  l->from = from;
-  l->channel_len = channel_len;
-  l->message_len = message_len;
   l->buf[0] = flags;
-  fio_u2buf64_little(l->buf + 1, message_id);
-  fio_u2buf32_little(l->buf + 9, message_len);
-  fio_u2buf32_little(l->buf + 13, channel_len);
-  channel_len *= (is_filter ^ 1);
+  fio_u2buf32_little(l->buf + 1, channel_len);
+  fio_u2buf32_little(l->buf + 4, message_len); /* overwrite extra byte */
+  fio_u2buf32_little(l->buf + 8, filter);
+  fio_u2buf64_little(l->buf + 12, message_id);
   if (channel_len && channel) {
-    memcpy(l->buf + 16, channel, channel_len);
-    l->buf[16 + channel_len] = 0;
+    memcpy(l->buf + LETTER_HEADER_LENGTH, channel, channel_len);
   }
+  l->buf[LETTER_HEADER_LENGTH + channel_len] = 0;
   if (message_len && message) {
-    memcpy(l->buf + 16 + 1 + channel_len, message, message_len);
+    memcpy(l->buf + LETTER_HEADER_LENGTH + 1 + channel_len,
+           message,
+           message_len);
   }
-  l->buf[16 + 1 + channel_len + message_len] = 0;
+  l->buf[(LETTER_HEADER_LENGTH + 1) + channel_len + message_len] = 0;
   return l;
+
+len_error:
+  FIO_LOG_ERROR("(pubsub) payload too big (channel length of %u bytes, message "
+                "length of %u bytes)",
+                (unsigned int)channel_len,
+                (unsigned int)message_len);
+  return NULL;
 }
 
 /* frees a letter's reference. */
 #define letter_free letter_free2
 
 /* returns 1 if a letter is bound to a filter, otherwise 0. */
-FIO_IFUNC int32_t letter_is_filter(letter_s *l) {
-  return (((uint32_t)l->buf[0] & FIO_PUBSUB_FILTER_BIT) /
-          FIO_PUBSUB_FILTER_BIT);
-}
+FIO_IFUNC int32_t letter_is_filter(letter_s *l) { return !!l->filter; }
 
 /* returns a letter's ID (may be 0 for internal letters) */
 FIO_IFUNC uint64_t letter_id(letter_s *l) {
-  return fio_buf2u64_little(l->buf + 1);
+  return fio_buf2u64_little(l->buf + 12);
 }
 
 /* returns a letter's channel (if none, returns the filter's address) */
 FIO_IFUNC char *letter_channel(letter_s *l) {
-  return l->buf + (16 * (letter_is_filter(l) ^ 1));
+  return l->buf + LETTER_HEADER_LENGTH;
 }
 
 /* returns a letter's message length (if any) */
 FIO_IFUNC size_t letter_message_len(letter_s *l) { return l->message_len; }
 
 /* returns a letter's channel length (if any) */
-FIO_IFUNC size_t letter_channel_len(letter_s *l) {
-  return l->channel_len * (letter_is_filter(l) ^ 1);
-}
+FIO_IFUNC size_t letter_channel_len(letter_s *l) { return l->channel_len; }
 
 /* returns a letter's filter (if any) */
-FIO_IFUNC int32_t letter_filter(letter_s *l) {
-  return (int32_t)l->channel_len * letter_is_filter(l);
-}
+FIO_IFUNC int32_t letter_filter(letter_s *l) { return l->filter; }
 
 /* returns a letter's message */
 FIO_IFUNC char *letter_message(letter_s *l) {
-  return l->buf + 1 + 16 + letter_channel_len(l);
+  return l->buf + LETTER_HEADER_LENGTH + 1 + l->channel_len;
 }
 
 /* returns a letter's length */
 FIO_IFUNC size_t letter_len(letter_s *l) {
-  return (size_t)2ULL + 16 + l->message_len + letter_channel_len(l);
+  return LETTER_HEADER_LENGTH + 2 + l->channel_len + l->message_len;
 }
 
 /* write a letter to an IO object */
@@ -203,11 +187,13 @@ FIO_SFUNC int letter_read(fio_s *io,
     if (r <= 0)
       return 0;
     parser->pos += r;
-    if (parser->pos < 18)
+    if (parser->pos < LETTER_HEADER_LENGTH)
       return 0;
-    uint32_t channel_len = fio_buf2u32_little(parser->buf + 9);
-    uint32_t message_len = fio_buf2u32_little(parser->buf + 13);
-    parser->letter = letter_new(io, channel_len, message_len, parser->buf[0]);
+    uint32_t channel_len = fio_buf2u32_little(parser->buf + 1);
+    channel_len &= 0xFFFFFF;
+    uint32_t message_len = fio_buf2u32_little(parser->buf + 4);
+    int32_t filter = fio_buf2u32_little(parser->buf + 8);
+    parser->letter = letter_new(io, filter, channel_len, message_len);
     if (!parser->letter)
       return -1;
     memcpy(parser->letter->buf, parser->buf, parser->pos);
@@ -255,7 +241,6 @@ Channel Objects
 
 typedef enum {
   CHANNEL_TYPE_NAMED,
-  CHANNEL_TYPE_FILTER,
   CHANNEL_TYPE_PATTERN,
   CHANNEL_TYPE_NONE,
 } channel_type_e;
@@ -263,11 +248,13 @@ typedef enum {
 typedef struct {
   FIO_LIST_HEAD subscriptions;
   channel_type_e type;
+  int32_t filter;
   size_t name_len;
   char *name;
 } channel_s;
 
 FIO_IFUNC channel_s *channel_new(channel_type_e channel_type,
+                                 int32_t filter,
                                  char *name,
                                  size_t name_len) {
   channel_s *c = malloc(sizeof(*c) + name_len);
@@ -275,6 +262,7 @@ FIO_IFUNC channel_s *channel_new(channel_type_e channel_type,
   *c = (channel_s){
       .subscriptions = FIO_LIST_INIT(c->subscriptions),
       .type = channel_type,
+      .filter = filter,
       .name_len = name_len,
       .name = (char *)(c + 1),
   };
@@ -286,7 +274,12 @@ FIO_IFUNC channel_s *channel_new(channel_type_e channel_type,
 FIO_IFUNC void channel_free(channel_s *channel) { free(channel); }
 
 FIO_IFUNC _Bool channel_is_eq(channel_s *a, channel_s *b) {
-  return a->name_len == b->name_len && !memcmp(a->name, b->name, a->name_len);
+  return a->filter == b->filter && a->name_len == b->name_len &&
+         !memcmp(a->name, b->name, a->name_len);
+}
+
+FIO_IFUNC uint64_t channel2hash(channel_s ch) {
+  return fio_risky_hash(ch.name, ch.name_len, ch.filter);
 }
 
 /* *****************************************************************************
@@ -436,21 +429,34 @@ FIO_IFUNC void subscription_deliver(subscription_s *s, letter_s *l) {
 Postoffice
 ***************************************************************************** */
 
-#define FIO_MAP_NAME                 channel_store
-#define FIO_MAP_TYPE                 channel_s *
-#define FIO_MAP_TYPE_CMP(a, b)       channel_is_eq(a, b)
-#define FIO_MAP_TYPE_COPY(dest, src) ((dest) = (src))
-#define FIO_MAP_TYPE_DESTROY(ch)     channel_free((ch))
-#define FIO_MAP_TYPE_DISCARD(ch)     FIO_MAP_TYPE_DESTROY(ch)
+FIO_SFUNC void postoffice_on_channel_added(channel_s *);
+FIO_SFUNC void postoffice_on_channel_removed(channel_s *);
+
+#define FIO_MAP_NAME           channel_store
+#define FIO_MAP_TYPE           channel_s *
+#define FIO_MAP_TYPE_CMP(a, b) channel_is_eq(a, b)
+#define FIO_MAP_TYPE_COPY(dest, src)                                           \
+  do {                                                                         \
+    ((dest) = (src));                                                          \
+    postoffice_on_channel_added((src));                                        \
+  } while (0)
+#define FIO_MAP_TYPE_DESTROY(ch)                                               \
+  do {                                                                         \
+    postoffice_on_channel_removed((ch));                                       \
+    channel_free((ch));                                                        \
+  } while (0)
+#define FIO_MAP_TYPE_DISCARD(ch) FIO_MAP_TYPE_DESTROY(ch)
 #include "fio-stl.h"
 
 /** The postoffice data store */
 static struct {
+  uint8_t filter;
   channel_store_s channels[CHANNEL_TYPE_NONE];
 } postoffice = {
+    .filter =
+        FIO_PUBSUB_PROCESS_BIT | FIO_PUBSUB_ROOT_BIT | FIO_PUBSUB_SIBLINGS_BIT,
     .channels =
         {
-            FIO_MAP_INIT,
             FIO_MAP_INIT,
             FIO_MAP_INIT,
         },
@@ -462,8 +468,7 @@ FIO_IFUNC void postoffice_subscribe(subscription_s *s) {
     return;
   if (s->disabled || !s->channel || (s->io && !fio_is_valid(s->io)))
     goto error;
-  const uint64_t hash =
-      fio_risky_hash(s->channel->name, s->channel->name_len, 0);
+  const uint64_t hash = channel2hash(*s->channel);
   s->channel =
       channel_store_set_if_missing(&postoffice.channels[s->channel->type],
                                    hash,
@@ -486,26 +491,26 @@ FIO_IFUNC void postoffice_unsubscribe(subscription_s *s) {
   subscription_free(s);
   if (!ch || !FIO_LIST_IS_EMPTY(&ch->subscriptions))
     return;
-  const uint64_t hash = fio_risky_hash(ch->name, ch->name_len, 0);
+  const uint64_t hash = channel2hash(ch[0]);
   channel_store_remove(&postoffice.channels[ch->type], hash, ch, NULL);
 }
 
 /* deliver a letter to all subscriptions in the relevant channels */
-FIO_IFUNC void postoffice_deliver(letter_s *l) {
+FIO_IFUNC void postoffice_deliver2process(letter_s *l) {
   channel_s ch_key = {
+      .filter = letter_filter(l),
       .name_len = letter_channel_len(l) + (4 * letter_is_filter(l)),
       .name = letter_channel(l),
   };
   channel_store_s *store = postoffice.channels + letter_is_filter(l);
-  const uint64_t hash = fio_risky_hash(ch_key.name, ch_key.name_len, 0);
+  const uint64_t hash = channel2hash(ch_key);
   channel_s *ch = channel_store_get(store, hash, &ch_key);
   if (ch) {
     FIO_LIST_EACH(subscription_s, node, &ch->subscriptions, s) {
       subscription_deliver(s, l);
     }
   }
-  if (letter_is_filter(l) ||
-      !channel_store_count(&postoffice.channels[CHANNEL_TYPE_PATTERN]))
+  if (!channel_store_count(&postoffice.channels[CHANNEL_TYPE_PATTERN]))
     return;
 
   fio_str_info_s name = {
@@ -513,6 +518,8 @@ FIO_IFUNC void postoffice_deliver(letter_s *l) {
       .len = letter_channel_len(l),
   };
   FIO_MAP_EACH(channel_store, &postoffice.channels[CHANNEL_TYPE_PATTERN], pos) {
+    if (pos->obj->filter != letter_filter(l))
+      continue;
     fio_str_info_s pat = {
         .buf = pos->obj->name,
         .len = pos->obj->name_len,
@@ -544,15 +551,11 @@ void fio_subscribe___(void); /* sublimetext marker */
  * The on_unsubscribe callback will be called on failure.
  */
 void fio_subscribe FIO_NOOP(subscribe_args_s args) {
-  if (args.filter) {
-    args.is_pattern = 0;
-    args.channel.buf = (char *)&args.filter;
-    args.channel.len = sizeof(args.filter);
-  }
-  channel_s *ch = channel_new((!!(args.is_pattern) * CHANNEL_TYPE_PATTERN) |
-                                  ((!!args.filter) * CHANNEL_TYPE_FILTER),
-                              args.channel.buf,
-                              args.channel.len);
+  channel_s *ch = channel_new(
+      fio_ct_if(args.is_pattern, CHANNEL_TYPE_PATTERN, CHANNEL_TYPE_NAMED),
+      args.filter,
+      args.channel.buf,
+      args.channel.len);
   subscription_s *s = subscription_new(args.io,
                                        NULL,
                                        args.on_message,
@@ -591,9 +594,12 @@ int fio_unsubscribe FIO_NOOP(subscribe_args_s args) {
 /* *****************************************************************************
 Pub/Sub - Publish
 ***************************************************************************** */
-FIO_SFUNC void fio_publish___task(void *letter, void *ignr_) {
-  postoffice_deliver(letter);
-  letter_free(letter);
+FIO_SFUNC void fio_publish___task(void *letter_, void *ignr_) {
+  letter_s *l = letter_;
+  if ((l->buf[0] & FIO_PUBSUB_PROCESS_BIT))
+    postoffice_deliver2process(l);
+  /* TODO: postoffice_deliver2wire(l) */
+  letter_free(l);
   (void)ignr_;
 }
 /**
@@ -618,14 +624,16 @@ void fio_publish FIO_NOOP(fio_publish_args_s args) {
     args.engine = FIO_PUBSUB_DEFAULT;
   if ((uintptr_t)(args.engine) > 0XFF)
     goto external_engine;
-  letter_s *l = letter_author(NULL,
-                              (fio_data.is_master ? fio_rand64() : 0),
-                              args.channel.buf,
-                              args.channel.len,
-                              args.message.buf,
-                              args.message.len,
-                              (uint8_t)(uintptr_t)args.engine |
-                                  ((!!args.is_json) * FIO_PUBSUB_JSON_BIT));
+  letter_s *l =
+      letter_author(NULL,
+                    fio_rand64(),
+                    args.filter,
+                    args.channel.buf,
+                    args.channel.len,
+                    args.message.buf,
+                    args.message.len,
+                    (uint8_t)(uintptr_t)args.engine |
+                        ((0x100 - args.is_json) & FIO_PUBSUB_JSON_BIT));
   fio_queue_push(FIO_QUEUE_SYSTEM, fio_publish___task, l);
   return;
 external_engine:
@@ -730,6 +738,62 @@ void fio_pubsub_reattach(fio_pubsub_engine_s *eng);
 int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);
 
 /* *****************************************************************************
+Postoffice add / remove hooks
+***************************************************************************** */
+
+FIO_SFUNC void postoffice_on_channel_added(channel_s *ch) {
+  FIO_LOG_DEBUG2("(%d) channel added: %.*s (filter: %d)",
+                 (int)getpid(),
+                 (int)ch->name_len,
+                 ch->name,
+                 ch->filter);
+  if (!ch->filter) {
+    fio_str_info_s cmds[] = {
+        {"subscribe", 9},
+        {"psubscribe", 10},
+    };
+    fio_publish(.engine = FIO_PUBSUB_ROOT,
+                .filter = -1,
+                .channel = cmds[ch->type == CHANNEL_TYPE_PATTERN],
+                .message = {ch->name, ch->name_len});
+  }
+}
+FIO_SFUNC void postoffice_on_channel_removed(channel_s *ch) {
+  FIO_LOG_DEBUG2("(%d) channel removed: %.*s (filter: %d)",
+                 (int)getpid(),
+                 (int)ch->name_len,
+                 ch->name,
+                 ch->filter);
+  if (!ch->filter) {
+    fio_str_info_s cmds[] = {
+        {"unsubscribe", 11},
+        {"punsubscribe", 12},
+    };
+    fio_publish(.engine = FIO_PUBSUB_ROOT,
+                .filter = -1,
+                .channel = cmds[ch->type == CHANNEL_TYPE_PATTERN],
+                .message = {ch->name, ch->name_len});
+  }
+}
+
+/* *****************************************************************************
+Pubsub Init
+***************************************************************************** */
+
+FIO_SFUNC void postoffice_pre__start(void *ignr_) { (void)ignr_; }
+
+FIO_SFUNC void postoffice_on_worker_start(void *ignr_) {
+  (void)ignr_;
+  postoffice.filter =
+      FIO_PUBSUB_PROCESS_BIT | (FIO_PUBSUB_ROOT_BIT * (!!fio_data.is_master));
+}
+
+FIO_SFUNC void postoffice_on_finish(void *ignr_) {
+  (void)ignr_;
+  postoffice.filter = FIO_PUBSUB_PROCESS_BIT | FIO_PUBSUB_ROOT_BIT;
+}
+
+/* *****************************************************************************
  * TODO: clusterfy the local network using UDP broadcasting for node discovery.
  **************************************************************************** */
 #if 0
@@ -773,12 +837,12 @@ FIO_SFUNC void FIO_NAME_TEST(io, letter)(void) {
     letter_s *l =
         letter_author((fio_s *)(test_info + i),
                       test_info[i].id,
+                      test_info[i].filter,
                       test_info[i].channel,
-                      (test_info[i].channel ? strlen(test_info[i].channel)
-                                            : test_info[i].filter),
+                      (test_info[i].channel ? strlen(test_info[i].channel) : 0),
                       test_info[i].msg,
                       (test_info[i].msg ? strlen(test_info[i].msg) : 0),
-                      test_info[i].filter ? FIO_PUBSUB_FILTER_BIT : 0);
+                      (uint8_t)(uintptr_t)FIO_PUBSUB_LOCAL);
     FIO_ASSERT(letter_id(l) == test_info[i].id,
                "message ID identity error, %llu != %llu",
                letter_id(l),

@@ -43,7 +43,7 @@ FIO_IFUNC void fio___poll_ev_wrap__user_task(void *fn_, void *io_) {
   fio_user_thread_wake();
   return;
 io_invalid:
-  FIO_LOG_DEBUG("IO validation failed for IO %p (User task)", (void *)io);
+  FIO_LOG_DEBUG2("IO validation failed for IO %p (User task)", (void *)io);
 }
 
 FIO_IFUNC void fio___poll_ev_wrap__io_task(void *fn_, void *io_) {
@@ -59,7 +59,7 @@ FIO_IFUNC void fio___poll_ev_wrap__io_task(void *fn_, void *io_) {
   fio_queue_push(FIO_QUEUE_SYSTEM, .fn = u.fn, .udata1 = fio_dup(io));
   return;
 io_invalid:
-  FIO_LOG_DEBUG("IO validation failed for IO %p (IO task)", (void *)io);
+  FIO_LOG_DEBUG2("IO validation failed for IO %p (IO task)", (void *)io);
 }
 
 /* delays callback scheduling so it occurs after pending free / init events. */
@@ -80,7 +80,7 @@ Polling Callbacks
 
 FIO_IFUNC void fio___poll_on_data(int fd, void *io) {
   (void)fd;
-  // FIO_LOG_DEBUG("event on_data detected for IO %p", io);
+  // FIO_LOG_DEBUG2("event on_data detected for IO %p", io);
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__user_task,
                                fio_ev_on_data,
                                io);
@@ -88,7 +88,7 @@ FIO_IFUNC void fio___poll_on_data(int fd, void *io) {
 }
 FIO_IFUNC void fio___poll_on_ready(int fd, void *io) {
   (void)fd;
-  // FIO_LOG_DEBUG("event on_ready detected for IO %p", io);
+  // FIO_LOG_DEBUG2("event on_ready detected for IO %p", io);
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__io_task,
                                fio_ev_on_ready,
                                io);
@@ -97,7 +97,7 @@ FIO_IFUNC void fio___poll_on_ready(int fd, void *io) {
 
 FIO_IFUNC void fio___poll_on_close(int fd, void *io) {
   (void)fd;
-  // FIO_LOG_DEBUG("event on_close detected for IO %p", io);
+  // FIO_LOG_DEBUG2("event on_close detected for IO %p", io);
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__io_task,
                                fio_ev_on_close,
                                io);

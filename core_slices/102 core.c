@@ -28,6 +28,7 @@ static struct {
   uint16_t workers;
   uint8_t is_master;
   uint8_t is_worker;
+  uint8_t pubsub_filter;
   volatile uint8_t running;
   fio_timer_queue_s timers;
 } fio_data = {
@@ -115,12 +116,12 @@ FIO_IFUNC void fio_set_valid(fio_s *io) {
   FIO_VALIDATE_UNLOCK();
   FIO_ASSERT_DEBUG(fio_is_valid(io),
                    "IO validity set, but map reported as invalid!");
-  FIO_LOG_DEBUG("IO %p is now valid", (void *)io);
+  FIO_LOG_DEBUG2("IO %p is now valid", (void *)io);
 }
 
 FIO_IFUNC void fio_set_invalid(fio_s *io) {
   fio_s *old = NULL;
-  FIO_LOG_DEBUG("IO %p is no longer valid", (void *)io);
+  FIO_LOG_DEBUG2("IO %p is no longer valid", (void *)io);
   FIO_VALIDATE_LOCK();
   fio_validity_map_remove(&fio_data.valid, fio_risky_ptr(io), io, &old);
   FIO_VALIDATE_UNLOCK();
@@ -205,7 +206,7 @@ static void fio_io_wakeup_on_close(void *udata) {
     fio_reset_wakeup_pipes();
     fio_io_wakeup_prep();
   }
-  FIO_LOG_DEBUG("IO wakeup fio_s freed");
+  FIO_LOG_DEBUG2("IO wakeup fio_s freed");
   (void)udata;
 }
 
