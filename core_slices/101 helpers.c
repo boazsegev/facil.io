@@ -277,17 +277,21 @@ static void mock_ping_eternal(fio_s *io) { fio_touch(io); }
 FIO_IFUNC void fio_protocol_validate(fio_protocol_s *p) {
   if (p && !(p->reserved.flags & 8)) {
     MARK_FUNC();
+    p->reserved.ios = FIO_LIST_INIT(p->reserved.ios);
+    p->reserved.protocols = FIO_LIST_INIT(p->reserved.protocols);
+    p->reserved.flags |= 8;
+    if (!p->on_attach)
+      p->on_attach = mock_on_ready;
     if (!p->on_data)
       p->on_data = mock_on_data;
-    if (!p->on_timeout)
-      p->on_timeout = mock_timeout;
     if (!p->on_ready)
       p->on_ready = mock_on_ready;
-    if (!p->on_shutdown)
-      p->on_shutdown = mock_on_shutdown;
     if (!p->on_close)
       p->on_close = mock_on_close;
-    p->reserved.flags |= 8;
+    if (!p->on_shutdown)
+      p->on_shutdown = mock_on_shutdown;
+    if (!p->on_timeout)
+      p->on_timeout = mock_timeout;
   }
 }
 

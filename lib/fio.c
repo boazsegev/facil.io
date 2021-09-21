@@ -317,17 +317,21 @@ static void mock_ping_eternal(fio_s *io) { fio_touch(io); }
 FIO_IFUNC void fio_protocol_validate(fio_protocol_s *p) {
   if (p && !(p->reserved.flags & 8)) {
     MARK_FUNC();
+    p->reserved.ios = FIO_LIST_INIT(p->reserved.ios);
+    p->reserved.protocols = FIO_LIST_INIT(p->reserved.protocols);
+    p->reserved.flags |= 8;
+    if (!p->on_attach)
+      p->on_attach = mock_on_ready;
     if (!p->on_data)
       p->on_data = mock_on_data;
-    if (!p->on_timeout)
-      p->on_timeout = mock_timeout;
     if (!p->on_ready)
       p->on_ready = mock_on_ready;
-    if (!p->on_shutdown)
-      p->on_shutdown = mock_on_shutdown;
     if (!p->on_close)
       p->on_close = mock_on_close;
-    p->reserved.flags |= 8;
+    if (!p->on_shutdown)
+      p->on_shutdown = mock_on_shutdown;
+    if (!p->on_timeout)
+      p->on_timeout = mock_timeout;
   }
 }
 
@@ -950,6 +954,8 @@ FIO_SFUNC int fio___review_timeouts(void) {
   last_to_review = fio_data.tick;
   const int64_t now_milli = fio_data.tick;
 
+  // FIO_LOG_DEBUG2("performing timeout review.");
+
   FIO_LIST_EACH(fio_protocol_s, reserved.protocols, &fio_data.protocols, pr) {
     FIO_ASSERT_DEBUG(pr->reserved.flags, "protocol object flags unmarked?!");
     if (!pr->timeout || pr->timeout > FIO_IO_TIMEOUT_MAX)
@@ -1004,27 +1010,36 @@ FIO_SFUNC void fio___close_all_io(void) {
 IO object protocol update
 ***************************************************************************** */
 
+FIO_SFUNC void fio_protocol_set___attached_task(void *io_, void *ignr_) {
+  fio_s *io = io_;
+  if (fio_trylock(&io->lock))
+    goto reschedule;
+  io->protocol->on_attach(io);
+  fio_unlock(&io->lock);
+  // FIO_LOG_DEBUG2("on_attach callback returned, monitoring IO %p", io_);
+  fio_monitor_all(io);
+  fio_free2(io);
+  return;
+reschedule:
+  fio_queue_push(FIO_QUEUE_IO(io),
+                 fio_protocol_set___attached_task,
+                 io_,
+                 ignr_);
+}
+
 /* completes an update for an IO object's protocol */
 FIO_SFUNC void fio_protocol_set___task(void *io_, void *old_protocol_) {
   fio_s *io = io_;
   fio_protocol_s *p = io->protocol;
   fio_protocol_s *old = old_protocol_;
   FIO_ASSERT_DEBUG(p != old, "protocol switch with identical protocols!");
-  if (!(p->reserved.flags & 4)) {
-    p->reserved.protocols = FIO_LIST_INIT(p->reserved.protocols);
-    p->reserved.ios = FIO_LIST_INIT(p->reserved.ios);
-    p->reserved.flags |= 4;
-    FIO_LOG_DEBUG2("attaching protocol %p (first IO %p)", (void *)p, io_);
-  }
-  fio_touch___unsafe(io, NULL);
-  if (old && FIO_LIST_IS_EMPTY(&old->reserved.ios) &&
-      (old->reserved.flags & 4)) {
+  fio_touch___unsafe(io, io);
+  if (old && FIO_LIST_IS_EMPTY(&old->reserved.ios)) {
     FIO_LIST_REMOVE(&old->reserved.protocols);
-    old->reserved.flags &= ~(uintptr_t)4ULL;
-    FIO_LOG_DEBUG2("detaching protocol %p (last IO was %p)", (void *)old, io_);
   }
-  fio_free2(io);
+  (void)p; /* if not DEBUG */
 }
+
 /**
  * Sets a new protocol object.
  *
@@ -1043,7 +1058,9 @@ void fio_protocol_set(fio_s *io, fio_protocol_s *protocol) {
                  .fn = fio_protocol_set___task,
                  .udata1 = fio_dup(io),
                  .udata2 = old);
-  fio_monitor_all(io);
+  fio_queue_push(FIO_QUEUE_IO(io),
+                 .fn = fio_protocol_set___attached_task,
+                 .udata1 = fio_dup(io));
 }
 
 /* *****************************************************************************
@@ -1538,9 +1555,9 @@ Polling Timeout Calculation
 ***************************************************************************** */
 
 static int fio_poll_timeout_calc(void) {
-  int t = fio_timer_next_at(&fio_data.timers) - fio_data.tick;
-  if (t == -1 || t > FIO_POLL_TICK)
-    t = FIO_POLL_TICK;
+  int t = fio_timer_next_at(&fio_data.timers);
+  t = fio_ct_if_bool(t == -1, FIO_POLL_TICK, t - fio_data.tick);
+  t = fio_ct_if_bool(t > FIO_POLL_TICK, FIO_POLL_TICK, t);
   return t;
 }
 
@@ -1599,7 +1616,7 @@ Polling Callbacks
 
 FIO_IFUNC void fio___poll_on_data(int fd, void *io) {
   (void)fd;
-  // FIO_LOG_DEBUG2("event on_data detected for IO %p", io);
+  FIO_LOG_DEBUG2("event on_data detected for IO %p", io);
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__user_task,
                                fio_ev_on_data,
                                io);
@@ -1607,7 +1624,7 @@ FIO_IFUNC void fio___poll_on_data(int fd, void *io) {
 }
 FIO_IFUNC void fio___poll_on_ready(int fd, void *io) {
   (void)fd;
-  // FIO_LOG_DEBUG2("event on_ready detected for IO %p", io);
+  FIO_LOG_DEBUG2("event on_ready detected for IO %p", io);
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__io_task,
                                fio_ev_on_ready,
                                io);
@@ -1616,7 +1633,7 @@ FIO_IFUNC void fio___poll_on_ready(int fd, void *io) {
 
 FIO_IFUNC void fio___poll_on_close(int fd, void *io) {
   (void)fd;
-  // FIO_LOG_DEBUG2("event on_close detected for IO %p", io);
+  FIO_LOG_DEBUG2("event on_close detected for IO %p", io);
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__io_task,
                                fio_ev_on_close,
                                io);
@@ -1900,10 +1917,7 @@ Event / IO Reactor Pattern
 The Reactor event scheduler
 ***************************************************************************** */
 FIO_SFUNC void fio___schedule_events(void) {
-  static int old = 0;
-  /* make sure the user thread is active */
-  // if (fio_queue_count(FIO_QUEUE_USER))
-  //   fio_user_thread_wake();
+  static int old = 1;
   /* schedule IO events */
   fio_io_wakeup_prep();
   /* make sure all system events were processed */
@@ -1913,7 +1927,7 @@ FIO_SFUNC void fio___schedule_events(void) {
   /* schedule Signal events */
   c += fio_signal_review();
   /* review IO timeouts */
-  if (fio___review_timeouts())
+  if (fio___review_timeouts() || c)
     fio_user_thread_wake();
   /* schedule timer events */
   if (fio_timer_push2queue(FIO_QUEUE_USER, &fio_data.timers, fio_data.tick))
@@ -1936,9 +1950,6 @@ FIO_SFUNC void fio___schedule_events(void) {
 #endif
   }
   old = c;
-  /* make sure the user thread is active after all events were scheduled */
-  // if (fio_queue_count(FIO_QUEUE_USER))
-  //   fio_user_thread_wake();
 }
 
 /* *****************************************************************************
@@ -2138,12 +2149,10 @@ Starting the IO reactor and reviewing it's state
 void fio_start___(void); /* sublime text marker */
 void fio_start FIO_NOOP(struct fio_start_args args) {
   fio_expected_concurrency(&args.threads, &args.workers);
-  fio_state_callback_force(FIO_CALL_PRE_START);
   fio_signal_handler_init();
   fio_data.running = 1;
   fio_data.workers = args.workers;
   fio_data.threads = args.threads;
-
   FIO_LOG_INFO("\n\t Starting facil.io in %s mode."
                "\n\t Engine:     %s"
                "\n\t Worker(s):  %d"
@@ -2158,6 +2167,9 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
   FIO_LOG_INFO("linked to OpenSSL %s", OpenSSL_version(0));
 #endif
   fio_reset_wakeup_pipes();
+  fio_state_callback_force(FIO_CALL_PRE_START);
+  if (!fio_data.running)
+    goto finish_up;
   if (fio_data.workers) {
     fio_data.is_worker = 0;
     fio_thread_t *sentinels = calloc(sizeof(*sentinels), fio_data.workers);
@@ -2173,6 +2185,7 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
   } else {
     fio___worker();
   }
+finish_up:
   fio_state_callback_force(FIO_CALL_ON_FINISH);
   FIO_LOG_INFO("shutdown complete.");
 }
@@ -2590,6 +2603,7 @@ Listening to Incoming Connections
 #include "999 dev.h" /* development sugar, ignore */
 #endif               /* development sugar, ignore */
 
+/* listening socket on_data callback */
 FIO_SFUNC void fio_listen_on_data(fio_s *io) {
   struct fio_listen_args *l = fio_udata_get(io);
   int fd;
@@ -2598,6 +2612,8 @@ FIO_SFUNC void fio_listen_on_data(fio_s *io) {
     l->on_open(fd, l->udata);
   }
 }
+
+/* listening socket on_close callback */
 FIO_SFUNC void fio_listen_on_close(void *udata) {
   struct fio_listen_args *l = udata;
   FIO_LOG_INFO("(%d) stopped listening on %s",
@@ -2605,12 +2621,14 @@ FIO_SFUNC void fio_listen_on_close(void *udata) {
                l->url);
 }
 
+/* listening socket protocol */
 static fio_protocol_s FIO_PROTOCOL_LISTEN = {
     .on_data = fio_listen_on_data,
     .on_close = fio_listen_on_close,
     .on_timeout = mock_ping_eternal,
 };
 
+/* attaching the listening socket to the worker (@ON_START) */
 FIO_SFUNC void fio_listen___attach(void *udata) {
   struct fio_listen_args *l = udata;
 #if FIO_OS_WIN
@@ -2641,6 +2659,7 @@ FIO_SFUNC void fio_listen___attach(void *udata) {
                l->url);
 }
 
+/* freeing the listening socket and its resources */
 FIO_SFUNC void fio_listen___free(void *udata) {
   struct fio_listen_args *l = udata;
   FIO_LOG_DEBUG2("(%d) closing listening socket at %s", getpid(), l->url);
@@ -2650,6 +2669,7 @@ FIO_SFUNC void fio_listen___free(void *udata) {
   free(l);
 }
 
+/* listening socket setup */
 int fio_listen___(void); /* Sublime Text marker */
 int fio_listen FIO_NOOP(struct fio_listen_args args) {
   struct fio_listen_args *info = NULL;
@@ -2803,6 +2823,7 @@ enum {
   FIO_PUBSUB_ROOT_BIT = 2,
   FIO_PUBSUB_SIBLINGS_BIT = 4,
   FIO_PUBSUB_CLUSTER_BIT = 8,
+  FIO_PUBSUB_PING_BIT = 64,
   FIO_PUBSUB_JSON_BIT = 128,
 } letter_info_bits_e;
 
@@ -3118,10 +3139,12 @@ FIO_IFUNC void subscription_free(subscription_s *s) {
     void *p;
     void (*fn)(void *udata);
   } u = {.fn = s->on_unsubscribe};
-  fio_queue_push(FIO_QUEUE_USER,
-                 subscription_on_unsubscribe___task,
-                 u.p,
-                 s->udata);
+  if (u.p) {
+    fio_queue_push(FIO_QUEUE_USER,
+                   subscription_on_unsubscribe___task,
+                   u.p,
+                   s->udata);
+  }
   (s->io ? fio_free : free)(s);
 }
 
@@ -3180,8 +3203,7 @@ FIO_SFUNC void subscription_deliver__task(void *s_, void *l_) {
   letter_free(l);
   return;
 reschedule:
-  fio_queue_push((s->io ? fio_queue_select(s->io->protocol->reserved.flags)
-                        : FIO_QUEUE_USER),
+  fio_queue_push((s->io ? FIO_QUEUE_IO(s->io) : FIO_QUEUE_USER),
                  subscription_deliver__task,
                  s,
                  l);
@@ -3194,7 +3216,7 @@ FIO_IFUNC void subscription_deliver(subscription_s *s, letter_s *l) {
   if (s->io) {
     if (s->io == l->from || !fio_is_valid(s->io))
       return;
-    q = fio_queue_select(s->io->protocol->reserved.flags);
+    q = FIO_QUEUE_IO(s->io);
     fio_dup(s->io);
   }
   fio_queue_push(q,
@@ -3230,6 +3252,15 @@ FIO_SFUNC void postoffice_on_channel_removed(channel_s *);
 static struct {
   uint8_t filter;
   channel_store_s channels[CHANNEL_TYPE_NONE];
+  sstr_s ipc_url;                   /* inter-process address */
+  fio_protocol_s ipc;               /* inter-process communication protocol */
+  fio_protocol_s ipc_listen;        /* accepts inter-process connections */
+  sstr_s cluster_url;               /* machine cluster address */
+  fio_protocol_s cluster;           /* machine cluster communication protocol */
+  fio_protocol_s cluster_listen;    /* accepts machine cluster connections */
+  fio_protocol_s cluster_discovery; /* network cluster discovery */
+  fio_tls_s *cluster_server_tls;
+  fio_tls_s *cluster_client_tls;
 } postoffice = {
     .filter =
         FIO_PUBSUB_PROCESS_BIT | FIO_PUBSUB_ROOT_BIT | FIO_PUBSUB_SIBLINGS_BIT,
@@ -3310,6 +3341,32 @@ FIO_IFUNC void postoffice_deliver2process(letter_s *l) {
   }
 }
 
+FIO_SFUNC void postoffice_deliver2io___task(void *io_, void *l_) {
+  letter_write(io_, l_);
+  letter_free(l_);
+  fio_free2(io_);
+}
+
+FIO_IFUNC void postoffice_deliver2ipc(letter_s *l) {
+  FIO_LIST_EACH(fio_s, timeouts, &postoffice.ipc.reserved.ios, io) {
+    if (io != l->from)
+      fio_queue_push(FIO_QUEUE_SYSTEM,
+                     postoffice_deliver2io___task,
+                     fio_dup(io),
+                     letter_dup2(l));
+  }
+}
+
+FIO_IFUNC void postoffice_deliver2cluster(letter_s *l) {
+  FIO_LIST_EACH(fio_s, timeouts, &postoffice.ipc.reserved.ios, io) {
+    if (io != l->from)
+      fio_queue_push(FIO_QUEUE_SYSTEM,
+                     postoffice_deliver2io___task,
+                     fio_dup(io),
+                     letter_dup2(l));
+  }
+}
+
 /* *****************************************************************************
 Pub/Sub - Subscribe / Unsubscribe
 ***************************************************************************** */
@@ -3380,6 +3437,7 @@ FIO_SFUNC void fio_publish___task(void *letter_, void *ignr_) {
   letter_free(l);
   (void)ignr_;
 }
+
 /**
  * Publishes a message to the relevant subscribers (if any).
  *
@@ -3397,9 +3455,14 @@ FIO_SFUNC void fio_publish___task(void *letter_, void *ignr_) {
  * To publish messages to the pub/sub layer, the `.filter` argument MUST be
  * equal to 0 or missing.
  */
+void fio_publish___(void); /* SublimeText marker*/
 void fio_publish FIO_NOOP(fio_publish_args_s args) {
-  if (!args.engine)
-    args.engine = FIO_PUBSUB_DEFAULT;
+  const fio_pubsub_engine_s *engines[3] = {
+      args.engine,
+      FIO_PUBSUB_DEFAULT,
+      FIO_PUBSUB_LOCAL,
+  };
+  args.engine = engines[(!args.engine | (!!args.filter)) + (!!args.filter)];
   if ((uintptr_t)(args.engine) > 0XFF)
     goto external_engine;
   letter_s *l =
@@ -3516,6 +3579,66 @@ void fio_pubsub_reattach(fio_pubsub_engine_s *eng);
 int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);
 
 /* *****************************************************************************
+Pubsub IPC and cluster protocol callbacks
+***************************************************************************** */
+
+FIO_SFUNC void pubsub_cluster_on_letter(letter_s *l) {
+  /* TODO: test for and discard duplicates */
+  postoffice_deliver2process(l);
+  postoffice_deliver2ipc(l);
+  postoffice_deliver2cluster(l);
+}
+
+FIO_SFUNC void pubsub_ipc_on_letter_master(letter_s *l) {
+  if ((l->buf[0] & FIO_PUBSUB_ROOT_BIT))
+    postoffice_deliver2process(l);
+  if ((l->buf[0] & FIO_PUBSUB_SIBLINGS_BIT))
+    postoffice_deliver2ipc(l);
+  if ((l->buf[0] & FIO_PUBSUB_CLUSTER_BIT))
+    postoffice_deliver2cluster(l);
+}
+
+FIO_SFUNC void pubsub_ipc_on_letter_worker(letter_s *l) {
+  postoffice_deliver2process(l);
+}
+
+FIO_SFUNC void pubsub_ipc_on_data_master(fio_s *io) {
+  letter_read(io, fio_udata_get(io), pubsub_ipc_on_letter_master);
+}
+
+FIO_SFUNC void pubsub_ipc_on_data_worker(fio_s *io) {
+  letter_read(io, fio_udata_get(io), pubsub_ipc_on_letter_worker);
+}
+
+FIO_SFUNC void pubsub_cluster_on_data(fio_s *io) {
+  letter_read(io, fio_udata_get(io), pubsub_ipc_on_letter_master);
+}
+
+FIO_SFUNC void pubsub_ipc_on_close(void *udata) { letter_parser_free(udata); }
+
+FIO_SFUNC void pubsub_cluster_on_close(void *udata) {
+  /* TODO: allow re-connections from this address */
+  letter_parser_free(udata);
+}
+
+FIO_SFUNC void pubsub_ipc_on_new_connection(fio_s *io) {
+  int fd = accept(io->fd, NULL, NULL);
+  if (fd == -1)
+    return;
+  fio_attach_fd(fd, &postoffice.ipc, letter_parser_new(), NULL);
+}
+
+FIO_SFUNC void pubsub_cluster_on_new_connection(fio_s *io) {
+  int fd = accept(io->fd, NULL, NULL);
+  if (fd == -1)
+    return;
+  fio_attach_fd(fd,
+                &postoffice.cluster,
+                letter_parser_new(),
+                postoffice.cluster_server_tls);
+}
+
+/* *****************************************************************************
 Postoffice add / remove hooks
 ***************************************************************************** */
 
@@ -3558,12 +3681,50 @@ FIO_SFUNC void postoffice_on_channel_removed(channel_s *ch) {
 Pubsub Init
 ***************************************************************************** */
 
-FIO_SFUNC void postoffice_pre__start(void *ignr_) { (void)ignr_; }
+FIO_SFUNC void postoffice_pre__start(void *ignr_) {
+  (void)ignr_;
+  postoffice.filter = FIO_PUBSUB_PROCESS_BIT | FIO_PUBSUB_ROOT_BIT;
+  postoffice.ipc.on_data = pubsub_ipc_on_data_master;
+  postoffice.ipc.on_close = pubsub_ipc_on_close;
+  postoffice.ipc_listen.on_data = pubsub_ipc_on_new_connection;
+  postoffice.ipc_listen.on_timeout = FIO_PING_ETERNAL;
+  postoffice.cluster.on_data = pubsub_cluster_on_data;
+  postoffice.cluster.on_close = pubsub_ipc_on_close;
+  postoffice.cluster_listen.on_data = pubsub_cluster_on_new_connection;
+  postoffice.cluster_listen.on_timeout = FIO_PING_ETERNAL;
+  fio_protocol_validate(&postoffice.ipc);
+  fio_protocol_validate(&postoffice.cluster);
+  fio_protocol_validate(&postoffice.ipc_listen);
+  fio_protocol_validate(&postoffice.cluster_listen);
+  postoffice.ipc.reserved.flags |= 1;
+  postoffice.cluster.reserved.flags |= 1;
+  postoffice.ipc_listen.reserved.flags |= 1;
+  postoffice.cluster_listen.reserved.flags |= 1;
+#if FIO_OS_POSIX
+  sstr_init_const(&postoffice.ipc_url, "unix://./facil.io.pubsub.sock", 20);
+#else
+  sstr_init_const(&postoffice.ipc_url, "tcp://127.0.0.1:9999", 20);
+#endif
+  if (fio_data.workers) {
+    int fd = fio_sock_open2(sstr2ptr(&postoffice.ipc_url),
+                            FIO_SOCK_SERVER | FIO_SOCK_NONBLOCK);
+    FIO_ASSERT(fd != -1, "failed to create IPC listening socket.", getpid());
+    fio_attach_fd(fd, &postoffice.ipc_listen, NULL, NULL);
+    FIO_LOG_DEBUG2("listening for pub/sub IPC @ %s",
+                   sstr2ptr(&postoffice.ipc_url));
+  }
+}
 
 FIO_SFUNC void postoffice_on_worker_start(void *ignr_) {
   (void)ignr_;
-  postoffice.filter =
-      FIO_PUBSUB_PROCESS_BIT | (FIO_PUBSUB_ROOT_BIT * (!!fio_data.is_master));
+  if (!fio_data.is_master) {
+    postoffice.ipc.on_data = pubsub_ipc_on_data_worker;
+    postoffice.filter = FIO_PUBSUB_PROCESS_BIT;
+    int fd = fio_sock_open2(sstr2ptr(&postoffice.ipc_url),
+                            FIO_SOCK_CLIENT | FIO_SOCK_NONBLOCK);
+    FIO_ASSERT(fd != -1, "(%d) failed to connect to master process.", getpid());
+    fio_attach_fd(fd, &postoffice.ipc, letter_parser_new(), NULL);
+  }
 }
 
 FIO_SFUNC void postoffice_on_finish(void *ignr_) {

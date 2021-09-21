@@ -5,6 +5,7 @@ Listening to Incoming Connections
 #include "999 dev.h" /* development sugar, ignore */
 #endif               /* development sugar, ignore */
 
+/* listening socket on_data callback */
 FIO_SFUNC void fio_listen_on_data(fio_s *io) {
   struct fio_listen_args *l = fio_udata_get(io);
   int fd;
@@ -13,6 +14,8 @@ FIO_SFUNC void fio_listen_on_data(fio_s *io) {
     l->on_open(fd, l->udata);
   }
 }
+
+/* listening socket on_close callback */
 FIO_SFUNC void fio_listen_on_close(void *udata) {
   struct fio_listen_args *l = udata;
   FIO_LOG_INFO("(%d) stopped listening on %s",
@@ -20,12 +23,14 @@ FIO_SFUNC void fio_listen_on_close(void *udata) {
                l->url);
 }
 
+/* listening socket protocol */
 static fio_protocol_s FIO_PROTOCOL_LISTEN = {
     .on_data = fio_listen_on_data,
     .on_close = fio_listen_on_close,
     .on_timeout = mock_ping_eternal,
 };
 
+/* attaching the listening socket to the worker (@ON_START) */
 FIO_SFUNC void fio_listen___attach(void *udata) {
   struct fio_listen_args *l = udata;
 #if FIO_OS_WIN
@@ -56,6 +61,7 @@ FIO_SFUNC void fio_listen___attach(void *udata) {
                l->url);
 }
 
+/* freeing the listening socket and its resources */
 FIO_SFUNC void fio_listen___free(void *udata) {
   struct fio_listen_args *l = udata;
   FIO_LOG_DEBUG2("(%d) closing listening socket at %s", getpid(), l->url);
@@ -65,6 +71,7 @@ FIO_SFUNC void fio_listen___free(void *udata) {
   free(l);
 }
 
+/* listening socket setup */
 int fio_listen___(void); /* Sublime Text marker */
 int fio_listen FIO_NOOP(struct fio_listen_args args) {
   struct fio_listen_args *info = NULL;

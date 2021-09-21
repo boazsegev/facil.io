@@ -9,10 +9,7 @@ Event / IO Reactor Pattern
 The Reactor event scheduler
 ***************************************************************************** */
 FIO_SFUNC void fio___schedule_events(void) {
-  static int old = 0;
-  /* make sure the user thread is active */
-  // if (fio_queue_count(FIO_QUEUE_USER))
-  //   fio_user_thread_wake();
+  static int old = 1;
   /* schedule IO events */
   fio_io_wakeup_prep();
   /* make sure all system events were processed */
@@ -22,7 +19,7 @@ FIO_SFUNC void fio___schedule_events(void) {
   /* schedule Signal events */
   c += fio_signal_review();
   /* review IO timeouts */
-  if (fio___review_timeouts())
+  if (fio___review_timeouts() || c)
     fio_user_thread_wake();
   /* schedule timer events */
   if (fio_timer_push2queue(FIO_QUEUE_USER, &fio_data.timers, fio_data.tick))
@@ -45,9 +42,6 @@ FIO_SFUNC void fio___schedule_events(void) {
 #endif
   }
   old = c;
-  /* make sure the user thread is active after all events were scheduled */
-  // if (fio_queue_count(FIO_QUEUE_USER))
-  //   fio_user_thread_wake();
 }
 
 /* *****************************************************************************

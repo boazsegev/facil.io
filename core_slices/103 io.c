@@ -242,6 +242,8 @@ FIO_SFUNC int fio___review_timeouts(void) {
   last_to_review = fio_data.tick;
   const int64_t now_milli = fio_data.tick;
 
+  // FIO_LOG_DEBUG2("performing timeout review.");
+
   FIO_LIST_EACH(fio_protocol_s, reserved.protocols, &fio_data.protocols, pr) {
     FIO_ASSERT_DEBUG(pr->reserved.flags, "protocol object flags unmarked?!");
     if (!pr->timeout || pr->timeout > FIO_IO_TIMEOUT_MAX)
@@ -296,27 +298,36 @@ FIO_SFUNC void fio___close_all_io(void) {
 IO object protocol update
 ***************************************************************************** */
 
+FIO_SFUNC void fio_protocol_set___attached_task(void *io_, void *ignr_) {
+  fio_s *io = io_;
+  if (fio_trylock(&io->lock))
+    goto reschedule;
+  io->protocol->on_attach(io);
+  fio_unlock(&io->lock);
+  // FIO_LOG_DEBUG2("on_attach callback returned, monitoring IO %p", io_);
+  fio_monitor_all(io);
+  fio_free2(io);
+  return;
+reschedule:
+  fio_queue_push(FIO_QUEUE_IO(io),
+                 fio_protocol_set___attached_task,
+                 io_,
+                 ignr_);
+}
+
 /* completes an update for an IO object's protocol */
 FIO_SFUNC void fio_protocol_set___task(void *io_, void *old_protocol_) {
   fio_s *io = io_;
   fio_protocol_s *p = io->protocol;
   fio_protocol_s *old = old_protocol_;
   FIO_ASSERT_DEBUG(p != old, "protocol switch with identical protocols!");
-  if (!(p->reserved.flags & 4)) {
-    p->reserved.protocols = FIO_LIST_INIT(p->reserved.protocols);
-    p->reserved.ios = FIO_LIST_INIT(p->reserved.ios);
-    p->reserved.flags |= 4;
-    FIO_LOG_DEBUG2("attaching protocol %p (first IO %p)", (void *)p, io_);
-  }
-  fio_touch___unsafe(io, NULL);
-  if (old && FIO_LIST_IS_EMPTY(&old->reserved.ios) &&
-      (old->reserved.flags & 4)) {
+  fio_touch___unsafe(io, io);
+  if (old && FIO_LIST_IS_EMPTY(&old->reserved.ios)) {
     FIO_LIST_REMOVE(&old->reserved.protocols);
-    old->reserved.flags &= ~(uintptr_t)4ULL;
-    FIO_LOG_DEBUG2("detaching protocol %p (last IO was %p)", (void *)old, io_);
   }
-  fio_free2(io);
+  (void)p; /* if not DEBUG */
 }
+
 /**
  * Sets a new protocol object.
  *
@@ -335,7 +346,9 @@ void fio_protocol_set(fio_s *io, fio_protocol_s *protocol) {
                  .fn = fio_protocol_set___task,
                  .udata1 = fio_dup(io),
                  .udata2 = old);
-  fio_monitor_all(io);
+  fio_queue_push(FIO_QUEUE_IO(io),
+                 .fn = fio_protocol_set___attached_task,
+                 .udata1 = fio_dup(io));
 }
 
 /* *****************************************************************************

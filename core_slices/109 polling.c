@@ -19,9 +19,9 @@ Polling Timeout Calculation
 ***************************************************************************** */
 
 static int fio_poll_timeout_calc(void) {
-  int t = fio_timer_next_at(&fio_data.timers) - fio_data.tick;
-  if (t == -1 || t > FIO_POLL_TICK)
-    t = FIO_POLL_TICK;
+  int t = fio_timer_next_at(&fio_data.timers);
+  t = fio_ct_if_bool(t == -1, FIO_POLL_TICK, t - fio_data.tick);
+  t = fio_ct_if_bool(t > FIO_POLL_TICK, FIO_POLL_TICK, t);
   return t;
 }
 
@@ -80,7 +80,7 @@ Polling Callbacks
 
 FIO_IFUNC void fio___poll_on_data(int fd, void *io) {
   (void)fd;
-  // FIO_LOG_DEBUG2("event on_data detected for IO %p", io);
+  FIO_LOG_DEBUG2("event on_data detected for IO %p", io);
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__user_task,
                                fio_ev_on_data,
                                io);
@@ -88,7 +88,7 @@ FIO_IFUNC void fio___poll_on_data(int fd, void *io) {
 }
 FIO_IFUNC void fio___poll_on_ready(int fd, void *io) {
   (void)fd;
-  // FIO_LOG_DEBUG2("event on_ready detected for IO %p", io);
+  FIO_LOG_DEBUG2("event on_ready detected for IO %p", io);
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__io_task,
                                fio_ev_on_ready,
                                io);
@@ -97,7 +97,7 @@ FIO_IFUNC void fio___poll_on_ready(int fd, void *io) {
 
 FIO_IFUNC void fio___poll_on_close(int fd, void *io) {
   (void)fd;
-  // FIO_LOG_DEBUG2("event on_close detected for IO %p", io);
+  FIO_LOG_DEBUG2("event on_close detected for IO %p", io);
   fio___poll_ev_wrap__schedule(fio___poll_ev_wrap__io_task,
                                fio_ev_on_close,
                                io);

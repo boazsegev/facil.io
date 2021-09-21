@@ -31,6 +31,14 @@ struct fio_protocol_s {
     /* internal flags - do NOT alter after initial initialization to zero. */
     uintptr_t flags;
   } reserved;
+  /**
+   * Called when an IO was attached. Locks the IO's task lock.
+   *
+   * Note: this is scheduled when setting the protocol, but depending on race
+   * conditions, the previous protocol, and the socket's state, it may run after
+   * the `on_ready` or `on_data` are called.
+   * */
+  void (*on_attach)(fio_s *io);
   /** Called when a data is available. Locks the IO's task lock. */
   void (*on_data)(fio_s *io);
   /** called once all pending `fio_write` calls are finished. */
@@ -140,7 +148,8 @@ Controlling the connection
  * * `tls` is a context for Transport Layer Security and can be used to redirect
  *   read/write operations. NULL will result in unencrypted transmissions.
  *
- * Returns -1 on error.
+ * Returns NULL on error. the `fio_s` pointer must NOT be used except within
+ * proper callbacks.
  */
 fio_s *fio_attach_fd(int fd,
                      fio_protocol_s *protocol,

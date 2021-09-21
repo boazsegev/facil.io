@@ -17,12 +17,10 @@ Starting the IO reactor and reviewing it's state
 void fio_start___(void); /* sublime text marker */
 void fio_start FIO_NOOP(struct fio_start_args args) {
   fio_expected_concurrency(&args.threads, &args.workers);
-  fio_state_callback_force(FIO_CALL_PRE_START);
   fio_signal_handler_init();
   fio_data.running = 1;
   fio_data.workers = args.workers;
   fio_data.threads = args.threads;
-
   FIO_LOG_INFO("\n\t Starting facil.io in %s mode."
                "\n\t Engine:     %s"
                "\n\t Worker(s):  %d"
@@ -37,6 +35,9 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
   FIO_LOG_INFO("linked to OpenSSL %s", OpenSSL_version(0));
 #endif
   fio_reset_wakeup_pipes();
+  fio_state_callback_force(FIO_CALL_PRE_START);
+  if (!fio_data.running)
+    goto finish_up;
   if (fio_data.workers) {
     fio_data.is_worker = 0;
     fio_thread_t *sentinels = calloc(sizeof(*sentinels), fio_data.workers);
@@ -52,6 +53,7 @@ void fio_start FIO_NOOP(struct fio_start_args args) {
   } else {
     fio___worker();
   }
+finish_up:
   fio_state_callback_force(FIO_CALL_ON_FINISH);
   FIO_LOG_INFO("shutdown complete.");
 }
