@@ -195,6 +195,7 @@ static void *fio_worker_sentinel(void *thr_ptr) {
     return NULL;
   }
   fio_data.is_master = 0;
+  fio_data.is_worker = 1;
   FIO_LOG_INFO("(%d) worker starting up.", (int)getpid());
   fio_state_callback_force(FIO_CALL_IN_CHILD);
   fio___worker();

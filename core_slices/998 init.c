@@ -72,6 +72,6 @@ FIO_CONSTRUCTOR(fio_data_state_init) {
 #endif
   fio_state_callback_add(FIO_CALL_IN_CHILD, fio___after_fork, NULL);
   fio_state_callback_add(FIO_CALL_PRE_START, postoffice_pre__start, NULL);
-  fio_state_callback_add(FIO_CALL_ON_START, postoffice_on_worker_start, NULL);
+  fio_state_callback_add(FIO_CALL_IN_CHILD, postoffice_forked_child, NULL);
   fio_state_callback_add(FIO_CALL_ON_FINISH, postoffice_on_finish, NULL);
 }

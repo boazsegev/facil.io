@@ -268,6 +268,12 @@ FIO_SFUNC int fio___review_timeouts(void) {
 Testing for any open IO objects
 ***************************************************************************** */
 
+FIO_IFUNC void fio___close_all_io_in_protocol(fio_protocol_s *pr) {
+  FIO_LIST_EACH(fio_s, timeouts, &pr->reserved.ios, io) {
+    fio_close_now_unsafe(io);
+  }
+}
+
 FIO_SFUNC int fio___is_waiting_on_io(void) {
   int c = 0;
   FIO_LIST_EACH(fio_protocol_s, reserved.protocols, &fio_data.protocols, pr) {
@@ -290,7 +296,7 @@ Testing for any open IO objects
 
 FIO_SFUNC void fio___close_all_io(void) {
   FIO_LIST_EACH(fio_protocol_s, reserved.protocols, &fio_data.protocols, pr) {
-    FIO_LIST_EACH(fio_s, timeouts, &pr->reserved.ios, io) { fio_free2(io); }
+    fio___close_all_io_in_protocol(pr);
   }
 }
 
@@ -494,7 +500,7 @@ Write
 
 static void fio_write2___task(void *io_, void *packet) {
   fio_s *io = io_;
-  if ((io->state & FIO_IO_CLOSING))
+  if (!(io->state & FIO_IO_OPEN))
     goto error;
   MARK_FUNC();
   fio_stream_add(&io->stream, packet);
@@ -522,7 +528,7 @@ void fio_write2 FIO_NOOP(fio_s *io, fio_write_args_s args) {
   }
   if (!packet)
     goto error;
-  if (!io)
+  if (!io || ((io->state & (FIO_IO_OPEN | FIO_IO_CLOSING)) ^ FIO_IO_OPEN))
     goto io_error;
   MARK_FUNC();
   fio_queue_push(FIO_QUEUE_SYSTEM,
@@ -542,7 +548,8 @@ error:
   return;
 io_error:
   fio_stream_pack_free(packet);
-  FIO_LOG_ERROR("Invalid IO (NULL) for user-packet");
+  if (!io)
+    FIO_LOG_ERROR("Invalid IO (NULL) for user-packet");
   return;
 }
 
@@ -550,7 +557,10 @@ io_error:
 void fio_close(fio_s *io) {
   if (io && (io->state & FIO_IO_OPEN) &&
       !(fio_atomic_or(&io->state, FIO_IO_CLOSING) & FIO_IO_CLOSING)) {
-    FIO_LOG_DEBUG2("scheduling IO %p (fd %d) for closure", (void *)io, io->fd);
+    FIO_LOG_DEBUG2("(%d) scheduling IO %p (fd %d) for closure",
+                   getpid(),
+                   (void *)io,
+                   io->fd);
     fio_monitor_forget(io->fd);
     fio_queue_push(FIO_QUEUE_SYSTEM, fio_ev_on_ready, fio_dup(io));
     MARK_FUNC();

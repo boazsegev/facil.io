@@ -418,13 +418,13 @@ fio_protocol_s *fio_protocol_get(fio_s *io);
 
 /** Associates a new `udata` pointer with the IO, returning the old `udata` */
 FIO_IFUNC void *fio_udata_set(fio_s *io, void *udata) {
-  void *old = *(void **)io;
-  *(void **)io = udata;
+  void *old = ((void **)io)[0];
+  ((void **)io)[0] = udata;
   return old;
 }
 
 /** Returns the `udata` pointer associated with the IO. */
-FIO_IFUNC void *fio_udata_get(fio_s *io) { return *(void **)io; }
+FIO_IFUNC void *fio_udata_get(fio_s *io) { return ((void **)io)[0]; }
 
 /**
  * Reads data to the buffer, if any data exists. Returns the number of bytes
@@ -883,6 +883,8 @@ Pub/Sub - Publish
 typedef struct fio_publish_args_s {
   /** The pub/sub engine that should be used to forward this message. */
   fio_pubsub_engine_s const *engine;
+  /** If `from` is specified, it will be skipped (won't receive message). */
+  fio_s *from;
   /** The target named channel. Only published when filter == 0. */
   fio_str_info_s channel;
   /** The message body / content. */

@@ -169,6 +169,8 @@ Pub/Sub - Publish
 typedef struct fio_publish_args_s {
   /** The pub/sub engine that should be used to forward this message. */
   fio_pubsub_engine_s const *engine;
+  /** If `from` is specified, it will be skipped (won't receive message). */
+  fio_s *from;
   /** The target named channel. Only published when filter == 0. */
   fio_str_info_s channel;
   /** The message body / content. */

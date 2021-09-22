@@ -51,7 +51,7 @@ int main(int argc, char const *argv[]) {
       "This is a raw (TCP/IP) chat server example.",
       FIO_CLI_STRING("--binding -b a URL with the binding to use. i.e.: "
                      "tcp://0.0.0.0:3000 "),
-      FIO_CLI_INT("--workers -w (0) The number of worker processes to spawn."),
+      FIO_CLI_INT("--workers -w (2) The number of worker processes to spawn."),
       FIO_CLI_PRINT("Negative values are fractions of CPU core count."),
       FIO_CLI_PRINT(
           "A zero value (0) will run facil.io in single process mode."),
