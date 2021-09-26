@@ -8,8 +8,7 @@ Starting the IO reactor and reviewing it's state
 /* *****************************************************************************
 Post fork cleanup
 ***************************************************************************** */
-static void fio___after_fork(void *ignr_) {
-  (void)ignr_;
+static void fio___after_fork(void) {
   fio_malloc_after_fork();
   fio___after_fork___core();
   fio___after_fork___io();
@@ -20,8 +19,7 @@ State data initialization
 
 FIO_DESTRUCTOR(fio_cleanup_at_exit) {
   fio_state_callback_force(FIO_CALL_AT_EXIT);
-  fio_thread_mutex_destroy(&fio_data.env.lock);
-  env_destroy(&fio_data.env.env);
+  env_safe_destroy(&fio_data.env);
   fio_data.protocols = FIO_LIST_INIT(fio_data.protocols);
   while (!fio_queue_perform(FIO_QUEUE_SYSTEM) ||
          !fio_queue_perform(FIO_QUEUE_USER))
@@ -52,7 +50,7 @@ FIO_DESTRUCTOR(fio_cleanup_at_exit) {
 FIO_CONSTRUCTOR(fio_data_state_init) {
   FIO_LOG_DEBUG2("initializing facio.io IO state.");
   fio_data.protocols = FIO_LIST_INIT(fio_data.protocols);
-  fio_data.master = getpid();
+  fio_data.master = fio_data.pid = getpid();
   fio_data.tick = fio_time2milli(fio_time_real());
   fio_data.protocols = FIO_LIST_INIT(fio_data.protocols);
   fio_data.timers = (fio_timer_queue_s)FIO_TIMER_QUEUE_INIT;
@@ -70,8 +68,6 @@ FIO_CONSTRUCTOR(fio_data_state_init) {
 #if FIO_VALIDATE_IO_MUTEX
   fio_data.valid_lock = (fio_thread_mutex_t)FIO_THREAD_MUTEX_INIT;
 #endif
-  fio_state_callback_add(FIO_CALL_IN_CHILD, fio___after_fork, NULL);
-  fio_state_callback_add(FIO_CALL_PRE_START, postoffice_pre__start, NULL);
-  fio_state_callback_add(FIO_CALL_IN_CHILD, postoffice_forked_child, NULL);
-  fio_state_callback_add(FIO_CALL_ON_FINISH, postoffice_on_finish, NULL);
+  postoffice_initialize();
+  fio_state_callback_force(FIO_CALL_ON_INITIALIZE);
 }

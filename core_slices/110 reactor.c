@@ -35,7 +35,7 @@ FIO_SFUNC void fio___schedule_events(void) {
         getppid() != fio_data.master) {
       fio_data.running = 0;
       FIO_LOG_FATAL("(%d) parent process (%d != %d) seems to have crashed",
-                    getpid(),
+                    (int)fio_data.pid,
                     (int)fio_data.master,
                     (int)getppid());
     }
@@ -155,7 +155,7 @@ static void fio___worker(void) {
   fio_queue_perform_all(FIO_QUEUE_SYSTEM);
   fio_close_wakeup_pipes();
   if (!fio_data.is_master)
-    FIO_LOG_INFO("(%d) worker shutdown complete.", (int)getpid());
+    FIO_LOG_INFO("(%d) worker shutdown complete.", (int)fio_data.pid);
 }
 
 /* *****************************************************************************
@@ -169,13 +169,17 @@ static fio_lock_i fio_spawn_GIL = FIO_LOCK_INIT;
 /** Worker sentinel */
 static void *fio_worker_sentinel(void *thr_ptr) {
   fio_state_callback_force(FIO_CALL_BEFORE_FORK);
-  pid_t pid = fork();
+  /* do not allow master tasks to run in worker */
+  while (!fio_queue_perform(FIO_QUEUE_SYSTEM) &&
+         !fio_queue_perform(FIO_QUEUE_USER))
+    ;
+  pid_t pid = fio_fork();
   FIO_ASSERT(pid != (pid_t)-1, "system call `fork` failed.");
-  fio_state_callback_force(FIO_CALL_AFTER_FORK);
-  fio_unlock(&fio_spawn_GIL);
   if (pid) {
     int status = 0;
     (void)status;
+    fio_state_callback_force(FIO_CALL_AFTER_FORK);
+    fio_unlock(&fio_spawn_GIL);
     if (waitpid(pid, &status, 0) != pid && fio_data.running)
       FIO_LOG_ERROR("waitpid failed, worker re-spawning might fail.");
     if (!WIFEXITED(status) || WEXITSTATUS(status)) {
@@ -194,9 +198,13 @@ static void *fio_worker_sentinel(void *thr_ptr) {
     }
     return NULL;
   }
+  fio_data.pid = getpid();
   fio_data.is_master = 0;
   fio_data.is_worker = 1;
-  FIO_LOG_INFO("(%d) worker starting up.", (int)getpid());
+  fio_unlock(&fio_spawn_GIL);
+  fio___after_fork();
+  FIO_LOG_INFO("(%d) worker starting up.", (int)fio_data.pid);
+  fio_state_callback_force(FIO_CALL_AFTER_FORK);
   fio_state_callback_force(FIO_CALL_IN_CHILD);
   fio___worker();
   exit(0);

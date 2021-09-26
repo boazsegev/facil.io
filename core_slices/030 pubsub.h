@@ -92,6 +92,15 @@ typedef uint8_t (*fio_pubsub_pattern_fn)(fio_str_info_s pattern,
 typedef struct {
   /**
    * The subscription owner - if none, the subscription is owned by the system.
+   *
+   * Note:
+   *
+   * Both the system and the `io` objects each manage channel listing
+   * which allows only a single subscription to the same channel.
+   *
+   * This means a single subscription per channel per IO and a single
+   * subscription per channel for the global system unless managing the
+   * subscription handle manually.
    */
   fio_s *io;
   /**
@@ -111,6 +120,18 @@ typedef struct {
   void (*on_unsubscribe)(void *udata);
   /** The opaque udata value is ignored and made available to the callbacks. */
   void *udata;
+  /**
+   * OPTIONAL: subscription handle return value - should be NULL when using
+   * automatic memory management with the IO or global environment.
+   *
+   * When set, the `io` pointer will be ignored and the subscription object
+   * handle will be written to the `subscription_handle_ptr` which MUST be
+   * used when unsubscribing.
+   *
+   * NOTE: this could cause subscriptions and memory leaks unless properly
+   * handled.
+   */
+  uintptr_t *subscription_handle_ptr;
   /**
    * If `filter` is set, `channel` is ignored and all messages that match the
    * filter's numerical value will be forwarded to the subscription's callback.
@@ -145,6 +166,9 @@ void fio_subscribe(subscribe_args_s args);
  * Accepts the same arguments as `fio_subscribe`, except the `udata` and
  * callback details are ignored (no need to provide `udata` or callback
  * details).
+ *
+ * If a `subscription_handle_ptr` was provided it should contain the value of
+ * the subscription handle returned.
  *
  * Returns -1 if the subscription could not be found. Otherwise returns 0.
  */

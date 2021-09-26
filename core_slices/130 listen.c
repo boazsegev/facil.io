@@ -10,7 +10,10 @@ FIO_SFUNC void fio_listen_on_data(fio_s *io) {
   struct fio_listen_args *l = fio_udata_get(io);
   int fd;
   while ((fd = accept(io->fd, NULL, NULL)) != -1) {
-    FIO_LOG_DEBUG2("accepting a new connection (fd %d) at %s", fd, l->url);
+    FIO_LOG_DEBUG2("(%d) accepting a new connection (fd %d) at %s",
+                   (int)fio_data.pid,
+                   fd,
+                   l->url);
     l->on_open(fd, l->udata);
   }
 }
@@ -18,9 +21,7 @@ FIO_SFUNC void fio_listen_on_data(fio_s *io) {
 /* listening socket on_close callback */
 FIO_SFUNC void fio_listen_on_close(void *udata) {
   struct fio_listen_args *l = udata;
-  FIO_LOG_INFO("(%d) stopped listening on %s",
-               (fio_data.is_master ? (int)fio_data.master : (int)getpid()),
-               l->url);
+  FIO_LOG_INFO("(%d) stopped listening on %s", (int)fio_data.pid, l->url);
 }
 
 /* listening socket protocol */
@@ -52,19 +53,22 @@ FIO_SFUNC void fio_listen___attach(void *udata) {
   int fd = dup(l->reserved);
 #endif
   FIO_ASSERT(fd != -1, "listening socket failed to `dup`");
-  FIO_LOG_DEBUG2("Called dup(%d) to attach %d as a listening socket.",
+  FIO_LOG_DEBUG2("(%d) Called dup(%d) to attach %d as a listening socket.",
+                 (int)fio_data.pid,
                  l->reserved,
                  fd);
   fio_attach_fd(fd, &FIO_PROTOCOL_LISTEN, l, NULL);
   FIO_LOG_INFO("(%d) started listening on %s",
-               (fio_data.is_master ? (int)fio_data.master : (int)getpid()),
+               (fio_data.is_master ? (int)fio_data.master : (int)fio_data.pid),
                l->url);
 }
 
 /* freeing the listening socket and its resources */
 FIO_SFUNC void fio_listen___free(void *udata) {
   struct fio_listen_args *l = udata;
-  FIO_LOG_DEBUG2("(%d) closing listening socket at %s", getpid(), l->url);
+  FIO_LOG_DEBUG2("(%d) closing listening socket at %s",
+                 (int)fio_data.pid,
+                 l->url);
   fio_sock_close(l->reserved); /* this socket was dupped and unused */
   fio_state_callback_remove(FIO_CALL_PRE_START, fio_listen___attach, l);
   fio_state_callback_remove(FIO_CALL_ON_START, fio_listen___attach, l);

@@ -262,35 +262,6 @@ typedef struct {
   char *name;
 } channel_s;
 
-FIO_IFUNC channel_s *channel_new(channel_type_e channel_type,
-                                 int32_t filter,
-                                 char *name,
-                                 size_t name_len) {
-  channel_s *c = malloc(sizeof(*c) + name_len);
-  FIO_ASSERT_ALLOC(c);
-  *c = (channel_s){
-      .subscriptions = FIO_LIST_INIT(c->subscriptions),
-      .type = channel_type,
-      .filter = filter,
-      .name_len = name_len,
-      .name = (char *)(c + 1),
-  };
-  if (name_len)
-    memcpy(c->name, name, name_len);
-  return c;
-}
-
-FIO_IFUNC void channel_free(channel_s *channel) { free(channel); }
-
-FIO_IFUNC _Bool channel_is_eq(channel_s *a, channel_s *b) {
-  return a->filter == b->filter && a->name_len == b->name_len &&
-         !memcmp(a->name, b->name, a->name_len);
-}
-
-FIO_IFUNC uint64_t channel2hash(channel_s ch) {
-  return fio_risky_hash(ch.name, ch.name_len, ch.filter);
-}
-
 /* *****************************************************************************
 Subscription Objects
 ***************************************************************************** */
@@ -306,6 +277,10 @@ typedef struct {
   fio_lock_i lock;
   uint8_t disabled; /* TODO: do we need this one? */
 } subscription_s;
+
+/* *****************************************************************************
+Subscription Object API
+***************************************************************************** */
 
 FIO_IFUNC subscription_s *subscription_new(fio_s *io,
                                            channel_s *channel,
@@ -436,6 +411,48 @@ FIO_IFUNC void subscription_deliver(subscription_s *s, letter_s *l) {
 }
 
 /* *****************************************************************************
+Channel Object API
+***************************************************************************** */
+
+FIO_IFUNC channel_s *channel_new(channel_type_e channel_type,
+                                 int32_t filter,
+                                 char *name,
+                                 size_t name_len) {
+  channel_s *c = malloc(sizeof(*c) + name_len);
+  FIO_ASSERT_ALLOC(c);
+  *c = (channel_s){
+      .subscriptions = FIO_LIST_INIT(c->subscriptions),
+      .type = channel_type,
+      .filter = filter,
+      .name_len = name_len,
+      .name = (char *)(c + 1),
+  };
+  if (name_len)
+    memcpy(c->name, name, name_len);
+  return c;
+}
+
+FIO_IFUNC void channel_free(channel_s *channel) {
+  if (!channel)
+    return;
+  /* make sure no subscriptions are leaked during termination */
+  FIO_LIST_EACH(subscription_s, node, &channel->subscriptions, s) {
+    s->channel = NULL;
+    subscription_free(s);
+  }
+  free(channel);
+}
+
+FIO_IFUNC _Bool channel_is_eq(channel_s *a, channel_s *b) {
+  return a->filter == b->filter && a->name_len == b->name_len &&
+         !memcmp(a->name, b->name, a->name_len);
+}
+
+FIO_IFUNC uint64_t channel2hash(channel_s ch) {
+  return fio_risky_hash(ch.name, ch.name_len, ch.filter);
+}
+
+/* *****************************************************************************
 Postoffice
 ***************************************************************************** */
 
@@ -455,7 +472,10 @@ FIO_SFUNC void postoffice_on_channel_removed(channel_s *);
     postoffice_on_channel_removed((ch));                                       \
     channel_free((ch));                                                        \
   } while (0)
-#define FIO_MAP_TYPE_DISCARD(ch) FIO_MAP_TYPE_DESTROY(ch)
+#define FIO_MAP_TYPE_DISCARD(ch)                                               \
+  do {                                                                         \
+    channel_free((ch));                                                        \
+  } while (0)
 #include "fio-stl.h"
 
 /** The postoffice data store */
@@ -464,15 +484,17 @@ static struct {
   uint8_t filter_ipc;
   uint8_t filter_cluster;
   channel_store_s channels[CHANNEL_TYPE_NONE];
-  sstr_s ipc_url;                   /* inter-process address */
+  char ipc_url[40];                 /* inter-process address  - buffer */
+  char cluster_url[40];             /* machine cluster address - buffer */
   fio_protocol_s ipc;               /* inter-process communication protocol */
   fio_protocol_s ipc_listen;        /* accepts inter-process connections */
-  sstr_s cluster_url;               /* machine cluster address */
   fio_protocol_s cluster;           /* machine cluster communication protocol */
   fio_protocol_s cluster_listen;    /* accepts machine cluster connections */
   fio_protocol_s cluster_discovery; /* network cluster discovery */
   fio_tls_s *cluster_server_tls;
   fio_tls_s *cluster_client_tls;
+  uintptr_t subscription_handles[8];
+  fio_s mock_io;
 } postoffice = {
     .filter_local = (FIO_PUBSUB_PROCESS_BIT | FIO_PUBSUB_ROOT_BIT |
                      FIO_PUBSUB_SIBLINGS_BIT),
@@ -609,15 +631,23 @@ void fio_subscribe FIO_NOOP(subscribe_args_s args) {
                                        args.on_unsubscribe,
                                        args.udata);
   fio_queue_push(FIO_QUEUE_SYSTEM, fio_subscribe___task, ch, s);
-  fio_env_set(args.io,
-              .type = (-1LL - args.is_pattern - (!!args.filter)),
-              .name = args.channel,
-              .on_close = ((void (*)(void *))postoffice_unsubscribe),
-              .udata = s);
+  if (!args.subscription_handle_ptr) {
+    fio_env_set(args.io,
+                .type = (-1LL - args.is_pattern - (!!args.filter)),
+                .name = args.channel,
+                .on_close = ((void (*)(void *))postoffice_unsubscribe),
+                .udata = s);
+  } else {
+    *args.subscription_handle_ptr = (uintptr_t)s;
+  }
 }
 
 void fio_unsubscribe___(void); /* sublimetext marker */
 
+FIO_SFUNC void fio_unsubscribe___task(void *s, void *ignr_) {
+  (void)ignr_;
+  postoffice_unsubscribe(s);
+}
 /**
  * Cancels an existing subscriptions.
  *
@@ -633,9 +663,16 @@ int fio_unsubscribe FIO_NOOP(subscribe_args_s args) {
     args.channel.buf = (char *)&args.filter;
     args.channel.len = sizeof(args.filter);
   }
-  return fio_env_remove(args.io,
-                        .type = (-1LL - args.is_pattern - (!!args.filter)),
-                        .name = args.channel);
+  if (!args.subscription_handle_ptr) {
+    return fio_env_remove(args.io,
+                          .type = (-1LL - args.is_pattern - (!!args.filter)),
+                          .name = args.channel);
+  }
+  ((subscription_s **)args.subscription_handle_ptr)[0]->disabled = 1;
+  fio_queue_push(FIO_QUEUE_SYSTEM,
+                 fio_unsubscribe___task,
+                 ((void **)args.subscription_handle_ptr)[0]);
+  return 0;
 }
 
 /* *****************************************************************************
@@ -837,7 +874,7 @@ FIO_SFUNC void pubsub_ipc_on_close_in_child(void *udata) {
   if (fio_data.running) {
     FIO_LOG_ERROR(
         "(%d) pub/sub connection to master process lost while running.",
-        getpid());
+        (int)fio_data.pid);
     fio_stop();
   }
 }
@@ -854,6 +891,22 @@ FIO_SFUNC void pubsub_cluster_on_close(void *udata) {
   letter_parser_free(udata);
 }
 
+FIO_SFUNC void pubsub_listener_ipc_on_close(void *udata) {
+  (void)udata;
+  if (fio_data.is_master)
+    FIO_LOG_DEBUG2("(%d) PostOffice stopped listening for IPC @ %s",
+                   fio_data.pid,
+                   postoffice.ipc_url);
+}
+
+FIO_SFUNC void pubsub_listener_cluster_on_close(void *udata) {
+  (void)udata;
+  if (fio_data.is_master)
+    FIO_LOG_DEBUG2("(%d) PostOffice stopped listening for remote machines @ %s",
+                   fio_data.pid,
+                   postoffice.cluster_url);
+}
+
 FIO_SFUNC void pubsub_ipc_on_new_connection(fio_s *io) {
   if (!fio_data.is_master)
     return;
@@ -861,6 +914,10 @@ FIO_SFUNC void pubsub_ipc_on_new_connection(fio_s *io) {
   if (fd == -1)
     return;
   io = fio_attach_fd(fd, fio_udata_get(io), letter_parser_new(), NULL);
+  FIO_LOG_DEBUG2("(%d) PostOffice accepted connection @ %p (%d).",
+                 (int)fio_data.pid,
+                 io,
+                 io->fd);
 }
 
 /* *****************************************************************************
@@ -878,6 +935,10 @@ FIO_SFUNC void postoffice_on_channel_added(channel_s *ch) {
               .filter = -1,
               .channel = cmds[ch->type == CHANNEL_TYPE_PATTERN],
               .message = {ch->name, ch->name_len});
+  // FIO_LOG_DEBUG2("(%d) PostOffice channel added: %.*s",
+  //                fio_data.pid,
+  //                (int)ch->name_len,
+  //                ch->name);
 }
 FIO_SFUNC void postoffice_on_channel_removed(channel_s *ch) {
   if (ch->filter)
@@ -890,6 +951,76 @@ FIO_SFUNC void postoffice_on_channel_removed(channel_s *ch) {
               .filter = -1,
               .channel = cmds[ch->type == CHANNEL_TYPE_PATTERN],
               .message = {ch->name, ch->name_len});
+  // FIO_LOG_DEBUG2("(%d) PostOffice channel removed: %.*s",
+  //                fio_data.pid,
+  //                (int)ch->name_len,
+  //                ch->name);
+}
+
+FIO_SFUNC void postoffice_mock_callback(fio_msg_s *msg) { (void)msg; }
+FIO_SFUNC void postoffice_on_global_subscribe(fio_msg_s *msg) {
+  /* child process subscribe ? */
+  if (fio_msg2letter(msg)->from) {
+    fio_subscribe(.io = fio_msg2letter(msg)->from,
+                  .channel = msg->channel,
+                  .is_pattern = 0,
+                  .on_message = postoffice_mock_callback);
+    return;
+  }
+  /* global channel created. */
+  /* TODO: call engine callbacks */
+  FIO_LOG_DEBUG2("(%d) PostOffice global channel %s: %s",
+                 (int)fio_data.pid,
+                 msg->channel.buf,
+                 msg->message.buf);
+}
+FIO_SFUNC void postoffice_on_global_psubscribe(fio_msg_s *msg) {
+  /* child process subscribe ? */
+  if (fio_msg2letter(msg)->from) {
+    fio_subscribe(.io = fio_msg2letter(msg)->from,
+                  .channel = msg->channel,
+                  .is_pattern = 1,
+                  .on_message = postoffice_mock_callback);
+    return;
+  }
+  /* global channel created. */
+  /* TODO: call engine callbacks */
+  FIO_LOG_DEBUG2("(%d) PostOffice global channel %s: %s",
+                 (int)fio_data.pid,
+                 msg->channel.buf,
+                 msg->message.buf);
+}
+FIO_SFUNC void postoffice_on_global_unsubscribe(fio_msg_s *msg) {
+  /* child process subscribe ? */
+  if (fio_msg2letter(msg)->from) {
+    fio_unsubscribe(.io = fio_msg2letter(msg)->from,
+                    .channel = msg->channel,
+                    .is_pattern = 0,
+                    .on_message = postoffice_mock_callback);
+    return;
+  }
+  /* channel removed. */
+  /* TODO: call engine callbacks */
+  FIO_LOG_DEBUG2("(%d) PostOffice global channel %s: %s",
+                 (int)fio_data.pid,
+                 msg->channel.buf,
+                 msg->message.buf);
+}
+FIO_SFUNC void postoffice_on_global_pubsubscribe(fio_msg_s *msg) {
+  /* child process subscribe ? */
+  if (fio_msg2letter(msg)->from) {
+    fio_unsubscribe(.io = fio_msg2letter(msg)->from,
+                    .channel = msg->channel,
+                    .is_pattern = 1,
+                    .on_message = postoffice_mock_callback);
+    return;
+  }
+  /* global channel removed. */
+  /* TODO: call engine callbacks */
+  FIO_LOG_DEBUG2("(%d) PostOffice global channel %s: %s",
+                 (int)fio_data.pid,
+                 msg->channel.buf,
+                 msg->message.buf);
 }
 
 /* *****************************************************************************
@@ -906,64 +1037,136 @@ FIO_SFUNC void postoffice_pre__start(void *ignr_) {
   postoffice.ipc.on_timeout = pubsub_connection_ping;
   postoffice.ipc.timeout = 300;
   postoffice.ipc_listen.on_data = pubsub_ipc_on_new_connection;
+  postoffice.ipc_listen.on_close = pubsub_listener_ipc_on_close;
   postoffice.ipc_listen.on_timeout = FIO_PING_ETERNAL;
   postoffice.cluster.on_data = pubsub_cluster_on_data;
   postoffice.cluster.on_close = pubsub_ipc_on_close;
   postoffice.cluster.on_timeout = pubsub_connection_ping;
   postoffice.cluster.timeout = 300;
   postoffice.cluster_listen.on_data = pubsub_ipc_on_new_connection;
+  postoffice.cluster_listen.on_close = pubsub_listener_cluster_on_close;
   postoffice.cluster_listen.on_timeout = FIO_PING_ETERNAL;
-  fio_protocol_validate(&postoffice.ipc);
-  fio_protocol_validate(&postoffice.ipc_listen);
-  fio_protocol_validate(&postoffice.cluster);
-  fio_protocol_validate(&postoffice.cluster_listen);
-  fio_protocol_validate(&postoffice.cluster_discovery);
-  postoffice.ipc.reserved.flags |= 1;
-  postoffice.ipc_listen.reserved.flags |= 1;
-  postoffice.cluster.reserved.flags |= 1;
-  postoffice.cluster_listen.reserved.flags |= 1;
-  postoffice.cluster_discovery.reserved.flags |= 1;
-#if FIO_OS_POSIX
-  sstr_init_const(&postoffice.ipc_url, "unix://./facil.io.pubsub.sock", 20);
-#else
-  sstr_init_const(&postoffice.ipc_url, "tcp://127.0.0.1:9999", 20);
-#endif
+  postoffice.mock_io.protocol = &postoffice.ipc;
+  postoffice.mock_io.env = ENV_SAFE_INIT;
+  postoffice.mock_io.fd = -1;
+  postoffice.mock_io.state = FIO_IO_OPEN;
+  postoffice.mock_io.lock = FIO_LOCK_INIT;
   if (fio_data.workers) {
-    int fd = fio_sock_open2(sstr2ptr(&postoffice.ipc_url),
-                            FIO_SOCK_SERVER | FIO_SOCK_NONBLOCK);
-    FIO_ASSERT(fd != -1, "failed to create IPC listening socket.", getpid());
+    int fd =
+        fio_sock_open2(postoffice.ipc_url, FIO_SOCK_SERVER | FIO_SOCK_NONBLOCK);
+    FIO_ASSERT(fd != -1,
+               "failed to create IPC listening socket.",
+               (int)fio_data.pid);
     fio_attach_fd(fd, &postoffice.ipc_listen, &postoffice.ipc, NULL);
-    FIO_LOG_DEBUG2("listening for pub/sub IPC @ %s",
-                   sstr2ptr(&postoffice.ipc_url));
+    FIO_LOG_DEBUG2("listening for pub/sub IPC @ %s", postoffice.ipc_url);
   }
 }
 
 FIO_SFUNC void postoffice_forked_child(void *ignr_) {
   (void)ignr_;
-  FIO_LOG_DEBUG2("(%d) postoffice_forked_child called", getpid());
-  fio___close_all_io_in_protocol(&postoffice.ipc);
-  fio___close_all_io_in_protocol(&postoffice.ipc_listen);
-  fio___close_all_io_in_protocol(&postoffice.cluster);
-  fio___close_all_io_in_protocol(&postoffice.cluster_listen);
-  fio___close_all_io_in_protocol(&postoffice.cluster_discovery);
+  for (fio_protocol_s *pr = &postoffice.ipc;
+       pr <= &postoffice.cluster_discovery;
+       ++pr) {
+    FIO_LIST_EACH(fio_s, timeouts, &pr->reserved.ios, io) {
+      fio_sock_close(io->fd);
+      io->fd = -1;
+      fio_close_now_unsafe(io);
+    }
+  }
+  for (int i = 0; postoffice.subscription_handles[i]; ++i) {
+    fio_unsubscribe(.subscription_handle_ptr =
+                        postoffice.subscription_handles + i);
+    postoffice.subscription_handles[i] = 0;
+  }
+  // perform all callbacks before replacing them
   while (!fio_queue_perform(FIO_QUEUE_SYSTEM) ||
          !fio_queue_perform(FIO_QUEUE_USER))
     ;
+
   postoffice.ipc.on_data = pubsub_ipc_on_data_worker;
   postoffice.ipc.on_close = pubsub_ipc_on_close_in_child;
   postoffice.filter_local = FIO_PUBSUB_PROCESS_BIT;
   postoffice.filter_ipc = ~(uint8_t)FIO_PUBSUB_PROCESS_BIT;
   postoffice.ipc.timeout = -1;
   postoffice.filter_cluster = 0;
-  int fd = fio_sock_open2(sstr2ptr(&postoffice.ipc_url),
-                          FIO_SOCK_CLIENT | FIO_SOCK_NONBLOCK);
-  FIO_ASSERT(fd != -1, "(%d) failed to connect to master process.", getpid());
-  fio_attach_fd(fd, &postoffice.ipc, letter_parser_new(), NULL);
+  int fd =
+      fio_sock_open2(postoffice.ipc_url, FIO_SOCK_CLIENT | FIO_SOCK_NONBLOCK);
+  FIO_ASSERT(fd != -1,
+             "(%d) failed to connect to master process.",
+             (int)fio_data.pid);
+  fio_s *io = fio_attach_fd(fd, &postoffice.ipc, letter_parser_new(), NULL);
+  (void)io;
+  FIO_LOG_DEBUG2("(%d) connecting IPC to PostOffice %p (fd %d)",
+                 (int)fio_data.pid,
+                 (void *)io,
+                 fd);
 }
 
 FIO_SFUNC void postoffice_on_finish(void *ignr_) {
   (void)ignr_;
   postoffice.filter_local = FIO_PUBSUB_PROCESS_BIT | FIO_PUBSUB_ROOT_BIT;
+}
+
+FIO_SFUNC void postoffice_at_exit(void *ignr_) {
+  (void)ignr_;
+  env_safe_destroy(&postoffice.mock_io.env);
+  if (fio_data.is_master && (!memcmp(postoffice.ipc_url, "unix:", 5) |
+                             !memcmp(postoffice.ipc_url, "file:", 5))) {
+    unlink(postoffice.ipc_url);
+  }
+}
+
+FIO_SFUNC void postoffice_initialize(void) {
+  for (fio_protocol_s *pr = &postoffice.ipc;
+       pr <= &postoffice.cluster_discovery;
+       ++pr) {
+    fio_protocol_validate(pr);
+    pr->reserved.flags |= 1;
+    FIO_LIST_PUSH(&fio_data.protocols, &pr->reserved.protocols);
+  }
+  fio_state_callback_add(FIO_CALL_PRE_START, postoffice_pre__start, NULL);
+  fio_state_callback_add(FIO_CALL_IN_CHILD, postoffice_forked_child, NULL);
+  fio_state_callback_add(FIO_CALL_ON_FINISH, postoffice_on_finish, NULL);
+  subscribe_args_s to_subscribe[] = {
+      {
+          .filter = -1,
+          .channel = {"subscribe", 9},
+          .on_message = postoffice_on_global_subscribe,
+      },
+      {
+          .filter = -1,
+          .channel = {"psubscribe", 10},
+          .on_message = postoffice_on_global_psubscribe,
+      },
+      {
+          .filter = -1,
+          .channel = {"unsubscribe", 11},
+          .on_message = postoffice_on_global_unsubscribe,
+      },
+      {
+          .filter = -1,
+          .channel = {"punsubscribe", 12},
+          .on_message = postoffice_on_global_pubsubscribe,
+      },
+      {0},
+  };
+  for (int i = 0; to_subscribe[i].on_message; ++i) {
+    to_subscribe[i].subscription_handle_ptr =
+        postoffice.subscription_handles + i;
+    fio_subscribe FIO_NOOP(to_subscribe[i]);
+  }
+  size_t pos = 0;
+#if FIO_OS_POSIX
+  memcpy(postoffice.ipc_url, "unix://./fio-pubsub-", 20);
+  pos += 20;
+  pos += fio_ltoa(postoffice.ipc_url + pos, ((uint64_t)fio_rand64() >> 24), 32);
+  memcpy(postoffice.ipc_url + pos, ".sock", 5);
+  pos += 5;
+#else
+  memcpy(postoffice.ipc_url, "tcp://127.0.0.1:9999", 20);
+  pos += 20;
+#endif
+  postoffice.ipc_url[pos] = 0;
 }
 
 /* *****************************************************************************

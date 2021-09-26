@@ -14,7 +14,8 @@ static void fio_ev_on_ready_user(void *io_, void *udata) {
 #if FIO_VALIDATE_IO_MUTEX
   FIO_ASSERT_DEBUG(fio_is_valid(io), "on_ready_user - invalid IO: %p", io);
 #endif
-  if ((io->state & FIO_IO_OPEN) && !fio_stream_any(&io->stream)) {
+  if ((io->state & FIO_IO_OPEN) &&
+      !(fio_stream_any(&io->stream) | (io->state & FIO_IO_CLOSING))) {
     if (fio_trylock(&io->lock))
       goto reschedule;
     io->protocol->on_ready(io);
@@ -81,7 +82,10 @@ static void fio_ev_on_ready(void *io_, void *udata) {
       if (fio_stream_length(&io->stream) >= FIO_SOCKET_THROTTLE_LIMIT) {
 #ifdef DEBUG
         if (!(io->state & FIO_IO_THROTTLED))
-          FIO_LOG_DEBUG2("throttled IO %p (fd %d)", (void *)io, io->fd);
+          FIO_LOG_DEBUG2("(%d) throttled IO %p (fd %d)",
+                         (int)fio_data.pid,
+                         (void *)io,
+                         io->fd);
 #endif
         fio_atomic_or(&io->state, FIO_IO_THROTTLED);
       }
@@ -101,13 +105,13 @@ static void fio_ev_on_data(void *io_, void *udata) {
 #if FIO_VALIDATE_IO_MUTEX
   FIO_ASSERT_DEBUG(fio_is_valid(io), "on_data - invalid IO: %p", io);
 #endif
-  if (!(io->state & FIO_IO_CLOSED)) {
+  if (io->state == FIO_IO_OPEN) {
     /* test for closed/suspended/throttled */
     if (fio_trylock(&io->lock))
       goto reschedule;
     io->protocol->on_data(io);
     fio_unlock(&io->lock);
-    if (!(io->state & FIO_IO_CLOSED)) {
+    if (io->state == FIO_IO_OPEN) {
       /* this also tests for the suspended flag (0x02) */
       fio_monitor_read(io);
     }
@@ -121,7 +125,10 @@ static void fio_ev_on_data(void *io_, void *udata) {
   return;
 
 reschedule:
-  FIO_LOG_DEBUG2("rescheduling on_data for IO %p (fd %d)", io_, io->fd);
+  FIO_LOG_DEBUG2("(%d) rescheduling on_data for IO %p (fd %d)",
+                 (int)fio_data.pid,
+                 io_,
+                 io->fd);
   fio_queue_push(FIO_QUEUE_IO(io),
                  .fn = fio_ev_on_data,
                  .udata1 = io,
@@ -140,7 +147,10 @@ static void fio_ev_on_timeout(void *io_, void *udata) {
   if ((io->state & FIO_IO_OPEN)) {
     io->protocol->on_timeout(io);
   } else { /* TODO: FIXME: why does this occur? ... What to do? */
-    FIO_LOG_DEBUG2("timeout event on a non-open IO %p (fd %d)", io_, io->fd);
+    FIO_LOG_DEBUG2("(%d) timeout event on a non-open IO %p (fd %d)",
+                   (int)fio_data.pid,
+                   io_,
+                   io->fd);
   }
   fio_undup(io);
   MARK_FUNC();

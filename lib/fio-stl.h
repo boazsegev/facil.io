@@ -600,7 +600,7 @@ typedef struct fio_list_node_s {
   } while (0)
 
 /** UNSAFE macro for testing if a list is empty. */
-#define FIO_LIST_IS_EMPTY(head) (!(head) || (head)->next == (head)->prev)
+#define FIO_LIST_IS_EMPTY(head) (!(head) || (head)->next == (head))
 
 /* *****************************************************************************
 Indexed Linked Lists Persistent Macros and Types
@@ -13499,7 +13499,9 @@ SFUNC int fio_sock_open_unix(const char *address, int is_client, int nonblock) {
   if (is_client) {
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1 &&
         errno != EINPROGRESS) {
-      FIO_LOG_DEBUG("couldn't connect unix client: %s", strerror(errno));
+      FIO_LOG_DEBUG("couldn't connect unix client @ %s : %s",
+                    addr.sun_path,
+                    strerror(errno));
       fio_sock_close(fd);
       return -1;
     }

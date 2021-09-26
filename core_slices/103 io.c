@@ -74,8 +74,9 @@ FIO_SFUNC void fio___init(fio_s *io) {
       .state = FIO_IO_OPEN,
       .stream = FIO_STREAM_INIT(io->stream),
       .timeouts = FIO_LIST_INIT(io->timeouts),
-      .env.lock = FIO_THREAD_MUTEX_INIT,
+      .env = ENV_SAFE_INIT,
       .fd = -1,
+      .lock = FIO_LOCK_INIT,
   };
   fio_queue_push(FIO_QUEUE_SYSTEM, fio___init_task, fio_dup2(io));
 }
@@ -88,8 +89,7 @@ FIO_SFUNC void fio___destroy(fio_s *io) {
   } u = {.fn = io->protocol->on_close};
 
   fio_set_invalid(io);
-  env_destroy(&io->env.env);
-  fio_thread_mutex_destroy(&io->env.lock);
+  env_safe_destroy(&io->env);
   fio_stream_destroy(&io->stream);
   // o->rw_hooks->cleanup(io->rw_udata);
   FIO_LIST_REMOVE(&io->timeouts);
@@ -99,7 +99,10 @@ FIO_SFUNC void fio___destroy(fio_s *io) {
     FIO_LIST_REMOVE(&io->protocol->reserved.protocols);
   }
   fio_queue_push(FIO_QUEUE_IO(io), fio___deferred_on_close, u.p, io->udata);
-  FIO_LOG_DEBUG2("IO %p (fd %d) freed.", (void *)io, (int)(io->fd));
+  FIO_LOG_DEBUG2("(%d) IO %p (fd %d) freed.",
+                 (int)fio_data.pid,
+                 (void *)io,
+                 (int)(io->fd));
 }
 
 #define FIO_REF_NAME         fio
@@ -170,7 +173,9 @@ FIO_IFUNC void fio_close_now___task(void *io_, void *ignr_) {
   (void)ignr_;
   fio_s *io = io_;
   if (!fio_is_valid(io) || !(io->state & FIO_IO_OPEN)) {
-    FIO_LOG_DEBUG2("fio_close_now called for closed IO %p", io);
+    FIO_LOG_DEBUG2("(%d) fio_close_now called for closed IO %p",
+                   (int)fio_data.pid,
+                   io);
     return;
   }
   fio_atomic_exchange(&io->state, FIO_IO_CLOSED);
@@ -253,7 +258,10 @@ FIO_SFUNC int fio___review_timeouts(void) {
       FIO_ASSERT_DEBUG(io->protocol == pr, "io protocol ownership error");
       if (io->active >= limit)
         break;
-      FIO_LOG_DEBUG2("scheduling timeout for %p (fd %d)", (void *)io, io->fd);
+      FIO_LOG_DEBUG2("(%d) scheduling timeout for %p (fd %d)",
+                     (int)fio_data.pid,
+                     (void *)io,
+                     io->fd);
       fio_queue_push(FIO_QUEUE_IO(io),
                      .fn = fio_ev_on_timeout,
                      .udata1 = fio_dup(io),
@@ -277,10 +285,12 @@ FIO_IFUNC void fio___close_all_io_in_protocol(fio_protocol_s *pr) {
 FIO_SFUNC int fio___is_waiting_on_io(void) {
   int c = 0;
   FIO_LIST_EACH(fio_protocol_s, reserved.protocols, &fio_data.protocols, pr) {
-    FIO_LOG_DEBUG2("active IO objects for protocol at %p", (void *)pr);
     FIO_LIST_EACH(fio_s, timeouts, &pr->reserved.ios, io) {
       c = 1;
-      FIO_LOG_DEBUG2("waiting for IO %p (fd %d)", (void *)io, io->fd);
+      FIO_LOG_DEBUG2("(%d) waiting for IO %p (fd %d)",
+                     (int)fio_data.pid,
+                     (void *)io,
+                     io->fd);
       if ((io->state & FIO_IO_OPEN))
         fio_close(io);
       else
@@ -414,7 +424,10 @@ fio_s *fio_attach_fd(int fd,
   fio_sock_set_non_block(fd); /* never accept a blocking socket */
   /* fio___addr_cpy(io); // ??? */
   fio_protocol_set(io, protocol);
-  FIO_LOG_DEBUG2("attaching fd %d to IO %p", fd, (void *)io);
+  FIO_LOG_DEBUG2("(%d) attaching fd %d to IO %p",
+                 (int)fio_data.pid,
+                 fd,
+                 (void *)io);
   MARK_FUNC();
   return io;
 error:
@@ -488,8 +501,13 @@ size_t fio_read(fio_s *io, void *buf, size_t len) {
     fio_touch(io);
     return r;
   }
-  if (r == -1 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+  if (!len | ((r == -1) &
+              ((errno == EAGAIN) | (errno == EWOULDBLOCK) | (errno == EINTR))))
     return 0;
+  FIO_LOG_DEBUG2("(%d) fio_read error, closing IO %p (fd %d)",
+                 fio_data.pid,
+                 (void *)io,
+                 io->fd);
   fio_close(io);
   return 0;
 }
@@ -558,7 +576,7 @@ void fio_close(fio_s *io) {
   if (io && (io->state & FIO_IO_OPEN) &&
       !(fio_atomic_or(&io->state, FIO_IO_CLOSING) & FIO_IO_CLOSING)) {
     FIO_LOG_DEBUG2("(%d) scheduling IO %p (fd %d) for closure",
-                   getpid(),
+                   fio_data.pid,
                    (void *)io,
                    io->fd);
     fio_monitor_forget(io->fd);
@@ -575,7 +593,10 @@ static void fio___after_fork___io(void) {
   FIO_LIST_EACH(fio_protocol_s, reserved.protocols, &fio_data.protocols, pr) {
     FIO_LIST_EACH(fio_s, timeouts, &pr->reserved.ios, io) {
       FIO_ASSERT_DEBUG(io->protocol == pr, "IO protocol ownership error");
-      FIO_LOG_DEBUG2("cleanup for IO %p (fd %d)", (void *)io, io->fd);
+      FIO_LOG_DEBUG2("(%d) cleanup for IO %p (fd %d)",
+                     (int)fio_data.pid,
+                     (void *)io,
+                     io->fd);
       fio_close_now_unsafe(io);
     }
     FIO_LIST_REMOVE(&pr->reserved.protocols);

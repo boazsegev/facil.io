@@ -24,6 +24,7 @@ static struct {
     int out;
   } thread_suspenders, io_wake;
   pid_t master;
+  pid_t pid;
   uint16_t threads;
   uint16_t workers;
   uint8_t is_master;
@@ -32,11 +33,7 @@ static struct {
   volatile uint8_t running;
   fio_timer_queue_s timers;
 } fio_data = {
-    .env =
-        {
-            .lock = FIO_THREAD_MUTEX_INIT,
-            .env = FIO_MAP_INIT,
-        },
+    .env = ENV_SAFE_INIT,
     .valid = FIO_MAP_INIT,
     .thread_suspenders = {-1, -1},
     .io_wake = {-1, -1},
@@ -65,7 +62,7 @@ FIO_IFUNC void fio_reset_pipes___(int *i, const char *msg) {
     close(i[1]);
   FIO_ASSERT(!pipe(i),
              "%d - couldn't initiate %s thread wakeup pipes.",
-             (int)getpid(),
+             (int)fio_data.pid,
              msg);
   fio_sock_set_non_block(i[0]);
   fio_sock_set_non_block(i[1]);
@@ -115,22 +112,27 @@ FIO_IFUNC void fio_set_valid(fio_s *io) {
   fio_validity_map_set(&fio_data.valid, fio_risky_ptr(io), io, NULL);
   FIO_VALIDATE_UNLOCK();
   FIO_ASSERT_DEBUG(fio_is_valid(io),
-                   "IO validity set, but map reported as invalid!");
-  FIO_LOG_DEBUG2("IO %p is now valid", (void *)io);
+                   "(%d) IO validity set, but map reported as invalid!",
+                   (int)fio_data.pid);
+  FIO_LOG_DEBUG2("(%d) IO %p is now valid", (int)fio_data.pid, (void *)io);
 }
 
 FIO_IFUNC void fio_set_invalid(fio_s *io) {
   fio_s *old = NULL;
-  FIO_LOG_DEBUG2("IO %p is no longer valid", (void *)io);
+  FIO_LOG_DEBUG2("(%d) IO %p is no longer valid",
+                 (int)fio_data.pid,
+                 (void *)io);
   FIO_VALIDATE_LOCK();
   fio_validity_map_remove(&fio_data.valid, fio_risky_ptr(io), io, &old);
   FIO_VALIDATE_UNLOCK();
   FIO_ASSERT_DEBUG(!old || old == io,
-                   "invalidity map corruption (%p != %p)!",
+                   "(%d) invalidity map corruption (%p != %p)!",
+                   (int)fio_data.pid,
                    io,
                    old);
   FIO_ASSERT_DEBUG(!fio_is_valid(io),
-                   "IO validity removed, but map reported as valid!");
+                   "(%d) IO validity removed, but map reported as valid!",
+                   (int)fio_data.pid);
 }
 
 FIO_IFUNC void fio_invalidate_all() {
@@ -206,7 +208,7 @@ static void fio_io_wakeup_on_close(void *udata) {
     fio_reset_wakeup_pipes();
     fio_io_wakeup_prep();
   }
-  FIO_LOG_DEBUG2("IO wakeup fio_s freed");
+  FIO_LOG_DEBUG2("(%d) IO wakeup fio_s freed", (int)fio_data.pid);
   (void)udata;
 }
 
@@ -238,7 +240,7 @@ static void fio_signal_handler___stop(int sig, void *ignr_) {
   last_signal = fio_data.tick;
   if (fio_data.running) {
     fio_data.running = 0;
-    FIO_LOG_INFO("(%d) received shutdown signal.", getpid());
+    FIO_LOG_INFO("(%d) received shutdown signal.", (int)fio_data.pid);
     if (fio_data.is_master && fio_data.workers) {
       kill(0, sig);
     }
@@ -246,7 +248,7 @@ static void fio_signal_handler___stop(int sig, void *ignr_) {
     fio_user_thread_wake_all();
   } else {
     FIO_LOG_FATAL("(%d) received another shutdown signal while shutting down.",
-                  getpid());
+                  (int)fio_data.pid);
     exit(-1);
   }
   (void)ignr_;
@@ -262,7 +264,7 @@ static void fio_signal_handler___worker_reset(int sig, void *ignr_) {
   last_signal = fio_data.tick;
   if (fio_data.is_worker) {
     fio_data.running = 0;
-    FIO_LOG_INFO("(%d) received worker restart signal.", getpid());
+    FIO_LOG_INFO("(%d) received worker restart signal.", (int)fio_data.pid);
   } else {
     FIO_LOG_INFO("(%d) forwarding worker restart signal.",
                  (int)fio_data.master);

@@ -14,6 +14,13 @@ Internal helpers
 #include "fio-stl.h"
 
 /* *****************************************************************************
+Forking
+***************************************************************************** */
+static void fio___after_fork(void);
+
+FIO_WEAK pid_t fio_fork(void) { return fork(); }
+
+/* *****************************************************************************
 IO Registry - NOT thread safe (access from IO core thread only)
 ***************************************************************************** */
 
@@ -196,6 +203,9 @@ typedef struct {
   env_s env;
 } env_safe_s;
 
+#define ENV_SAFE_INIT                                                          \
+  (env_safe_s) { .lock = FIO_THREAD_MUTEX_INIT, .env = FIO_MAP_INIT }
+
 FIO_IFUNC void env_safe_set(env_safe_s *e,
                             sstr_s key,
                             intptr_t type,
@@ -223,6 +233,11 @@ FIO_IFUNC int env_safe_remove(env_safe_s *e, sstr_s key, intptr_t type) {
   r = env_remove(&e->env, hash, key, NULL);
   fio_thread_mutex_unlock(&e->lock);
   return r;
+}
+
+FIO_IFUNC void env_safe_destroy(env_safe_s *e) {
+  env_destroy(&e->env);
+  fio_thread_mutex_destroy(&e->lock);
 }
 
 /* *****************************************************************************
