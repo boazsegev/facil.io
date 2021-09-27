@@ -168,17 +168,13 @@ static fio_lock_i fio_spawn_GIL = FIO_LOCK_INIT;
 
 /** Worker sentinel */
 static void *fio_worker_sentinel(void *thr_ptr) {
-  fio_state_callback_force(FIO_CALL_BEFORE_FORK);
-  /* do not allow master tasks to run in worker */
-  while (!fio_queue_perform(FIO_QUEUE_SYSTEM) &&
-         !fio_queue_perform(FIO_QUEUE_USER))
-    ;
   pid_t pid = fio_fork();
   FIO_ASSERT(pid != (pid_t)-1, "system call `fork` failed.");
   if (pid) {
     int status = 0;
     (void)status;
     fio_state_callback_force(FIO_CALL_AFTER_FORK);
+    fio_state_callback_force(FIO_CALL_IN_MASTER);
     fio_unlock(&fio_spawn_GIL);
     if (waitpid(pid, &status, 0) != pid && fio_data.running)
       FIO_LOG_ERROR("waitpid failed, worker re-spawning might fail.");
@@ -218,6 +214,13 @@ static void fio_spawn_worker(void *thr_ptr, void *ignr_2) {
     pt = &t;
   if (!fio_data.is_master)
     return;
+
+  fio_state_callback_force(FIO_CALL_BEFORE_FORK);
+  /* do not allow master tasks to run in worker */
+  while (!fio_queue_perform(FIO_QUEUE_SYSTEM) &&
+         !fio_queue_perform(FIO_QUEUE_USER))
+    ;
+
   fio_lock(&fio_spawn_GIL);
   if (fio_thread_create(pt, fio_worker_sentinel, thr_ptr)) {
     fio_unlock(&fio_spawn_GIL);

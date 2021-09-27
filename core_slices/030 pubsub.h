@@ -351,13 +351,13 @@ void fio_message_metadata_remove(int id);
  */
 struct fio_pubsub_engine_s {
   /** Should subscribe channel. Failures are ignored. */
-  void (*subscribe)(const fio_pubsub_engine_s *eng,
-                    fio_str_info_s channel,
-                    uint8_t is_pattern);
+  void (*subscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
   /** Should unsubscribe channel. Failures are ignored. */
-  void (*unsubscribe)(const fio_pubsub_engine_s *eng,
-                      fio_str_info_s channel,
-                      uint8_t is_pattern);
+  void (*unsubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
+  /** Should subscribe to a pattern. Failures are ignored. */
+  void (*psubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
+  /** Should unsubscribe to a pattern. Failures are ignored. */
+  void (*punsubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
   /** Should publish a message through the engine. Failures are ignored. */
   void (*publish)(const fio_pubsub_engine_s *eng,
                   fio_str_info_s channel,

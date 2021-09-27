@@ -208,7 +208,7 @@ static void fio_io_wakeup_on_close(void *udata) {
     fio_reset_wakeup_pipes();
     fio_io_wakeup_prep();
   }
-  FIO_LOG_DEBUG2("(%d) IO wakeup fio_s freed", (int)fio_data.pid);
+  FIO_LOG_DDEBUG2("(%d) IO wakeup fio_s freed", (int)fio_data.pid);
   (void)udata;
 }
 

@@ -724,16 +724,24 @@ Miscellaneous helper macros
 /** An empty macro, adding white space. Used to avoid function like macros. */
 #define FIO_NOOP
 /* allow logging to quitely fail unless enabled */
-#define FIO_LOG_DEBUG(...)
-#define FIO_LOG_DEBUG2(...)
-#define FIO_LOG_INFO(...)
-#define FIO_LOG_WARNING(...)
-#define FIO_LOG_ERROR(...)
-#define FIO_LOG_SECURITY(...)
-#define FIO_LOG_FATAL(...)
 #define FIO_LOG2STDERR(...)
 #define FIO_LOG2STDERR2(...)
 #define FIO_LOG_PRINT__(...)
+#define FIO_LOG_FATAL(...)
+#define FIO_LOG_ERROR(...)
+#define FIO_LOG_SECURITY(...)
+#define FIO_LOG_WARNING(...)
+#define FIO_LOG_INFO(...)
+#define FIO_LOG_DEBUG(...)
+#define FIO_LOG_DEBUG2(...)
+
+#ifdef DEBUG
+#define FIO_LOG_DDEBUG(...)  FIO_LOG_DEBUG(__VA_ARGS__)
+#define FIO_LOG_DDEBUG2(...) FIO_LOG_DEBUG2(__VA_ARGS__)
+#else
+#define FIO_LOG_DDEBUG(...)
+#define FIO_LOG_DDEBUG2(...)
+#endif /* DEBUG */
 
 #ifndef FIO_LOG_LENGTH_LIMIT
 /** Defines a point at which logging truncates (limited by stack memory) */
@@ -1528,20 +1536,20 @@ int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEFAULT;
   } while (0)
 
 // clang-format off
-#undef FIO_LOG_DEBUG
-#define FIO_LOG_DEBUG(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG,"DEBUG:    (" FIO__FILE__ ":" FIO_MACRO2STR(__LINE__) ") " __VA_ARGS__)
-#undef FIO_LOG_DEBUG2
-#define FIO_LOG_DEBUG2(...)  FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG, "DEBUG:    " __VA_ARGS__)
-#undef FIO_LOG_INFO
-#define FIO_LOG_INFO(...)    FIO_LOG_PRINT__(FIO_LOG_LEVEL_INFO, "INFO:     " __VA_ARGS__)
-#undef FIO_LOG_WARNING
-#define FIO_LOG_WARNING(...) FIO_LOG_PRINT__(FIO_LOG_LEVEL_WARNING, "\x1B[2mWARNING:\x1B[0m  " __VA_ARGS__)
-#undef FIO_LOG_SECURITY
-#define FIO_LOG_SECURITY(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_ERROR, "\x1B[1mSECURITY:\x1B[0m " __VA_ARGS__)
-#undef FIO_LOG_ERROR
-#define FIO_LOG_ERROR(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_ERROR, "\x1B[1mERROR:\x1B[0m    " __VA_ARGS__)
 #undef FIO_LOG_FATAL
-#define FIO_LOG_FATAL(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_FATAL, "\x1B[1m\x1B[7mFATAL:\x1B[0m    " __VA_ARGS__)
+#define FIO_LOG_FATAL(...)    FIO_LOG_PRINT__(FIO_LOG_LEVEL_FATAL, "\x1B[1m\x1B[7mFATAL:\x1B[0m    " __VA_ARGS__)
+#undef FIO_LOG_ERROR
+#define FIO_LOG_ERROR(...)    FIO_LOG_PRINT__(FIO_LOG_LEVEL_ERROR, "\x1B[1mERROR:\x1B[0m    " __VA_ARGS__)
+#undef FIO_LOG_SECURITY
+#define FIO_LOG_SECURITY(...) FIO_LOG_PRINT__(FIO_LOG_LEVEL_ERROR, "\x1B[1mSECURITY:\x1B[0m " __VA_ARGS__)
+#undef FIO_LOG_WARNING
+#define FIO_LOG_WARNING(...)  FIO_LOG_PRINT__(FIO_LOG_LEVEL_WARNING, "\x1B[2mWARNING:\x1B[0m  " __VA_ARGS__)
+#undef FIO_LOG_INFO
+#define FIO_LOG_INFO(...)     FIO_LOG_PRINT__(FIO_LOG_LEVEL_INFO, "INFO:     " __VA_ARGS__)
+#undef FIO_LOG_DEBUG
+#define FIO_LOG_DEBUG(...)    FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG,"DEBUG:    (" FIO__FILE__ ":" FIO_MACRO2STR(__LINE__) ") " __VA_ARGS__)
+#undef FIO_LOG_DEBUG2
+#define FIO_LOG_DEBUG2(...)   FIO_LOG_PRINT__(FIO_LOG_LEVEL_DEBUG, "DEBUG:    " __VA_ARGS__)
 // clang-format on
 
 #endif /* FIO_LOG */
@@ -13117,6 +13125,7 @@ FIO_IFUNC int fio_sock_open(const char *restrict address,
     }
     fio_sock_address_free(addr);
     return fd;
+
   case FIO_SOCK_TCP:
     addr = fio_sock_address_new(address, port, SOCK_STREAM);
     if (!addr) {
@@ -13136,6 +13145,7 @@ FIO_IFUNC int fio_sock_open(const char *restrict address,
     }
     fio_sock_address_free(addr);
     return fd;
+
 #if FIO_OS_POSIX
   case FIO_SOCK_UNIX:
     return fio_sock_open_unix(address,
@@ -13143,6 +13153,7 @@ FIO_IFUNC int fio_sock_open(const char *restrict address,
                               (flags & FIO_SOCK_NONBLOCK));
 #endif
   }
+
   FIO_LOG_ERROR("(fio_sock_open) the FIO_SOCK_TCP, FIO_SOCK_UDP, and "
                 "FIO_SOCK_UNIX flags are exclusive");
   return -1;
@@ -13215,12 +13226,12 @@ SFUNC int fio_sock_open2(const char *url, uint16_t flags) {
       port[u.port.len] = 0;
       if (!(flags & (FIO_SOCK_TCP | FIO_SOCK_UDP))) {
         /* TODO? prefer...? TCP? */
-        if (u.scheme.len == 3 && (u.scheme.buf[0] | 32) == 'u' &&
-            (u.scheme.buf[1] | 32) == 'd' && (u.scheme.buf[2] | 32) == 'p')
-          flags |= FIO_SOCK_UDP;
-        else if (u.scheme.len == 3 && (u.scheme.buf[0] | 32) == 't' &&
-                 (u.scheme.buf[1] | 32) == 'c' && (u.scheme.buf[2] | 32) == 'p')
+        if (u.scheme.len == 3 && (u.scheme.buf[0] | 32) == 't' &&
+            (u.scheme.buf[1] | 32) == 'c' && (u.scheme.buf[2] | 32) == 'p')
           flags |= FIO_SOCK_TCP;
+        else if (u.scheme.len == 3 && (u.scheme.buf[0] | 32) == 'u' &&
+                 (u.scheme.buf[1] | 32) == 'd' && (u.scheme.buf[2] | 32) == 'p')
+          flags |= FIO_SOCK_UDP;
         else if ((u.scheme.len == 4 || u.scheme.len == 5) &&
                  (u.scheme.buf[0] | 32) == 'h' &&
                  (u.scheme.buf[1] | 32) == 't' &&

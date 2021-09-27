@@ -127,6 +127,13 @@ void fio_state_callback_clear(callback_type_e e) {
   fio_unlock(fio_state_tasks_array_lock + (uintptr_t)e);
 }
 
+static void fio_state_callback_force___task(void *fn_p, void *arg) {
+  union {
+    void *p;
+    void (*fn)(void *);
+  } u = {.p = fn_p};
+  u.fn(arg);
+}
 /**
  * Forces all the existing callbacks to run, as if the event occurred.
  *
@@ -140,10 +147,14 @@ void fio_state_callback_force(callback_type_e e) {
     return;
   fio___state_task_s *ary = NULL;
   size_t len = 0;
+  union {
+    void *p;
+    void (*fn)(void *);
+  } u;
 
-  FIO_LOG_DEBUG2("(%d) Calling %s callbacks.",
-                 (int)fio_data.pid,
-                 fio_state_tasks_names[e]);
+  FIO_LOG_DDEBUG2("(%d) Scheduling %s callbacks.",
+                  (int)fio_data.pid,
+                  fio_state_tasks_names[e]);
 
   /* copy task queue */
   fio_lock(fio_state_tasks_array_lock + (uintptr_t)e);
@@ -162,12 +173,20 @@ void fio_state_callback_force(callback_type_e e) {
   if (e <= FIO_CALL_ON_IDLE) {
     /* perform tasks in order */
     for (size_t i = 0; i < len; ++i) {
-      ary[i].func(ary[i].arg);
+      u.fn = ary[i].func;
+      fio_queue_push(FIO_QUEUE_USER,
+                     fio_state_callback_force___task,
+                     u.p,
+                     ary[i].arg);
     }
   } else {
     /* perform tasks in reverse */
     while (len--) {
-      ary[len].func(ary[len].arg);
+      u.fn = ary[len].func;
+      fio_queue_push(FIO_QUEUE_USER,
+                     fio_state_callback_force___task,
+                     u.p,
+                     ary[len].arg);
     }
   }
 
