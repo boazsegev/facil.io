@@ -321,10 +321,20 @@ void fio_message_metadata_remove(int id);
  **************************************************************************** */
 
 /**
+ * The number of different pub/sub "engines" that can be attached.
+ *
+ * This number may effect performance, especially when adding / removing
+ * engines.
+ */
+#ifndef FIO_PUBSUB_ENGINE_LIMIT
+#define FIO_PUBSUB_ENGINE_LIMIT 16
+#endif
+
+/**
  * facil.io can be linked with external Pub/Sub services using "engines".
  *
- * Only named messages and subscriptions (where filter == 0) will be forwarded
- * to these "engines".
+ * Only messages and subscriptions (without numerical filters (where filter ==
+ * 0) will be forwarded to these "engines".
  *
  * Engines MUST provide the listed function pointers and should be attached
  * using the `fio_pubsub_attach` function.
@@ -337,28 +347,30 @@ void fio_message_metadata_remove(int id);
  * i.e.:
  *
  *       pubsub_publish(
- *           .engine = FIO_PUBSUB_CLUSTER,
+ *           .engine = FIO_PUBSUB_LOCAL,
  *           .channel = channel_name,
  *           .message = msg_body );
  *
- * Since only the master process guarantes to be subscribed to all the channels
- * in the cluster, it is recommended that engines only use the master process to
- * communicate with a pub/sub backend.
+ * Since only the master process guarantees to be subscribed to all the channels
+ * in the cluster, only the master process calls the `(un)(p)subscribe`
+ * callbacks.
  *
- * IMPORTANT: The `subscribe` and `unsubscribe` callbacks are called from within
- *            an internal lock. They MUST NEVER call pub/sub functions except by
- *            exiting the lock using `fio_defer`.
+ * IMPORTANT: The `(un)(p)subscribe` callbacks are called from within the core
+ * IO thread. They MUST NEVER call pub/sub functions except by scheduling an
+ * external task using `fio_defer`.
  */
 struct fio_pubsub_engine_s {
-  /** Should subscribe channel. Failures are ignored. */
+  /** Called after the engine was detached, may be used for cleanup. */
+  void (*detached)(const fio_pubsub_engine_s *eng);
+  /** Subscribes to a channel. Called ONLY in the Root (master) process. */
   void (*subscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
-  /** Should unsubscribe channel. Failures are ignored. */
+  /** Unsubscribes to a channel. Called ONLY in the Root (master) process. */
   void (*unsubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
-  /** Should subscribe to a pattern. Failures are ignored. */
+  /** Subscribes to a pattern. Called ONLY in the Root (master) process. */
   void (*psubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
-  /** Should unsubscribe to a pattern. Failures are ignored. */
+  /** Unsubscribe to a pattern. Called ONLY in the Root (master) process. */
   void (*punsubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
-  /** Should publish a message through the engine. Failures are ignored. */
+  /** Publishes a message through the engine. Might be called in any worker. */
   void (*publish)(const fio_pubsub_engine_s *eng,
                   fio_str_info_s channel,
                   fio_str_info_s msg,
@@ -385,17 +397,17 @@ void fio_pubsub_detach(fio_pubsub_engine_s *engine);
  * channels.
  *
  * This allows engines that lost their connection to their Pub/Sub service to
- * resubscribe all the currently active channels with the new connection.
+ * resubscribe to all the currently active channels with the new connection.
  *
  * CAUTION: This is an evented task... try not to free the engine's memory while
- * resubscriptions are under way...
+ * resubscriptions are under way.
  *
  * NOTE: the root (master) process will call `subscribe` for any channel in any
  * process, while all the other processes will call `subscribe` only for their
  * own channels. This allows engines to use the root (master) process as an
  * exclusive subscription process.
  */
-void fio_pubsub_reattach(fio_pubsub_engine_s *eng);
+void fio_pubsub_resubscribe_all(fio_pubsub_engine_s *eng);
 
 /** Returns true (1) if the engine is attached to the system. */
 int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);

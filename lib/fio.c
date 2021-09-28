@@ -3183,6 +3183,9 @@ typedef struct {
 Subscription Object API
 ***************************************************************************** */
 
+/* a mock callback for subscriptions */
+FIO_SFUNC void subscription_mock_callback(fio_msg_s *msg) { (void)msg; }
+
 /* creates a new subscription */
 FIO_IFUNC subscription_s *subscription_new(fio_s *io,
                                            channel_s *channel,
@@ -3195,7 +3198,7 @@ FIO_IFUNC subscription_s *subscription_new(fio_s *io,
       .node = FIO_LIST_INIT(s->node),
       .io = io,
       .channel = channel,
-      .on_message = on_message,
+      .on_message = (on_message ? on_message : subscription_mock_callback),
       .on_unsubscribe = on_unsubscribe,
       .udata = udata,
       .ref = 1,
@@ -3399,6 +3402,7 @@ static struct {
   uint8_t filter_ipc;
   uint8_t filter_cluster;
   channel_store_s channels[CHANNEL_TYPE_NONE];
+  fio_pubsub_engine_s *engines[FIO_PUBSUB_ENGINE_LIMIT];
   char ipc_url[40];                 /* inter-process address  - buffer */
   char cluster_url[40];             /* machine cluster address - buffer */
   fio_protocol_s ipc;               /* inter-process communication protocol */
@@ -3709,6 +3713,85 @@ void fio_message_metadata_remove(int id);
  * Cluster / Pub/Sub Middleware and Extensions ("Engines")
  **************************************************************************** */
 
+#if 0
+#define FIO_PUBSUB_ENGINE_LIMIT 16
+struct fio_pubsub_engine_s {
+  /** Called after the engine was detached, may be used for cleanup. */
+  void (*detached)(const fio_pubsub_engine_s *eng);
+  /** Subscribes to a channel. Called ONLY in the Root (master) process. */
+  void (*subscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
+  /** Unsubscribes to a channel. Called ONLY in the Root (master) process. */
+  void (*unsubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
+  /** Subscribes to a pattern. Called ONLY in the Root (master) process. */
+  void (*psubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
+  /** Unsubscribe to a pattern. Called ONLY in the Root (master) process. */
+  void (*punsubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
+  /** Publishes a message through the engine. Might be called in any worker. */
+  void (*publish)(const fio_pubsub_engine_s *eng,
+                  fio_str_info_s channel,
+                  fio_str_info_s msg,
+                  uint8_t is_json);
+};
+#endif
+
+static void fio_pubsub_mock_detached(const fio_pubsub_engine_s *eng) {
+  (void)eng;
+}
+static void fio_pubsub_mock_subscribe(const fio_pubsub_engine_s *eng,
+                                      fio_str_info_s channel) {
+  (void)eng;
+  (void)channel;
+}
+static void fio_pubsub_mock_unsubscribe(const fio_pubsub_engine_s *eng,
+                                        fio_str_info_s channel) {
+  (void)eng;
+  (void)channel;
+}
+static void fio_pubsub_mock_psubscribe(const fio_pubsub_engine_s *eng,
+                                       fio_str_info_s channel) {
+  (void)eng;
+  (void)channel;
+}
+static void fio_pubsub_mock_punsubscribe(const fio_pubsub_engine_s *eng,
+                                         fio_str_info_s channel) {
+  (void)eng;
+  (void)channel;
+}
+static void fio_pubsub_mock_publish(const fio_pubsub_engine_s *eng,
+                                    fio_str_info_s channel,
+                                    fio_str_info_s msg,
+                                    uint8_t is_json) {
+  (void)eng;
+  (void)channel;
+  (void)msg;
+  (void)is_json;
+}
+
+static void fio_pubsub_attach___task(void *engine, void *ignr_) {
+  (void)ignr_;
+  fio_pubsub_engine_s *e = (fio_pubsub_engine_s *)engine;
+  if (!e->detached)
+    e->detached = fio_pubsub_mock_detached;
+  if (!e->subscribe)
+    e->subscribe = fio_pubsub_mock_subscribe;
+  if (!e->unsubscribe)
+    e->unsubscribe = fio_pubsub_mock_unsubscribe;
+  if (!e->psubscribe)
+    e->psubscribe = fio_pubsub_mock_psubscribe;
+  if (!e->punsubscribe)
+    e->punsubscribe = fio_pubsub_mock_punsubscribe;
+  if (!e->publish)
+    e->publish = fio_pubsub_mock_publish;
+
+  for (int i = 0; i < FIO_PUBSUB_ENGINE_LIMIT; ++i) {
+    if (postoffice.engines[i])
+      continue;
+    postoffice.engines[i] = engine;
+    return;
+  }
+  e->detached(e);
+}
+
 /**
  * Attaches an engine, so it's callback can be called by facil.io.
  *
@@ -3719,30 +3802,76 @@ void fio_message_metadata_remove(int id);
  * own channels. This allows engines to use the root (master) process as an
  * exclusive subscription process.
  */
-void fio_pubsub_attach(fio_pubsub_engine_s *engine);
+void fio_pubsub_attach(fio_pubsub_engine_s *engine) {
+  fio_queue_push(FIO_QUEUE_SYSTEM, fio_pubsub_attach___task, engine);
+}
 
+static void fio_pubsub_detach___task(void *engine, void *ignr_) {
+  (void)ignr_;
+  fio_pubsub_engine_s *e = (fio_pubsub_engine_s *)engine;
+  int i = 0;
+
+  do {
+    if (postoffice.engines[i] == engine)
+      break;
+  } while ((++i) < FIO_PUBSUB_ENGINE_LIMIT);
+
+  while (i < (FIO_PUBSUB_ENGINE_LIMIT - 1) && postoffice.engines[i + 1]) {
+    postoffice.engines[i] = postoffice.engines[i + 1];
+    ++i;
+  }
+  postoffice.engines[i] = NULL;
+  e->detached(e);
+}
 /** Detaches an engine, so it could be safely destroyed. */
-void fio_pubsub_detach(fio_pubsub_engine_s *engine);
+void fio_pubsub_detach(fio_pubsub_engine_s *engine) {
+  fio_queue_push(FIO_QUEUE_SYSTEM, fio_pubsub_detach___task, engine);
+}
+
+static void fio_pubsub_resubscribe_all___task(void *engine, void *ignr_) {
+  (void)ignr_;
+  fio_pubsub_engine_s *e = (fio_pubsub_engine_s *)engine;
+  FIO_MAP_EACH(channel_store, &postoffice.channels[CHANNEL_TYPE_NAMED], pos) {
+    if (pos->obj->filter)
+      continue;
+    fio_str_info_s ch = {pos->obj->name, pos->obj->name_len};
+    e->subscribe(e, ch);
+  }
+  FIO_MAP_EACH(channel_store, &postoffice.channels[CHANNEL_TYPE_PATTERN], pos) {
+    if (pos->obj->filter)
+      continue;
+    fio_str_info_s ch = {pos->obj->name, pos->obj->name_len};
+    e->psubscribe(e, ch);
+  }
+}
 
 /**
  * Engines can ask facil.io to call the `subscribe` callback for all active
  * channels.
  *
  * This allows engines that lost their connection to their Pub/Sub service to
- * resubscribe all the currently active channels with the new connection.
+ * resubscribe to all the currently active channels with the new connection.
  *
  * CAUTION: This is an evented task... try not to free the engine's memory while
- * resubscriptions are under way...
+ * resubscriptions are under way.
  *
  * NOTE: the root (master) process will call `subscribe` for any channel in any
  * process, while all the other processes will call `subscribe` only for their
  * own channels. This allows engines to use the root (master) process as an
  * exclusive subscription process.
  */
-void fio_pubsub_reattach(fio_pubsub_engine_s *eng);
+void fio_pubsub_resubscribe_all(fio_pubsub_engine_s *engine) {
+  fio_queue_push(FIO_QUEUE_SYSTEM, fio_pubsub_resubscribe_all___task, engine);
+}
 
 /** Returns true (1) if the engine is attached to the system. */
-int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);
+int fio_pubsub_is_attached(fio_pubsub_engine_s *engine) {
+  for (int i = 0; i < FIO_PUBSUB_ENGINE_LIMIT; ++i) {
+    if (postoffice.engines[i] == engine)
+      return 1;
+  }
+  return 0;
+}
 
 /* *****************************************************************************
 Pubsub IPC and cluster protocol callbacks
@@ -3838,6 +3967,7 @@ FIO_SFUNC void pubsub_ipc_on_new_connection(fio_s *io) {
 Postoffice add / remove hooks
 ***************************************************************************** */
 
+/* callback called when a channel is added to a channel_store map */
 FIO_SFUNC void postoffice_on_channel_added(channel_s *ch) {
   FIO_LOG_DDEBUG2("(%d) PostOffice opened channel (filter %ld): %.*s",
                   fio_data.pid,
@@ -3859,6 +3989,8 @@ FIO_SFUNC void postoffice_on_channel_added(channel_s *ch) {
                   (int)ch->name_len,
                   ch->name);
 }
+
+/* callback called when a channel is freed from a channel_store map */
 FIO_SFUNC void postoffice_on_channel_removed(channel_s *ch) {
   FIO_LOG_DDEBUG2("(%d) PostOffice closed channel (filter %ld): %.*s",
                   fio_data.pid,
@@ -3881,72 +4013,80 @@ FIO_SFUNC void postoffice_on_channel_removed(channel_s *ch) {
                   ch->name);
 }
 
-FIO_SFUNC void postoffice_mock_callback(fio_msg_s *msg) { (void)msg; }
-
+/* registers a child's subscribe event and calls subscribe for engines */
 FIO_SFUNC void postoffice_on_global_subscribe(fio_msg_s *msg) {
   /* child process subscribe ? */
   if (fio_msg2letter(msg)->from) {
     fio_subscribe(.io = fio_msg2letter(msg)->from,
                   .channel = msg->message,
-                  .is_pattern = 0,
-                  .on_message = postoffice_mock_callback);
+                  .is_pattern = 0);
     return;
   }
   /* global channel created. */
-  /* TODO: call engine callbacks */
   FIO_LOG_DDEBUG2("(%d) PostOffice global channel %s: %s",
                   (int)fio_data.pid,
                   msg->channel.buf,
                   msg->message.buf);
+  for (int i = 0; i < FIO_PUBSUB_ENGINE_LIMIT && postoffice.engines[i]; ++i) {
+    postoffice.engines[i]->subscribe(postoffice.engines[i], msg->message);
+  }
 }
 
+/* registers a child's psubscribe event and calls psubscribe for engines */
 FIO_SFUNC void postoffice_on_global_psubscribe(fio_msg_s *msg) {
   /* child process subscribe ? */
   if (fio_msg2letter(msg)->from) {
     fio_subscribe(.io = fio_msg2letter(msg)->from,
                   .channel = msg->message,
-                  .is_pattern = 1,
-                  .on_message = postoffice_mock_callback);
+                  .is_pattern = 1);
     return;
   }
   /* global channel created. */
-  /* TODO: call engine callbacks */
   FIO_LOG_DDEBUG2("(%d) PostOffice global channel %s: %s",
                   (int)fio_data.pid,
                   msg->channel.buf,
                   msg->message.buf);
+  for (int i = 0; i < FIO_PUBSUB_ENGINE_LIMIT && postoffice.engines[i]; ++i) {
+    postoffice.engines[i]->psubscribe(postoffice.engines[i], msg->message);
+  }
 }
+
+/* registers a child's unsubscribe event and calls unsubscribe for engines */
 FIO_SFUNC void postoffice_on_global_unsubscribe(fio_msg_s *msg) {
   /* child process subscribe ? */
   if (fio_msg2letter(msg)->from) {
     fio_unsubscribe(.io = fio_msg2letter(msg)->from,
                     .channel = msg->message,
-                    .is_pattern = 0,
-                    .on_message = postoffice_mock_callback);
+                    .is_pattern = 0);
     return;
   }
   /* channel removed. */
-  /* TODO: call engine callbacks */
   FIO_LOG_DDEBUG2("(%d) PostOffice global channel %s: %s",
                   (int)fio_data.pid,
                   msg->channel.buf,
                   msg->message.buf);
+  for (int i = 0; i < FIO_PUBSUB_ENGINE_LIMIT && postoffice.engines[i]; ++i) {
+    postoffice.engines[i]->unsubscribe(postoffice.engines[i], msg->message);
+  }
 }
+
+/* registers a child's pubsubscribe event and calls pubsubscribe for engines */
 FIO_SFUNC void postoffice_on_global_pubsubscribe(fio_msg_s *msg) {
   /* child process subscribe ? */
   if (fio_msg2letter(msg)->from) {
     fio_unsubscribe(.io = fio_msg2letter(msg)->from,
                     .channel = msg->message,
-                    .is_pattern = 1,
-                    .on_message = postoffice_mock_callback);
+                    .is_pattern = 1);
     return;
   }
   /* global channel removed. */
-  /* TODO: call engine callbacks */
   FIO_LOG_DDEBUG2("(%d) PostOffice global channel %s: %s",
                   (int)fio_data.pid,
                   msg->channel.buf,
                   msg->message.buf);
+  for (int i = 0; i < FIO_PUBSUB_ENGINE_LIMIT && postoffice.engines[i]; ++i) {
+    postoffice.engines[i]->punsubscribe(postoffice.engines[i], msg->message);
+  }
 }
 
 /* *****************************************************************************
