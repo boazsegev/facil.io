@@ -269,18 +269,7 @@ void fio_message_defer(fio_msg_s *msg);
 #define FIO_PUBSUB_METADATA_LIMIT 4
 #endif
 
-/**
- * Finds the message's metadata by it's ID. Returns the data or NULL.
- *
- * The ID is the value returned by fio_message_metadata_callback_set.
- *
- * Note: numeral channels don't have metadata attached.
- */
-void *fio_message_metadata(fio_msg_s *msg, int id);
-
-/**
- * Pub/Sub Metadata callback type.
- */
+/** Pub/Sub Metadata callback type. */
 typedef void *(*fio_msg_metadata_fn)(fio_str_info_s ch,
                                      fio_str_info_s msg,
                                      uint8_t is_json);
@@ -303,10 +292,12 @@ typedef void *(*fio_msg_metadata_fn)(fio_str_info_s ch,
  * The cluster messaging system allows some messages to be flagged as JSON and
  * this flag is available to the metadata callback.
  *
- * Returns a positive number on success (the metadata ID) or zero (0) on
- * failure.
+ * Returns zero (0) on success or -1 on failure.
+ *
+ * Multiple `fio_message_metadata_add` calls increase a reference count and
+ * should be matched by the same number of `fio_message_metadata_remove`.
  */
-int fio_message_metadata_add(fio_msg_metadata_fn builder,
+int fio_message_metadata_add(fio_msg_metadata_fn metadata_func,
                              void (*cleanup)(void *));
 
 /**
@@ -314,7 +305,14 @@ int fio_message_metadata_add(fio_msg_metadata_fn builder,
  *
  * Removal might be delayed if live metatdata exists.
  */
-void fio_message_metadata_remove(int id);
+void fio_message_metadata_remove(fio_msg_metadata_fn metadata_func);
+
+/**
+ * Finds the message's metadata, returning the data or NULL.
+ *
+ * Note: channels with non-zero filters don't have metadata attached.
+ */
+void *fio_message_metadata(fio_msg_metadata_fn metadata_func);
 
 /* *****************************************************************************
  * Cluster / Pub/Sub Middleware and Extensions ("Engines")
@@ -370,7 +368,7 @@ struct fio_pubsub_engine_s {
   void (*psubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
   /** Unsubscribe to a pattern. Called ONLY in the Root (master) process. */
   void (*punsubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
-  /** Publishes a message through the engine. Might be called in any worker. */
+  /** Publishes a message through the engine. Called by any worker / thread. */
   void (*publish)(const fio_pubsub_engine_s *eng,
                   fio_str_info_s channel,
                   fio_str_info_s msg,

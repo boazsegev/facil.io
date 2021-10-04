@@ -2931,6 +2931,7 @@ enum {
 
 typedef struct {
   fio_s *from;
+  void *metadata[FIO_PUBSUB_METADATA_LIMIT];
   int32_t filter;
   uint32_t channel_len;
   uint32_t message_len;
@@ -3670,36 +3671,34 @@ external_engine:
 #endif
 
 /**
- * Finds the message's metadata by it's ID. Returns the data or NULL.
+ * The number of different metadata callbacks that can be attached.
  *
- * The ID is the value returned by fio_message_metadata_callback_set.
+ * Effects performance.
  *
- * Note: numeral channels don't have metadata attached.
+ * The default value should be enough for the following metadata objects:
+ * - WebSocket server headers.
+ * - WebSocket client (header + masked message copy).
+ * - EventSource (SSE) encoded named channel and message.
  */
-void *fio_message_metadata(fio_msg_s *msg, int id);
+#ifndef FIO_PUBSUB_METADATA_LIMIT
+#define FIO_PUBSUB_METADATA_LIMIT 4
+#endif
+
+/** Pub/Sub Metadata callback type. */
+typedef void *(*fio_msg_metadata_fn)(fio_str_info_s ch,
+                                     fio_str_info_s msg,
+                                     uint8_t is_json);
 
 /**
  * It's possible to attach metadata to facil.io named messages (filter == 0)
  * before they are published.
  *
- * This allows, for example, messages to be encoded as network packets for
- * outgoing protocols (i.e., encoding for WebSocket transmissions), improving
- * performance in large network based broadcasting.
+ * Returns zero (0) on success or -1 on failure.
  *
- * Up to `FIO_PUBSUB_METADATA_LIMIT` metadata callbacks can be attached.
- *
- * The callback should return a `void *` pointer.
- *
- * To remove a callback, call `fio_message_metadata_remove` with the returned
- * value.
- *
- * The cluster messaging system allows some messages to be flagged as JSON and
- * this flag is available to the metadata callback.
- *
- * Returns a positive number on success (the metadata ID) or zero (0) on
- * failure.
+ * Multiple `fio_message_metadata_add` calls increase a reference count and
+ * should be matched by the same number of `fio_message_metadata_remove`.
  */
-int fio_message_metadata_add(fio_msg_metadata_fn builder,
+int fio_message_metadata_add(fio_msg_metadata_fn metadata_func,
                              void (*cleanup)(void *));
 
 /**
@@ -3707,32 +3706,18 @@ int fio_message_metadata_add(fio_msg_metadata_fn builder,
  *
  * Removal might be delayed if live metatdata exists.
  */
-void fio_message_metadata_remove(int id);
+void fio_message_metadata_remove(fio_msg_metadata_fn metadata_func);
+
+/**
+ * Finds the message's metadata, returning the data or NULL.
+ *
+ * Note: channels with non-zero filters don't have metadata attached.
+ */
+void *fio_message_metadata(fio_msg_metadata_fn metadata_func);
 
 /* *****************************************************************************
  * Cluster / Pub/Sub Middleware and Extensions ("Engines")
  **************************************************************************** */
-
-#if 0
-#define FIO_PUBSUB_ENGINE_LIMIT 16
-struct fio_pubsub_engine_s {
-  /** Called after the engine was detached, may be used for cleanup. */
-  void (*detached)(const fio_pubsub_engine_s *eng);
-  /** Subscribes to a channel. Called ONLY in the Root (master) process. */
-  void (*subscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
-  /** Unsubscribes to a channel. Called ONLY in the Root (master) process. */
-  void (*unsubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
-  /** Subscribes to a pattern. Called ONLY in the Root (master) process. */
-  void (*psubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
-  /** Unsubscribe to a pattern. Called ONLY in the Root (master) process. */
-  void (*punsubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel);
-  /** Publishes a message through the engine. Might be called in any worker. */
-  void (*publish)(const fio_pubsub_engine_s *eng,
-                  fio_str_info_s channel,
-                  fio_str_info_s msg,
-                  uint8_t is_json);
-};
-#endif
 
 static void fio_pubsub_mock_detached(const fio_pubsub_engine_s *eng) {
   (void)eng;
@@ -3767,6 +3752,7 @@ static void fio_pubsub_mock_publish(const fio_pubsub_engine_s *eng,
   (void)is_json;
 }
 
+/** Attaches an engine, so it's callback can be called by facil.io. */
 static void fio_pubsub_attach___task(void *engine, void *ignr_) {
   (void)ignr_;
   fio_pubsub_engine_s *e = (fio_pubsub_engine_s *)engine;
@@ -3792,27 +3778,20 @@ static void fio_pubsub_attach___task(void *engine, void *ignr_) {
   e->detached(e);
 }
 
-/**
- * Attaches an engine, so it's callback can be called by facil.io.
- *
- * The `subscribe` callback will be called for every existing channel.
- *
- * NOTE: the root (master) process will call `subscribe` for any channel in any
- * process, while all the other processes will call `subscribe` only for their
- * own channels. This allows engines to use the root (master) process as an
- * exclusive subscription process.
- */
-void fio_pubsub_attach(fio_pubsub_engine_s *engine) {
-  fio_queue_push(FIO_QUEUE_SYSTEM, fio_pubsub_attach___task, engine);
+static void fio_pubsub_detach___task_called(void *engine, void *ignr_) {
+  (void)ignr_;
+  fio_pubsub_engine_s *e = (fio_pubsub_engine_s *)engine;
+  e->detached(e);
 }
 
+/** Detaches an engine, so it could be safely destroyed. */
 static void fio_pubsub_detach___task(void *engine, void *ignr_) {
   (void)ignr_;
   fio_pubsub_engine_s *e = (fio_pubsub_engine_s *)engine;
   int i = 0;
 
   do {
-    if (postoffice.engines[i] == engine)
+    if (postoffice.engines[i] == e)
       break;
   } while ((++i) < FIO_PUBSUB_ENGINE_LIMIT);
 
@@ -3820,14 +3799,14 @@ static void fio_pubsub_detach___task(void *engine, void *ignr_) {
     postoffice.engines[i] = postoffice.engines[i + 1];
     ++i;
   }
+  fio_queue_push(FIO_QUEUE_SYSTEM, fio_pubsub_detach___task_called, e);
   postoffice.engines[i] = NULL;
-  e->detached(e);
-}
-/** Detaches an engine, so it could be safely destroyed. */
-void fio_pubsub_detach(fio_pubsub_engine_s *engine) {
-  fio_queue_push(FIO_QUEUE_SYSTEM, fio_pubsub_detach___task, engine);
 }
 
+/**
+ * Engines can ask facil.io to call the `subscribe` callback for all active
+ * channels.
+ */
 static void fio_pubsub_resubscribe_all___task(void *engine, void *ignr_) {
   (void)ignr_;
   fio_pubsub_engine_s *e = (fio_pubsub_engine_s *)engine;
@@ -3846,19 +3825,20 @@ static void fio_pubsub_resubscribe_all___task(void *engine, void *ignr_) {
 }
 
 /**
+ * Attaches an engine, so it's callback can be called by facil.io.
+ */
+void fio_pubsub_attach(fio_pubsub_engine_s *engine) {
+  fio_queue_push(FIO_QUEUE_SYSTEM, fio_pubsub_attach___task, engine);
+}
+
+/** Detaches an engine, so it could be safely destroyed. */
+void fio_pubsub_detach(fio_pubsub_engine_s *engine) {
+  fio_queue_push(FIO_QUEUE_SYSTEM, fio_pubsub_detach___task, engine);
+}
+
+/**
  * Engines can ask facil.io to call the `subscribe` callback for all active
  * channels.
- *
- * This allows engines that lost their connection to their Pub/Sub service to
- * resubscribe to all the currently active channels with the new connection.
- *
- * CAUTION: This is an evented task... try not to free the engine's memory while
- * resubscriptions are under way.
- *
- * NOTE: the root (master) process will call `subscribe` for any channel in any
- * process, while all the other processes will call `subscribe` only for their
- * own channels. This allows engines to use the root (master) process as an
- * exclusive subscription process.
  */
 void fio_pubsub_resubscribe_all(fio_pubsub_engine_s *engine) {
   fio_queue_push(FIO_QUEUE_SYSTEM, fio_pubsub_resubscribe_all___task, engine);
@@ -3874,7 +3854,7 @@ int fio_pubsub_is_attached(fio_pubsub_engine_s *engine) {
 }
 
 /* *****************************************************************************
-Pubsub IPC and cluster protocol callbacks
+Pub/Sub IPC and Cluster `fio_protocol_s` callbacks
 ***************************************************************************** */
 
 FIO_SFUNC void pubsub_cluster_on_letter(letter_s *l) {
@@ -3964,7 +3944,7 @@ FIO_SFUNC void pubsub_ipc_on_new_connection(fio_s *io) {
 }
 
 /* *****************************************************************************
-Postoffice add / remove hooks
+PostOffice add / remove hooks
 ***************************************************************************** */
 
 /* callback called when a channel is added to a channel_store map */
@@ -4090,7 +4070,7 @@ FIO_SFUNC void postoffice_on_global_pubsubscribe(fio_msg_s *msg) {
 }
 
 /* *****************************************************************************
-Pubsub Init
+Pub/Sub Initialization / Cleanup callbacks
 ***************************************************************************** */
 
 FIO_SFUNC void postoffice_pre__start(void *ignr_) {
@@ -4176,6 +4156,12 @@ FIO_SFUNC void postoffice_on_finish(void *ignr_) {
 FIO_SFUNC void postoffice_at_exit(void *ignr_) {
   (void)ignr_;
   env_safe_destroy(&postoffice.mock_io.env);
+  for (int i = 0; i < FIO_PUBSUB_ENGINE_LIMIT; ++i) {
+    if (!postoffice.engines[i])
+      continue;
+    postoffice.engines[i]->detached(postoffice.engines[i]);
+    postoffice.engines[i] = NULL;
+  }
   for (int i = 0; i < CHANNEL_TYPE_NONE; ++i) {
     channel_store_destroy(postoffice.channels + i);
   }
