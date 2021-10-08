@@ -112,7 +112,10 @@ typedef struct fio_protocol_s fio_protocol_s;
 /** The main protocol object type. See `struct fio_protocol_s`. */
 typedef struct fio_s fio_s;
 
-/** TLS context object, if any. */
+/** TLS functions (facil.io will provide default implementations). */
+typedef struct fio_tls_functions_s fio_tls_functions_s;
+
+/** TLS context object (an opaque type used for type safety). */
 typedef struct fio_tls_s fio_tls_s;
 
 /* *****************************************************************************

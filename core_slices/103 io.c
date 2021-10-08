@@ -91,10 +91,10 @@ FIO_SFUNC void fio___destroy(fio_s *io) {
   fio_set_invalid(io);
   env_safe_destroy(&io->env);
   fio_stream_destroy(&io->stream);
-  // o->rw_hooks->cleanup(io->rw_udata);
   FIO_LIST_REMOVE(&io->timeouts);
   fio_monitor_forget(io->fd);
   fio_sock_close(io->fd);
+  io->protocol->tls_functions.free(io->tls);
   if (io->protocol->reserved.ios.next == io->protocol->reserved.ios.prev) {
     FIO_LIST_REMOVE(&io->protocol->reserved.protocols);
   }
@@ -338,7 +338,9 @@ FIO_SFUNC void fio_protocol_set___task(void *io_, void *old_protocol_) {
   fio_protocol_s *old = old_protocol_;
   FIO_ASSERT_DEBUG(p != old, "protocol switch with identical protocols!");
   fio_touch___unsafe(io, io);
+  io->tls = p->tls_functions.dup(io->tls, io);
   if (old && FIO_LIST_IS_EMPTY(&old->reserved.ios)) {
+    old->tls_functions.free(io->tls);
     FIO_LIST_REMOVE(&old->reserved.protocols);
   }
   (void)p; /* if not DEBUG */
@@ -433,9 +435,6 @@ fio_s *fio_attach_fd(int fd,
 error:
   if (protocol && protocol->on_close)
     protocol->on_close(udata);
-  if (tls) {
-    /* TODO: TLS cleanup */
-  }
   return NULL;
 }
 
@@ -496,7 +495,7 @@ Read
  * NOTE: zero (`0`) is a valid return value meaning no data was available.
  */
 size_t fio_read(fio_s *io, void *buf, size_t len) {
-  ssize_t r = fio_sock_read(io->fd, buf, len);
+  ssize_t r = io->protocol->tls_functions.read(io->fd, buf, len, io->tls);
   if (r > 0) {
     fio_touch(io);
     return r;

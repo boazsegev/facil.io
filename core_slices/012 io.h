@@ -65,13 +65,33 @@ struct fio_protocol_s {
   /**
    * The timeout value in seconds for all connections using this protocol.
    *
-   * Limited to 600 seconds. The value 0 will be the same as the timeout limit.
+   * Limited to FIO_IO_TIMEOUT_MAX seconds. The value 0 will be the same as the
+   * timeout limit.
    */
   uint32_t timeout;
+  /**
+   * Defines Transport Later callbacks that facil.io will treat as non-blocking
+   * system calls
+   * */
+  struct fio_tls_functions_s {
+    /** Called to perform a non-blocking `read`, same as the system call. */
+    ssize_t (*read)(int fd, void *buf, size_t len, fio_tls_s *tls);
+    /** Called to perform a non-blocking `write`, same as the system call. */
+    ssize_t (*write)(int fd, const void *buf, size_t len, fio_tls_s *tls);
+    /** Sends any unsent internal data. Returns 0 only if all data was sent. */
+    int (*flush)(int fd, fio_tls_s *tls);
+    /** Increases a fio_tls_s object's reference count, or creates a new one. */
+    fio_tls_s *(*dup)(fio_tls_s *tls, fio_s *io);
+    /** Decreases a fio_tls_s object's reference count, or frees the object. */
+    void (*free)(fio_tls_s *tls);
+  } tls_functions;
 };
 
 /** Points to a function that keeps the connection alive. */
 extern void (*FIO_PING_ETERNAL)(fio_s *io);
+
+/** Default TLS functions to be set by TLS library extensions. */
+extern fio_tls_functions_s FIO_TLS_DEFAULT;
 
 /* *****************************************************************************
 Listening to Incoming Connections

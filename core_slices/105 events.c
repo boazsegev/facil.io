@@ -49,7 +49,7 @@ static void fio_ev_on_ready(void *io_, void *udata) {
       fio_stream_read(&io->stream, &buf, &len);
       if (!len)
         break;
-      ssize_t r = fio_sock_write(io->fd, buf, len);
+      ssize_t r = io->protocol->tls_functions.write(io->fd, buf, len, io->tls);
       if (r > 0) {
         total += r;
         fio_stream_advance(&io->stream, len);
@@ -64,7 +64,8 @@ static void fio_ev_on_ready(void *io_, void *udata) {
     }
     if (total)
       fio_touch___unsafe(io, NULL);
-    if (!fio_stream_any(&io->stream)) {
+    if (!fio_stream_any(&io->stream) &&
+        !io->protocol->tls_functions.flush(io->fd, io->tls)) {
       if ((io->state & FIO_IO_CLOSING)) {
         fio_close_now_unsafe(io);
       } else {
@@ -80,13 +81,11 @@ static void fio_ev_on_ready(void *io_, void *udata) {
       }
     } else if ((io->state & FIO_IO_OPEN)) {
       if (fio_stream_length(&io->stream) >= FIO_SOCKET_THROTTLE_LIMIT) {
-#ifdef DEBUG
         if (!(io->state & FIO_IO_THROTTLED))
-          FIO_LOG_DEBUG2("(%d) throttled IO %p (fd %d)",
-                         (int)fio_data.pid,
-                         (void *)io,
-                         io->fd);
-#endif
+          FIO_LOG_DDEBUG2("(%d) throttled IO %p (fd %d)",
+                          (int)fio_data.pid,
+                          (void *)io,
+                          io->fd);
         fio_atomic_or(&io->state, FIO_IO_THROTTLED);
       }
       fio_monitor_write(io);

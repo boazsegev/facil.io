@@ -127,10 +127,13 @@ static void fio___worker(void) {
   fio_state_callback_force(FIO_CALL_ON_START);
   fio_thread_t *threads = NULL;
   if (fio_data.threads) {
-    threads = calloc(sizeof(*threads), fio_data.threads);
+    threads = calloc(FIO_FUNCTIONS.size_of_thread_t, fio_data.threads);
     FIO_ASSERT_ALLOC(threads);
     for (size_t i = 0; i < fio_data.threads; ++i) {
-      FIO_ASSERT(!fio_thread_create(threads + i, fio___user_thread_cycle, NULL),
+      FIO_ASSERT(!FIO_FUNCTIONS.fio_thread_start(
+                     threads + (i * FIO_FUNCTIONS.size_of_thread_t),
+                     fio___user_thread_cycle,
+                     NULL),
                  "thread creation failed in worker.");
     }
     fio___worker_cycle();
@@ -143,7 +146,8 @@ static void fio___worker(void) {
       fio_monitor_review(FIO_POLL_SHUTDOWN_TICK);
       fio_queue_perform_all(FIO_QUEUE_SYSTEM);
       fio_user_thread_wake_all();
-      if (fio_thread_join(threads[i]))
+      if (FIO_FUNCTIONS.fio_thread_join(threads +
+                                        (i * FIO_FUNCTIONS.size_of_thread_t)))
         FIO_LOG_ERROR("Couldn't join worker thread.");
     }
     free(threads);
@@ -168,7 +172,7 @@ static fio_lock_i fio_spawn_GIL = FIO_LOCK_INIT;
 
 /** Worker sentinel */
 static void *fio_worker_sentinel(void *thr_ptr) {
-  pid_t pid = fio_fork();
+  pid_t pid = FIO_FUNCTIONS.fio_fork();
   FIO_ASSERT(pid != (pid_t)-1, "system call `fork` failed.");
   if (pid) {
     int status = 0;

@@ -18,8 +18,6 @@ Forking
 ***************************************************************************** */
 static void fio___after_fork(void);
 
-FIO_WEAK pid_t fio_fork(void) { return fork(); }
-
 /* *****************************************************************************
 IO Registry - NOT thread safe (access from IO core thread only)
 ***************************************************************************** */
@@ -275,6 +273,8 @@ static void mock_ping_eternal(fio_s *io);
 /** Points to a function that keeps the connection alive. */
 void (*FIO_PING_ETERNAL)(fio_s *) = mock_ping_eternal;
 
+fio_tls_functions_s FIO_TLS_DEFAULT;
+
 /* *****************************************************************************
 Event deferring (mock functions)
 ***************************************************************************** */
@@ -289,24 +289,71 @@ static void mock_timeout(fio_s *io) {
 }
 static void mock_ping_eternal(fio_s *io) { fio_touch(io); }
 
+/* Called to perform a non-blocking `read`, same as the system call. */
+static ssize_t mock_tls_default_read(int fd,
+                                     void *buf,
+                                     size_t len,
+                                     fio_tls_s *tls) {
+  (void)tls;
+  return fio_sock_read(fd, buf, len);
+}
+/** Called to perform a non-blocking `write`, same as the system call. */
+static ssize_t mock_tls_default_write(int fd,
+                                      const void *buf,
+                                      size_t len,
+                                      fio_tls_s *tls) {
+  (void)tls;
+  return fio_sock_write(fd, buf, len);
+}
+/** Sends any unsent internal data. Returns 0 only if all data was sent. */
+static int mock_tls_default_flush(int fd, fio_tls_s *tls) {
+  return 0;
+  (void)fd;
+  (void)tls;
+}
+static fio_tls_s *mock_tls_default_dup(fio_tls_s *tls, fio_s *io) {
+  return tls;
+  (void)io;
+}
+static void mock_tls_default_free(fio_tls_s *tls) { (void)tls; }
+
+static fio_tls_s *fio_tls_dup_server(fio_tls_s *tls, fio_s *io);
+static fio_tls_s *fio_tls_dup_client(fio_tls_s *tls, fio_s *io);
+
 FIO_IFUNC void fio_protocol_validate(fio_protocol_s *p) {
-  if (p && !(p->reserved.flags & 8)) {
-    MARK_FUNC();
-    p->reserved.ios = FIO_LIST_INIT(p->reserved.ios);
-    p->reserved.protocols = FIO_LIST_INIT(p->reserved.protocols);
-    p->reserved.flags |= 8;
-    if (!p->on_attach)
-      p->on_attach = mock_on_ready;
-    if (!p->on_data)
-      p->on_data = mock_on_data;
-    if (!p->on_ready)
-      p->on_ready = mock_on_ready;
-    if (!p->on_close)
-      p->on_close = mock_on_close;
-    if (!p->on_shutdown)
-      p->on_shutdown = mock_on_shutdown;
-    if (!p->on_timeout)
-      p->on_timeout = mock_timeout;
+  if ((p->reserved.flags & 8))
+    return;
+  MARK_FUNC();
+  p->reserved.ios = FIO_LIST_INIT(p->reserved.ios);
+  p->reserved.protocols = FIO_LIST_INIT(p->reserved.protocols);
+  p->reserved.flags |= 8;
+  if (!p->on_attach)
+    p->on_attach = mock_on_ready;
+  if (!p->on_data)
+    p->on_data = mock_on_data;
+  if (!p->on_ready)
+    p->on_ready = mock_on_ready;
+  if (!p->on_close)
+    p->on_close = mock_on_close;
+  if (!p->on_shutdown)
+    p->on_shutdown = mock_on_shutdown;
+  if (!p->on_timeout)
+    p->on_timeout = mock_timeout;
+  if (p->tls_functions.dup == fio_tls_dup_server)
+    p->tls_functions = FIO_FUNCTIONS.TLS_SERVER;
+  else if (p->tls_functions.dup == fio_tls_dup_client)
+    p->tls_functions = FIO_FUNCTIONS.TLS_CLIENT;
+  else {
+    if (!p->tls_functions.read)
+      p->tls_functions.read = mock_tls_default_read;
+    if (!p->tls_functions.write)
+      p->tls_functions.write = mock_tls_default_write;
+    if (!p->tls_functions.flush)
+      p->tls_functions.flush = mock_tls_default_flush;
+    if (!p->tls_functions.dup)
+      p->tls_functions.dup = mock_tls_default_dup;
+    if (!p->tls_functions.free)
+      p->tls_functions.free = mock_tls_default_free;
   }
 }
 
