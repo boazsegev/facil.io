@@ -63,13 +63,6 @@ struct fio_protocol_s {
   /** Called when a connection's timeout was reached */
   void (*on_timeout)(fio_s *io);
   /**
-   * The timeout value in seconds for all connections using this protocol.
-   *
-   * Limited to FIO_IO_TIMEOUT_MAX seconds. The value 0 will be the same as the
-   * timeout limit.
-   */
-  uint32_t timeout;
-  /**
    * Defines Transport Later callbacks that facil.io will treat as non-blocking
    * system calls
    * */
@@ -85,6 +78,13 @@ struct fio_protocol_s {
     /** Decreases a fio_tls_s object's reference count, or frees the object. */
     void (*free)(fio_tls_s *tls);
   } tls_functions;
+  /**
+   * The timeout value in seconds for all connections using this protocol.
+   *
+   * Limited to FIO_IO_TIMEOUT_MAX seconds. The value 0 will be the same as the
+   * timeout limit.
+   */
+  uint32_t timeout;
 };
 
 /** Points to a function that keeps the connection alive. */
@@ -297,3 +297,25 @@ int fio_is_busy(fio_s *io);
 
 /* Resets a socket's timeout counter. */
 void fio_touch(fio_s *io);
+
+/**
+ * Returns the information available about the socket's peer address.
+ *
+ * If no information is available, the struct will be initialized with zero
+ * (`.len == 0`).
+ */
+fio_str_info_s fio_peer_addr(fio_s *io);
+
+/**
+ * Writes the local machine address (qualified host name) to the buffer.
+ *
+ * Returns the amount of data written (excluding the NUL byte).
+ *
+ * `limit` is the maximum number of bytes in the buffer, including the NUL byte.
+ *
+ * If the returned value == limit - 1, the result might have been truncated.
+ *
+ * If 0 is returned, an error might have occurred (see `errno`) and the contents
+ * of `dest` is undefined.
+ */
+size_t fio_local_addr(char *dest, size_t limit);

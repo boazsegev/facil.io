@@ -47,7 +47,7 @@ struct fio_s {
   /** peer address length */
   uint8_t addr_len;
   /** peer address length */
-  uint8_t addr[FIO_MAX_ADDR_LEN];
+  char addr[FIO_MAX_ADDR_LEN];
 };
 
 FIO_IFUNC fio_s *fio_dup2(fio_s *io);
@@ -374,23 +374,82 @@ Copy address to string
 ***************************************************************************** */
 
 /** Caches an attached IO object's peer address. */
-FIO_SFUNC void fio___addr_cpy(fio_s *io) {
-  /* TODO: Fix Me */
-  struct sockaddr addrinfo;
-  // size_t len = sizeof(addrinfo);
-  const char *result =
-      inet_ntop(addrinfo.sa_family,
-                addrinfo.sa_family == AF_INET
-                    ? (void *)&(((struct sockaddr_in *)&addrinfo)->sin_addr)
-                    : (void *)&(((struct sockaddr_in6 *)&addrinfo)->sin6_addr),
-                (char *)io->addr,
-                sizeof(io->addr));
-  if (result) {
-    io->addr_len = strlen((char *)io->addr);
-  } else {
+FIO_IFUNC void fio___addr_cpy(fio_s *io, struct sockaddr *addr) {
+  union {
+    struct sockaddr *a;
+    struct sockaddr_in *ip4;
+    struct sockaddr_in6 *ip6;
+  } u = {.a = addr};
+  switch (u.a->sa_family) {
+  case AF_INET:
+    if (inet_ntop(AF_INET, &u.ip4->sin_addr, io->addr, sizeof(io->addr)))
+      io->addr_len = strlen(io->addr);
+    return;
+  case AF_INET6:
+    if (inet_ntop(AF_INET6, &u.ip6->sin6_addr, io->addr, sizeof(io->addr)))
+      io->addr_len = strlen(io->addr);
+    return;
+  default:
+    io->addr[0] = '0';
     io->addr_len = 0;
-    io->addr[0] = 0;
+    return;
   }
+}
+
+/**
+ * Returns the information available about the socket's peer address.
+ *
+ * If no information is available, the struct will be initialized with zero
+ * (`.len == 0`).
+ */
+fio_str_info_s fio_peer_addr(fio_s *io) {
+  fio_str_info_s r = {0};
+  if (!io)
+    return r;
+  /* cached? */
+  if (io->addr_len) {
+    r.buf = (char *)io->addr;
+    r.len = io->addr_len;
+    return r;
+  }
+  if (io->addr[0] == '0')
+    return r;
+
+  union {
+    struct sockaddr addr;
+    char buf[FIO_MAX_ADDR_LEN];
+  } u;
+  socklen_t len = sizeof(u);
+  if (getpeername(io->fd, &u.addr, &len))
+    goto no_name;
+  fio___addr_cpy(io, &u.addr);
+  if (!io->addr_len)
+    goto no_name;
+
+  r.buf = (char *)io->addr;
+  r.len = io->addr_len;
+  return r;
+no_name:
+  io->addr[0] = '0';
+  return r;
+}
+
+/**
+ * Writes the local machine address (qualified host name) to the buffer.
+ *
+ * Returns the amount of data written (excluding the NUL byte).
+ *
+ * `limit` is the maximum number of bytes in the buffer, including the NUL byte.
+ *
+ * If the returned value == limit - 1, the result might have been truncated.
+ *
+ * If 0 is returned, an error might have occurred (see `errno`) and the contents
+ * of `dest` is undefined.
+ */
+size_t fio_local_addr(char *dest, size_t limit) {
+  if ((!dest | !limit) || gethostname(dest, limit))
+    return 0;
+  return strlen(dest);
 }
 
 /* *****************************************************************************
