@@ -88,9 +88,13 @@ typedef struct http1_parser_s {
  */
 static size_t http1_parse(http1_parser_s *parser, void *buffer, size_t length);
 
+/** Returns true if the parsing stopped after a complete request / response. */
+inline static int http1_complete(http1_parser_s *parser);
+
 /* *****************************************************************************
 Required Callbacks (MUST be implemented by including file)
 ***************************************************************************** */
+// clang-format off
 
 /** called when a request was received. */
 static int http1_on_request(http1_parser_s *parser);
@@ -101,10 +105,7 @@ static int
 http1_on_method(http1_parser_s *parser, char *method, size_t method_len);
 /** called when a response status is parsed. the status_str is the string
  * without the prefixed numerical status indicator.*/
-static int http1_on_status(http1_parser_s *parser,
-                           size_t status,
-                           char *status_str,
-                           size_t len);
+static int http1_on_status(http1_parser_s *parser, size_t status, char *status_str, size_t len);
 /** called when a request path (excluding query) is parsed. */
 static int http1_on_path(http1_parser_s *parser, char *path, size_t path_len);
 /** called when a request path (excluding query) is parsed. */
@@ -113,17 +114,14 @@ http1_on_query(http1_parser_s *parser, char *query, size_t query_len);
 /** called when a the HTTP/1.x version is parsed. */
 static int http1_on_version(http1_parser_s *parser, char *version, size_t len);
 /** called when a header is parsed. */
-static int http1_on_header(http1_parser_s *parser,
-                           char *name,
-                           size_t name_len,
-                           char *data,
-                           size_t data_len);
+static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len, char *data, size_t data_len);
 /** called when a body chunk is parsed. */
 static int
 http1_on_body_chunk(http1_parser_s *parser, char *data, size_t data_len);
 /** called when a protocol error occurred. */
 static int http1_on_error(http1_parser_s *parser);
 
+// clang-format on
 /* *****************************************************************************
 
 
@@ -170,14 +168,14 @@ static int http1_on_error(http1_parser_s *parser);
   (!strncasecmp((var_name), (const_name), (len)))
 #endif
 
-#define HTTP1_P_FLAG_STATUS_LINE 1
+#define HTTP1_P_FLAG_STATUS_LINE     1
 #define HTTP1_P_FLAG_HEADER_COMPLETE 2
-#define HTTP1_P_FLAG_COMPLETE 4
-#define HTTP1_P_FLAG_CLENGTH 8
-#define HTTP1_PARSER_BIT_16 16
-#define HTTP1_PARSER_BIT_32 32
-#define HTTP1_P_FLAG_CHUNKED 64
-#define HTTP1_P_FLAG_RESPONSE 128
+#define HTTP1_P_FLAG_COMPLETE        4
+#define HTTP1_P_FLAG_CLENGTH         8
+#define HTTP1_PARSER_BIT_16          16
+#define HTTP1_PARSER_BIT_32          32
+#define HTTP1_P_FLAG_CHUNKED         64
+#define HTTP1_P_FLAG_RESPONSE        128
 
 /* *****************************************************************************
 Seeking for characters in a string
@@ -190,8 +188,9 @@ Seeking for characters in a string
  *
  * On newer systems, `memchr` should be faster.
  */
-static int
-seek2ch(uint8_t **buffer, register uint8_t *const limit, const uint8_t c) {
+static int seek2ch(uint8_t **buffer,
+                   register uint8_t *const limit,
+                   const uint8_t c) {
   if (*buffer >= limit)
     return 0;
   if (**buffer == c) {
@@ -329,6 +328,12 @@ static long long http1_atol16(const uint8_t *buf, const uint8_t **end) {
   for (int limit_ = 0; (*buf == '0') && limit_ < 32; ++limit_)
     ++buf;
   while (!(i & (~((~(0ULL)) >> 4)))) {
+#ifdef H___FIO_ATOL_H
+    if (fio_c2i(*buf) > 15)
+      break;
+    i <<= 4;
+    i |= fio_c2i(*buf);
+#else
     if (*buf >= '0' && *buf <= '9') {
       i <<= 4;
       i |= *buf - '0';
@@ -337,6 +342,7 @@ static long long http1_atol16(const uint8_t *buf, const uint8_t **end) {
       i |= (*buf | 32) - ('a' - 10);
     } else
       break;
+#endif /* H___FIO_ATOL_H */
     ++buf;
   }
   if (inv)
@@ -362,8 +368,10 @@ inline static int http1_consume_response_line(http1_parser_s *parser,
   tmp = start = tmp + 1;
   if (!seek2ch(&tmp, end, ' '))
     return -1;
-  if (http1_on_status(
-          parser, http1_atol(start, NULL), (char *)(tmp + 1), end - tmp))
+  if (http1_on_status(parser,
+                      http1_atol(start, NULL),
+                      (char *)(tmp + 1),
+                      end - tmp))
     return -1;
   return 0;
 }
@@ -425,9 +433,11 @@ start_version:
   if (http1_on_version(parser, (char *)start, end - start))
     return -1;
   /* */
-  if (host_start &&
-      http1_on_header(
-          parser, (char *)"host", 4, (char *)host_start, host_end - host_start))
+  if (host_start && http1_on_header(parser,
+                                    (char *)"host",
+                                    4,
+                                    (char *)host_start,
+                                    host_end - host_start))
     return -1;
   return 0;
 }
@@ -534,10 +544,11 @@ inline /* inline the function of it's short enough */
         val[val_len] = 0;
     }
     /* perform callback with `val` or indicate error */
-    if (val_len == 256 ||
-        (val_len &&
-         http1_on_header(
-             parser, (char *)start, (end_name - start), (char *)val, val_len)))
+    if (val_len == 256 || (val_len && http1_on_header(parser,
+                                                      (char *)start,
+                                                      (end_name - start),
+                                                      (char *)val,
+                                                      val_len)))
       return -1;
     return 0;
   }
@@ -585,8 +596,11 @@ inline static int http1_consume_header_top(http1_parser_s *parser,
 #endif
   ) {
     /* handle the special `transfer-encoding: chunked` header */
-    return http1_consume_header_transfer_encoding(
-        parser, start, end_name, start_value, end);
+    return http1_consume_header_transfer_encoding(parser,
+                                                  start,
+                                                  end_name,
+                                                  start_value,
+                                                  end);
   }
   /* perform callback */
   if (http1_on_header(parser,
@@ -637,8 +651,9 @@ white_listed:
   return 0;
 }
 
-inline static int
-http1_consume_header(http1_parser_s *parser, uint8_t *start, uint8_t *end) {
+inline static int http1_consume_header(http1_parser_s *parser,
+                                       uint8_t *start,
+                                       uint8_t *end) {
   uint8_t *end_name = start;
   /* divide header name from data */
   if (!seek2ch(&end_name, end, ':'))
@@ -657,8 +672,11 @@ http1_consume_header(http1_parser_s *parser, uint8_t *start, uint8_t *end) {
     start_value++;
   };
   return (parser->state.read ? http1_consume_header_trailer
-                             : http1_consume_header_top)(
-      parser, start, end_name, start_value, end);
+                             : http1_consume_header_top)(parser,
+                                                         start,
+                                                         end_name,
+                                                         start_value,
+                                                         end);
 }
 
 /* *****************************************************************************
@@ -895,6 +913,11 @@ error:
   parser->state = (struct http1_parser_protected_read_only_state_s){0};
   return length;
 #undef HTTP1_CONSUMED
+}
+
+/** Returns true if the parsing stopped after a complete request / response. */
+inline static int http1_complete(http1_parser_s *parser) {
+  return !parser->state.reserved;
 }
 
 /* *****************************************************************************
@@ -1493,8 +1516,9 @@ static int http1_on_response(http1_parser_s *parser) {
   return 0;
 }
 /** called when a request method is parsed. */
-static int
-http1_on_method(http1_parser_s *parser, char *method, size_t method_len) {
+static int http1_on_method(http1_parser_s *parser,
+                           char *method,
+                           size_t method_len) {
   (void)parser;
   http1_test_data[http1_test_pos].result.method = method;
   HTTP1_TEST_ASSERT(method_len ==
@@ -1574,8 +1598,9 @@ static int http1_on_header(http1_parser_s *parser,
   return 0;
 }
 /** called when a body chunk is parsed. */
-static int
-http1_on_body_chunk(http1_parser_s *parser, char *data, size_t data_len) {
+static int http1_on_body_chunk(http1_parser_s *parser,
+                               char *data,
+                               size_t data_len) {
   (void)parser;
   http1_test_data[http1_test_pos]
       .result.body[http1_test_data[http1_test_pos].result.body_len] = 0;

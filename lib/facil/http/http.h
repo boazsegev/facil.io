@@ -7,6 +7,9 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #define H_HTTP_H
 
+#include "http-consts.h"
+#include "http-handle.h"
+
 #include <fiobj.h>
 
 #include <fio.h>
@@ -33,8 +36,8 @@ Compile Time Settings
 #define HTTP_DEFAULT_BODY_LIMIT (1024 * 1024 * 50)
 #endif
 
-#ifndef HTTP_MAX_HEADER_COUNT
-#define HTTP_MAX_HEADER_COUNT 128
+#ifndef HTTP_DEFAULT_MAX_HEADER_COUNT
+#define HTTP_DEFAULT_MAX_HEADER_COUNT 128
 #endif
 
 #ifndef HTTP_MAX_HEADER_LENGTH
@@ -89,15 +92,6 @@ The Request / Response type and functions
  * HTTP callback OR an `http_defer` callback.
  */
 typedef struct {
-  /** the HTTP request's "head" starts with a private data used by facil.io */
-  struct {
-    /** the function routing table - used by facil.io, don't use directly! */
-    void *vtbl;
-    /** the connection's owner / uuid - used by facil.io, don't use directly! */
-    uintptr_t flag;
-    /** The response headers, if they weren't sent. Don't access directly. */
-    FIOBJ out_headers;
-  } private_data;
   /** a time merker indicating when the request was received. */
   struct timespec received_at;
   /** a String containing the method data (supports non-standard methods. */
@@ -106,7 +100,8 @@ typedef struct {
   FIOBJ status_str;
   /** The HTTP version string, if any. */
   FIOBJ version;
-  /** The status used for the response (or if the object is a response).
+  /**
+   * The status used for the response (or if the object is a response).
    *
    * When sending a request, the status should be set to 0.
    */
@@ -115,25 +110,34 @@ typedef struct {
   FIOBJ path;
   /** The request query, if any. */
   FIOBJ query;
-  /** a hash of general header data. When a header is set multiple times (such
-   * as cookie headers), an Array will be used instead of a String. */
+  /**
+   * A hash of general header data.
+   *
+   * When a header is set multiple times (such as cookie headers), an Array will
+   * be used instead of a String.
+   */
   FIOBJ headers;
   /**
-   * a placeholder for a hash of cookie data.
-   * the hash will be initialized when parsing the request.
+   * A placeholder for a hash of cookie data.
+   *
+   * The hash will be initialized if parsing the request.
    */
   FIOBJ cookies;
   /**
-   * a placeholder for a hash of request data.
-   * the hash will be initialized when parsing the request.
+   * A placeholder for a hash of request parameter data.
+   *
+   * The hash will be initialized if parsing the request.
    */
   FIOBJ params;
   /**
-   * a reader for body data (might be a temporary file or a string or NULL).
-   * see fiobj_data.h for details.
+   * A reader for body data.
+   *
+   * Either a `FIOBJ_T_IO` or `FIOBJ_INVALID`.
+   *
+   * See fiobj_io.h for details.
    */
   FIOBJ body;
-  /** an opaque user data pointer, to be used BEFORE calling `http_defer`. */
+  /** an opaque user data pointer, for user data. */
   void *udata;
 } http_s;
 
@@ -166,26 +170,31 @@ typedef struct {
   size_t path_len;
   /** Max Age (how long should the cookie persist), in seconds (0 == session).*/
   int max_age;
+  /**
+   * The SameSite settings.
+   *
+   * See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
+   */
+  enum {
+    /** allow the browser to dictate this property */
+    HTTP_COOKIE_SAME_SITE_BROWSER_DEFAULT = 0,
+    /** The browser sends the cookie with cross-site and same-site requests. */
+    HTTP_COOKIE_SAME_SITE_NONE,
+    /**
+     * The cookie is withheld on cross-site subrequests.
+     *
+     * The ccookie is sent when a user navigates to the URL from an external
+     * site.
+     */
+    HTTP_COOKIE_SAME_SITE_LAX,
+    /** The browser sends the cookie only for same-site requests. */
+    HTTP_COOKIE_SAME_SITE_STRICT,
+  } same_site;
   /** Limit cookie to secure connections.*/
   unsigned secure : 1;
   /** Limit cookie to HTTP (intended to prevent javascript access/hijacking).*/
   unsigned http_only : 1;
 } http_cookie_args_s;
-
-/**
- * Sets a response header, taking ownership of the value object, but NOT the
- * name object (header name objects can be reused in future responses).
- *
- * Returns -1 on error and 0 on success.
- */
-int http_set_header(http_s *h, FIOBJ name, FIOBJ value);
-
-/**
- * Sets a response header.
- *
- * Returns -1 on error and 0 on success.
- */
-int http_set_header2(http_s *h, fio_str_info_s name, fio_str_info_s value);
 
 /**
  * Sets a response cookie.
@@ -197,9 +206,38 @@ int http_set_header2(http_s *h, fio_str_info_s name, fio_str_info_s value);
  * proxies and servers will refuse long cookie names or values and many impose
  * total header lengths (including cookies) of ~8Kib.
  */
-int http_set_cookie(http_s *h, http_cookie_args_s);
-#define http_set_cookie(http___handle, ...)                                    \
-  http_set_cookie((http___handle), (http_cookie_args_s){__VA_ARGS__})
+int http_cookie_set(http_s *h, http_cookie_args_s);
+#define http_cookie_set(http___handle, ...)                                    \
+  http_cookie_set((http___handle), (http_cookie_args_s){__VA_ARGS__})
+
+/**
+ * Sets a response header, taking ownership of the value object, but NOT the
+ * name object (header name objects can be reused in future responses).
+ *
+ * Returns -1 on error and 0 on success.
+ */
+FIO_IFUNC int http_header_set(http_s *h, FIOBJ name, FIOBJ value);
+
+/**
+ * Sets a response header.
+ *
+ * Returns -1 on error and 0 on success.
+ */
+FIO_IFUNC int http_header_set2(http_s *h,
+                               fio_str_info_s name,
+                               fio_str_info_s value);
+
+/** Removes a response header, returning -1 if the header didn't exist. */
+FIO_IFUNC int http_header_remove(http_s *h, FIOBJ name);
+
+/** Removes a response header, returning -1 if the header didn't exist. */
+FIO_IFUNC int http_header_remove2(http_s *h, fio_str_info_s name);
+
+/** Returns a response header of `FIOBJ_INVALID`. */
+FIO_IFUNC FIOBJ http_header_get(http_s *h, FIOBJ name);
+
+/** Returns a response header of `FIOBJ_INVALID`. */
+FIO_IFUNC FIOBJ http_header_get2(http_s *h, fio_str_info_s name);
 
 /**
  * Sends the response headers and body.
@@ -211,7 +249,12 @@ int http_set_cookie(http_s *h, http_cookie_args_s);
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_send_body(http_s *h, void *data, uintptr_t length);
+FIO_IFUNC int http_send_data(http_s *h,
+                             void *data,
+                             uintptr_t length,
+                             uintptr_t offset,
+                             void (*dealloc)(void *),
+                             uint8_t finish);
 
 /**
  * Sends the response headers and the specified file (the response's body).
@@ -222,7 +265,11 @@ int http_send_body(http_s *h, void *data, uintptr_t length);
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_sendfile(http_s *h, int fd, uintptr_t offset, uintptr_t length);
+FIO_IFUNC int http_send_file(http_s *h,
+                             int fd,
+                             uintptr_t length,
+                             uintptr_t offset,
+                             uint8_t finish);
 
 /**
  * Sends the response headers and the specified file (the response's body).
@@ -238,37 +285,18 @@ int http_sendfile(http_s *h, int fd, uintptr_t offset, uintptr_t length);
  * as is.
  *
  * Returns 0 on success. A success value WILL CONSUME the `http_s` handle (it
- * will become invalid).
+ * will become invalid, finishing the rresponse).
  *
  * Returns -1 on error (The `http_s` handle should still be used).
  */
-int http_sendfile2(http_s *h,
-                   const char *prefix,
-                   size_t prefix_len,
-                   const char *encoded,
-                   size_t encoded_len);
+int http_send_file2(http_s *h,
+                    const char *prefix,
+                    size_t prefix_len,
+                    const char *encoded,
+                    size_t encoded_len);
 
 /**
- * Sends the response headers (if not sent) and streams the data.
- *
- * **Note**: The body is *copied* to the HTTP stream and it's memory should be
- * freed by the calling function.
- *
- * Returns -1 on error and 0 on success.
- *
- * The `http_s` object remsains valid. Remember to call `http_finish`.
- */
-int http_stream(http_s *h_, void *data, uintptr_t length);
-
-/**
- * Sends the response headers for a header only response.
- *
- * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
- */
-void http_finish(http_s *h);
-
-/**
- * Sends an HTTP error response.
+ * Sends an HTTP error response, finishing the response.
  *
  * Returns -1 on error and 0 on success.
  *
@@ -280,26 +308,23 @@ void http_finish(http_s *h);
 int http_send_error(http_s *h, size_t error_code);
 
 /**
- * Pushes a data response when supported (HTTP/2 only).
- *
- * `mime_type` will be automatically freed by the `push` function.
+ * Adds a `Link` header, possibly sending an early link / HTTP2 push (not yet).
  *
  * Returns -1 on error and 0 on success.
  */
-int http_push_data(http_s *h, void *data, uintptr_t length, FIOBJ mime_type);
+int http_push(http_s *h, FIOBJ url, FIOBJ mime_type);
 
 /**
- * Pushes a file response when supported (HTTP/2 only).
+ * Duplicates an HTTP handle by reference, remember to http_free.
  *
- * If `mime_type` is NULL, an attempt at automatic detection using `filename`
- * will be made.
- *
- * `filename` and `mime_type` will be automatically freed by the `push`
- * function.
- *
- * Returns -1 on error and 0 on success.
+ * Returns the same object (increases a reference count, no allocation is made).
  */
-int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type);
+FIO_IFUNC http_s *http_dup(http_s *h);
+
+/**
+ * Frees an HTTP handle by reference (decreases the reference count).
+ */
+FIO_IFUNC void http_free(http_s *h);
 
 /* *****************************************************************************
 HTTP Connections - Listening / Connecting / Hijacking
@@ -412,12 +437,12 @@ intptr_t http_listen(const char *port, const char *binding, http_settings_s);
 /**
  * Returns the settings used to setup the connection or NULL on error.
  */
-http_settings_s *http_settings(http_s *h);
+FIO_IFUNC http_settings_s *http_settings(http_s *h);
 
 /**
  * Returns the direct address of the connected peer (likely an intermediary).
  */
-fio_str_info_s http_peer_addr(http_s *h);
+FIO_IFUNC fio_str_info_s http_peer_addr(http_s *h);
 
 /**
  * Hijacks the socket away from the HTTP protocol and away from facil.io.
@@ -438,7 +463,7 @@ fio_str_info_s http_peer_addr(http_s *h);
  * WARNING: this isn't a good way to handle HTTP connections, especially as
  * HTTP/2 enters the picture.
  */
-intptr_t http_hijack(http_s *h, fio_str_info_s *leftover);
+FIO_IFUNC intptr_t http_hijack(http_s *h, fio_str_info_s leftover);
 
 /* *****************************************************************************
 Websocket Upgrade (Server and Client connection establishment)
@@ -514,7 +539,7 @@ typedef struct {
  * A client connection's `on_finish` callback will be called (since the HTTP
  * stage has finished).
  */
-int http_upgrade2ws(http_s *http, websocket_settings_s);
+FIO_IFUNC int http_upgrade2ws(http_s *http, websocket_settings_s);
 
 /** This macro allows easy access to the `http_upgrade2ws` function. The macro
  * allows the use of named arguments, using the `websocket_settings_s` struct
@@ -565,7 +590,7 @@ int http_upgrade2ws(http_s *http, websocket_settings_s);
       (const fio_str_info_s) {                                                 \
     .buf = value, .len = value_len,                                            \
   }
-#define WEBSOCKET_HEADER_FIO(name, value) name, value
+#define WEBSOCKET_HEADER_FIO(name, value)   name, value
 #define WEBSOCKET_HEADER_FIOBJ(name, value) fiobj2cstr(name), fiobj2cstr(value)
 
 /** The WebSocket API is detailed in websockets.h */
@@ -576,12 +601,6 @@ EventSource Support (SSE)
 ***************************************************************************** */
 
 /**
- * The type for the EventSource (SSE) handle, used to identify an SSE
- * connection.
- */
-typedef struct http_sse_s http_sse_s;
-
-/**
  * This struct is used for the named arguments in the `http_upgrade2sse`
  * function and macro.
  */
@@ -590,19 +609,19 @@ typedef struct {
    * The (optional) on_open callback will be called once the EventSource
    * connection is established.
    */
-  void (*on_open)(http_sse_s *sse);
+  void (*on_open)(http_s *sse);
   /**
    * The (optional) on_ready callback will be after a the underlying socket's
    * buffer changes it's state to empty.
    *
    * If the socket's buffer is never used, the callback is never called.
    */
-  void (*on_ready)(http_sse_s *sse);
+  void (*on_ready)(http_s *sse);
   /**
    * The (optional) on_shutdown callback will be called if a connection is still
    * open while the server is shutting down (called before `on_close`).
    */
-  void (*on_shutdown)(http_sse_s *sse);
+  void (*on_shutdown)(http_s *sse);
   /**
    * The (optional) on_close callback will be called once a connection is
    * terminated or failed to be established.
@@ -610,9 +629,7 @@ typedef struct {
    * The `udata` passed to the `http_upgrade2sse` function is available
    * through the `http_sse_s` pointer (`sse->udata`).
    */
-  void (*on_close)(http_sse_s *sse);
-  /** Opaque user data. */
-  void *udata;
+  void (*on_close)(http_s *sse);
 } http_sse_settings_s;
 
 /**
@@ -623,13 +640,13 @@ typedef struct {
  * On HTTP/1.1 connections, this will preclude future requests using the same
  * connection.
  */
-int http_upgrade2sse(http_s *h, http_sse_s);
+FIO_IFUNC int http_upgrade2sse(http_s *h, http_sse_settings_s);
 
 /** This macro allows easy access to the `http_upgrade2sse` function. The macro
  * allows the use of named arguments, using the `websocket_settings_s` struct
  * members. i.e.:
  *
- *     on_open_sse(sse_s * sse) {
+ *     on_open_sse(http_s * sse) {
  *        http_sse_subscribe(sse, .channel = CHANNEL_NAME);
  *     }
  *
@@ -638,18 +655,18 @@ int http_upgrade2sse(http_s *h, http_sse_s);
  *     }
  */
 #define http_upgrade2sse(h, ...)                                               \
-  http_upgrade2sse((h), (http_sse_s){__VA_ARGS__})
+  http_upgrade2sse((h), (http_sse_settings_s){__VA_ARGS__})
 
 /**
  * Sets the ping interval for SSE connections.
  */
-void http_sse_set_timout(http_sse_s *sse, uint8_t timeout);
+FIO_IFUNC void http_sse_set_timout(http_s *sse, uint8_t timeout);
 
 struct http_sse_subscribe_args {
   /** The channel name used for the subscription. */
   fio_str_info_s channel;
   /** The optional on message callback. If missing, Data is directly writen. */
-  void (*on_message)(http_sse_s *sse,
+  void (*on_message)(http_s *sse,
                      fio_str_info_s channel,
                      fio_str_info_s msg,
                      void *udata);
@@ -658,7 +675,7 @@ struct http_sse_subscribe_args {
   /** Opaque user */
   void *udata;
   /** A callback for pattern matching. */
-  fio_match_fn match;
+  uint8_t is_pattern;
 };
 
 /**
@@ -672,8 +689,7 @@ struct http_sse_subscribe_args {
  *
  * All subscriptions are automatically cleared once the connection is closed.
  */
-uintptr_t http_sse_subscribe(http_sse_s *sse,
-                             struct http_sse_subscribe_args args);
+uintptr_t http_sse_subscribe(http_s *sse, struct http_sse_subscribe_args args);
 
 /** This macro allows easy access to the `http_sse_subscribe` function. */
 #define http_sse_subscribe(sse, ...)                                           \
@@ -682,7 +698,7 @@ uintptr_t http_sse_subscribe(http_sse_s *sse,
 /**
  * Cancels a subscription and invalidates the subscription object.
  */
-void http_sse_unsubscribe(http_sse_s *sse, uintptr_t subscription);
+void http_sse_unsubscribe(http_s *sse, uintptr_t subscription);
 
 /**
  * Named arguments for the {http_sse_write} function.
@@ -704,31 +720,19 @@ struct http_sse_write_args {
  *
  * See the {struct http_sse_write_args} for possible named arguments.
  */
-int http_sse_write(http_sse_s *sse, struct http_sse_write_args);
+int http_sse_write(http_s *sse, struct http_sse_write_args);
 #define http_sse_write(sse, ...)                                               \
   http_sse_write((sse), (struct http_sse_write_args){__VA_ARGS__})
 
 /**
  * Get the connection's UUID (for `fio_defer_io_task`, pub/sub, etc').
  */
-intptr_t http_sse2uuid(http_sse_s *sse);
+intptr_t http_sse2uuid(http_s *sse);
 
 /**
  * Closes an EventSource (SSE) connection.
  */
-int http_sse_close(http_sse_s *sse);
-
-/**
- * Duplicates an SSE handle by reference, remember to http_sse_free.
- *
- * Returns the same object (increases a reference count, no allocation is made).
- */
-http_sse_s *http_sse_dup(http_sse_s *sse);
-
-/**
- * Frees an SSE handle by reference (decreases the reference count).
- */
-void http_sse_free(http_sse_s *sse);
+int http_sse_close(http_s *sse);
 
 /* *****************************************************************************
 HTTP GET and POST parsing helpers
@@ -881,9 +885,12 @@ HTTP General Helper functions that could be used globally
 FIOBJ http2str(http_s *h);
 
 /**
- * Writes a log line to `stderr` about the request / response object.
+ * Writes a log line to `stdout` about the request / response object.
  *
  * This function is called automatically if the `.log` setting is enabled.
+ *
+ * See format details at:
+ * http://publib.boulder.ibm.com/tividd/td/ITWSA/ITWSA_info45/en_US/HTML/guide/c-logs.html#common
  */
 void http_write_log(http_s *h);
 
@@ -913,5 +920,393 @@ void http_tests(void);
 #ifdef __cplusplus
 }
 #endif
+
+/* *****************************************************************************
+
+
+
+
+
+HTTP internal implementations and inlinied functions
+
+
+
+
+
+
+***************************************************************************** */
+
+extern FIOBJ HTTP_HEADER_ACCEPT_RANGES;        /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HEADER_WS_SEC_CLIENT_KEY;    /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HEADER_WS_SEC_KEY;           /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HVALUE_BYTES;                /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HVALUE_CHUNKED_ENCODING;     /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HVALUE_CLOSE;                /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HVALUE_CONTENT_TYPE_DEFAULT; /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HVALUE_IDENTITY;             /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HVALUE_GZIP;                 /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HVALUE_KEEP_ALIVE;           /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HVALUE_MAX_AGE;              /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HVALUE_NO_CACHE;             /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HVALUE_SSE_MIME;             /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HVALUE_WEBSOCKET;            /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HVALUE_WS_SEC_VERSION;       /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HVALUE_WS_UPGRADE;           /* (!) always fiobj_dup (!) */
+extern FIOBJ HTTP_HVALUE_WS_VERSION;           /* (!) always fiobj_dup (!) */
+
+typedef struct {
+  fio_protocol_s protocol;
+  intptr_t uuid;
+  http_settings_s *settings;
+} http___protocol_s;
+
+typedef struct http___metadata_s http___metadata_s;
+/** HTTP VTable - internally used object - implementation may change. */
+typedef struct {
+  /** send data */
+  int (*const send)(http_s *h,
+                    void *body,
+                    size_t len,
+                    uintptr_t offset,
+                    void (*dealloc)(void *),
+                    uint8_t finish);
+  /** send a file descriptor */
+  int (*const send_fd)(http_s *h,
+                       int fd,
+                       size_t len,
+                       uintptr_t offset,
+                       uint8_t finish);
+  /** Push for data. */
+  int (*const http_push_data)(http_s *h,
+                              void *data,
+                              uintptr_t length,
+                              FIOBJ mime_type);
+  /** Upgrades a connection to Websockets. */
+  int (*const upgrade2ws)(http_s *h, websocket_settings_s *settings);
+  /** Push for files. */
+  int (*const push)(http_s *h, FIOBJ url, FIOBJ mime_type);
+  /** hijacks the socket aaway from the protocol. */
+  intptr_t (*hijack)(http_s *h, fio_str_info_s *leftover);
+  /** Upgrades an HTTP connection to an EventSource (SSE) connection. */
+  int (*upgrade2sse)(http_s *h, http_sse_settings_s *settings);
+  /** Writes data to an EventSource (SSE) connection. MUST free the FIOBJ. */
+  int (*sse_write)(http_s *sse,
+                   void *body,
+                   size_t len,
+                   uintptr_t offset,
+                   void (*dealloc)(void *));
+  /** Closes an EventSource (SSE) connection. */
+  int (*sse_close)(http_s *sse);
+  /** Frees the reference to the HTTP protocol object. */
+  int (*free)(http_s *h);
+} http___vtable_s;
+
+/** HTTP intenal data - internally used object - implementation may change. */
+struct http___metadata_s {
+  /** HTTP virtual table. */
+  http___vtable_s *vtbl;
+  /** HTTP protocol pointer. */
+  http___protocol_s *pr;
+  /** outgoing headers. */
+  FIOBJ headers;
+};
+
+FIO_IFUNC http___vtable_s *http___vtable(http_s *h);
+
+#define FIO_REF_NAME     http__
+#define FIO_REF_TYPE     http_s
+#define FIO_REF_METADATA http___metadata_s
+#define FIO_REF_METADATA_INIT(meta)                                            \
+  do {                                                                         \
+    (meta).headers = fiobj_hash_new();                                         \
+  } while (0)
+#define FIO_REF_METADATA_DESTROY(meta)                                         \
+  do {                                                                         \
+    fiobj_free((meta).headers);                                                \
+  } while (0)
+#define FIO_REF_INIT(obj)                                                      \
+  do {                                                                         \
+    (obj) = (FIO_REF_TYPE){0};                                                 \
+  } while (0)
+#define FIO_REF_DESTROY(obj)                                                   \
+  do {                                                                         \
+    fiobj_free((obj).method);                                                  \
+    fiobj_free((obj).status_str);                                              \
+    fiobj_free((obj).version);                                                 \
+    fiobj_free((obj).path);                                                    \
+    fiobj_free((obj).query);                                                   \
+    fiobj_free((obj).headers);                                                 \
+    fiobj_free((obj).cookies);                                                 \
+    fiobj_free((obj).params);                                                  \
+    fiobj_free((obj).body);                                                    \
+    http___vtable(&(obj))->free(&(obj));                                       \
+  } while (0)
+#include <fio-stl.h>
+
+/**
+ * Duplicates an HTTP handle by reference, remember to http_free.
+ *
+ * Returns the same object (increases a reference count, no allocation is made).
+ */
+FIO_IFUNC http_s *http_dup(http_s *h) { return http___dup2(h); }
+
+/**
+ * Frees an HTTP handle by reference (decreases the reference count).
+ */
+FIO_IFUNC void http_free(http_s *h) { http___free2(h); }
+
+/* initernal: sets a pointer to the virtual table for the HTTP protocol. */
+FIO_IFUNC void http___vtable_set(http_s *h, http___vtable_s *vtbl) {
+  http___metadata(h)->vtbl = vtbl;
+}
+
+/* initernal: gets a pointer to the virtual table for the HTTP protocol. */
+FIO_IFUNC http___vtable_s *http___vtable(http_s *h) {
+  http___vtable_s *r = http___metadata(h)->vtbl;
+  extern http___vtable_s HTTP_NOOP_VTABLE;
+  if (!r)
+    r = &HTTP_NOOP_VTABLE;
+  return r;
+}
+
+/* initernal: sets a pointer to the HTTP protocol that owns the HTTP handle. */
+FIO_IFUNC void http___protocol_set(http_s *h, http___protocol_s *pr) {
+  http___metadata(h)->pr = pr;
+}
+
+/* initernal: gets a pointer to the HTTP protocol that owns the HTTP handle. */
+FIO_IFUNC http___protocol_s *http___protocol(http_s *h) {
+  return http___metadata(h)->pr;
+}
+
+/**
+ * Sets a response header, taking ownership of the value object, but NOT the
+ * name object (header name objects can be reused in future responses).
+ *
+ * Returns -1 on error and 0 on success.
+ */
+FIO_IFUNC int http_header_set(http_s *h, FIOBJ name, FIOBJ value) {
+  if (value == FIOBJ_INVALID)
+    return http_header_remove(h, name);
+  FIOBJ old = FIOBJ_INVALID;
+  FIOBJ headers = NULL;
+  FIOBJ *pos = NULL;
+  /* TODO?: smart handling of `value` (array) */
+  if (!h || FIOBJ_TYPE_CLASS(name) != FIOBJ_T_STRING)
+    goto error;
+  headers = http___metadata(h)->headers;
+  if (FIOBJ_TYPE_CLASS(headers) != FIOBJ_T_HASH)
+    goto error;
+  pos = fiobj_hash_set_ptr(headers,
+                           fiobj_str_hash(name, (uintptr_t)headers),
+                           name,
+                           value,
+                           &old,
+                           1);
+  if (old != FIOBJ_INVALID) {
+    if (FIOBJ_TYPE_CLASS(old) != FIOBJ_T_ARRAY) {
+      FIOBJ tmp = fiobj_array_new();
+      fiobj_array_push(tmp, old);
+      old = tmp;
+    }
+    if (FIOBJ_TYPE_CLASS(value) != FIOBJ_T_ARRAY) {
+      fiobj_array_push(old, value);
+    } else {
+      fiobj_array_concat(old, value);
+      fiobj_array_free(value);
+    }
+    *pos = old;
+  }
+  return 0;
+error:
+  fiobj_free(value);
+  return -1;
+}
+
+/**
+ * Sets a response header.
+ *
+ * Returns -1 on error and 0 on success.
+ */
+FIO_IFUNC int http_header_set2(http_s *h,
+                               fio_str_info_s name,
+                               fio_str_info_s value) {
+  if (!h || !name.len)
+    return -1;
+  FIOBJ n = fiobj_str_new_cstr(name.buf, name.len);
+  FIOBJ v = FIOBJ_INVALID;
+  if (value.len)
+    fiobj_str_new_cstr(value.buf, value.len);
+  return http_header_set(h, n, v);
+  fiobj_free(n);
+}
+
+FIO_IFUNC int http___header_reset(http_s *h, FIOBJ name, FIOBJ value) {
+  if (value == FIOBJ_INVALID)
+    return http_header_remove(h, name);
+  FIOBJ headers = NULL;
+  /* TODO?: smart handling of `value` (array) */
+  if (!h || FIOBJ_TYPE_CLASS(name) != FIOBJ_T_STRING)
+    goto error;
+  headers = http___metadata(h)->headers;
+  if (FIOBJ_TYPE_CLASS(headers) != FIOBJ_T_HASH)
+    goto error;
+  fiobj_hash_set_ptr(headers,
+                     fiobj_str_hash(name, (uintptr_t)headers),
+                     name,
+                     value,
+                     NULL,
+                     1);
+  return 0;
+error:
+  fiobj_free(value);
+  return -1;
+}
+
+/** Removes a response header, returning -1 if the header didn't exist. */
+FIO_IFUNC int http_header_remove(http_s *h, FIOBJ name) {
+  if (!h || FIOBJ_TYPE_CLASS(name) != FIOBJ_T_STRING ||
+      FIOBJ_TYPE_CLASS(http___metadata(h)->headers) != FIOBJ_T_HASH)
+    return -1;
+  return fiobj_hash_remove2(http___metadata(h)->headers, name, NULL);
+}
+
+/** Removes a response header, returning -1 if the header didn't exist. */
+FIO_IFUNC int http_header_remove2(http_s *h, fio_str_info_s name) {
+  if (!h || !name.len ||
+      FIOBJ_TYPE_CLASS(http___metadata(h)->headers) != FIOBJ_T_HASH)
+    return -1;
+  FIOBJ_STR_TEMP_VAR_EXISTING(n, name.buf, name.len, 0);
+  return http_header_remove(h, n);
+}
+
+/** Returns a response header of `FIOBJ_INVALID`. */
+FIO_IFUNC FIOBJ http_header_get(http_s *h, FIOBJ name) {
+  if (!h || FIOBJ_TYPE_CLASS(name) != FIOBJ_T_STRING ||
+      FIOBJ_TYPE_CLASS(http___metadata(h)->headers) != FIOBJ_T_HASH)
+    return FIOBJ_INVALID;
+  return fiobj_hash_get2(http___metadata(h)->headers, name);
+}
+
+/** Returns a response header of `FIOBJ_INVALID`. */
+FIO_IFUNC FIOBJ http_header_get2(http_s *h, fio_str_info_s name) {
+  if (!h || !name.len ||
+      FIOBJ_TYPE_CLASS(http___metadata(h)->headers) != FIOBJ_T_HASH)
+    return FIOBJ_INVALID;
+  FIOBJ_STR_TEMP_VAR_EXISTING(n, name.buf, name.len, 0);
+  return http_header_get(h, n);
+}
+
+FIO_IFUNC http_settings_s *http_settings(http_s *h) {
+  if (!h || !http___metadata(h)->pr)
+    return NULL;
+  return http___metadata(h)->pr->settings;
+}
+
+FIO_IFUNC fio_str_info_s http_peer_addr(http_s *h) {
+  fio_str_info_s r = (fio_str_info_s){0};
+  if (!h || !http___metadata(h)->pr)
+    return r;
+  r = fio_peer_addr(http___metadata(h)->pr->uuid);
+  return r;
+}
+
+/**
+ * Sends the response headers and body.
+ *
+ * **Note**: The body is *copied* to the HTTP stream and it's memory should be
+ * freed by the calling function.
+ *
+ * Returns -1 on error and 0 on success.
+ *
+ * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
+ */
+FIO_IFUNC int http_send_data(http_s *h,
+                             void *data,
+                             uintptr_t length,
+                             uintptr_t offset,
+                             void (*dealloc)(void *),
+                             uint8_t finish) {
+  int r = http___vtable(h)->send(h, data, length, offset, dealloc, finish);
+  if (finish)
+    http___free2(h);
+  return r;
+}
+
+/**
+ * Sends the response headers and the specified file (the response's body).
+ *
+ * The file is closed automatically.
+ *
+ * Returns -1 on error and 0 on success.
+ *
+ * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
+ */
+FIO_IFUNC int http_send_file(http_s *h,
+                             int fd,
+                             uintptr_t length,
+                             uintptr_t offset,
+                             uint8_t finish) {
+  int r = http___vtable(h)->send_fd(h, fd, length, offset, finish);
+  if (finish)
+    http___free2(h);
+  return r;
+}
+
+FIO_IFUNC intptr_t http_hijack(http_s *h, fio_str_info_s leftover) {
+  intptr_t uuid = http___vtable(h)->hijack(h, &leftover);
+  http___free2(h);
+  return uuid;
+}
+
+FIO_IFUNC int http_upgrade2ws FIO_NOOP(http_s *h,
+                                       websocket_settings_s settings) {
+  int r = http___vtable(h)->upgrade2ws(h, &settings);
+  http___free2(h);
+  return r;
+}
+FIO_IFUNC int http_upgrade2sse FIO_NOOP(http_s *h,
+                                        http_sse_settings_s settings) {
+  int r = http___vtable(h)->upgrade2sse(h, &settings);
+  return r;
+}
+
+/**
+ * Sets the ping interval for SSE connections.
+ */
+FIO_IFUNC void http_sse_set_timout(http_s *sse, uint8_t timeout) {
+  http___protocol_s *pr = http___protocol(sse);
+  intptr_t uuid = pr->uuid;
+  fio_timeout_set(uuid, timeout);
+}
+
+/* *****************************************************************************
+
+
+
+
+
+TODO: HTTP Statistics
+
+
+
+
+
+{
+  "processing": 0,
+  "requests": 50818,
+  "responses": {
+    "1xx": 0,
+    "2xx": 46127,
+    "3xx": 3822,
+    "4xx": 825,
+    "5xx": 1,
+    "total": 50775
+  },
+  "discarded": 43,
+  "received": 14137130,
+  "sent": 1429876113
+}
+***************************************************************************** */
 
 #endif /* H_HTTP_H */

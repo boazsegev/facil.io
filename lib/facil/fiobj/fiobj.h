@@ -13,7 +13,7 @@
 #include "fio-stl.h"
 #else
 #include <fio.h>
-#endif
+#endif /* FIOBJ_STANDALONE */
 
 #include <fiobj_io.h>
 #include <fiobj_mustache.h>
@@ -24,4 +24,4 @@
     fiobj_io_test();                                                           \
   } while (0);
 
-#endif
+#endif /* H_FIOBJ_H */

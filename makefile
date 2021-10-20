@@ -15,7 +15,7 @@
 #############################################################################
 
 # binary name and location
-NAME?=fioapp
+NAME?=app
 
 # a temporary folder that will be cleared out and deleted between fresh builds
 # All object files will be placed in this folder
@@ -44,11 +44,23 @@ MAIN_SUBFOLDERS=
 LIB_ROOT=lib
 
 # publicly used subfolders in the lib root
-LIB_PUBLIC_SUBFOLDERS=facil facil/tls facil/fiobj facil/http facil/http/parsers facil/redis
+LIB_PUBLIC_SUBFOLDERS=facil facil/fiobj facil/http facil/redis facil/tls
 
 # privately used subfolders in the lib root (this distinction is only relevant for CMake)
 LIB_PRIVATE_SUBFOLDERS=
 
+
+#############################################################################
+# Single Library Concatenation
+#############################################################################
+
+# a folder containing code that should be unified into a single file
+#
+# Note: files will be unified in the same order the system provides (usually, file anme)
+LIB_CONCAT_FOLDER=
+
+# the path and file name to use when unifying *.c, *.h, and *.md files (without extension).
+LIB_CONCAT_TARGET?=
 
 #############################################################################
 # Test Source Code Folder
@@ -57,12 +69,15 @@ LIB_PRIVATE_SUBFOLDERS=
 # Testing folder
 TEST_ROOT=tests
 
+# The default test file to run when running: make test (without the  C extension)
+TEST_DEFAULT=stl
+
 #############################################################################
 # CMake Support
 #############################################################################
 
 # The library details for CMake incorporation. Can be safely removed.
-CMAKE_FILENAME=CMakeLists.txt
+CMAKE_FILENAME=
 # Project name to be stated in the CMakeFile
 CMAKE_PROJECT=facil.io
 # Space delimited list of required packages
@@ -75,11 +90,11 @@ CMAKE_REQUIRE_PACKAGE=Threads
 # any libraries required (only names, ommit the "-l" at the begining)
 LINKER_LIBS=pthread m
 # optimization level.
-OPTIMIZATION=-O2 -march=native
+OPTIMIZATION=-O2
 # optimization level in debug mode.
-OPTIMIZATION_DEBUG=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer
+OPTIMIZATION_DEBUG=-O0 -fsanitize=address -fsanitize=thread -fsanitize=undefined -fno-omit-frame-pointer
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
-WARNINGS=-Wshadow -Wall -Wextra -Wno-missing-field-initializers -Wpedantic
+WARNINGS=-Wshadow -Wall -Wextra -Wpedantic -Wno-missing-field-initializers
 # any extra include folders, space seperated list. (i.e. `pg_config --includedir`)
 INCLUDE=./
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
@@ -91,11 +106,11 @@ CXX?=g++
 # C specific compiler options
 C_EXTRA_OPT:=
 # C++ specific compiler options
-CXX_EXTRA_OPT:=-Wno-keyword-macro -Wno-c99-extensions -Wno-zero-length-array -Wno-variadic-macros
-# c standard (if any, prefix using `-std=`)
-CSTD?=-std=c11
-# c++ standard (if any, prefix using `-std=`)
-CXXSTD?=-std=c++11
+CXX_EXTRA_OPT:=-Wno-keyword-macro -Wno-vla-extension -Wno-c99-extensions -Wno-zero-length-array -Wno-variadic-macros
+# c standard   (if any, without the `-std=` prefix, i.e.: c11)
+CSTD?=gnu11
+# c++ standard (if any, without the `-std=` prefix, i.e.: c++11)
+CXXSTD?=gnu++11
 # pkg-config
 PKG_CONFIG?=pkg-config
 # for internal use - don't change
@@ -123,14 +138,14 @@ endif
 
 # Tests are performed unless the value is empty / missing
 
-TEST4POLL:=1      # HAVE_KQUEUE / HAVE_EPOLL / HAVE_POLL
-TEST4SOCKET:=1    # --- adds linker flags, not compilation flags
-TEST4SSL:=1       # HAVE_OPENSSL / HAVE_BEARSSL + HAVE_S2N
-TEST4SENDFILE:=1  # HAVE_SENDFILE
-TEST4TM_ZONE:=1   # HAVE_TM_TM_ZONE
-TEST4ZLIB:=1      # HAVE_ZLIB
+TEST4POLL:=       # HAVE_KQUEUE / HAVE_EPOLL / HAVE_POLL
+TEST4SOCKET:=     # --- adds linker flags, not compilation flags
+TEST4SSL:=        # HAVE_OPENSSL / HAVE_BEARSSL + HAVE_S2N
+TEST4SENDFILE:=   # HAVE_SENDFILE
+TEST4TM_ZONE:=    # HAVE_TM_TM_ZONE
+TEST4ZLIB:=       # HAVE_ZLIB
 TEST4PG:=         # HAVE_POSTGRESQL
-TEST4ENDIAN:=1    # __BIG_ENDIAN__=?
+TEST4ENDIAN:=     # __BIG_ENDIAN__=?
 
 #############################################################################
 # facil.io compilation flag helpers
@@ -199,16 +214,32 @@ LIB_OBJS=$(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, 
 
 OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d) 
 
-# TODO: fix code so this isn't required.
-#
-# GCC (at least) >= 7 triggers some bug when -fipa-icf is enabled
-# (as in our default: -O2)
-#
-# Is there a hidden code issue in facil.io?
-#
-# https://kristerw.blogspot.com/2017/05/interprocedural-optimization-in-gcc.html
-ifeq ($(shell $(CC) -v 2>&1 | grep -o "^gcc version"),gcc version)
-  OPTIMIZATION+=-fno-ipa-icf
+#############################################################################
+# Combining single-file library
+#############################################################################
+
+ifdef LIB_CONCAT_FOLDER
+ifdef LIB_CONCAT_TARGET
+LIB_CONCAT_HEADERS=$(wildcard $(LIB_CONCAT_FOLDER)/*.h)
+LIB_CONCAT_SOURCES=$(wildcard $(LIB_CONCAT_FOLDER)/*.c)
+LIB_CONCAT_DOCS=$(wildcard $(LIB_CONCAT_FOLDER)/*.md)
+ifneq ($(LIB_CONCAT_HEADERS), $(EMPTY))
+  $(info * Building single-file header: $(LIB_CONCAT_TARGET).h)
+  $(shell rm $(LIB_CONCAT_TARGET).h 2> /dev/null)
+  $(shell cat $(LIB_CONCAT_FOLDER)/*.h >> $(LIB_CONCAT_TARGET).h)
+endif
+ifneq ($(LIB_CONCAT_SOURCES), $(EMPTY))
+  $(info * Building single-file source: $(LIB_CONCAT_TARGET).c)
+  $(shell rm $(LIB_CONCAT_TARGET).c 2> /dev/null)
+  $(shell cat $(LIB_CONCAT_FOLDER)/*.c >> $(LIB_CONCAT_TARGET).c)
+endif
+ifneq ($(LIB_CONCAT_DOCS), $(EMPTY))
+  $(info * Building documentation: $(LIB_CONCAT_TARGET).md)
+  $(shell rm $(LIB_CONCAT_TARGET).md 2> /dev/null)
+  $(shell cat $(LIB_CONCAT_FOLDER)/*.md >> $(LIB_CONCAT_TARGET).md)
+endif
+
+endif
 endif
 
 #############################################################################
@@ -225,6 +256,20 @@ TRY_RUN=$(shell $(1) >> /dev/null 2> /dev/null; echo $$?;)
 TRY_COMPILE=$(shell printf $(1) | $(CC) $(INCLUDE_STR) $(LDFLAGS) $(2) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null)
 TRY_COMPILE_AND_RUN=$(shell printf $(1) | $(CC) $(2) -xc -o ./___fio_tmp_test_ - 2> /dev/null ; ./___fio_tmp_test_ >> /dev/null 2> /dev/null; echo $$?; rm ./___fio_tmp_test_ 2> /dev/null)
 EMPTY:=
+
+#############################################################################
+# GCC bug handling.
+#
+# GCC might trigger a bug when -fipa-icf is enabled and (de)constructor
+# functions are used (as in our case with -O2 or above).
+#
+# https://gcc.gnu.org/bugzilla/show_bug.cgi?id=70306
+#############################################################################
+
+ifeq ($(shell $(CC) -v 2>&1 | grep -o "^gcc version [0-7]\." | grep -o "^gcc version"),gcc version)
+  OPTIMIZATION+=-fno-ipa-icf
+  $(info * Disabled `-fipa-icf` optimization, might be buggy with this gcc version.)
+endif
 
 #############################################################################
 # kqueue / epoll / poll Selection / Detection
@@ -555,8 +600,8 @@ endif # TEST4ENDIAN
 #############################################################################
 
 FLAGS_STR=$(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
-CFLAGS:=$(CFLAGS) -g $(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR) $(C_EXTRA_OPT)
-CXXFLAGS:=$(CXXFLAGS) $(CXXSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR) $(CXX_EXTRA_OPT)
+CFLAGS:=$(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR) $(C_EXTRA_OPT)
+CXXFLAGS:=$(CXXFLAGS) -std=$(CXXSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(INCLUDE_STR) $(CXX_EXTRA_OPT)
 LINKER_FLAGS=$(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
 CFLAGS_DEPENDENCY=-MT $@ -MMD -MP
 
@@ -588,7 +633,7 @@ $(NAME): build
 
 build: | create_tree build_objects
 	@echo "* Linking..."
-	@$(CCL) -o $(BIN) $^ $(OPTIMIZATION) $(LINKER_FLAGS)
+	@$(CCL) -o $(BIN) $(LIB_OBJS) $(MAIN_OBJS) $(OPTIMIZATION) $(LINKER_FLAGS)
 	@echo "* Finished: $(BIN)"
 	@$(DOCUMENTATION)
 
@@ -709,7 +754,8 @@ test_set_test_flag___:
 
 # test/cpp will try to compile a source file using C++ to test header integration
 .PHONY : test/cpp
-test/cpp: | test_set_test_flag___ 
+test/cpp: | create_tree test_set_test_flag___ 
+	$(eval BIN:=$(DEST)/cpp)
 	@echo "* Compiling $(TEST_ROOT)/cpp.cpp"
 	@$(CXX) -c $(TEST_ROOT)/cpp.cpp -o $(TMP_ROOT)/cpp.o $(CFLAGS_DEPENDENCY) $(CXXFLAGS) $(OPTIMIZATION) 
 	@echo "* Linking"
@@ -718,7 +764,8 @@ test/cpp: | test_set_test_flag___
 
 # test/cpp will try to compile a source file using C++ to test header integration
 .PHONY : test/db/cpp
-test/db/cpp: | set_debug_flags___ test_set_test_flag___ 
+test/db/cpp: | create_tree set_debug_flags___ test_set_test_flag___ 
+	$(eval BIN:=$(DEST)/cpp)
 	@echo "* Compiling $(TEST_ROOT)/cpp.cpp"
 	@$(CXX) -c $(TEST_ROOT)/cpp.cpp -o $(TMP_ROOT)/cpp.o $(CFLAGS_DEPENDENCY) $(CXXFLAGS) $(OPTIMIZATION) 
 	@echo "* Linking"
@@ -727,7 +774,8 @@ test/db/cpp: | set_debug_flags___ test_set_test_flag___
 
 # test/build/db/XXX will set DEBUG, compile the library and run tests/XXX.c
 .PHONY : test/lib/db/%
-test/lib/db/%: | set_debug_flags___ test_set_test_flag___ $(LIB_OBJS)
+test/lib/db/%: | create_tree set_debug_flags___ test_set_test_flag___ $(LIB_OBJS)
+	$(eval BIN:=$(DEST)/$*)
 	@echo "* Compiling $(TEST_ROOT)/$*.c"
 	@$(CC) -c $(TEST_ROOT)/$*.c -o $(TMP_ROOT)/$*.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION) 
 	@echo "* Linking"
@@ -738,7 +786,8 @@ test/lib/db/%: | set_debug_flags___ test_set_test_flag___ $(LIB_OBJS)
 
 # test/build/XXX will compile the library and compile and run tests/XXX.c
 .PHONY : test/lib/%
-test/lib/%: | test_set_test_flag___  $(LIB_OBJS)
+test/lib/%: | create_tree test_set_test_flag___  $(LIB_OBJS)
+	$(eval BIN:=$(DEST)/$*)
 	@echo "* Compiling $(TEST_ROOT)/$*.c"
 	@$(CC) -c $(TEST_ROOT)/$*.c -o $(TMP_ROOT)/$*.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION) 
 	@echo "* Linking"
@@ -748,7 +797,8 @@ test/lib/%: | test_set_test_flag___  $(LIB_OBJS)
 
 # test/build/XXX will set DEBUG and compile and run tests/XXX.c
 .PHONY : test/db/%
-test/db/%: | set_debug_flags___ test_set_test_flag___
+test/db/%: | create_tree set_debug_flags___ test_set_test_flag___
+	$(eval BIN:=$(DEST)/$*)
 	@echo "* Compiling $(TEST_ROOT)/$*.c"
 	@$(CC) -c $(TEST_ROOT)/$*.c -o $(TMP_ROOT)/$*.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION) 
 	@echo "* Linking"
@@ -759,13 +809,36 @@ test/db/%: | set_debug_flags___ test_set_test_flag___
 
 # test/build/XXX will compile and run tests/XXX.c
 .PHONY : test/%
-test/%: | test_set_test_flag___ 
+test/%: | create_tree test_set_test_flag___ 
+	$(eval BIN:=$(DEST)/$*)
 	@echo "* Compiling $(TEST_ROOT)/$*.c"
 	@$(CC) -c $(TEST_ROOT)/$*.c -o $(TMP_ROOT)/$*.o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION) 
 	@echo "* Linking"
 	@$(CCL) -o $(BIN) $(TMP_ROOT)/$*.o $(LINKER_FLAGS) $(OPTIMIZATION)
 	@echo "* Starting test:"
 	@$(BIN)
+
+ifneq ($(TEST_DEFAULT),)
+.PHONY : test%
+test: | create_tree test_set_test_flag___ 
+	$(eval BIN:=$(DEST)/$(TEST_DEFAULT))
+	@echo "* Compiling $(TEST_ROOT)/$(TEST_DEFAULT).c"
+	@$(CC) -c $(TEST_ROOT)/$(TEST_DEFAULT).c -o $(TMP_ROOT)/$(TEST_DEFAULT).o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION) 
+	@echo "* Linking"
+	@$(CCL) -o $(BIN) $(TMP_ROOT)/$(TEST_DEFAULT).o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@echo "* Starting test:"
+	@$(BIN)
+
+.PHONY : test/db%
+test/db: | create_tree set_debug_flags___ test_set_test_flag___
+	$(eval BIN:=$(DEST)/$(TEST_DEFAULT))
+	@echo "* Compiling $(TEST_ROOT)/$(TEST_DEFAULT).c"
+	@$(CC) -c $(TEST_ROOT)/$(TEST_DEFAULT).c -o $(TMP_ROOT)/$(TEST_DEFAULT).o $(CFLAGS_DEPENDENCY) $(CFLAGS) $(OPTIMIZATION) 
+	@echo "* Linking"
+	@$(CCL) -o $(BIN) $(TMP_ROOT)/$(TEST_DEFAULT).o $(LINKER_FLAGS) $(OPTIMIZATION)
+	@echo "* Starting test:"
+	@$(BIN)
+endif
 
 #############################################################################
 # Tasks - library code dumping & CMake

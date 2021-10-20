@@ -66,7 +66,7 @@ void fiobj_mustache_test(void);
 #define fiobj_mustache_test()                                                  \
   fprintf(stderr, "* FIOBJ mustache template testing reqiures DEBUG mode.\n")
 
-#endif
+#endif /* TEST || DEBUG */
 
 /* support C++ */
 #ifdef __cplusplus

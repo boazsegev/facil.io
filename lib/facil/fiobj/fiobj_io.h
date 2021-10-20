@@ -202,10 +202,11 @@ intptr_t fiobj_io_puts(FIOBJ io, const void *buf, uintptr_t len);
 void fiobj_io_test(void);
 #else
 #define fiobj_io_test()                                                        \
-  fprintf(stderr, "* FIOBJ stream extension testing requires DEBUG mode.\n");
-#endif
+  fprintf(stderr, "* FIOBJ stream extension testing requires DEBUG mode.\n")
+#endif /* TEST || DEBUG */
 
 #ifdef __cplusplus
 }
 #endif
+
 #endif /* H_FIOBJ_IO_H */

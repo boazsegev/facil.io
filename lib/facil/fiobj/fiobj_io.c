@@ -53,7 +53,7 @@ FIO_IFUNC void fiobj_io_init(fiobj_io_s *io) { *io = FIOBJ_IO_INIT; }
  * The storage type (memory vs. tmpfile) is managed automatically.
  */
 FIO_IFUNC void fiobj_io_destroy(fiobj_io_s *io) {
-  FIO_MEM_FREE(io->buf, io->capa);
+  FIOBJ_MEM_FREE(io->buf, io->capa);
   if (io->fd != -1)
     close(io->fd);
   *io = FIOBJ_IO_INIT;
@@ -77,7 +77,7 @@ FIOBJ fiobj_io_mem_new_slice(fiobj_io_s *io, size_t start_at, size_t limit) {
   FIO_ASSERT_ALLOC(FIOBJ2IO(io_));
   *FIOBJ2IO(io_) = (fiobj_io_s){
       .fd = -1,
-      .buf = FIO_MEM_CALLOC(1, limit + 1),
+      .buf = FIOBJ_MEM_REALLOC(NULL, 0, limit + 1, 0),
       .capa = limit,
       .pos = 0,
       .len = limit,
@@ -235,7 +235,7 @@ Writing API
 FIO_SFUNC fio_str_info_s fiobj_io_mem_pre_write(fiobj_io_s *io, uintptr_t len) {
   if (io->len + len >= io->capa) {
     const size_t new_capa = ((io->len + len + 1) + 15) & (~(uintptr_t)15);
-    io->buf = FIO_MEM_REALLOC(io->buf, io->capa, new_capa, io->len);
+    io->buf = FIOBJ_MEM_REALLOC(io->buf, io->capa, new_capa, io->len);
     FIO_ASSERT_ALLOC(io->buf);
     io->capa = new_capa;
   }
@@ -414,9 +414,9 @@ fio_str_info_s fiobj_io_fd_2cstr(fiobj_io_s *io) {
     goto unseekable;
   lseek(io->fd, 0, SEEK_SET);
   if (io->buf) {
-    FIO_MEM_FREE(io->buf, io->capa);
+    FIOBJ_MEM_FREE(io->buf, io->capa);
   }
-  io->buf = FIO_MEM_CALLOC(sizeof(char), len + 1);
+  io->buf = FIOBJ_MEM_REALLOC(NULL, 0, sizeof(char) * (len + 1), 0);
   FIO_ASSERT_ALLOC(io->buf);
   io->capa = len + 1;
   io->len = len;
@@ -493,10 +493,10 @@ FIO_SFUNC fio_str_info_s fiobj_io_fd_read(fiobj_io_s *io, intptr_t len) {
   }
   if (io->pos < io->len) {
     /* some data is already in the buffer, not all of it */
-    char *tmp = FIO_MEM_CALLOC(len + 1, sizeof(char));
+    char *tmp = FIOBJ_MEM_REALLOC(NULL, 0, (len + 1) * sizeof(char), 0);
     FIO_ASSERT_ALLOC(tmp);
     memcpy(tmp, io->buf + io->pos, io->len - io->pos);
-    FIO_MEM_FREE(io->buf, io->capa);
+    FIOBJ_MEM_FREE(io->buf, io->capa);
     io->capa = len + 1;
     io->buf = tmp;
     io->len = io->pos = io->len - io->pos;
@@ -509,10 +509,10 @@ FIO_SFUNC fio_str_info_s fiobj_io_fd_read(fiobj_io_s *io, intptr_t len) {
   }
   /* no relevent data in the buffer */
   if (io->buf) {
-    FIO_MEM_FREE(io->buf, io->capa);
+    FIOBJ_MEM_FREE(io->buf, io->capa);
   }
   io->capa = len + 1;
-  io->buf = FIO_MEM_CALLOC(len + 1, sizeof(char));
+  io->buf = FIOBJ_MEM_REALLOC(NULL, 0, (len + 1) * sizeof(char), 0);
   FIO_ASSERT_ALLOC(io->buf);
   l = read(io->fd, io->buf, len);
   if (l <= 0)
@@ -564,8 +564,8 @@ FIO_IFUNC fio_str_info_s fiobj_io_fd_read2ch(fiobj_io_s *io, uint8_t token) {
   while (io->capa < FIOBJ_IO_MAX_MEMORY_STORAGE) {
     size_t old_capa = io->capa;
     io->capa = ((io->capa + (8192 - 16)) & (~(size_t)0ULL << 12)) - 16;
-    FIO_MEM_REALLOC(io->buf, old_capa, io->capa, io->len);
-    (void)old_capa; /* in case it's unused by FIO_MEM_REALLOC */
+    FIOBJ_MEM_REALLOC(io->buf, old_capa, io->capa, io->len);
+    (void)old_capa; /* in case it's unused by FIOBJ_MEM_REALLOC */
     ssize_t i = read(io->fd, io->buf, io->capa - io->len);
     if (i <= 0)
       goto at_eof;
@@ -738,9 +738,9 @@ FIO_SFUNC uint32_t fiobj___io_count_noop(FIOBJ o) {
 extern FIOBJ_class_vtable_s FIOBJ___IO_CLASS_VTBL;
 
 #define FIO_EXTERN
-#define FIO_EXTERN_COMPLETE 1
+#define FIO_EXTERN_COMPLETE      1
 #define FIO_REF_CONSTRUCTOR_ONLY 1
-#define FIO_REF_NAME fiobj_io
+#define FIO_REF_NAME             fiobj_io
 #define FIO_REF_DESTROY(io)                                                    \
   do {                                                                         \
     fiobj_io_destroy(&io);                                                     \
@@ -759,9 +759,12 @@ extern FIOBJ_class_vtable_s FIOBJ___IO_CLASS_VTBL;
   do {                                                                         \
     FIOBJ_MARK_MEMORY_FREE();                                                  \
   } while (0)
-#define FIO_PTR_TAG(p) ((uintptr_t)p | FIOBJ_T_OTHER)
-#define FIO_PTR_UNTAG(p) FIOBJ_PTR_UNTAG(p)
-#define FIO_PTR_TAG_TYPE FIOBJ
+#define FIO_PTR_TAG(p)           FIOBJ_PTR_TAG(p, FIOBJ_T_OTHER)
+#define FIO_PTR_UNTAG(p)         FIOBJ_PTR_UNTAG(p)
+#define FIO_PTR_TAG_TYPE         FIOBJ
+#define FIO_MEM_REALLOC_         FIOBJ_MEM_REALLOC
+#define FIO_MEM_FREE_            FIOBJ_MEM_FREE
+#define FIO_MEM_REALLOC_IS_SAFE_ FIOBJ_MEM_REALLOC_IS_SAFE
 #include "fio-stl.h"
 
 FIOBJ_class_vtable_s FIOBJ___IO_CLASS_VTBL = {
