@@ -6317,7 +6317,7 @@ restart:
     FIO_LOG_FATAL(
         "facil.io Set / Hash Map has too many collisions (%zu/%zu)."
         "\n\t\tthis is a fatal implementation error,"
-        "please report this issue at facio.io's open source project"
+        "please report this issue at facil.io's open source project"
         "\n\t\tNote: hash maps and sets should never reach this point."
         "\n\t\tThey should be guarded against collision attacks.",
         set->pos, set->capa);
