@@ -4,6 +4,13 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
+#ifdef __MINGW32__
+// make pedantic compiler happy
+typedef struct {
+  int bogus;
+} bogus_s;
+
+#else
 #include <fio.h>
 
 /**
@@ -1010,3 +1017,4 @@ void FIO_TLS_WEAK fio_tls_destroy(fio_tls_s *tls) {
 }
 
 #endif /* Library compiler flags */
+#endif

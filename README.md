@@ -24,6 +24,18 @@ The master branch on the `git` repo is the development branch and is likely to b
 
 Please select a release version for any production needs.
 
+### Windows support
+
+Windows support is available for development and not at all recommended for production use.
+There is no ssl support.
+Only one worker is allowed, because there is no fork() support on Windows.
+Instead of unix sockets a local tcp port in the port range from 10000 to 19999 is used for inter process/thread communication, which makes things a bit slower.
+
+To get started:
+1. Install Ruby (in general a great idea) with the Devkit from [rubyinstaller.org](https://rubyinstaller.org/downloads/) and make sure, you have the commands in the path. (Or alternatively install MingW64 for Windows.)
+2. Open a cmd and enable MingW64 from the Ruby Devkit with: `ridk enable`. (Or use the appropriate command from MingW64.)
+Ready to go ...
+
 ### Who's running on `facil.io`
 
 * [Iodine, a Ruby HTTP/Websockets Ruby application server](https://github.com/boazsegev/iodine) is powered by `facil.io` - so everyone using the iodine server is running on facil.io.

@@ -15,7 +15,9 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include <http.h>
 
+#ifndef __MINGW32__
 #include <arpa/inet.h>
+#endif
 #include <errno.h>
 
 /* *****************************************************************************
@@ -121,8 +123,8 @@ static inline void http_s_destroy(http_s *h, uint8_t log) {
   fiobj_free(h->params);
 
   *h = (http_s){
-      .private_data.vtbl = h->private_data.vtbl,
-      .private_data.flag = h->private_data.flag,
+    .private_data.vtbl = h->private_data.vtbl,
+    .private_data.flag = h->private_data.flag,
   };
 }
 

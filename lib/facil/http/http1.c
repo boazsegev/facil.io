@@ -818,7 +818,7 @@ void http1_destroy(fio_protocol_s *pr) {
   http1pr_s *p = (http1pr_s *)pr;
   http1_pr2handle(p).status = 0;
   http_s_destroy(&http1_pr2handle(p), 0);
-  fio_free(p);
+  fio_free(p); // occasional Windows crash bug
   // FIO_LOG_DEBUG("Deallocated HTTP/1.1 protocol at. %p", (void *)p);
 }
 

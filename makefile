@@ -64,7 +64,7 @@ LINKER_LIBS=pthread m
 # optimization level.
 OPTIMIZATION=-O2 -march=native
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
-WARNINGS= -Wshadow -Wall -Wextra -Wno-missing-field-initializers -Wpedantic
+WARNINGS= -Wshadow -Wall -Wextra -Wno-missing-field-initializers -Wpedantic -Wno-error=cast-function-type
 # any extra include folders, space seperated list. (i.e. `pg_config --includedir`)
 INCLUDE= ./
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
@@ -131,13 +131,22 @@ endif
 # OS Specific Settings (debugger, disassembler, etc')
 #############################################################################
 
-
 ifneq ($(OS),Windows_NT)
 	OS := $(shell uname)
-else
-	$(warning *** Windows systems might not work with this makefile / library.)
 endif
-ifeq ($(OS),Darwin) # Run MacOS commands
+
+WINSOCK:=
+
+ifeq ($(OS),Windows_NT)
+ifdef DEBUG
+OPTIMIZATION:=-O0 -march=native -mthreads -fno-omit-frame-pointer
+else
+OPTIMIZATION += -mthreads
+endif
+WARNINGS += -Wno-format -Wno-error=unused-parameter
+LINKER_LIBS += Ws2_32
+LDFLAGS += -static
+else ifeq ($(OS),Darwin) # Run MacOS commands
 	# debugger
 	DB=lldb
 	# disassemble tool. Use stub to disable.
@@ -199,9 +208,15 @@ OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d)
 # TRY_COMPILE_AND_RUN returns the program's shell code as string.
 #############################################################################
 
+ifeq ($(OS),Windows_NT)
+# compiling with -o /dev/null doesnt work on Windows with MingW64
+TRY_COMPILE=$(shell printf $(1) | $(CC) $(INCLUDE_STR) $(LDFLAGS) -xc - $(2) >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null)
+else
 TRY_COMPILE=$(shell printf $(1) | $(CC) $(INCLUDE_STR) $(LDFLAGS) $(2) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null)
+endif
 TRY_COMPILE_AND_RUN=$(shell printf $(1) | $(CC) $(2) -xc -o ./___fio_tmp_test_ - 2> /dev/null ; ./___fio_tmp_test_ >> /dev/null 2> /dev/null; echo $$?; rm ./___fio_tmp_test_ 2> /dev/null)
 EMPTY:=
+WINSOCK:= -lWs2_32
 
 #############################################################################
 # kqueue / epoll / poll Selection / Detection
@@ -241,6 +256,20 @@ int main(void) {\\n\
 }\\n\
 "
 
+FIO_POLL_TEST_WSAPOLL := "\\n\
+\#define _GNU_SOURCE\\n\
+\#include <winsock2.h>\\n\
+\#include <ws2tcpip.h>\\n\
+int main(void) {\\n\
+  WSADATA wsa_data;\\n\
+  WSAStartup(MAKEWORD(2,2), &wsa_data);\\n\
+	struct pollfd plist[18];\\n\
+	memset(plist, 0, sizeof(plist[0]) * 18);\\n\
+	WSAPoll(plist, 1, 1);\\n\
+	WSACleanup();\\n\
+}\\n\
+"
+
 # Test for manual selection and then TRY_COMPILE with each polling engine
 ifdef FIO_POLL
   $(info * Skipping polling tests, enforcing manual selection of: poll)
@@ -263,6 +292,9 @@ else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_KQUEUE), $(EMPTY)), 0)
 else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_POLL), $(EMPTY)), 0)
   $(info * Detected `poll` - this is suboptimal fallback!)
 	FLAGS:=$(FLAGS) FIO_ENGINE_POLL
+else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_WSAPOLL), $(WINSOCK)), 0)
+  $(info * Detected `wsapoll`)
+	FLAGS:=$(FLAGS) FIO_ENGINE_WSAPOLL
 else
 	$(warning No supported polling engine! won't be able to compile facil.io)
 endif
@@ -366,8 +398,9 @@ int main(void) {\\n\
 	return connect(fd, (struct sockaddr *)&addr, sizeof addr) < 0 ? 1 : 0;\\n\
 }\\n\
 "
-
-ifeq ($(call TRY_COMPILE, $(FIO_TEST_SOCKET_AND_NETWORK_SERVICE), $(EMPTY)), 0)
+ifeq ($(OS),Windows_NT)
+  $(info * Using Winsock2)
+else ifeq ($(call TRY_COMPILE, $(FIO_TEST_SOCKET_AND_NETWORK_SERVICE), $(EMPTY)), 0)
   $(info * Detected socket API without additional libraries)
 else ifeq ($(call TRY_COMPILE, $(FIO_TEST_SOCKET_AND_NETWORK_SERVICE), "-lsocket" "-lnsl"), 0)
   $(info * Detected socket API from libsocket and libnsl)
@@ -817,5 +850,3 @@ vars:
 	@echo "LINKER_LIBS_EXT: $(LINKER_LIBS_EXT)"
 	@echo ""
 	@echo "LINKER_FLAGS: $(LINKER_FLAGS)"
-
-

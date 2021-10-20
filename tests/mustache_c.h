@@ -138,12 +138,20 @@ static void mustache_on_formatting_error(void *udata1, void *udata2) {
 
 static inline void save2file(char const *filename, char const *data,
                              size_t length) {
+#ifdef __MINGW32__
+  int fd = _open(filename, _O_CREAT | _O_RDWR);
+#else
   int fd = open(filename, O_CREAT | O_RDWR, 0);
+#endif
   if (fd == -1) {
     perror("Couldn't open / create file for template testing");
     exit(-1);
   }
+#ifdef __MINGW32__
+  _chmod(filename, _S_IREAD | _S_IWRITE);
+#else
   fchmod(fd, 0777);
+#endif
   if (pwrite(fd, data, length, 0) != (ssize_t)length) {
     perror("Mustache template write error");
     exit(-1);

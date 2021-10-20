@@ -493,6 +493,7 @@ static void redis_pub_ping(intptr_t uuid, fio_protocol_s *pr) {
     return;
   }
   redis_commands_s *cmd = fio_malloc(sizeof(*cmd) + 15);
+  FIO_ASSERT_ALLOC(cmd);
   *cmd = (redis_commands_s){.cmd_len = 14};
   memcpy(cmd->cmd, "*1\r\n$4\r\nPING\r\n\0", 15);
   redis_attach_cmd(r, cmd);
@@ -534,6 +535,7 @@ static void redis_on_connect(intptr_t uuid, void *i_) {
     r = pub2redis(i);
     if (r->auth_len) {
       redis_commands_s *cmd = fio_malloc(sizeof(*cmd) + r->auth_len);
+      FIO_ASSERT_ALLOC(cmd);
       *cmd =
           (redis_commands_s){.cmd_len = r->auth_len, .callback = redis_on_auth};
       memcpy(cmd->cmd, r->auth, r->auth_len);
@@ -638,6 +640,7 @@ static void redis_on_publish_root(const fio_pubsub_engine_s *eng,
                                   uint8_t is_json) {
   redis_engine_s *r = (redis_engine_s *)eng;
   redis_commands_s *cmd = fio_malloc(sizeof(*cmd) + channel.len + msg.len + 96);
+  FIO_ASSERT_ALLOC(cmd);
   *cmd = (redis_commands_s){.cmd_len = 0};
   memcpy(cmd->cmd, "*3\r\n$7\r\nPUBLISH\r\n$", 18);
   char *buf = (char *)cmd->cmd + 18;
