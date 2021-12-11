@@ -60,7 +60,7 @@ int main(int argc, char const **argv) {
   // listen on port 3000 and any available network binding (NULL == 0.0.0.0)
   http_listen("3000", NULL, .on_request = on_request, .log = 1);
   // start the server
-  facil_run(.threads = 1);
+  facil_start(.threads = 1);
   // deallocating the common values
   fiobj_free(HTTP_X_DATA);
 }
