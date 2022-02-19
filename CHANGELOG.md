@@ -1,8 +1,8 @@
 # Change Log
 
-**Fix**: fixed some 32 bit compatibility concerns. Credit to Franz Brausse ( @fbrausse ) for the [PR @ boazsegev/facil.io#96](https://github.com/boazsegev/facil.io/pull/96).
-
 ### v. 0.7.6 (2022-02-19)
+
+**Fix**: fixed some 32 bit compatibility concerns. Credit to Franz Brausse ( @fbrausse ) for the [PR @ boazsegev/facil.io#96](https://github.com/boazsegev/facil.io/pull/96).
 
 **Fix**: (`fiobj`) fixes an issue with type testing for `FIOBJ_T_NUMBER`. Credit goes to @alvkeke for opening issue #141.
 
