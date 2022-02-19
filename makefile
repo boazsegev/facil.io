@@ -62,9 +62,9 @@ LIB_PRIVATE_SUBFOLDERS=
 # any libraries required (only names, ommit the "-l" at the begining)
 LINKER_LIBS=pthread m
 # optimization level.
-OPTIMIZATION=-O2 -march=native
+OPTIMIZATION=-O2
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
-WARNINGS= -Wshadow -Wall -Wextra -Wno-missing-field-initializers -Wpedantic -Wno-error=cast-function-type
+WARNINGS= -Wshadow -Wall -Wextra -Wno-missing-field-initializers -Wpedantic
 # any extra include folders, space seperated list. (i.e. `pg_config --includedir`)
 INCLUDE= ./
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
@@ -105,7 +105,7 @@ ifdef DEBUG
   $(info * Detected DEBUG environment flag, enforcing debug mode compilation)
 	FLAGS:=$(FLAGS) DEBUG
 	# # comment the following line if you want to use a different address sanitizer or a profiling tool.
-	OPTIMIZATION:=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer
+	OPTIMIZATION:=-O0 -fsanitize=address -fno-omit-frame-pointer
 	# possibly useful:  -Wconversion -Wcomma -fsanitize=undefined -Wshadow
 	# go crazy with clang: -Weverything -Wno-cast-qual -Wno-used-but-marked-unused -Wno-reserved-id-macro -Wno-padded -Wno-disabled-macro-expansion -Wno-documentation-unknown-command -Wno-bad-function-cast -Wno-missing-prototypes
 else

@@ -147,8 +147,8 @@ FIO_INLINE double fiobj_obj2float(const FIOBJ obj);
 /**
  * Returns a C String (NUL terminated) using the `fio_str_info_s` data type.
  *
- * The String is binary safe and might contain NUL bytes in the middle as well as
- * a terminating NUL.
+ * The String is binary safe and might contain NUL bytes in the middle as well
+ * as a terminating NUL.
  *
  * If a Number or a Float are passed to the function, they
  * will be parsed as a *temporary*, thread-safe, String.
@@ -270,7 +270,8 @@ FIO_INLINE size_t fiobj_type_is(FIOBJ o, fiobj_type_enum type) {
   switch (type) {
   case FIOBJ_T_NUMBER:
     return (o & FIOBJECT_NUMBER_FLAG) ||
-           ((fiobj_type_enum *)o)[0] == FIOBJ_T_NUMBER;
+           (o && !(o & FIOBJECT_PRIMITIVE_FLAG) &&
+            ((fiobj_type_enum *)o)[0] == FIOBJ_T_NUMBER);
   case FIOBJ_T_NULL:
     return !o || o == fiobj_null();
   case FIOBJ_T_TRUE:

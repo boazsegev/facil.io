@@ -2,6 +2,10 @@
 
 **Fix**: fixed some 32 bit compatibility concerns. Credit to Franz Brausse ( @fbrausse ) for the [PR @ boazsegev/facil.io#96](https://github.com/boazsegev/facil.io/pull/96).
 
+### v. 0.7.6 (2022-02-19)
+
+**Fix**: (`fiobj`) fixes an issue with type testing for `FIOBJ_T_NUMBER`. Credit goes to @alvkeke for opening issue #141.
+
 ### v. 0.7.5 (2020-05-18)
 
 **Security**: backport the 0.8.x HTTP/1.1 parser and it's security updates to the 0.7.x version branch. This fixes a request smuggling attack vector and Transfer Encoding attack vector that were exposed by Sam Sanoop from [the Snyk Security team (snyk.io)](https://snyk.io). The parser was updated to deal with these potential issues.

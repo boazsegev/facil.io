@@ -109,7 +109,7 @@ Version and helper macros
 
 #define FIO_VERSION_MAJOR 0
 #define FIO_VERSION_MINOR 7
-#define FIO_VERSION_PATCH 4
+#define FIO_VERSION_PATCH 6
 #define FIO_VERSION_BETA 0
 
 /* Automatically convert version data to a string constant - ignore these two */
@@ -221,6 +221,7 @@ Version and helper macros
 #include <unistd.h>
 #ifdef __MINGW32__
 #include <winsock2.h>
+
 #include <winsock.h>
 #include <ws2tcpip.h>
 #endif
@@ -251,10 +252,10 @@ Version and helper macros
 #endif
 
 #ifdef __MINGW32__
-#define	__S_IFMT	              0170000
-#define __S_IFLNK               0120000
-#define	__S_ISTYPE(mode, mask)	(((mode) & __S_IFMT) == (mask))
-#define S_ISLNK(mode)	          __S_ISTYPE((mode), __S_IFLNK)
+#define __S_IFMT 0170000
+#define __S_IFLNK 0120000
+#define __S_ISTYPE(mode, mask) (((mode)&__S_IFMT) == (mask))
+#define S_ISLNK(mode) __S_ISTYPE((mode), __S_IFLNK)
 
 #define SIGKILL 9
 #define SIGTERM 15
@@ -264,7 +265,7 @@ Version and helper macros
 
 int fork(void);
 int kill(int, int);
-ssize_t pread(int, void*, size_t, off_t);
+ssize_t pread(int, void *, size_t, off_t);
 ssize_t pwrite(int, const void *, size_t, off_t);
 #endif
 
@@ -4742,14 +4743,11 @@ static FIO_ARY_TYPE const FIO_NAME(s___const_invalid_object);
 /* minimizes allocation "dead space" by alligning allocated length to 16bytes */
 #undef FIO_ARY_SIZE2WORDS
 #define FIO_ARY_SIZE2WORDS(size)                                               \
-  ((sizeof(FIO_ARY_TYPE) & 1)                                                  \
-       ? (((size) & (~15)) + 16)                                               \
-       : (sizeof(FIO_ARY_TYPE) & 2)                                            \
-             ? (((size) & (~7)) + 8)                                           \
-             : (sizeof(FIO_ARY_TYPE) & 4)                                      \
-                   ? (((size) & (~3)) + 4)                                     \
-                   : (sizeof(FIO_ARY_TYPE) & 8) ? (((size) & (~1)) + 2)        \
-                                                : (size))
+  ((sizeof(FIO_ARY_TYPE) & 1)   ? (((size) & (~15)) + 16)                      \
+   : (sizeof(FIO_ARY_TYPE) & 2) ? (((size) & (~7)) + 8)                        \
+   : (sizeof(FIO_ARY_TYPE) & 4) ? (((size) & (~3)) + 4)                        \
+   : (sizeof(FIO_ARY_TYPE) & 8) ? (((size) & (~1)) + 2)                        \
+                                : (size))
 
 /* *****************************************************************************
 Array API
@@ -6047,7 +6045,7 @@ FIO_NAME(_insert_or_overwrite_)(FIO_NAME(s) * set, FIO_SET_HASH_TYPE hash_value,
   pos->hash = hash_value;
   pos->pos->hash = hash_value;
   FIO_SET_COPY(pos->pos->obj, obj);
-  
+
   return pos->pos->obj;
 }
 
