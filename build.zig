@@ -31,6 +31,7 @@ pub fn build(b: *std.Build) !void {
     try flags.append("-DFIO_HTTP_EXACT_LOGGING");
 
     // Include paths
+    lib.addIncludePath(".");
     lib.addIncludePath("lib/facil");
     lib.addIncludePath("lib/facil/fiobj");
     lib.addIncludePath("lib/facil/http");
@@ -88,7 +89,7 @@ pub fn build(b: *std.Build) !void {
         "lib/facil/http/websockets.h",
         "lib/facil/fio.h",
     };
-    for (headers) |h| lib.installHeader(h, h);
+    for (headers) |h| lib.installHeader(h, std.fs.path.basename(h));
 
     // This declares intent for the library to be installed into the standard
     // location when the user invokes the "install" step (the default step when
