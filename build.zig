@@ -57,6 +57,39 @@ pub fn build(b: *std.Build) !void {
     // link against libc
     lib.linkLibC();
 
+    // install ("export") headers that might be needed
+    const headers = [_][]const u8{
+        // "lib/facil/legacy/fio_mem.h",
+        // "lib/facil/redis/resp_parser.h",
+        // "lib/facil/redis/redis_engine.h",
+        "lib/facil/fiobj/fiobj_data.h",
+        "lib/facil/fiobj/fiobj_json.h",
+        "lib/facil/fiobj/fiobj_hash.h",
+        "lib/facil/fiobj/fiobj_ary.h",
+        "lib/facil/fiobj/fiobj_numbers.h",
+        "lib/facil/fiobj/fio_tmpfile.h",
+        "lib/facil/fiobj/mustache_parser.h",
+        "lib/facil/fiobj/fiobj_mustache.h",
+        "lib/facil/fiobj/fiobj4fio.h",
+        "lib/facil/fiobj/fio_json_parser.h",
+        "lib/facil/fiobj/fiobject.h",
+        "lib/facil/fiobj/fiobj_str.h",
+        "lib/facil/fiobj/fiobj.h",
+        "lib/facil/fiobj/fio_siphash.h",
+        // "lib/facil/tls/fio_tls.h",
+        // "lib/facil/cli/fio_cli.h",
+        "lib/facil/http/parsers/hpack.h",
+        "lib/facil/http/parsers/websocket_parser.h",
+        "lib/facil/http/parsers/http1_parser.h",
+        "lib/facil/http/parsers/http_mime_parser.h",
+        "lib/facil/http/http_internal.h",
+        "lib/facil/http/http.h",
+        "lib/facil/http/http1.h",
+        "lib/facil/http/websockets.h",
+        "lib/facil/fio.h",
+    };
+    for (headers) |h| lib.installHeader(h, h);
+
     // This declares intent for the library to be installed into the standard
     // location when the user invokes the "install" step (the default step when
     // running `zig build`).
