@@ -40,6 +40,7 @@ pub fn build(b: *std.Build) !void {
     // C source files
     lib.addCSourceFiles(&.{
         "lib/facil/fio.c",
+        "lib/facil/fio_zig.c",
         "lib/facil/http/http.c",
         "lib/facil/http/http1.c",
         "lib/facil/http/websockets.c",
