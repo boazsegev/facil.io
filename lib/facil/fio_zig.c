@@ -43,6 +43,14 @@ int fio_log_level_info = FIO_LOG_LEVEL_INFO;
 /** Log everything, including debug messages. */
 int fio_log_level_debug = FIO_LOG_LEVEL_DEBUG;
 
+void fio_set_log_level(int level) {
+    FIO_LOG_LEVEL = level;
+}
+
+int fio_get_log_level() {
+    return FIO_LOG_LEVEL;
+}
+
 void fio_log_print(int level, const char* msg) {
     FIO_LOG_PRINT(level, "%s", msg);
 }
