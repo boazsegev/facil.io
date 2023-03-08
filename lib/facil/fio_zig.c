@@ -12,6 +12,9 @@ void fiobj_free_wrapped(FIOBJ o) {
     FIOBJECT2VTBL(o)->dealloc(o, NULL, NULL);
 }
 
+void fio_log_debug(const char* msg) {
+    FIO_LOG_DEBUG("%s", msg);
+}
 void fio_log_info(const char* msg) {
     FIO_LOG_INFO("%s", msg);
 }
