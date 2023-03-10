@@ -27,7 +27,13 @@ pub fn build(b: *std.Build) !void {
     if (lib.optimize != .Debug) try flags.append("-Os");
     try flags.append("-Wno-return-type-c-linkage");
     try flags.append("-fno-sanitize=undefined");
-    try flags.append("-DFIO_OVERRIDE_MALLOC");
+
+    //
+    // let's not override malloc from within the lib
+    // when used as lib, not sure if it would work as expected anyway
+    // try flags.append("-DFIO_OVERRIDE_MALLOC");
+    //
+
     try flags.append("-DFIO_HTTP_EXACT_LOGGING");
 
     // Include paths
