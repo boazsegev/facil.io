@@ -1,6 +1,13 @@
 #include <fio.h>
 #include <fiobject.h>
 
+int fiobj_invalid = FIOBJ_INVALID;
+
+int is_invalid(FIOBJ o) {
+    if(o == FIOBJ_INVALID) return 1;
+    return 0;
+}
+
 void fiobj_free_wrapped(FIOBJ o) {
   if (!FIOBJ_IS_ALLOCATED(o))
     return;
