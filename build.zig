@@ -40,6 +40,7 @@ pub fn build(b: *std.Build) !void {
     lib.addIncludePath(".");
     lib.addIncludePath("lib/facil");
     lib.addIncludePath("lib/facil/fiobj");
+    lib.addIncludePath("lib/facil/cli");
     lib.addIncludePath("lib/facil/http");
     lib.addIncludePath("lib/facil/http/parsers");
 
@@ -60,6 +61,7 @@ pub fn build(b: *std.Build) !void {
         "lib/facil/fiobj/fiobj_json.c",
         "lib/facil/fiobj/fiobject.c",
         "lib/facil/fiobj/fiobj_mustache.c",
+        "lib/facil/cli/fio_cli.c",
     }, flags.items);
 
     // link against libc
@@ -85,7 +87,7 @@ pub fn build(b: *std.Build) !void {
         "lib/facil/fiobj/fiobj.h",
         "lib/facil/fiobj/fio_siphash.h",
         // "lib/facil/tls/fio_tls.h",
-        // "lib/facil/cli/fio_cli.h",
+        "lib/facil/cli/fio_cli.h",
         "lib/facil/http/parsers/hpack.h",
         "lib/facil/http/parsers/websocket_parser.h",
         "lib/facil/http/parsers/http1_parser.h",
