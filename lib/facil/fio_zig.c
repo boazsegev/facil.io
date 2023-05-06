@@ -61,3 +61,72 @@ int fio_get_log_level() {
 void fio_log_print(int level, const char* msg) {
     FIO_LOG_PRINT(level, "%s", msg);
 }
+
+#include <websockets.h>
+struct websocket_subscribe_s_zigcompat {
+  /** the websocket receiving the message. REQUIRED. */
+  ws_s *ws;
+  /** the channel where the message was published. */
+  fio_str_info_s channel;
+  /**
+   * The callback that handles pub/sub notifications.
+   *
+   * Default: send directly to websocket client.
+   */
+  void (*on_message)(ws_s *ws, fio_str_info_s channel, fio_str_info_s msg,
+                     void *udata);
+  /**
+   * An optional cleanup callback for the `udata`.
+   */
+  void (*on_unsubscribe)(void *udata);
+  /** User opaque data, passed along to the notification. */
+  void *udata;
+  /** An optional callback for pattern matching. */
+  fio_match_fn match;
+  /**
+   * When using client forwarding (no `on_message` callback), this indicates if
+   * messages should be sent to the client as binary blobs, which is the safest
+   * approach.
+   *
+   * Default: tests for UTF-8 data encoding and sends as text if valid UTF-8.
+   * Messages above ~32Kb are always assumed to be binary.
+   */
+  unsigned char force_binary;
+  /**
+   * When using client forwarding (no `on_message` callback), this indicates if
+   * messages should be sent to the client as text.
+   *
+   * `force_binary` has precedence.
+   *
+   * Default: see above.
+   *
+   */
+  unsigned char force_text;
+};
+
+/**
+ * Subscribes to a channel. See {struct websocket_subscribe_s} for possible
+ * arguments.
+ *
+ * Returns a subscription ID on success and 0 on failure.
+ *
+ * All subscriptions are automatically revoked once the websocket is closed.
+ *
+ * If the connections subscribes to the same channel more than once, messages
+ * will be merged. However, another subscription ID will be assigned, since two
+ * calls to {websocket_unsubscribe} will be required in order to unregister from
+ * the channel.
+ */
+uintptr_t websocket_subscribe_zigcompat(struct websocket_subscribe_s_zigcompat args)
+{
+    return websocket_subscribe(args.ws,
+        // .ws = args.ws,
+        .channel = args.channel,
+        .on_message = args.on_message,
+        .on_unsubscribe = args.on_unsubscribe,
+        .udata = args.udata,
+        .match = args.match,
+        .force_binary = args.force_binary & 1,
+        .force_text = args.force_text & 1,
+    );
+}
