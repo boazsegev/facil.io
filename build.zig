@@ -35,6 +35,8 @@ pub fn build(b: *std.Build) !void {
     //
 
     try flags.append("-DFIO_HTTP_EXACT_LOGGING");
+    if (target.getAbi() == .musl)
+        try flags.append("-D_LARGEFILE64_SOURCE");
 
     // Include paths
     lib.addIncludePath(".");
