@@ -38,13 +38,16 @@ pub fn build(b: *std.Build) !void {
     if (target.getAbi() == .musl)
         try flags.append("-D_LARGEFILE64_SOURCE");
 
+    ////// TODO DELETEME     exe.addIncludePath(.{ .path = tracy_path });
+    ////// TODO DELETEME     exe.addCSourceFile(.{ .file = .{ .path = client_cpp }, .flags = tracy_c_flags });
+
     // Include paths
-    lib.addIncludePath(".");
-    lib.addIncludePath("lib/facil");
-    lib.addIncludePath("lib/facil/fiobj");
-    lib.addIncludePath("lib/facil/cli");
-    lib.addIncludePath("lib/facil/http");
-    lib.addIncludePath("lib/facil/http/parsers");
+    lib.addIncludePath(.{ .path = "." });
+    lib.addIncludePath(.{ .path = "lib/facil" });
+    lib.addIncludePath(.{ .path = "lib/facil/fiobj" });
+    lib.addIncludePath(.{ .path = "lib/facil/cli" });
+    lib.addIncludePath(.{ .path = "lib/facil/http" });
+    lib.addIncludePath(.{ .path = "lib/facil/http/parsers" });
 
     // C source files
     lib.addCSourceFiles(&.{
