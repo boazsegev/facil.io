@@ -423,7 +423,11 @@ static void fio_tls_build_context(fio_tls_s *tls) {
             X509_INFO *tmp = sk_X509_INFO_value(inf, i);
             if (tmp->x509) {
               FIO_LOG_DEBUG("TLS adding certificate from PEM file.");
-              SSL_CTX_use_certificate(tls->ctx, tmp->x509);
+              if (i == 0) {
+                SSL_CTX_use_certificate(tls->ctx, tmp->x509);
+              } else {
+                SSL_CTX_add1_chain_cert(tls->ctx, tmp->x509);
+              }
             }
             if (tmp->x_pkey) {
               FIO_LOG_DEBUG("TLS adding private key from PEM file.");
