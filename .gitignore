@@ -17,3 +17,6 @@ docs/assets/styles/main.css.map
 tests/xxhash.h
 tests/xxhash.c
 tests/words.txt
+
+zig-out
+zig-cache
