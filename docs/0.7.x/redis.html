@@ -172,6 +172,11 @@
 <p><strong>Note</strong>: Avoid calling Pub/Sub commands using this function, as it could violate the Redis connection&#39;s protocol and could prevent the communication from resuming.</p>
 
 <p><strong>Note2</strong>: The Redis extension is designed for resource conservation, not speed. This might not be the best way to use Redis as a database and should be considered available for occasional use rather than heavy use.</p>
+<p><strong>Note3</strong>: This extension is mostly meant to be used for Pub/Sub mechanism, however it can execute standard Redis commands. Thus, whereas this is possible to use FIOBJ Strings to create Redis commands, those <strong>can</strong> be parsed or interpreted by Redis <strong>incorrectly</strong> 
+    i.e. <code>SET</code> command will have an effect (Redis will set a value), however simple <code>GET</code> most probably will not work (the asynchronous callback will not be called at all).
+    To avoid such issues, and hours of debugging, consider using FIOBJ Hash objects to send simple, plain Redis commands. In case of Pub/Sub commands, this <strong>won't</strong> work as it is stated in the first <b>Note</b> section. 
+</p>
+
 
 <h3 id="the-resp-parser">The RESP parser</h3>
 
