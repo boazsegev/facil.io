@@ -5,6 +5,8 @@
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/2abeba588afb444ca6d92e68ccfbe36b)](https://www.codacy.com/app/boazsegev/facil.io?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=boazsegev/facil.io&amp;utm_campaign=Badge_Grade)
 [![codecov](https://codecov.io/gh/boazsegev/facil.io/branch/master/graph/badge.svg)](https://codecov.io/gh/boazsegev/facil.io)
 
+**Note**: Development is currently performed in the **[facil.io C STL repo](https://github.com/facil-io/cstl)**.
+
 [facil.io](http://facil.io) is a C micro-framework for web applications. facil.io includes:
 
 * A fast HTTP/1.1 and Websocket static file + application server.
