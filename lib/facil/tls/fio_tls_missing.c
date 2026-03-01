@@ -26,7 +26,7 @@ typedef struct {
  */
 #include "fio_tls.h"
 
-#if !defined(FIO_TLS_FOUND) /* Library compiler flags */
+#if 1 /* TODO: place library compiler flags here */
 
 #define REQUIRE_LIBRARY()
 #define FIO_TLS_WEAK
