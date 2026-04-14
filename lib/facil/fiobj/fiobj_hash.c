@@ -218,7 +218,7 @@ int fiobj_hash_set(FIOBJ hash, FIOBJ key, FIOBJ obj) {
 FIOBJ fiobj_hash_pop(FIOBJ hash, FIOBJ *key) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
   FIOBJ old;
-  if (fio_hash___count(&obj2hash(hash)->hash))
+  if (!fio_hash___count(&obj2hash(hash)->hash))
     return FIOBJ_INVALID;
   old = fiobj_dup(fio_hash___last(&obj2hash(hash)->hash).obj);
   if (key)
