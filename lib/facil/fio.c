@@ -3126,18 +3126,25 @@ static intptr_t fio_unix_socket(const char *address, uint8_t server) {
   }
   if (server) {
     unlink(addr.sun_path);
-    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+#ifndef FIO_SOCK_AVOID_UMASK
+    int org_umask = umask(0x1FF);
+    int btmp = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
+    umask(org_umask);
+#else
+    int btmp = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
+#endif
+    if (btmp == -1) {
       // perror("couldn't bind unix socket");    
-      close(fd);
-      return -1;
-    }
-    if (listen(fd, SOMAXCONN) < 0) {
-      // perror("couldn't start listening to unix socket");    
       close(fd);
       return -1;
     }
     /* chmod for foreign connections */
     fchmod(fd, 0777);
+    if (listen(fd, SOMAXCONN) < 0) {
+      // perror("couldn't start listening to unix socket");    
+      close(fd);
+      return -1;
+    }
   } else {
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1 &&
         errno != EINPROGRESS) {   

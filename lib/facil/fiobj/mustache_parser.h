@@ -29,7 +29,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/types.h>
 
 #ifdef __MINGW32__
-ssize_t pread(int, void*, size_t, off_t);
+ssize_t pread(int, void *, size_t, off_t);
 #endif
 
 #if !defined(__GNUC__) && !defined(__clang__) && !defined(FIO_GNUC_BYPASS)
@@ -1159,7 +1159,7 @@ error:
 }
 
 /* *****************************************************************************
-Building the instrustion list (parsing the template)
+Building the instruction list (parsing the template)
 ***************************************************************************** */
 
 /* The parsing implementation, converts a template to an instruction array */

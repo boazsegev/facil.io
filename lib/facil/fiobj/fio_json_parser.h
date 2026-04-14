@@ -393,7 +393,7 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
         goto error;
       break;
     case ']':
-      if ((parser->dict & 1))
+      if ((parser->dict & 1) || !parser->depth)
         goto error;
       --parser->depth;
       ++pos;
@@ -453,12 +453,12 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
       long long i = fio_atol((char **)&tmp);
       if (tmp > limit)
         goto stop;
-      if (!tmp || JSON_NUMERAL[*tmp]) {
+      if (!tmp || tmp == pos || JSON_NUMERAL[*tmp]) {
         tmp = pos;
         double f = fio_atof((char **)&tmp);
         if (tmp > limit)
           goto stop;
-        if (!tmp || JSON_NUMERAL[*tmp])
+        if (!tmp || tmp == pos || JSON_NUMERAL[*tmp])
           goto error;
         fio_json_on_float(parser, f);
         pos = tmp;
@@ -481,8 +481,9 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
       if (pos[1] == '*') {
         if (pos + 4 > limit)
           goto stop;
-        uint8_t *tmp = pos + 3; /* avoid this: /*/
+        uint8_t *tmp = pos + 2; /* avoid this: /*/
         do {
+          ++tmp;
           tmp = memchr(tmp, '/', (uintptr_t)(limit - tmp));
         } while (tmp && tmp[-1] != '*');
         if (!tmp)
