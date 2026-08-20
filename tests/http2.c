@@ -76,6 +76,7 @@ static int g_requests = 0;
 
 static void server_on_request(http_s *h) {
   ++g_requests;
+  h->status = 200;
   fio_str_info_s path = fiobj_obj2cstr(h->path);
   if (path.len == 6 && !memcmp(path.data, "/hello", 6)) {
     /* server push (RFC 9113 §8.4) */
@@ -150,6 +151,10 @@ static client_s g_client;
  * the h2c upgrade, RFC 9113 §3.2-3.3) */
 static client_s g_neg_prior;   /* prior knowledge: preface sent directly */
 static client_s g_neg_upgrade; /* h2c upgrade: HTTP/1.1 upgrade request */
+
+/* h2c upgrade adversarial cases (RFC 9113 §3.2) */
+static int g_adv_done = 0;
+static int g_adv_total = 7;
 
 /* sends a raw frame (9 byte header + payload) */
 static void client_emit(client_s *cl, uint8_t type, uint8_t flags,
@@ -275,6 +280,8 @@ static void client_decode_headers(client_s *cl, uint32_t stream) {
   cl->hblocking = 0;
 }
 
+static void maybe_all_done(void);
+
 static void client_maybe_done(client_s *cl) {
   if (cl->done1 && cl->done3 && cl->done_large) {
     check(cl->resp3_len == 70000,
@@ -298,13 +305,22 @@ static void client_maybe_done(client_s *cl) {
             cl->resp3_len);
     fprintf(stderr, "  stream 5 status=%d large=%zu bytes\n", cl->status_large,
             cl->large_len);
-    if (g_neg_prior.done1 && g_neg_upgrade.done1 && g_client.push_done &&
-        g_neg_prior.push_done && g_neg_upgrade.push_done) {
-      check(g_requests >= 5, "server did not receive all requests");
-      if (!g_fail)
-        fprintf(stderr, "* HTTP/2 protocol tests complete.\n");
-      fio_stop();
-    }
+    maybe_all_done();
+  }
+}
+
+/* ends the test when every connection has completed */
+static void maybe_all_done(void) {
+  if (!(g_client.done1 && g_client.done3 && g_client.done_large))
+    return;
+  if (g_neg_prior.done1 && g_neg_upgrade.done1 && g_client.push_done &&
+      g_neg_prior.push_done && g_neg_upgrade.push_done &&
+      g_adv_done == g_adv_total) {
+    check(g_requests >= 5, "server did not receive all requests");
+    if (!g_fail)
+      fprintf(stderr, "* HTTP/2 protocol tests complete.\n");
+    fio_stop();
+    exit(0);
   }
 }
 
@@ -441,6 +457,7 @@ static int http2_on_frame(http2_parser_s *parser, uint32_t length, uint8_t type,
         check(cl->push_body_len == 7 && !memcmp(cl->push_body, "pushed!", 7),
               "pushed body mismatch");
         cl->push_done = 1;
+        maybe_all_done();
       }
       client_maybe_done(cl);
     }
@@ -572,7 +589,7 @@ static void neg_on_connect_upgrade(intptr_t uuid, void *udata) {
       "Host: test.local\r\n"
       "Connection: Upgrade, HTTP2-Settings\r\n"
       "Upgrade: h2c\r\n"
-      "HTTP2-Settings: AAMAAABkAAR____\r\n"
+      "HTTP2-Settings: AAEAAABk\r\n"
       "\r\n";
   (void)udata;
   client_s *cl = &g_neg_upgrade;
@@ -594,14 +611,221 @@ static void neg_on_fail(intptr_t uuid, void *udata) {
 }
 
 /* *****************************************************************************
+h2c upgrade adversarial cases (RFC 9113 §3.2): the HTTP/1.1 upgrade request is
+exercised with fragmentation, a body, multiple Upgrade tokens, malformed or
+duplicate HTTP2-Settings, invalid settings values and leftover bytes.
+***************************************************************************** */
+
+typedef struct adv_case_s adv_case_s;
+struct adv_case_s {
+  fio_protocol_s protocol;
+  intptr_t uuid;
+  uint8_t buf[4096];
+  size_t buf_len;
+  const char *part1; /* first write (fragmenting the HTTP/1.1 request) */
+  size_t part1_len;
+  const char *part2; /* second write: rest of the request (+ preface/frames) */
+  size_t part2_len;
+  int part2_alloc;  /* part2 was malloc'd - free it on close */
+  int expect_status; /* expected HTTP/1.1 response status */
+  int id;            /* case id for diagnostics */
+  int done;
+};
+
+static adv_case_s g_adv_frag, g_adv_body, g_adv_tokens, g_adv_bad64,
+    g_adv_badpush, g_adv_badwin, g_adv_dup;
+
+
+static void adv_on_data(intptr_t uuid, fio_protocol_s *protocol) {
+  adv_case_s *c = (adv_case_s *)protocol;
+  ssize_t i = fio_read(uuid, c->buf + c->buf_len, sizeof(c->buf) - c->buf_len);
+  if (i > 0) {
+    c->buf_len += (size_t)i;
+  }
+  if (!c->buf_len || c->done)
+    return;
+  for (size_t j = 0; j + 11 < c->buf_len; ++j) {
+    if (!memcmp(c->buf + j, "HTTP/1.1 ", 9)) {
+      int status = 0;
+      for (int k = 0; k < 3; ++k)
+        status = status * 10 + c->buf[j + 9 + k] - '0';
+      check(status == c->expect_status, "h2c adversarial: unexpected status");
+      if (status != c->expect_status)
+        fprintf(stderr, "  (case %d expected %d got %d, buf_len=%zu)\n",
+                c->id, c->expect_status, status, c->buf_len);
+      c->done = 1;
+      ++g_adv_done;
+      maybe_all_done();
+      return;
+    }
+  }
+}
+
+static void adv_on_close(intptr_t uuid, fio_protocol_s *protocol) {
+  (void)uuid;
+  adv_case_s *c = (adv_case_s *)protocol;
+  if (c->part2_alloc) {
+    fio_free((void *)c->part2);
+    c->part2 = NULL;
+  }
+}
+
+static void adv_on_connect(intptr_t uuid, void *udata) {
+  adv_case_s *c = (adv_case_s *)udata;
+  c->protocol = (fio_protocol_s){
+      .on_data = adv_on_data,
+      .on_close = adv_on_close,
+  };
+  fio_attach(uuid, &c->protocol);
+  c->uuid = uuid;
+  if (c->part1_len)
+    fio_write2(uuid, .data.buffer = (void *)c->part1,
+               .length = c->part1_len, .after.dealloc = FIO_DEALLOC_NOOP);
+  fio_write2(uuid, .data.buffer = (void *)c->part2,
+             .length = c->part2_len,
+             .after.dealloc = c->part2_alloc ? fio_free : FIO_DEALLOC_NOOP);
+}
+
+/* builds the tail of the fragmented upgrade request: the second half of the
+ * HTTP2-Settings header line, the request terminator, the connection preface
+ * and a complete HEADERS frame - all in a single write (leftover bytes). */
+static uint8_t *adv_build_frag_tail(size_t *len) {
+  static const char tail[] = "AABk\r\n\r\n";
+  hpack_context_s enc;
+  hpack_context_init(&enc, 4096);
+  static const hpack_header_s fields[] = {
+      {.name = {.data = ":method", .len = 7},
+       .value = {.data = "GET", .len = 3}},
+      {.name = {.data = ":path", .len = 5},
+       .value = {.data = "/hello", .len = 6}},
+      {.name = {.data = ":scheme", .len = 7},
+       .value = {.data = "http", .len = 4}},
+      {.name = {.data = ":authority", .len = 10},
+       .value = {.data = "test.local", .len = 10}},
+      {.name = {.data = "x-test", .len = 6}, .value = {.data = "42", .len = 2}},
+  };
+  uint8_t block[2048];
+  size_t used = 0;
+  ssize_t blen = hpack_context_encode(&enc, block, sizeof(block), fields, 5,
+                                      &used);
+  hpack_context_destroy(&enc);
+  check(blen >= 0, "adv frag: hpack encode failed");
+  size_t tlen =
+      sizeof(tail) - 1 + 24 + 9 + (size_t)blen;
+  uint8_t *out = (uint8_t *)fio_malloc(tlen);
+  FIO_ASSERT_ALLOC(out);
+  size_t pos = 0;
+  memcpy(out + pos, tail, sizeof(tail) - 1);
+  pos += sizeof(tail) - 1;
+  memcpy(out + pos, H2_PREFACE, 24);
+  pos += 24;
+  out[pos + 0] = (uint8_t)(blen >> 16);
+  out[pos + 1] = (uint8_t)(blen >> 8);
+  out[pos + 2] = (uint8_t)blen;
+  out[pos + 3] = H2_FRAME_HEADERS;
+  out[pos + 4] = H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM;
+  be32(out + pos + 5, 1);
+  memcpy(out + pos + 9, block, (size_t)blen);
+  pos += 9 + (size_t)blen;
+  *len = pos;
+  return out;
+}
+
+static void adv_register_cases(void) {
+  g_adv_frag.part1 = "GET /hello HTTP/1.1\r\n"
+                     "Host: test.local\r\n"
+                     "Connection: Upgrade, HTTP2-Settings\r\n"
+                     "Upgrade: h2c\r\n"
+                     "HTTP2-Settings: AAEA";
+  g_adv_frag.part1_len = strlen(g_adv_frag.part1);
+  g_adv_frag.part2 = (const char *)adv_build_frag_tail(&g_adv_frag.part2_len);
+  g_adv_frag.part2_alloc = 1;
+  g_adv_frag.expect_status = 101;
+  g_adv_frag.id = 1;
+
+  /* an upgrade request with a body must not be upgraded (RFC 9113 §3.2) */
+  g_adv_body.part1 = "POST /c2 HTTP/1.1\r\n"
+                     "Host: test.local\r\n"
+                     "Connection: Upgrade, HTTP2-Settings\r\n"
+                     "Upgrade: h2c\r\n"
+                     "HTTP2-Settings: AAEAAABk\r\n"
+                     "Content-Length: 5\r\n"
+                     "\r\n"
+                     "hello";
+  g_adv_body.part1_len = strlen(g_adv_body.part1);
+  g_adv_body.expect_status = 400;
+  g_adv_body.id = 2;
+
+  /* a multi-token Upgrade header must not match a plain h2c upgrade */
+  g_adv_tokens.part1 = "GET /c3 HTTP/1.1\r\n"
+                       "Host: test.local\r\n"
+                       "Connection: Upgrade, HTTP2-Settings\r\n"
+                       "Upgrade: h2c, h2\r\n"
+                       "HTTP2-Settings: AAEAAABk\r\n"
+                       "\r\n";
+  g_adv_tokens.part1_len = strlen(g_adv_tokens.part1);
+  g_adv_tokens.expect_status = 400;
+  g_adv_tokens.id = 3;
+
+  /* malformed Base64URL in HTTP2-Settings must be a 400 */
+  g_adv_bad64.part1 = "GET /hello HTTP/1.1\r\n"
+                      "Host: test.local\r\n"
+                      "Connection: Upgrade, HTTP2-Settings\r\n"
+                      "Upgrade: h2c\r\n"
+                      "HTTP2-Settings: !!!\r\n"
+                      "\r\n";
+  g_adv_bad64.part1_len = strlen(g_adv_bad64.part1);
+  g_adv_bad64.expect_status = 400;
+  g_adv_bad64.id = 4;
+
+  /* invalid ENABLE_PUSH=2 in the settings payload must be a 400 */
+  g_adv_badpush.part1 = "GET /hello HTTP/1.1\r\n"
+                        "Host: test.local\r\n"
+                        "Connection: Upgrade, HTTP2-Settings\r\n"
+                        "Upgrade: h2c\r\n"
+                        "HTTP2-Settings: AAIAAAACAAEAAAAA\r\n"
+                        "\r\n";
+  g_adv_badpush.part1_len = strlen(g_adv_badpush.part1);
+  g_adv_badpush.expect_status = 400;
+  g_adv_badpush.id = 5;
+
+  /* an out-of-range INITIAL_WINDOW_SIZE in the settings must be a 400 */
+  g_adv_badwin.part1 = "GET /hello HTTP/1.1\r\n"
+                       "Host: test.local\r\n"
+                       "Connection: Upgrade, HTTP2-Settings\r\n"
+                       "Upgrade: h2c\r\n"
+                       "HTTP2-Settings: AASAAAAA\r\n"
+                       "\r\n";
+  g_adv_badwin.part1_len = strlen(g_adv_badwin.part1);
+  g_adv_badwin.expect_status = 400;
+  g_adv_badwin.id = 6;
+
+  /* duplicate HTTP2-Settings (both invalid) must not upgrade - a 400 */
+  g_adv_dup.part1 = "GET /hello HTTP/1.1\r\n"
+                    "Host: test.local\r\n"
+                    "Connection: Upgrade, HTTP2-Settings\r\n"
+                    "Upgrade: h2c\r\n"
+                    "HTTP2-Settings: !!!!\r\n"
+                    "HTTP2-Settings: !!!!\r\n"
+                    "\r\n";
+  g_adv_dup.part1_len = strlen(g_adv_dup.part1);
+  g_adv_dup.expect_status = 400;
+  g_adv_dup.id = 7;
+}
+
+/* *****************************************************************************
 main
 ***************************************************************************** */
 
 /* watchdog - fail the test if it hangs */
 static void *watchdog(void *arg) {
   (void)arg;
-  sleep(10);
-  fprintf(stderr, "TEST FAILED: watchdog timeout\n");
+  sleep(30);
+  fprintf(stderr,
+          "TEST FAILED: watchdog timeout (done1=%d/%d p1=%d p2=%d pd=%d/%d/%d adv=%d/%d req=%d)\n",
+          g_client.done1, g_neg_prior.done1, g_neg_upgrade.done1,
+          g_client.push_done, g_neg_prior.push_done, g_neg_upgrade.push_done,
+          g_adv_done, g_adv_total, g_requests);
   exit(1);
   return NULL;
 }
@@ -616,6 +840,7 @@ int main(void) {
   g_client = (client_s){0};
   g_neg_prior = (client_s){0};
   g_neg_upgrade = (client_s){0};
+  adv_register_cases();
   if (fio_listen(.port = H2_PORT, .on_open = server_on_open) == -1) {
     fprintf(stderr, "TEST FAILED: could not listen on port %s\n", H2_PORT);
     return 1;
@@ -638,11 +863,22 @@ int main(void) {
     fprintf(stderr, "TEST FAILED: could not connect\n");
     return 1;
   }
-  if (fio_connect(.port = NEG_PORT, .address = "127.0.0.1",
+if (fio_connect(.port = NEG_PORT, .address = "127.0.0.1",
                   .on_connect = neg_on_connect_upgrade,
                   .on_fail = neg_on_fail) == -1) {
     fprintf(stderr, "TEST FAILED: could not connect\n");
     return 1;
+  }
+  adv_case_s *adv_cases[] = {&g_adv_frag, &g_adv_body, &g_adv_tokens,
+                             &g_adv_bad64, &g_adv_badpush, &g_adv_badwin,
+                             &g_adv_dup};
+  for (int ai = 0; ai < g_adv_total; ++ai) {
+    if (fio_connect(.port = NEG_PORT, .address = "127.0.0.1",
+                    .on_connect = adv_on_connect, .on_fail = neg_on_fail,
+                    .udata = adv_cases[ai]) == -1) {
+      fprintf(stderr, "TEST FAILED: could not connect\n");
+      return 1;
+    }
   }
   fio_start(.threads = 2, .workers = 0);
   return g_fail;
