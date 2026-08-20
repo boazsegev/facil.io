@@ -232,4 +232,18 @@ static inline void set_header_add(FIOBJ hash, FIOBJ name, FIOBJ value) {
   fiobj_hash_replace(hash, name, old);
 }
 
+/* *****************************************************************************
+HTTP/2 protocol object
+***************************************************************************** */
+
+/** Creates an HTTP/2 protocol object and handles any unread data in the buffer
+ * (if any). `upgrade_settings` (RFC 9113 §3.2) is applied to the connection as
+ * if a SETTINGS frame was received (may be NULL). */
+fio_protocol_s *http2_new(uintptr_t uuid, http_settings_s *settings,
+                          void *unread_data, size_t unread_length,
+                          void *upgrade_settings, size_t upgrade_settings_len);
+
+/** returns the HTTP/2 protocol's VTable. */
+void *http2_vtable(void);
+
 #endif /* H_HTTP_INTERNAL_H */
