@@ -822,7 +822,7 @@ static void *watchdog(void *arg) {
   (void)arg;
   sleep(30);
   fprintf(stderr,
-          "TEST FAILED: watchdog timeout (done1=%d/%d p1=%d p2=%d pd=%d/%d/%d adv=%d/%d req=%d)\n",
+          "TEST FAILED: watchdog timeout (done1=%d p1=%d p2=%d pd=%d/%d/%d adv=%d/%d req=%d)\n",
           g_client.done1, g_neg_prior.done1, g_neg_upgrade.done1,
           g_client.push_done, g_neg_prior.push_done, g_neg_upgrade.push_done,
           g_adv_done, g_adv_total, g_requests);
