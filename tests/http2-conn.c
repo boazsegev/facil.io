@@ -28,6 +28,9 @@ static void http2_conn__fail(const char *test, int line) {
 /* the connection under test */
 static http2_connection_s conn;
 
+/* encoder used to build the test header blocks */
+static hpack_context_s hpack_enc;
+
 /* captured output */
 static uint8_t out_buf[1 << 16];
 static size_t out_len;
@@ -40,6 +43,7 @@ static uint32_t got_stream;
 static int got_trailers;
 static uint8_t got_data[1 << 14];
 static uint32_t got_data_len;
+static uint32_t got_payload_len;
 static int got_end_stream;
 static uint32_t got_promised;
 static uint32_t got_goaway_stream;
@@ -80,11 +84,13 @@ static void http2_on_headers(http2_connection_s *c, uint32_t stream,
 }
 
 static void http2_on_data(http2_connection_s *c, uint32_t stream,
-                          uint8_t *data, uint32_t length, int end_stream) {
+                          uint8_t *data, uint32_t length,
+                          uint32_t payload_len, int end_stream) {
   (void)c;
   got_stream = stream;
   memcpy(got_data, data, length);
   got_data_len = length;
+  got_payload_len = payload_len;
   got_end_stream = end_stream;
 }
 
@@ -135,13 +141,57 @@ static size_t conn_frame(uint8_t *buf, uint32_t length, uint8_t type,
   return 9 + length;
 }
 
-/* a valid HPACK encoded header block for :method GET + x: y */
+/* a valid HPACK encoded request header block:
+ * :method GET, :path /, :scheme http, :authority test.local, x-test: 42 */
 static size_t block_basic(uint8_t *dest) {
-  const uint8_t block[] = {0x82, /* :method GET (indexed) */
-                           0x40, /* literal, incremental indexing */
-                           0x01, 0x78, 0x01, 0x79};
-  memcpy(dest, block, sizeof(block));
-  return sizeof(block);
+  static const hpack_header_s fields[] = {
+      {.name = {.data = ":method", .len = 7},
+       .value = {.data = "GET", .len = 3}},
+      {.name = {.data = ":path", .len = 5}, .value = {.data = "/", .len = 1}},
+      {.name = {.data = ":scheme", .len = 7},
+       .value = {.data = "http", .len = 4}},
+      {.name = {.data = "x-test", .len = 6}, .value = {.data = "42", .len = 2}},
+  };
+  size_t used = 0;
+  ssize_t blen = hpack_context_encode(&hpack_enc, dest, 1024, fields, 4,
+                                      &used);
+  CHECK(blen >= 0);
+  return (size_t)blen;
+}
+
+/* a valid pushed request header block: :method GET, :path /push, :scheme
+ * http, :authority test.local */
+static size_t block_push(uint8_t *dest) {
+  static const hpack_header_s fields[] = {
+      {.name = {.data = ":method", .len = 7},
+       .value = {.data = "GET", .len = 3}},
+      {.name = {.data = ":path", .len = 5},
+       .value = {.data = "/push", .len = 5}},
+      {.name = {.data = ":scheme", .len = 7},
+       .value = {.data = "http", .len = 4}},
+      {.name = {.data = ":authority", .len = 10},
+       .value = {.data = "test.local", .len = 10}},
+  };
+  size_t used = 0;
+  ssize_t blen = hpack_context_encode(&hpack_enc, dest, 1024, fields, 4,
+                                      &used);
+  CHECK(blen >= 0);
+  return (size_t)blen;
+}
+
+/* a valid response header block: :status 200, content-length: 11 */
+static size_t block_response(uint8_t *dest) {
+  static const hpack_header_s fields[] = {
+      {.name = {.data = ":status", .len = 7},
+       .value = {.data = "200", .len = 3}},
+      {.name = {.data = "content-length", .len = 14},
+       .value = {.data = "11", .len = 2}},
+  };
+  size_t used = 0;
+  ssize_t blen = hpack_context_encode(&hpack_enc, dest, 1024, fields, 2,
+                                      &used);
+  CHECK(blen >= 0);
+  return (size_t)blen;
 }
 
 static void conn_reset(void) {
@@ -150,6 +200,7 @@ static void conn_reset(void) {
   got_stream = 0;
   got_trailers = 0;
   got_data_len = 0;
+  got_payload_len = 0;
   got_end_stream = 0;
   got_promised = 0;
   got_goaway_stream = 0;
@@ -173,10 +224,43 @@ static uint32_t last_goaway_error(void) {
                     (out_buf[hdr + 15] << 8) | out_buf[hdr + 16]);
 }
 
+/* the error code carried by the last RST_STREAM frame */
+static uint32_t stream_rst_error(void) {
+  size_t pos = 0, hdr = 0;
+  for (size_t i = 0; i < out_frames; ++i) {
+    hdr = pos;
+    uint32_t flen = (uint32_t)((out_buf[pos] << 16) | (out_buf[pos + 1] << 8) |
+                               out_buf[pos + 2]);
+    pos += 9 + flen;
+  }
+  if (!out_frames)
+    return 0;
+  return (uint32_t)((out_buf[hdr + 9] << 24) | (out_buf[hdr + 10] << 16) |
+                    (out_buf[hdr + 11] << 8) | out_buf[hdr + 12]);
+}
+
+/* the last-stream-id carried by the last GOAWAY frame */
+static uint32_t last_goaway_stream(void) {
+  size_t pos = 0, hdr = 0;
+  for (size_t i = 0; i < out_frames; ++i) {
+    hdr = pos;
+    uint32_t flen = (uint32_t)((out_buf[pos] << 16) | (out_buf[pos + 1] << 8) |
+                               out_buf[pos + 2]);
+    pos += 9 + flen;
+  }
+  if (!out_frames)
+    return 0;
+  return (uint32_t)((out_buf[hdr + 9] << 24) | (out_buf[hdr + 10] << 16) |
+                    (out_buf[hdr + 11] << 8) | out_buf[hdr + 12]);
+}
+
 static void conn_init(void) {
   conn_reset();
   http2_connection_destroy(&conn);
   memset(&conn, 0, sizeof(conn));
+  hpack_context_destroy(&hpack_enc);
+  memset(&hpack_enc, 0, sizeof(hpack_enc));
+  hpack_context_init(&hpack_enc, 4096);
   http2_connection_init(&conn, HTTP2_CONNECTION_SERVER, 4096);
 }
 
@@ -236,7 +320,7 @@ static void test_preface(void) {
 static void test_settings(void) {
   conn_handshake();
   /* client SETTINGS + ACK exchange */
-  uint8_t buf[6 * 2 + 9];
+  uint8_t buf[64];
   uint8_t payload[6 * 2];
   payload[0] = 0;
   payload[1] = HTTP2_SETTING_ENABLE_PUSH;
@@ -320,7 +404,7 @@ static void test_settings(void) {
   conn_init();
   http2_connection_parse(&conn, (void *)HTTP2_PREFACE, HTTP2_PREFACE_LEN);
   conn_reset();
-  uint8_t blk[32];
+  uint8_t blk[64];
   size_t blen = block_basic(blk);
   len = conn_frame(buf, (uint32_t)blen, HTTP2_FRAME_HEADERS,
                    HTTP2_FLAG_END_HEADERS, 1, blk);
@@ -344,7 +428,7 @@ static void test_stream_states(void) {
                           HTTP2_FLAG_END_HEADERS, 1, blk);
   size_t used = http2_connection_parse(&conn, buf, len);
   CHECK(used == len);
-  CHECK(got_count == 2);
+  CHECK(got_count == 4);
   CHECK(got_stream == 1);
   CHECK(conn.stream_count == 1);
   CHECK(conn.streams[0].state == HTTP2_STREAM_OPEN);
@@ -490,7 +574,7 @@ static void test_continuation(void) {
                    blk + blen - 1);
   used = http2_connection_parse(&conn, buf, len);
   CHECK(used == len);
-  CHECK(got_count == 2);
+  CHECK(got_count == 4);
   CHECK(conn.state.header_block_stream == 0);
   /* CONTINUATION without a pending HEADERS -> PROTOCOL_ERROR */
   conn_handshake();
@@ -534,7 +618,7 @@ static void test_padding(void) {
                           padded);
   size_t used = http2_connection_parse(&conn, buf, len);
   CHECK(used == len);
-  CHECK(got_count == 2);
+  CHECK(got_count == 4);
   /* padding covering the whole payload -> PROTOCOL_ERROR */
   conn_handshake();
   padded[0] = 4;
@@ -752,7 +836,7 @@ static void test_push_promise(void) {
   conn_handshake();
   uint8_t buf[1 << 10];
   uint8_t blk[64];
-  size_t blen = block_basic(blk);
+  size_t blen = block_push(blk);
   uint8_t pp[4 + 64];
   pp[0] = 0;
   pp[1] = 0;
@@ -780,8 +864,11 @@ static void test_push_promise(void) {
   const hpack_header_s req[] = {
       {.name = {.data = ":method", .len = 7},
        .value = {.data = "GET", .len = 3}},
+      {.name = {.data = ":path", .len = 5}, .value = {.data = "/", .len = 1}},
+      {.name = {.data = ":scheme", .len = 7},
+       .value = {.data = "http", .len = 4}},
   };
-  CHECK(http2_connection_send_headers(&conn, 1, req, 1, 1) == 0);
+  CHECK(http2_connection_send_headers(&conn, 1, req, 3, 1) == 0);
   CHECK(conn.streams[0].state == HTTP2_STREAM_HALF_CLOSED_LOCAL);
   conn_reset();
   len = conn_frame(buf, (uint32_t)(4 + blen), HTTP2_FRAME_PUSH_PROMISE,
@@ -793,7 +880,8 @@ static void test_push_promise(void) {
   CHECK(conn.streams[0].state == HTTP2_STREAM_HALF_CLOSED_LOCAL);
   CHECK(conn.streams[1].state == HTTP2_STREAM_RESERVED_REMOTE);
   /* the promised stream's response HEADERS moves it to closed */
-  len = conn_frame(buf, (uint32_t)blen, HTTP2_FRAME_HEADERS,
+  size_t rlen = block_response(blk);
+  len = conn_frame(buf, (uint32_t)rlen, HTTP2_FRAME_HEADERS,
                    HTTP2_FLAG_END_HEADERS | HTTP2_FLAG_END_STREAM, 2, blk);
   used = http2_connection_parse(&conn, buf, len);
   CHECK(used == len);
@@ -956,8 +1044,322 @@ static void test_send_data(void) {
 }
 
 /* ---------------------------------------------------------------------------
+review regressions
+-------------------------------------------------------------------------- */
+
+static void test_stream_id_namespaces(void) {
+  /* local and peer stream-id namespaces are tracked independently: a push
+   * promise reserving an even (peer) stream id must not move the local
+   * namespace, and vice versa */
+  http2_connection_destroy(&conn);
+  memset(&conn, 0, sizeof(conn));
+  http2_connection_init(&conn, HTTP2_CONNECTION_CLIENT, 4096);
+  conn_reset();
+  /* the server's first frame must be SETTINGS */
+  uint8_t sf[16];
+  size_t sl = conn_frame(sf, 0, HTTP2_FRAME_SETTINGS, 0, 0, NULL);
+  size_t used = http2_connection_parse(&conn, sf, sl);
+  CHECK(used == sl);
+  conn_reset();
+  /* open stream 1 (client namespace) */
+  const hpack_header_s req[] = {
+      {.name = {.data = ":method", .len = 7},
+       .value = {.data = "GET", .len = 3}},
+      {.name = {.data = ":path", .len = 5}, .value = {.data = "/", .len = 1}},
+      {.name = {.data = ":scheme", .len = 7},
+       .value = {.data = "http", .len = 4}},
+  };
+  CHECK(http2_connection_send_headers(&conn, 1, req, 3, 0) == 0);
+  conn_reset();
+  /* a PUSH_PROMISE reserving stream 100 moves only the peer namespace */
+  uint8_t buf[1 << 10];
+  uint8_t blk[64];
+  size_t blen = block_push(blk);
+  uint8_t pp[4 + 64];
+  pp[0] = 0;
+  pp[1] = 0;
+  pp[2] = 0;
+  pp[3] = 100;
+  memcpy(pp + 4, blk, blen);
+  size_t len = conn_frame(buf, (uint32_t)(4 + blen), HTTP2_FRAME_PUSH_PROMISE,
+                          HTTP2_FLAG_END_HEADERS, 1, pp);
+  used = http2_connection_parse(&conn, buf, len);
+  CHECK(used == len);
+  CHECK(got_promised == 100);
+  /* the peer opening stream 102 (even, past 100) is accepted */
+  size_t rlen = block_response(blk);
+  len = conn_frame(buf, (uint32_t)rlen, HTTP2_FRAME_HEADERS,
+                   HTTP2_FLAG_END_HEADERS, 102, blk);
+  used = http2_connection_parse(&conn, buf, len);
+  CHECK(used == len);
+  CHECK(conn.state.state == 0);
+  CHECK(got_stream == 102);
+  /* the client namespace is untouched - stream 3 is still available */
+  CHECK(http2_connection_send_headers(&conn, 3, req, 3, 0) == 0);
+  /* and the client cannot initiate a new stream in the peer namespace */
+  CHECK(http2_connection_send_headers(&conn, 104, req, 3, 0) == -1);
+}
+
+static void test_continuation_large_stream(void) {
+  /* the fragmented header block state must track the full 32-bit stream id:
+   * stream 257 with the old uint8_t state would alias to 1 */
+  conn_handshake();
+  uint8_t buf[1 << 10];
+  uint8_t blk[64];
+  size_t blen = block_basic(blk);
+  size_t len = conn_frame(buf, (uint32_t)(blen - 1), HTTP2_FRAME_HEADERS, 0,
+                          257, blk);
+  size_t used = http2_connection_parse(&conn, buf, len);
+  CHECK(used == len);
+  CHECK(conn.state.header_block_stream == 257);
+  len = conn_frame(buf, 1, HTTP2_FRAME_CONTINUATION, HTTP2_FLAG_END_HEADERS,
+                   257, blk + blen - 1);
+  used = http2_connection_parse(&conn, buf, len);
+  CHECK(used == len);
+  CHECK(got_count == 4);
+  CHECK(got_stream == 257);
+}
+
+static void test_data_padding_flow(void) {
+  /* the flow-control windows are charged the full padded payload, while the
+   * data callback only sees the unpadded bytes */
+  conn_handshake();
+  uint8_t buf[1 << 10];
+  uint8_t blk[64];
+  size_t blen = block_basic(blk);
+  size_t len = conn_frame(buf, (uint32_t)blen, HTTP2_FRAME_HEADERS,
+                          HTTP2_FLAG_END_HEADERS, 1, blk);
+  http2_connection_parse(&conn, buf, len);
+  conn_reset();
+  /* payload: pad-len(1) + 5 data + 2 padding = 8 bytes */
+  uint8_t padded[8];
+  padded[0] = 2;
+  memcpy(padded + 1, "\x01\x02\x03\x04\x05", 5);
+  memset(padded + 6, 0, 2);
+  len = conn_frame(buf, 8, HTTP2_FRAME_DATA, HTTP2_FLAG_PADDED, 1, padded);
+  size_t used = http2_connection_parse(&conn, buf, len);
+  CHECK(used == len);
+  CHECK(got_data_len == 5);
+  CHECK(got_payload_len == 8);
+  CHECK(!memcmp(got_data, "\x01\x02\x03\x04\x05", 5));
+  CHECK(conn.state.recv_window == HTTP2_DEFAULT_WINDOW - 8);
+  CHECK(conn.streams[0].recv_window == HTTP2_DEFAULT_WINDOW - 8);
+}
+
+static void test_header_validation(void) {
+  uint8_t buf[1 << 10];
+  uint8_t blk[64];
+  size_t blen;
+  size_t len;
+  size_t used;
+  /* uppercase field name -> stream error */
+  conn_handshake();
+  static const hpack_header_s upper[] = {
+      {.name = {.data = ":method", .len = 7},
+       .value = {.data = "GET", .len = 3}},
+      {.name = {.data = "X-Test", .len = 6},
+       .value = {.data = "y", .len = 1}},
+  };
+  blen = (size_t)hpack_context_encode(&hpack_enc, blk, sizeof(blk), upper, 2,
+                                      NULL);
+  CHECK(blen != (size_t)-1);
+  len = conn_frame(buf, (uint32_t)blen, HTTP2_FRAME_HEADERS,
+                   HTTP2_FLAG_END_HEADERS, 1, blk);
+  used = http2_connection_parse(&conn, buf, len);
+  CHECK(used == len);
+  CHECK(conn.state.state == 0);
+  CHECK(out_frames == 1);
+  CHECK(out_buf[3] == HTTP2_FRAME_RST_STREAM);
+  CHECK(stream_rst_error() == HTTP2_ERROR_PROTOCOL);
+  /* a pseudo header after a regular field -> stream error */
+  conn_handshake();
+  static const hpack_header_s late[] = {
+      {.name = {.data = ":method", .len = 7},
+       .value = {.data = "GET", .len = 3}},
+      {.name = {.data = "x-test", .len = 6},
+       .value = {.data = "y", .len = 1}},
+      {.name = {.data = ":path", .len = 5}, .value = {.data = "/", .len = 1}},
+  };
+  blen = (size_t)hpack_context_encode(&hpack_enc, blk, sizeof(blk), late, 3,
+                                      NULL);
+  CHECK(blen != (size_t)-1);
+  len = conn_frame(buf, (uint32_t)blen, HTTP2_FRAME_HEADERS,
+                   HTTP2_FLAG_END_HEADERS, 1, blk);
+  used = http2_connection_parse(&conn, buf, len);
+  CHECK(used == len);
+  CHECK(out_buf[3] == HTTP2_FRAME_RST_STREAM);
+  CHECK(stream_rst_error() == HTTP2_ERROR_PROTOCOL);
+  /* an unknown pseudo header -> stream error */
+  conn_handshake();
+  static const hpack_header_s unknown[] = {
+      {.name = {.data = ":method", .len = 7},
+       .value = {.data = "GET", .len = 3}},
+      {.name = {.data = ":bogus", .len = 6},
+       .value = {.data = "x", .len = 1}},
+  };
+  blen = (size_t)hpack_context_encode(&hpack_enc, blk, sizeof(blk), unknown, 2,
+                                      NULL);
+  CHECK(blen != (size_t)-1);
+  len = conn_frame(buf, (uint32_t)blen, HTTP2_FRAME_HEADERS,
+                   HTTP2_FLAG_END_HEADERS, 1, blk);
+  used = http2_connection_parse(&conn, buf, len);
+  CHECK(used == len);
+  CHECK(out_buf[3] == HTTP2_FRAME_RST_STREAM);
+  CHECK(stream_rst_error() == HTTP2_ERROR_PROTOCOL);
+  /* a request missing its mandatory pseudo headers -> stream error */
+  conn_handshake();
+  static const hpack_header_s missing[] = {
+      {.name = {.data = ":method", .len = 7},
+       .value = {.data = "GET", .len = 3}},
+  };
+  blen = (size_t)hpack_context_encode(&hpack_enc, blk, sizeof(blk), missing, 1,
+                                      NULL);
+  CHECK(blen != (size_t)-1);
+  len = conn_frame(buf, (uint32_t)blen, HTTP2_FRAME_HEADERS,
+                   HTTP2_FLAG_END_HEADERS, 1, blk);
+  used = http2_connection_parse(&conn, buf, len);
+  CHECK(used == len);
+  CHECK(out_buf[3] == HTTP2_FRAME_RST_STREAM);
+  CHECK(stream_rst_error() == HTTP2_ERROR_PROTOCOL);
+  /* a connection-specific field is a connection error */
+  conn_handshake();
+  static const hpack_header_s connspec[] = {
+      {.name = {.data = ":method", .len = 7},
+       .value = {.data = "GET", .len = 3}},
+      {.name = {.data = ":path", .len = 5}, .value = {.data = "/", .len = 1}},
+      {.name = {.data = ":scheme", .len = 7},
+       .value = {.data = "http", .len = 4}},
+      {.name = {.data = "connection", .len = 10},
+       .value = {.data = "keep-alive", .len = 11}},
+  };
+  blen = (size_t)hpack_context_encode(&hpack_enc, blk, sizeof(blk), connspec, 4,
+                                      NULL);
+  CHECK(blen != (size_t)-1);
+  len = conn_frame(buf, (uint32_t)blen, HTTP2_FRAME_HEADERS,
+                   HTTP2_FLAG_END_HEADERS, 1, blk);
+  used = http2_connection_parse(&conn, buf, len);
+  CHECK(used == len);
+  CHECK(conn.state.state == 2);
+  CHECK(last_goaway_error() == HTTP2_ERROR_PROTOCOL);
+}
+
+static void test_header_list_size(void) {
+  /* the header list is accounted as 32 + name + value per field */
+  conn_handshake();
+  conn.local.max_header_list = 40; /* below the smallest block_basic field */
+  uint8_t buf[1 << 10];
+  uint8_t blk[64];
+  size_t blen = block_basic(blk);
+  size_t len = conn_frame(buf, (uint32_t)blen, HTTP2_FRAME_HEADERS,
+                          HTTP2_FLAG_END_HEADERS, 1, blk);
+  size_t used = http2_connection_parse(&conn, buf, len);
+  CHECK(used == len);
+  CHECK(conn.state.state == 0);
+  CHECK(out_frames == 1);
+  CHECK(out_buf[3] == HTTP2_FRAME_RST_STREAM);
+  CHECK(stream_rst_error() == HTTP2_ERROR_ENHANCE_YOUR_CALM);
+}
+
+static void test_hpack_scratch_guard(void) {
+  /* with a small scratch limit, a fragmented block whose decoded fields
+   * overflow the reserved region must fail cleanly (COMPRESSION) instead of
+   * corrupting the accumulated block */
+conn_handshake();
+  conn.local.max_header_list = 4096;
+  hpack_context_limit_set(&conn.hpack_dec, conn.local.max_header_list);
+  uint8_t buf[4096];
+  uint8_t blk[4096];
+  hpack_header_s fields[20];
+  char names[20][8];
+  char values[20][128];
+  for (size_t i = 0; i < 20; ++i) {
+    snprintf(names[i], sizeof(names[i]), "x-%zu", i);
+    fields[i].name.data = names[i];
+    fields[i].name.len = strlen(names[i]);
+    for (size_t j = 0; j < 120; ++j)
+      values[i][j] = (char)(j * 7 + (size_t)i); /* incompressible */
+    fields[i].value.data = values[i];
+    fields[i].value.len = 120;
+  }
+  size_t used = 0;
+  size_t blen = (size_t)hpack_context_encode(&hpack_enc, blk, sizeof(blk),
+                                             fields, 20, &used);
+  CHECK(blen != (size_t)-1 && blen > 2);
+  /* the decoded fields (20 x 125 bytes) exceed the scratch budget left after
+   * the block is reserved (4096 - blen) -> clean COMPRESSION error */
+  size_t len = conn_frame(buf, (uint32_t)(blen - 1), HTTP2_FRAME_HEADERS, 0, 1,
+                          blk);
+  size_t cused = http2_connection_parse(&conn, buf, len);
+  CHECK(cused == len);
+  len = conn_frame(buf, 1, HTTP2_FRAME_CONTINUATION, HTTP2_FLAG_END_HEADERS, 1,
+                   blk + blen - 1);
+  cused = http2_connection_parse(&conn, buf, len);
+  CHECK(cused == len);
+  CHECK(conn.state.state == 2);
+  CHECK(last_goaway_error() == HTTP2_ERROR_COMPRESSION);
+}
+
+static void test_max_frame_clamp(void) {
+  /* the advertised max frame size is clamped to the parser buffer capacity */
+  conn_handshake();
+  http2_connection_setting_set(&conn, HTTP2_SETTING_MAX_FRAME_SIZE, 1u << 20);
+  CHECK(conn.parser.state.max_frame == HTTP2_PARSER_BUFFER);
+  /* the emitted SETTINGS payload reflects the clamped value (setting_set
+   * emits a single-setting frame) */
+  uint32_t p = (uint32_t)((out_buf[11] << 24) | (out_buf[12] << 16) |
+                          (out_buf[13] << 8) | out_buf[14]);
+  CHECK(p == HTTP2_PARSER_BUFFER);
+}
+
+static void test_goaway_remote_stream(void) {
+  /* the GOAWAY last-stream-id reflects the peer's namespace: a push promise
+   * reserving an even stream id must not leak into it */
+  http2_connection_destroy(&conn);
+  memset(&conn, 0, sizeof(conn));
+  http2_connection_init(&conn, HTTP2_CONNECTION_CLIENT, 4096);
+  conn_reset();
+  uint8_t sf[16];
+  size_t sl = conn_frame(sf, 0, HTTP2_FRAME_SETTINGS, 0, 0, NULL);
+  size_t used = http2_connection_parse(&conn, sf, sl);
+  CHECK(used == sl);
+  conn_reset();
+  const hpack_header_s req[] = {
+      {.name = {.data = ":method", .len = 7},
+       .value = {.data = "GET", .len = 3}},
+      {.name = {.data = ":path", .len = 5}, .value = {.data = "/", .len = 1}},
+      {.name = {.data = ":scheme", .len = 7},
+       .value = {.data = "http", .len = 4}},
+  };
+  CHECK(http2_connection_send_headers(&conn, 1, req, 3, 0) == 0);
+  conn_reset();
+  uint8_t buf[1 << 10];
+  uint8_t blk[64];
+  size_t blen = block_push(blk);
+  uint8_t pp[4 + 64];
+  pp[0] = 0;
+  pp[1] = 0;
+  pp[2] = 0;
+  pp[3] = 100;
+  memcpy(pp + 4, blk, blen);
+  size_t len = conn_frame(buf, (uint32_t)(4 + blen), HTTP2_FRAME_PUSH_PROMISE,
+                          HTTP2_FLAG_END_HEADERS, 1, pp);
+  used = http2_connection_parse(&conn, buf, len);
+  CHECK(used == len);
+  /* a DATA frame on stream 0 is a connection error - the resulting GOAWAY
+   * last-stream-id must be the peer's last stream (100), not the client's
+   * local stream 1 */
+  conn_reset();
+  len = conn_frame(buf, 4, HTTP2_FRAME_DATA, 0, 0,
+                   (const uint8_t *)"\x01\x02\x03\x04");
+  used = http2_connection_parse(&conn, buf, len);
+  CHECK(used == len);
+  CHECK(conn.state.state == 2);
+  CHECK(last_goaway_stream() == 100);
+}
+
+/* ---------------------------------------------------------------------------
 main
---------------------------------------------------------------------------- */
+-------------------------------------------------------------------------- */
 
 static void http2_test_conn(void) {
   test_preface();
@@ -979,6 +1381,14 @@ static void http2_test_conn(void) {
   test_ping_cap();
   test_send_headers();
   test_send_data();
+  test_stream_id_namespaces();
+  test_continuation_large_stream();
+  test_data_padding_flow();
+  test_header_validation();
+  test_header_list_size();
+  test_hpack_scratch_guard();
+  test_max_frame_clamp();
+  test_goaway_remote_stream();
 }
 
 int main(void) {
