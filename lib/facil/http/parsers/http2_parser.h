@@ -79,9 +79,11 @@ Parser Settings
 /**
  * The size of the internal buffer used to accumulate incomplete frame payloads.
  *
- * Frames larger than this value will only be handled when the whole frame is
- * available in a single `http2_parse` call (zero-copy path) - frames that
- * arrive in pieces cannot exceed this buffer. This matches the default
+ * The parser accepts frames up to this size in any number of reads. Larger
+ * frames are rejected at the frame header, since they could only be delivered
+ * when the whole frame is available in a single `http2_parse` call (the
+ * zero-copy path) - the connection layer clamps its advertised
+ * `SETTINGS_MAX_FRAME_SIZE` to this capacity, so this matches the default
  * `SETTINGS_MAX_FRAME_SIZE` value of 16,384.
  */
 #define HTTP2_PARSER_BUFFER HTTP2_DEFAULT_FRAME_SIZE
@@ -228,7 +230,16 @@ static size_t http2_parse(http2_parser_s *parser, void *buffer, size_t length) {
         return consumed;
       continue;
     }
-    /* only a partial frame is available - accumulate it */
+    /* only a partial frame is available - accumulate it. Frames that can't
+     * fit the internal buffer are only delivered via the zero-copy path
+     * (the whole frame in a single parse call) and are rejected here,
+     * preventing an overflow of the accumulation buffer */
+    if (parser->state.length > HTTP2_PARSER_BUFFER) {
+      parser->state.stage = 0;
+      parser->state.buf_len = 0;
+      http2_on_error(parser);
+      return consumed;
+    }
     size_t take = length;
     memcpy(parser->state.buf + parser->state.buf_len, data, take);
     parser->state.buf_len += take;
