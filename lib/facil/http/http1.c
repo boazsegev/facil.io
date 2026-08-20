@@ -547,9 +547,84 @@ void *http1_vtable(void) { return (void *)&HTTP1_VTABLE; }
 Parser Callbacks
 ***************************************************************************** */
 
-/** called when a request was received. */
+/* h2c upgrade support (RFC 9113 §3.2) */
+static uint64_t http1_h2c_upgrade_hash = 0;
+static uint64_t http1_h2c_settings_hash = 0;
+static uint64_t http1_h2c_cl_hash = 0;
+static uint64_t http1_h2c_te_hash = 0;
+
 static int http1_on_request(http1_parser_s *parser) {
   http1pr_s *p = parser2http(parser);
+  if (!p->is_client) {
+    /* h2c upgrade (RFC 9113 §3.2): Upgrade: h2c + HTTP2-Settings, no body */
+    if (!http1_h2c_upgrade_hash)
+      http1_h2c_upgrade_hash = fiobj_hash_string("upgrade", 7);
+    if (!http1_h2c_settings_hash)
+      http1_h2c_settings_hash = fiobj_hash_string("http2-settings", 14);
+    if (!http1_h2c_cl_hash)
+      http1_h2c_cl_hash = fiobj_hash_string("content-length", 14);
+    if (!http1_h2c_te_hash)
+      http1_h2c_te_hash = fiobj_hash_string("transfer-encoding", 17);
+    FIOBJ upg = fiobj_hash_get2(http1_pr2handle(p).headers,
+                                http1_h2c_upgrade_hash);
+    FIOBJ h2s = fiobj_hash_get2(http1_pr2handle(p).headers,
+                                http1_h2c_settings_hash);
+    if (upg && h2s) {
+      fio_str_info_s upg_s = fiobj_obj2cstr(upg);
+      if (upg_s.len == 3 && !memcmp(upg_s.data, "h2c", 3) &&
+          !fiobj_hash_get2(http1_pr2handle(p).headers, http1_h2c_cl_hash) &&
+          !fiobj_hash_get2(http1_pr2handle(p).headers, http1_h2c_te_hash)) {
+        /* decode the HTTP2-Settings payload (Base64URL, RFC 4648 §5) */
+        fio_str_info_s enc = fiobj_obj2cstr(h2s);
+        size_t dec_cap = enc.len / 4 * 3 + 4;
+        uint8_t *dec = (uint8_t *)fio_malloc(dec_cap);
+        FIO_ASSERT_ALLOC(dec);
+        int n = fio_base64_decode((char *)dec, enc.data, (int)enc.len);
+        if (n < 0 || (size_t)n % 6) {
+          fio_free(dec);
+          http_send_error(&p->request, 400);
+          h1_reset(p);
+          return fio_is_closed(p->p.uuid);
+        }
+        /* validate the settings payload before committing to the upgrade */
+        int valid = 1;
+        for (int i = 0; i < n; i += 6) {
+          uint16_t id = (uint16_t)((dec[i] << 8) | dec[i + 1]);
+          uint32_t value = ((uint32_t)dec[i + 2] << 24) |
+                           ((uint32_t)dec[i + 3] << 16) |
+                           ((uint32_t)dec[i + 4] << 8) | (uint32_t)dec[i + 5];
+          if ((id == 0x2 && value > 1) || (id == 0x4 && value > 0x7fffffff)) {
+            valid = 0;
+            break;
+          }
+        }
+        if (!valid) {
+          fio_free(dec);
+          http_send_error(&p->request, 400);
+          h1_reset(p);
+          return fio_is_closed(p->p.uuid);
+        }
+        /* 101 Switching Protocols (RFC 9113 §3.2) */
+        http_set_header(&p->request, HTTP_HEADER_CONNECTION,
+                        fiobj_dup(HTTP_HVALUE_WS_UPGRADE));
+        http_set_header(&p->request, HTTP_HEADER_UPGRADE,
+                        fiobj_str_new("h2c", 3));
+        p->request.status = 101;
+        http_finish(&p->request);
+        p->stop = 1;
+        /* hand the leftover bytes (preface + frames) to the HTTP/2 protocol */
+        if (!http2_new(p->p.uuid, p->p.settings, p->parser.state.next,
+                       p->buf_len - (intptr_t)(p->parser.state.next - p->buf),
+                       dec, (size_t)n)) {
+          FIO_LOG_WARNING("h2c upgrade failed: HTTP/2 protocol unavailable.");
+          fio_close(p->p.uuid);
+        }
+        fio_free(dec);
+        h1_reset(p);
+        return fio_is_closed(p->p.uuid);
+      }
+    }
+  }
   http_on_request_handler______internal(&http1_pr2handle(p), p->p.settings);
   if (p->request.method && !p->stop)
     http_finish(&p->request);
@@ -765,9 +840,14 @@ static void http1_on_data_first_time(intptr_t uuid, fio_protocol_s *protocol) {
 
   /* ensure future reads skip this first time HTTP/2.0 test */
   p->p.protocol.on_data = http1_on_data;
-  if (i >= 24 && !memcmp(p->buf, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24)) {
-    FIO_LOG_WARNING("client claimed unsupported HTTP/2 prior knowledge.");
-    fio_close(uuid);
+  if (p->buf_len >= 24 && !memcmp(p->buf, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24)) {
+    /* HTTP/2 prior knowledge (RFC 9113 §3.3): hand the buffered preface and
+     * any following frames over to the HTTP/2 protocol object. */
+    if (!http2_new(uuid, p->p.settings, p->buf, p->buf_len, NULL, 0)) {
+      FIO_LOG_WARNING("client claimed HTTP/2 prior knowledge, but the HTTP/2 "
+                      "protocol could not be attached.");
+      fio_close(uuid);
+    }
     return;
   }
 
