@@ -55,6 +55,7 @@ typedef struct hpack_context_s {
   size_t scratch_len;
   size_t scratch_cap;
   size_t scratch_limit; /* per block decompression budget */
+  size_t scratch_reserved; /* top-of-budget bytes holding an encoded block */
 } hpack_context_s;
 
 /* *****************************************************************************
@@ -104,6 +105,9 @@ static int hpack_context_resize(hpack_context_s *ctx, size_t new_max);
  * On success returns the number of octets written (0 is valid) and, when
  * `used` isn't NULL, sets it to that value. If the buffer is too small, -1
  * is returned and `used` (when non-NULL) is set to the required size.
+ *
+ * Encoding is transactional: the context (dynamic table and announced size)
+ * is only mutated on success, so a failed encode leaves it unchanged.
  */
 static ssize_t hpack_context_encode(hpack_context_s *ctx, void *dest,
                                     size_t limit,
@@ -725,7 +729,8 @@ static MAYBE_UNUSED char *hpack__scratch_ensure(hpack_context_s *ctx,
 
 /**
  * Decodes a string literal into the scratch buffer, enforcing the per-block
- * decompression budget. Returns the decoded length, or -1 on error.
+ * decompression budget (minus any region reserved for an encoded block).
+ * Returns the decoded length, or -1 on error.
  */
 static MAYBE_UNUSED int hpack__string_scratch(hpack_context_s *ctx,
                                               const uint8_t *buf, size_t len,
@@ -734,7 +739,10 @@ static MAYBE_UNUSED int hpack__string_scratch(hpack_context_s *ctx,
   if (org >= len)
     return -1;
   int compressed = (buf[org] & 0x80) != 0;
-  size_t remain = ctx->scratch_limit - ctx->scratch_len;
+  /* decoded output may not grow into the reserved block region */
+  size_t remain = ctx->scratch_reserved > ctx->scratch_len
+                      ? ctx->scratch_reserved - ctx->scratch_len
+                      : 0;
   size_t need = 0;
   if (!compressed) {
     int64_t slen = hpack_int_unpack((void *)buf, len, 7, pos);
@@ -779,13 +787,26 @@ static MAYBE_UNUSED int hpack__use_huffman(const char *data, size_t len) {
   return (hlen >= 0 && (size_t)hlen <= len);
 }
 
+/* a deferred dynamic table entry (applied only when the block completes) */
+typedef struct hpack__pending_add_s {
+  const char *name;
+  size_t name_len;
+  const char *value;
+  size_t value_len;
+} hpack__pending_add_s;
+
 /**
- * Finds the best representation for a field:
- * returns 1 for an exact (name and value) match, 2 for a name-only match
- * and 0 when no table entry matches. The matching index is placed in
- * `index`.
+ * Finds the best representation for a field against the table state the
+ * decoder will have when it reaches the field: the pending (this block)
+ * additions first (newest first, they are prepended by the decoder), then
+ * the real dynamic entries (minus the ones logically evicted) and finally
+ * the static table. Returns 1 for an exact (name and value) match, 2 for a
+ * name-only match and 0 when no table entry matches. The matching index is
+ * placed in `index`.
  */
 static MAYBE_UNUSED int hpack__encode_find(hpack_context_s *ctx,
+                                           const hpack__pending_add_s *pending,
+                                           size_t pending_len, size_t evict_count,
                                            const hpack_header_s *f,
                                            size_t *index) {
   for (size_t i = 1; i <= 61; ++i) {
@@ -803,15 +824,45 @@ static MAYBE_UNUSED int hpack__encode_find(hpack_context_s *ctx,
       return 1;
     }
   }
-  for (size_t i = 0; i < ctx->dyn_len; ++i) {
+  /* this block's additions - the newest dynamic entries (RFC 7541 §4.1) */
+  for (size_t i = pending_len; i > 0; --i) {
+    const hpack__pending_add_s *p = &pending[i - 1];
+    if (p->name_len == f->name.len && p->value_len == f->value.len &&
+        (!p->name_len || !memcmp(p->name, f->name.data, p->name_len)) &&
+        (!p->value_len || !memcmp(p->value, f->value.data, p->value_len))) {
+      *index = 62 + (pending_len - i);
+      return 1;
+    }
+  }
+  /* the real dynamic entries (the logically evicted tail is invisible) */
+  size_t real_count = ctx->dyn_len - evict_count;
+  for (size_t i = 0; i < real_count; ++i) {
     const hpack_header_s *d = &ctx->dyn[i];
     if (d->name.len == f->name.len && d->value.len == f->value.len &&
         (!d->name.len || !memcmp(d->name.data, f->name.data, d->name.len)) &&
         (!d->value.len || !memcmp(d->value.data, f->value.data, d->value.len))) {
-      *index = 62 + i;
+      *index = 62 + pending_len + i;
       return 1;
     }
   }
+  for (size_t i = 1; i <= 61; ++i) {
+    const char *name;
+    const char *value;
+    size_t name_len;
+    size_t value_len;
+    if (hpack_header_static_find((uint8_t)i, 0, &name, &name_len))
+      return 0;
+    hpack_header_static_find((uint8_t)i, 1, &value, &value_len);
+    if (name_len == f->name.len && value_len == f->value.len &&
+        (!name_len || !memcmp(name, f->name.data, name_len)) &&
+        (!value_len || !memcmp(value, f->value.data, value_len))) {
+      *index = i;
+      return 1;
+    }
+  }
+  /* name-only matches prefer the shortest encoding: the static table is
+   * consulted before the dynamic table (RFC 7541 C.6.2 encodes ":status"
+   * with the static reference despite the dynamic name match) */
   for (size_t i = 1; i <= 61; ++i) {
     const char *name;
     size_t name_len;
@@ -822,11 +873,19 @@ static MAYBE_UNUSED int hpack__encode_find(hpack_context_s *ctx,
       return 2;
     }
   }
-  for (size_t i = 0; i < ctx->dyn_len; ++i) {
+  for (size_t i = pending_len; i > 0; --i) {
+    const hpack__pending_add_s *p = &pending[i - 1];
+    if (p->name_len == f->name.len &&
+        (!p->name_len || !memcmp(p->name, f->name.data, p->name_len))) {
+      *index = 62 + (pending_len - i);
+      return 2;
+    }
+  }
+  for (size_t i = 0; i < real_count; ++i) {
     const hpack_header_s *d = &ctx->dyn[i];
     if (d->name.len == f->name.len &&
-        !memcmp(d->name.data, f->name.data, d->name.len)) {
-      *index = 62 + i;
+        (!d->name.len || !memcmp(d->name.data, f->name.data, d->name.len))) {
+      *index = 62 + pending_len + i;
       return 2;
     }
   }
@@ -834,32 +893,49 @@ static MAYBE_UNUSED int hpack__encode_find(hpack_context_s *ctx,
 }
 
 /**
- * Encodes a header field section into `dest` (with `limit` octets available).
- * Assumes `dest` is large enough (see hpack_context_encode) and only
- * mutates the context (dynamic table, announced size) on success.
+ * Encodes a header block into `dest` (up to `limit` octets).
+ *
+ * Encoding is transactional: on failure (including allocation errors) the
+ * context (the announced table size and the dynamic table) is left unchanged,
+ * so the caller may retry or abort without desynchronizing the peer.
+ *
+ * The index references mirror the decoder's table state - including the
+ * entries this block adds (RFC 7541 §4.1) - by simulating the additions and
+ * their evictions without mutating the context.
  */
 static MAYBE_UNUSED ssize_t hpack__encode_block(hpack_context_s *ctx,
                                                 uint8_t *dest, size_t limit,
                                                 const hpack_header_s *fields,
                                                 size_t count) {
   size_t pos = 0;
+  hpack__pending_add_s *pending = NULL;
+  size_t pending_len = 0;
+  size_t pending_cap = 0;
+  size_t pending_size = 0;
+  size_t evict_count = 0; /* real-table entries logically evicted */
   /* dynamic table size update (RFC 7541 §6.3) */
   if (ctx->dyn_max != ctx->announced) {
-    if (ctx->dyn_max > ctx->dyn_protocol)
+    if (ctx->dyn_max > ctx->dyn_protocol) {
+      free(pending);
       return -1;
+    }
     dest[pos] = 0x20;
     int l = hpack_int_pack(dest + pos, limit - pos, ctx->dyn_max, 5);
-    if (l < 0 || (size_t)l > limit - pos)
+    if (l < 0 || (size_t)l > limit - pos) {
+      free(pending);
       return -1;
+    }
     pos += l;
-    ctx->announced = ctx->dyn_max;
   }
   for (size_t i = 0; i < count; ++i) {
     const hpack_header_s *f = &fields[i];
-    if (!f->name.data && f->name.len)
+    if (!f->name.data && f->name.len) {
+      free(pending);
       return -1;
+    }
     size_t index = 0;
-    int match = hpack__encode_find(ctx, f, &index);
+    int match = hpack__encode_find(ctx, pending, pending_len, evict_count, f,
+                                   &index);
     int indexable = f->name.len && f->value.len &&
                     hpack__entry_size(f->name.len, f->value.len) <=
                         ctx->dyn_max;
@@ -869,21 +945,27 @@ static MAYBE_UNUSED ssize_t hpack__encode_block(hpack_context_s *ctx,
       /* indexed header field (RFC 7541 §6.1) */
       dest[pos] = 0x80;
       nl = hpack_int_pack(dest + pos, limit - pos, index, 7);
-      if (nl < 0 || (size_t)nl > limit - pos)
+      if (nl < 0 || (size_t)nl > limit - pos) {
+        free(pending);
         return -1;
+      }
       pos += nl;
     } else if (match == 2) {
       /* literal with indexed name (RFC 7541 §6.2) */
       dest[pos] = indexable ? 0x40 : 0x00;
       nl = hpack_int_pack(dest + pos, limit - pos, index, 6);
-      if (nl < 0 || (size_t)nl > limit - pos)
+      if (nl < 0 || (size_t)nl > limit - pos) {
+        free(pending);
         return -1;
+      }
       pos += nl;
       vl = hpack_string_pack(dest + pos, limit - pos, (void *)f->value.data,
                              f->value.len,
                              hpack__use_huffman(f->value.data, f->value.len));
-      if (vl < 0 || (size_t)vl > limit - pos)
+      if (vl < 0 || (size_t)vl > limit - pos) {
+        free(pending);
         return -1;
+      }
       pos += vl;
     } else {
       /* literal with literal name (RFC 7541 §6.2) */
@@ -892,23 +974,95 @@ static MAYBE_UNUSED ssize_t hpack__encode_block(hpack_context_s *ctx,
       nl = hpack_string_pack(dest + pos, limit - pos, (void *)f->name.data,
                              f->name.len,
                              hpack__use_huffman(f->name.data, f->name.len));
-      if (nl < 0 || (size_t)nl > limit - pos)
+      if (nl < 0 || (size_t)nl > limit - pos) {
+        free(pending);
         return -1;
+      }
       pos += nl;
       vl = hpack_string_pack(dest + pos, limit - pos, (void *)f->value.data,
                              f->value.len,
                              hpack__use_huffman(f->value.data, f->value.len));
-      if (vl < 0 || (size_t)vl > limit - pos)
+      if (vl < 0 || (size_t)vl > limit - pos) {
+        free(pending);
         return -1;
+      }
       pos += vl;
     }
     /* only literal-with-incremental-indexing representations add an entry
-     * to the dynamic table (RFC 7541 §4.1) */
-    if (indexable && match != 1)
-      if (hpack__table_add(ctx, f->name.data, f->name.len, f->value.data,
-                           f->value.len))
-        return -1;
+     * to the dynamic table (RFC 7541 §4.1) - the additions are deferred so
+     * that a failed encode leaves the table unchanged, but the index
+     * references already account for them (and their evictions) */
+    if (indexable && match != 1) {
+      size_t esize = hpack__entry_size(f->name.len, f->value.len);
+      if (esize > ctx->dyn_max) {
+        /* an oversized entry empties the table (RFC 7541 §4.4) */
+        pending_len = 0;
+        pending_size = 0;
+        evict_count = ctx->dyn_len;
+        free(pending);
+        pending = NULL;
+        pending_cap = 0;
+      } else {
+        /* simulate the decoder's evictions (oldest first: the real table's
+         * tail, then the oldest pending additions) */
+        size_t evicted = 0;
+        for (size_t e = ctx->dyn_len - evict_count; e < ctx->dyn_len; ++e)
+          evicted +=
+              hpack__entry_size(ctx->dyn[e].name.len, ctx->dyn[e].value.len);
+        while (pending_size + ctx->dyn_size - evicted + esize >
+               ctx->dyn_max) {
+          if (evict_count < ctx->dyn_len) {
+            ++evict_count;
+            evicted += hpack__entry_size(
+                ctx->dyn[ctx->dyn_len - evict_count].name.len,
+                ctx->dyn[ctx->dyn_len - evict_count].value.len);
+          } else if (pending_len) {
+            pending_size -=
+                hpack__entry_size(pending[0].name_len, pending[0].value_len);
+            memmove(pending, pending + 1,
+                    (pending_len - 1) * sizeof(*pending));
+            --pending_len;
+          } else {
+            break; /* single entry larger than the capacity is dropped */
+          }
+        }
+        if (pending_len == pending_cap) {
+          size_t nc = pending_cap ? pending_cap * 2 : 8;
+          hpack__pending_add_s *np =
+              (hpack__pending_add_s *)realloc(pending, nc * sizeof(*np));
+          if (!np) {
+            free(pending);
+            return -1;
+          }
+          pending = np;
+          pending_cap = nc;
+        }
+        pending[pending_len].name = f->name.data;
+        pending[pending_len].name_len = f->name.len;
+        pending[pending_len].value = f->value.data;
+        pending[pending_len].value_len = f->value.len;
+        ++pending_len;
+        pending_size += esize;
+      }
+    }
   }
+  /* the block encoded successfully - apply the logical evictions and the
+   * deferred table additions, then announce the dynamic table size (the
+   * evictions mirror the decoder's interleaved evictions) */
+  for (size_t i = 0; i < evict_count; ++i) {
+    hpack_header_s *tail = &ctx->dyn[ctx->dyn_len - 1];
+    ctx->dyn_size -= hpack__entry_size(tail->name.len, tail->value.len);
+    hpack__entry_free(tail);
+    --ctx->dyn_len;
+  }
+  for (size_t i = 0; i < pending_len; ++i)
+    if (hpack__table_add(ctx, pending[i].name, pending[i].name_len,
+                         pending[i].value, pending[i].value_len)) {
+      free(pending);
+      return -1;
+    }
+  free(pending);
+  ctx->announced = ctx->dyn_max;
   return (ssize_t)pos;
 }
 
@@ -992,6 +1146,7 @@ static MAYBE_UNUSED int hpack_context_decode_start(hpack_context_s *ctx) {
   if (!hpack__scratch_ensure(ctx, ctx->scratch_limit))
     return -1;
   ctx->scratch_len = 0;
+  ctx->scratch_reserved = 0;
   return 0;
 }
 
@@ -1020,8 +1175,10 @@ static MAYBE_UNUSED int hpack_context_decode_end(hpack_context_s *ctx,
   }
   /* relocate the block to the top of the scratch budget, so that the decoded
    * fields (appended from the bottom by `hpack_context_decode`) can't
-   * overwrite it while it's being parsed */
+   * overwrite it while it's being parsed (the reserved region is released
+   * when the decode completes or when a new block starts) */
   memmove(ctx->scratch + (ctx->scratch_limit - blen), ctx->scratch, blen);
+  ctx->scratch_reserved = blen;
   *block = (uint8_t *)ctx->scratch + (ctx->scratch_limit - blen);
   *block_len = blen;
   return 0;
@@ -1072,7 +1229,7 @@ static MAYBE_UNUSED int hpack_context_decode(hpack_context_s *ctx,
                                              size_t limit, size_t *count) {
   if (count)
     *count = 0;
-  if (!ctx || !data)
+  if (!ctx || (!data && len))
     return -1;
   if (!fields)
     limit = (size_t)-1; /* count-only mode */
@@ -1085,6 +1242,13 @@ static MAYBE_UNUSED int hpack_context_decode(hpack_context_s *ctx,
    * invalidate the field pointers written into the scratch buffer */
   if (!hpack__scratch_ensure(ctx, ctx->scratch_limit))
     return -1;
+  /* when the block resides in the scratch buffer (relocated to the top of
+   * the budget by `hpack_context_decode_end`), decoded output may not grow
+   * into the block's reserved region; otherwise the whole budget is usable */
+  size_t block_blen = ctx->scratch_reserved;
+  ctx->scratch_reserved = ctx->scratch_limit;
+  if (block_blen && block_blen < ctx->scratch_limit)
+    ctx->scratch_reserved = ctx->scratch_limit - block_blen;
   while (pos < len) {
     uint8_t b = buf[pos];
     if (b & 0x80) {
@@ -1100,7 +1264,9 @@ static MAYBE_UNUSED int hpack_context_decode(hpack_context_s *ctx,
       size_t vl;
       if (hpack__table_find(ctx, (size_t)index, &name, &nl, &value, &vl))
         return -1;
-      if (nl + vl > ctx->scratch_limit - ctx->scratch_len)
+      if (nl + vl > (ctx->scratch_reserved > ctx->scratch_len
+                          ? ctx->scratch_reserved - ctx->scratch_len
+                          : 0))
         return -1;
       char *s = hpack__scratch_ensure(ctx, ctx->scratch_len + nl + vl);
       if (!s)
@@ -1147,7 +1313,9 @@ static MAYBE_UNUSED int hpack_context_decode(hpack_context_s *ctx,
       size_t vl = (size_t)vr;
       size_t value_off = ctx->scratch_len - vl;
       if (!name_in_scratch) {
-        if (nl > ctx->scratch_limit - ctx->scratch_len)
+        if (nl > (ctx->scratch_reserved > ctx->scratch_len
+                      ? ctx->scratch_reserved - ctx->scratch_len
+                      : 0))
           return -1;
         char *s = hpack__scratch_ensure(ctx, ctx->scratch_len + nl);
         if (!s)
@@ -1216,7 +1384,9 @@ static MAYBE_UNUSED int hpack_context_decode(hpack_context_s *ctx,
       size_t vl = (size_t)vr;
       size_t value_off = ctx->scratch_len - vl;
       if (!name_in_scratch) {
-        if (nl > ctx->scratch_limit - ctx->scratch_len)
+        if (nl > (ctx->scratch_reserved > ctx->scratch_len
+                      ? ctx->scratch_reserved - ctx->scratch_len
+                      : 0))
           return -1;
         char *s = hpack__scratch_ensure(ctx, ctx->scratch_len + nl);
         if (!s)
@@ -1236,6 +1406,7 @@ static MAYBE_UNUSED int hpack_context_decode(hpack_context_s *ctx,
       saw_field = 1;
     }
   }
+  ctx->scratch_reserved = 0;
   if (count)
     *count = fcount;
   return 0;
