@@ -98,7 +98,8 @@ struct http2_connection_s {
     uint32_t max_ping_outstanding; /* anti-DoS: unACKed PING cap */
   } local;
   struct http2_connection_protected_read_only_state_s {
-    uint32_t last_stream;     /* highest stream id seen / used */
+    uint32_t last_local_stream;  /* highest locally initiated stream id */
+    uint32_t last_remote_stream; /* highest peer initiated stream id */
     uint32_t goaway_stream;   /* last stream id in a received GOAWAY */
     int64_t recv_window;      /* our connection flow-control window */
     int64_t send_window;      /* the peer's connection flow-control window */
@@ -109,7 +110,7 @@ struct http2_connection_s {
     uint8_t preface_len;      /* client preface bytes validated so far */
     uint8_t first_frame;      /* the first frame must be SETTINGS */
     uint8_t pings_outstanding; /* unACKed PINGs we sent */
-    uint8_t header_block_stream; /* stream awaiting CONTINUATION (0 = none) */
+    uint32_t header_block_stream; /* stream awaiting CONTINUATION (0 = none) */
     uint8_t header_block_end_stream; /* END_STREAM of the pending block */
     uint8_t header_block_push; /* the pending block is a PUSH_PROMISE */
     uint32_t header_block_promised; /* promised stream of the pending block */
@@ -134,9 +135,13 @@ static void http2_on_headers(http2_connection_s *c, uint32_t stream,
                              int trailers, int end_stream);
 
 /** Called when a DATA frame was received (after padding stripping).
- * The data is only valid during the callback. `end_stream` is the flag. */
+ * The data is only valid during the callback. `payload_len` is the full
+ * frame payload size (including padding) that was charged to the flow
+ * control windows - it should be used for the WINDOW_UPDATE replenishment.
+ * `end_stream` is the flag. */
 static void http2_on_data(http2_connection_s *c, uint32_t stream,
-                          uint8_t *data, uint32_t length, int end_stream);
+                          uint8_t *data, uint32_t length,
+                          uint32_t payload_len, int end_stream);
 
 /** Called when a PUSH_PROMISE frame was received (client role only).
  * The decoded promise header block (the promised request headers) is passed
@@ -404,7 +409,7 @@ static void http2_connection_abort(http2_connection_s *c, uint32_t error) {
   if (c->state.state == 2)
     return;
   uint8_t payload[8];
-  http2__be32(payload, c->state.last_stream);
+  http2__be32(payload, c->state.last_remote_stream);
   http2__be32(payload + 4, error);
   http2_connection_emit(c, 8, HTTP2_FRAME_GOAWAY, 0, 0, payload);
   c->state.state = 2;
@@ -473,9 +478,9 @@ static int http2_connection_send_headers(http2_connection_s *c,
   if (!s) {
     /* the client initiates new streams with its own HEADERS */
     if (c->state.role != HTTP2_CONNECTION_CLIENT || !(stream & 1) ||
-        stream <= c->state.last_stream || c->state.state)
+        stream <= c->state.last_local_stream || c->state.state)
       return -1;
-    c->state.last_stream = stream;
+    c->state.last_local_stream = stream;
     s = http2__stream_add(c, stream, HTTP2_STREAM_OPEN);
   }
   if (s->state != HTTP2_STREAM_OPEN &&
@@ -549,7 +554,7 @@ static MAYBE_UNUSED int http2_connection_send_push_promise(http2_connection_s *c
   if (c->state.role != HTTP2_CONNECTION_SERVER || !c->peer.enable_push)
     return -1;
   /* promised streams are server initiated - even, unused ids */
-  if (!promised || (promised & 1) || promised <= c->state.last_stream)
+  if (!promised || (promised & 1) || promised <= c->state.last_local_stream)
     return -1;
   /* the promise must be attached to an active client stream (§6.6) */
   http2_stream_s *s = http2__stream_find(c, stream);
@@ -557,7 +562,7 @@ static MAYBE_UNUSED int http2_connection_send_push_promise(http2_connection_s *c
              s->state != HTTP2_STREAM_HALF_CLOSED_REMOTE))
     return -1;
   http2__stream_add(c, promised, HTTP2_STREAM_RESERVED_LOCAL);
-  c->state.last_stream = promised;
+  c->state.last_local_stream = promised;
   size_t used = 0;
   size_t cap = 16 + (count * 32);
   for (size_t i = 0; i < count; ++i) {
@@ -628,7 +633,7 @@ static MAYBE_UNUSED void http2_connection_send_goaway(http2_connection_s *c,
   if (c->state.state)
     return;
   uint8_t payload[8];
-  http2__be32(payload, c->state.last_stream);
+  http2__be32(payload, c->state.last_remote_stream);
   http2__be32(payload + 4, error);
   http2_connection_emit(c, 8, HTTP2_FRAME_GOAWAY, 0, 0, payload);
   c->state.state = 1;
@@ -674,6 +679,10 @@ static MAYBE_UNUSED void http2_connection_setting_set(http2_connection_s *c, uin
                                          uint32_t value) {
   if (c->state.state == 2)
     return;
+  /* the parser can only buffer frames up to its internal capacity, so the
+   * advertised SETTINGS_MAX_FRAME_SIZE is clamped accordingly */
+  if (id == HTTP2_SETTING_MAX_FRAME_SIZE && value > HTTP2_PARSER_BUFFER)
+    value = HTTP2_PARSER_BUFFER;
   uint8_t payload[6];
   payload[0] = 0;
   payload[1] = id;
@@ -771,11 +780,23 @@ static int http2__apply_settings(http2_connection_s *c, const uint8_t *payload,
     uint32_t value = http2_parser_be32(payload + i + 2);
     switch (id) {
     case HTTP2_SETTING_HEADER_TABLE_SIZE:
+      /* the value limits our encoder's dynamic table (RFC 9113 §6.5.2). It
+       * is clamped to the protocol-enforced maximum - the encoder may use a
+       * smaller table than the peer allows (RFC 7541 §4.2) - and the HPACK
+       * update result is propagated (it can only fail if the clamp was
+       * bypassed). */
       c->peer.header_table_size = value;
-      hpack_context_update(&c->hpack_enc, value);
+      if (value > c->hpack_enc.dyn_protocol)
+        value = (uint32_t)c->hpack_enc.dyn_protocol;
+      if (hpack_context_update(&c->hpack_enc, value))
+        return HTTP2_ERROR_PROTOCOL;
       break;
     case HTTP2_SETTING_ENABLE_PUSH:
       if (value > 1)
+        return HTTP2_ERROR_PROTOCOL;
+      /* a server must not send SETTINGS_ENABLE_PUSH with a value of 1
+       * (RFC 9113 §6.5.2) */
+      if (c->state.role == HTTP2_CONNECTION_CLIENT && value == 1)
         return HTTP2_ERROR_PROTOCOL;
       c->peer.enable_push = value;
       break;
@@ -824,6 +845,125 @@ static int http2__check_first_frame(http2_connection_s *c, uint8_t type) {
   return 0;
 }
 
+/* connection-specific header fields must not be sent over HTTP/2
+ * (RFC 9113 §8.2.2) */
+static int http2__field_connection_specific(const hpack_header_s *f) {
+  static const char *const banned[] = {"connection", "keep-alive",
+                                       "proxy-connection", "transfer-encoding",
+                                       "upgrade"};
+  size_t n = f->name.len;
+  if (!n)
+    return 0;
+  for (size_t i = 0; i < sizeof(banned) / sizeof(*banned); ++i) {
+    size_t bl = strlen(banned[i]);
+    if (n == bl && !memcmp(f->name.data, banned[i], bl))
+      return 1;
+  }
+  /* TE is only allowed with the value "trailers" (RFC 9113 §8.2.2) */
+  if (n == 2 && !memcmp(f->name.data, "te", 2))
+    return !(f->value.len == 7 && !memcmp(f->value.data, "trailers", 7));
+  return 0;
+}
+
+/* the RFC 7541 §4.1 header-list size (32 + name + value per field) */
+static uint64_t http2__header_list_size(const hpack_header_s *fields,
+                                        size_t count) {
+  uint64_t total = 0;
+  for (size_t i = 0; i < count; ++i) {
+    total += 32 + fields[i].name.len + fields[i].value.len;
+    if (total > 0xffffffff)
+      return total; /* saturate */
+  }
+  return total;
+}
+
+/* validates a decoded header block (RFC 9113 §8.1.2, §8.2, §8.3.1).
+ * kind: 0 = request (server role), 1 = response (client role),
+ *       2 = push promise request (client role), 3 = trailers.
+ * Returns 0 = ok, 1 = malformed (stream error PROTOCOL),
+ *         2 = connection error PROTOCOL. */
+static int http2__validate_headers(http2_connection_s *c,
+                                   const hpack_header_s *fields, size_t count,
+                                   int kind) {
+  (void)c;
+  uint8_t pseudo_end = 0;
+  uint8_t has_method = 0, has_scheme = 0, has_path = 0, has_authority = 0,
+          has_status = 0, connect = 0;
+  const char *authority_data = NULL;
+  size_t authority_len = 0;
+  for (size_t i = 0; i < count; ++i) {
+    fio_str_info_s n = fields[i].name;
+    fio_str_info_s v = fields[i].value;
+    if (!n.data || !n.len)
+      return 1; /* empty field name */
+    if (n.data[0] == ':') {
+      /* pseudo-headers must precede regular fields (RFC 9113 §8.1.2.1) */
+      if (pseudo_end || kind == 3)
+        return 1;
+      if (n.len == 7 && !memcmp(n.data, ":method", 7)) {
+        if (has_method)
+          return 1;
+        has_method = 1;
+        if (v.len == 6 && !memcmp(v.data, "CONNECT", 6))
+          connect = 1;
+      } else if (n.len == 5 && !memcmp(n.data, ":path", 5)) {
+        if (has_path || kind == 1)
+          return 1;
+        has_path = 1;
+      } else if (n.len == 7 && !memcmp(n.data, ":scheme", 7)) {
+        if (has_scheme || kind == 1)
+          return 1;
+        has_scheme = 1;
+      } else if (n.len == 10 && !memcmp(n.data, ":authority", 10)) {
+        if (has_authority)
+          return 1;
+        has_authority = 1;
+        authority_data = v.data;
+        authority_len = v.len;
+      } else if (n.len == 7 && !memcmp(n.data, ":status", 7)) {
+        if (has_status || (kind != 1))
+          return 1;
+        /* :status must be a 3 digit code (RFC 9113 §8.3.2) */
+        if (v.len != 3 || v.data[0] < '0' || v.data[0] > '9' ||
+            v.data[1] < '0' || v.data[1] > '9' || v.data[2] < '0' ||
+            v.data[2] > '9')
+          return 1;
+        has_status = 1;
+      } else {
+        return 1; /* unknown pseudo-header */
+      }
+    } else {
+      /* field names are lowercase in HTTP/2 (RFC 9113 §8.1.2) */
+      for (size_t j = 0; j < n.len; ++j)
+        if (n.data[j] >= 'A' && n.data[j] <= 'Z')
+          return 1;
+      /* connection-specific fields are a connection error (RFC 9113 §8.2.2) */
+      if (http2__field_connection_specific(fields + i))
+        return 2;
+      /* a Host field must match :authority (RFC 9113 §8.3.1) */
+      if ((kind == 0 || kind == 2) && n.len == 4 &&
+          !memcmp(n.data, "host", 4)) {
+        if (has_authority &&
+            (authority_len != v.len ||
+             memcmp(authority_data, v.data, v.len)))
+          return 1;
+      }
+      pseudo_end = 1;
+    }
+  }
+  /* mandatory pseudo-headers (RFC 9113 §8.3.1, §8.5) */
+  if (kind == 0 || kind == 2) {
+    if (connect)
+      return (!has_method || !has_authority || has_scheme || has_path) ? 1 : 0;
+    if (!has_method || !has_scheme || !has_path)
+      return 1;
+  } else if (kind == 1) {
+    if (!has_status)
+      return 1;
+  }
+  return 0;
+}
+
 /* handles a complete header block (HEADERS + CONTINUATION) */
 static int http2__handle_header_block(http2_connection_s *c, uint32_t stream,
                                       const uint8_t *data, uint32_t length,
@@ -838,6 +978,32 @@ static int http2__handle_header_block(http2_connection_s *c, uint32_t stream,
     http2__stream_rst(c, stream, HTTP2_ERROR_ENHANCE_YOUR_CALM);
     return 0;
   }
+  /* the header-list size is measured like the HPACK dynamic table entries,
+   * 32 + name + value per field (RFC 9113 §10.5.1) */
+  if (http2__header_list_size(fields, field_count) > c->local.max_header_list) {
+    http2__stream_rst(c, stream, HTTP2_ERROR_ENHANCE_YOUR_CALM);
+    return 0;
+  }
+  /* validate the decoded fields (RFC 9113 §8.1.2, §8.2, §8.3.1) */
+  int kind;
+  if (c->state.role == HTTP2_CONNECTION_CLIENT) {
+    int has_pseudo = 0;
+    for (size_t i = 0; i < field_count; ++i)
+      if (fields[i].name.len && fields[i].name.data[0] == ':') {
+        has_pseudo = 1;
+        break;
+      }
+    kind = has_pseudo ? 1 : 3; /* response or trailers */
+  } else {
+    kind = trailers ? 3 : 0; /* trailers or request */
+  }
+  int vr = http2__validate_headers(c, fields, field_count, kind);
+  if (vr == 1) {
+    http2__stream_rst(c, stream, HTTP2_ERROR_PROTOCOL);
+    return 0;
+  }
+  if (vr == 2)
+    return HTTP2_ERROR_PROTOCOL; /* connection error (§8.2.2) */
   http2_on_headers(c, stream, fields, field_count, trailers, end_stream);
   http2_stream_s *s = http2__stream_find(c, stream);
   if (s && end_stream) {
@@ -875,6 +1041,10 @@ static int http2__on_frame(http2_connection_s *c, uint32_t length, uint8_t type,
       return HTTP2_ERROR_PROTOCOL;
     /* padding (RFC 9113 §6.1) */
     uint32_t pos = 0;
+    /* flow control applies to the entire DATA payload, padding included
+     * (RFC 9113 §6.9) - the full size is charged to the windows, while the
+     * application callback receives only the stripped data */
+    uint32_t fc_len = length;
     if (flags & HTTP2_FLAG_PADDED) {
       if (!length)
         return HTTP2_ERROR_PROTOCOL;
@@ -885,14 +1055,14 @@ static int http2__on_frame(http2_connection_s *c, uint32_t length, uint8_t type,
       length -= pad + 1; /* the pad length octet itself */
     }
     /* flow control (RFC 9113 §6.9) */
-    if ((int64_t)length > c->state.recv_window ||
-        (int64_t)length > s->recv_window) {
+    if ((int64_t)fc_len > c->state.recv_window ||
+        (int64_t)fc_len > s->recv_window) {
       http2__stream_rst(c, stream, HTTP2_ERROR_FLOW_CONTROL);
       return 0;
     }
-    c->state.recv_window -= (int64_t)length;
-    s->recv_window -= (int64_t)length;
-    http2_on_data(c, stream, payload + pos, length,
+    c->state.recv_window -= (int64_t)fc_len;
+    s->recv_window -= (int64_t)fc_len;
+    http2_on_data(c, stream, payload + pos, length, fc_len,
                   flags & HTTP2_FLAG_END_STREAM);
     if (flags & HTTP2_FLAG_END_STREAM) {
       if (s->state == HTTP2_STREAM_OPEN)
@@ -917,7 +1087,7 @@ static int http2__on_frame(http2_connection_s *c, uint32_t length, uint8_t type,
       return HTTP2_ERROR_PROTOCOL;
     if (!s) {
       /* a new stream - validate the stream id (RFC 9113 §5.1.1) */
-      if (stream <= c->state.last_stream)
+      if (stream <= c->state.last_remote_stream)
         return HTTP2_ERROR_PROTOCOL; /* ids must strictly increase */
       if (c->state.role == HTTP2_CONNECTION_SERVER && !(stream & 1))
         return HTTP2_ERROR_PROTOCOL; /* client streams must be odd */
@@ -931,7 +1101,7 @@ static int http2__on_frame(http2_connection_s *c, uint32_t length, uint8_t type,
         http2__stream_rst(c, stream, HTTP2_ERROR_REFUSED_STREAM);
         return 0;
       }
-      c->state.last_stream = stream;
+      c->state.last_remote_stream = stream;
       s = http2__stream_add(c, stream, HTTP2_STREAM_OPEN);
     }
     uint32_t pad_pos = 0;
@@ -1003,9 +1173,21 @@ static int http2__on_frame(http2_connection_s *c, uint32_t length, uint8_t type,
           http2__stream_rst(c, pp_stream, HTTP2_ERROR_ENHANCE_YOUR_CALM);
           return 0;
         }
-        http2_on_push_promise(c, stream, pp_stream, fields, field_count);
-        r2 = 0;
-      } else {
+        if (http2__header_list_size(fields, field_count) >
+            c->local.max_header_list) {
+          http2__stream_rst(c, pp_stream, HTTP2_ERROR_ENHANCE_YOUR_CALM);
+          return 0;
+        }
+int pp_vr = http2__validate_headers(c, fields, field_count, 2);
+      if (pp_vr == 1) {
+        http2__stream_rst(c, pp_stream, HTTP2_ERROR_PROTOCOL);
+        return 0;
+      }
+      if (pp_vr == 2)
+        return HTTP2_ERROR_PROTOCOL; /* connection error (§8.2.2) */
+      http2_on_push_promise(c, stream, pp_stream, fields, field_count);
+      r2 = 0;
+    } else {
         r2 = http2__handle_header_block(
             c, stream, block, (uint32_t)blen, c->state.header_block_end_stream,
             trailers);
@@ -1095,9 +1277,9 @@ static int http2__on_frame(http2_connection_s *c, uint32_t length, uint8_t type,
       return HTTP2_ERROR_FRAME_SIZE;
     uint32_t promised = http2_parser_be32(payload + pos) & 0x7fffffff;
     /* the promised stream is server initiated, so it must be even and idle */
-    if ((promised & 1) || promised <= c->state.last_stream)
+    if ((promised & 1) || promised <= c->state.last_remote_stream)
       return HTTP2_ERROR_PROTOCOL;
-    c->state.last_stream = promised;
+    c->state.last_remote_stream = promised;
     http2__stream_add(c, promised, HTTP2_STREAM_RESERVED_REMOTE);
     pos += 4;
     len -= 4;
@@ -1111,6 +1293,18 @@ static int http2__on_frame(http2_connection_s *c, uint32_t length, uint8_t type,
         http2__stream_rst(c, promised, HTTP2_ERROR_ENHANCE_YOUR_CALM);
         return 0;
       }
+      if (http2__header_list_size(fields, field_count) >
+          c->local.max_header_list) {
+        http2__stream_rst(c, promised, HTTP2_ERROR_ENHANCE_YOUR_CALM);
+        return 0;
+      }
+      int vr = http2__validate_headers(c, fields, field_count, 2);
+      if (vr == 1) {
+        http2__stream_rst(c, promised, HTTP2_ERROR_PROTOCOL);
+        return 0;
+      }
+      if (vr == 2)
+        return HTTP2_ERROR_PROTOCOL; /* connection error (§8.2.2) */
       http2_on_push_promise(c, stream, promised, fields, field_count);
     } else {
       /* the block continues in CONTINUATION frames (RFC 9113 §6.10) */

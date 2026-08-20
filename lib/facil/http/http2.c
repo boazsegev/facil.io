@@ -486,8 +486,9 @@ static int http2__request_fields(http_s *h, http2_scratch_s *sc,
 static int http2__send_request_headers(http2_request_s *req, int end_stream) {
   http2pr_s *p = req2pr(&req->h);
   if (!req->stream) {
-    req->stream = p->conn.state.last_stream + 2;
-    if (!(req->stream & 1) || req->stream <= p->conn.state.last_stream)
+    req->stream = p->conn.state.last_local_stream + 2;
+    if (!(req->stream & 1) ||
+        req->stream <= p->conn.state.last_local_stream)
       return -1;
   }
   http2_scratch_s sc = {0};
@@ -707,7 +708,8 @@ static void http2_on_headers(http2_connection_s *c, uint32_t stream,
 }
 
 static void http2_on_data(http2_connection_s *c, uint32_t stream,
-                          uint8_t *data, uint32_t length, int end_stream) {
+                          uint8_t *data, uint32_t length,
+                          uint32_t payload_len, int end_stream) {
   http2pr_s *p = conn2pr(c);
   http2_request_s *req = http2_find_req(p, stream);
   if (!req)
@@ -718,9 +720,10 @@ static void http2_on_data(http2_connection_s *c, uint32_t stream,
     if (!req->h.body)
       req->h.body = fiobj_data_newstr();
     fiobj_data_write(req->h.body, data, length);
-    /* replenish the consumed flow-control windows */
-    http2_connection_window_update(c, stream, length);
-    http2_connection_window_update(c, 0, length);
+    /* replenish the consumed flow-control windows - the full payload size
+     * (padding included) was charged to the windows (RFC 9113 §6.9) */
+    http2_connection_window_update(c, stream, payload_len);
+    http2_connection_window_update(c, 0, payload_len);
   }
   if (end_stream)
     http2_request_ready(p, req);
