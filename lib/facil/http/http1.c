@@ -547,9 +547,148 @@ void *http1_vtable(void) { return (void *)&HTTP1_VTABLE; }
 Parser Callbacks
 ***************************************************************************** */
 
-/** called when a request was received. */
+/* h2c upgrade support (RFC 9113 §3.2) */
+static uint64_t http1_h2c_upgrade_hash = 0;
+static uint64_t http1_h2c_settings_hash = 0;
+static uint64_t http1_h2c_cl_hash = 0;
+static uint64_t http1_h2c_te_hash = 0;
+
+/* RFC 4648 §5 Base64URL decode value (-1 for characters outside the alphabet,
+ * including the standard Base64 '+' and '/' and any padding) */
+static int http1_h2c_b64url_value(char c) {
+  if (c >= 'A' && c <= 'Z')
+    return c - 'A' + 1;
+  if (c >= 'a' && c <= 'z')
+    return c - 'a' + 27;
+  if (c >= '0' && c <= '9')
+    return c - '0' + 53;
+  if (c == '-')
+    return 63;
+  if (c == '_')
+    return 64;
+  return -1;
+}
+
+/* decodes a Base64URL string (RFC 4648 §5) into exactly len/4*3 bytes.
+ * Returns the number of bytes written, or -1 for a malformed payload.
+ * A SETTINGS payload is a multiple of 6 bytes, so a valid encoding is a
+ * multiple of 8 characters with no padding. */
+static ssize_t http1_h2c_b64url_decode(uint8_t *dest, const char *src,
+                                       size_t len) {
+  if (len % 4)
+    return -1;
+  for (size_t i = 0; i < len; i += 4) {
+    int v0 = http1_h2c_b64url_value(src[i + 0]);
+    int v1 = http1_h2c_b64url_value(src[i + 1]);
+    int v2 = http1_h2c_b64url_value(src[i + 2]);
+    int v3 = http1_h2c_b64url_value(src[i + 3]);
+    if (v0 < 0 || v1 < 0 || v2 < 0 || v3 < 0)
+      return -1;
+    dest[0] = (uint8_t)(((v0 - 1) << 2) | ((v1 - 1) >> 4));
+    dest[1] = (uint8_t)(((v1 - 1) << 4) | ((v2 - 1) >> 2));
+    dest[2] = (uint8_t)(((v2 - 1) << 6) | (v3 - 1));
+    dest += 3;
+  }
+  return (ssize_t)(len / 4 * 3);
+}
+
 static int http1_on_request(http1_parser_s *parser) {
   http1pr_s *p = parser2http(parser);
+  if (!p->is_client) {
+    /* h2c upgrade (RFC 9113 §3.2): Upgrade: h2c + HTTP2-Settings, no body */
+    if (!http1_h2c_upgrade_hash)
+      http1_h2c_upgrade_hash = fiobj_hash_string("upgrade", 7);
+    if (!http1_h2c_settings_hash)
+      http1_h2c_settings_hash = fiobj_hash_string("http2-settings", 14);
+    if (!http1_h2c_cl_hash)
+      http1_h2c_cl_hash = fiobj_hash_string("content-length", 14);
+    if (!http1_h2c_te_hash)
+      http1_h2c_te_hash = fiobj_hash_string("transfer-encoding", 17);
+    FIOBJ upg = fiobj_hash_get2(http1_pr2handle(p).headers,
+                                http1_h2c_upgrade_hash);
+    FIOBJ h2s = fiobj_hash_get2(http1_pr2handle(p).headers,
+                                http1_h2c_settings_hash);
+    if (upg && h2s) {
+      /* duplicate HTTP2-Settings headers (collected into an array) must be
+       * rejected (RFC 9113 §3.2.1) */
+      if (!FIOBJ_TYPE_IS(h2s, FIOBJ_T_STRING)) {
+        http_set_header(&p->request, HTTP_HEADER_CONNECTION,
+                        fiobj_str_new("keep-alive", 10));
+        http_send_error(&p->request, 400);
+        h1_reset(p);
+        return fio_is_closed(p->p.uuid);
+      }
+      fio_str_info_s upg_s = fiobj_obj2cstr(upg);
+      if (upg_s.len == 3 && !memcmp(upg_s.data, "h2c", 3) &&
+          !fiobj_hash_get2(http1_pr2handle(p).headers, http1_h2c_cl_hash) &&
+          !fiobj_hash_get2(http1_pr2handle(p).headers, http1_h2c_te_hash)) {
+        /* decode the HTTP2-Settings payload (Base64URL, RFC 4648 §5) */
+        fio_str_info_s enc = fiobj_obj2cstr(h2s);
+        size_t dec_cap = enc.len / 4 * 3 + 1;
+        uint8_t *dec = (uint8_t *)fio_malloc(dec_cap);
+        FIO_ASSERT_ALLOC(dec);
+        ssize_t n = http1_h2c_b64url_decode(dec, enc.data, enc.len);
+        if (n < 0 || (size_t)n % 6) {
+          fio_free(dec);
+          http_set_header(&p->request, HTTP_HEADER_CONNECTION,
+                          fiobj_str_new("keep-alive", 10));
+          http_send_error(&p->request, 400);
+          h1_reset(p);
+          return fio_is_closed(p->p.uuid);
+        }
+        /* validate the settings payload before committing to the upgrade */
+        int valid = 1;
+        for (int i = 0; i < n; i += 6) {
+          uint16_t id = (uint16_t)((dec[i] << 8) | dec[i + 1]);
+          uint32_t value = ((uint32_t)dec[i + 2] << 24) |
+                           ((uint32_t)dec[i + 3] << 16) |
+                           ((uint32_t)dec[i + 4] << 8) | (uint32_t)dec[i + 5];
+          if ((id == 0x2 && value > 1) || (id == 0x4 && value > 0x7fffffff)) {
+            valid = 0;
+            break;
+          }
+        }
+        if (!valid) {
+          fio_free(dec);
+          http_set_header(&p->request, HTTP_HEADER_CONNECTION,
+                          fiobj_str_new("keep-alive", 10));
+          http_send_error(&p->request, 400);
+          h1_reset(p);
+          return fio_is_closed(p->p.uuid);
+        }
+        /* 101 Switching Protocols (RFC 9113 §3.2) */
+        http_set_header(&p->request, HTTP_HEADER_CONNECTION,
+                        fiobj_dup(HTTP_HVALUE_WS_UPGRADE));
+        http_set_header(&p->request, HTTP_HEADER_UPGRADE,
+                        fiobj_str_new("h2c", 3));
+        p->request.status = 101;
+        http_finish(&p->request);
+        p->stop = 1;
+        /* hand the leftover bytes (preface + frames) to the HTTP/2 protocol */
+        if (!http2_new(p->p.uuid, p->p.settings, p->parser.state.next,
+                       p->buf_len - (intptr_t)(p->parser.state.next - p->buf),
+                       dec, (size_t)n)) {
+          FIO_LOG_WARNING("h2c upgrade failed: HTTP/2 protocol unavailable.");
+          fio_close(p->p.uuid);
+        }
+        fio_free(dec);
+        h1_reset(p);
+        return fio_is_closed(p->p.uuid);
+      }
+      /* the upgrade was declined (RFC 9113 §3.2: a request with a body, a
+       * transfer-encoding, or a missing/multiple Upgrade token must not be
+       * upgraded): respond with a normal HTTP/1.1 response, but ensure the
+       * response is delivered before the connection closes (the request's
+       * Connection header would otherwise mark the response as `connection:
+       * close`, dropping the queued response bytes - legacy HTTP/1.1
+       * behavior). */
+      http_set_header(&p->request, HTTP_HEADER_CONNECTION,
+                      fiobj_str_new("keep-alive", 10));
+      http_send_error(&p->request, 400);
+      h1_reset(p);
+      return fio_is_closed(p->p.uuid);
+    }
+  }
   http_on_request_handler______internal(&http1_pr2handle(p), p->p.settings);
   if (p->request.method && !p->stop)
     http_finish(&p->request);
@@ -765,9 +904,14 @@ static void http1_on_data_first_time(intptr_t uuid, fio_protocol_s *protocol) {
 
   /* ensure future reads skip this first time HTTP/2.0 test */
   p->p.protocol.on_data = http1_on_data;
-  if (i >= 24 && !memcmp(p->buf, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24)) {
-    FIO_LOG_WARNING("client claimed unsupported HTTP/2 prior knowledge.");
-    fio_close(uuid);
+  if (p->buf_len >= 24 && !memcmp(p->buf, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24)) {
+    /* HTTP/2 prior knowledge (RFC 9113 §3.3): hand the buffered preface and
+     * any following frames over to the HTTP/2 protocol object. */
+    if (!http2_new(uuid, p->p.settings, p->buf, p->buf_len, NULL, 0)) {
+      FIO_LOG_WARNING("client claimed HTTP/2 prior knowledge, but the HTTP/2 "
+                      "protocol could not be attached.");
+      fio_close(uuid);
+    }
     return;
   }
 

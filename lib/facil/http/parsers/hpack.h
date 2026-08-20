@@ -34,12 +34,131 @@ Required Callbacks
 Types
 ***************************************************************************** */
 
+/** A single header field (name and value pair). */
+typedef struct hpack_header_s {
+  fio_str_info_s name;
+  fio_str_info_s value;
+} hpack_header_s;
+
 /** The HPACK context. */
-typedef struct hpack_context_s hpack_context_s;
+typedef struct hpack_context_s {
+  /* dynamic table: a linear array, newest entry first (dyn[0]) */
+  hpack_header_s *dyn;
+  size_t dyn_len;      /* number of entries */
+  size_t dyn_cap;      /* allocated capacity (in entries) */
+  size_t dyn_size;     /* current total size in octets */
+  size_t dyn_max;      /* current dynamic table max size */
+  size_t dyn_protocol; /* protocol enforced maximum */
+  size_t announced;    /* encoder: size last announced to the peer */
+  /* scratch space for decoded strings (valid until the next decode call) */
+  char *scratch;
+  size_t scratch_len;
+  size_t scratch_cap;
+  size_t scratch_limit; /* per block decompression budget */
+  size_t scratch_reserved; /* top-of-budget bytes holding an encoded block */
+} hpack_context_s;
 
 /* *****************************************************************************
 Context API
 ***************************************************************************** */
+
+/**
+ * Initializes an HPACK context.
+ *
+ * The `protocol_max` argument is the maximum dynamic table size allowed by
+ * the protocol (i.e., the SETTINGS_HEADER_TABLE_SIZE value, 4096 by default).
+ */
+static int hpack_context_init(hpack_context_s *ctx, size_t protocol_max);
+
+/** Releases any resources allocated by the context. */
+static void hpack_context_destroy(hpack_context_s *ctx);
+
+/**
+ * Sets the per-header-block decompression budget (in octets) for the context.
+ *
+ * Defaults to `HPACK_BUFFER_SIZE * 2`. Exceeding this budget is treated as a
+ * decoding error.
+ */
+static void hpack_context_limit_set(hpack_context_s *ctx, size_t mem_limit);
+
+/**
+ * Sets the maximum dynamic table size allowed for the encoder (i.e., the
+ * peer's SETTINGS_HEADER_TABLE_SIZE value).
+ *
+ * Returns -1 if the new maximum exceeds the protocol enforced maximum.
+ */
+static int hpack_context_max_set(hpack_context_s *ctx, size_t protocol_max);
+
+/**
+ * Resizes the dynamic table, evicting entries as required.
+ *
+ * On the decoding side this applies a Dynamic Table Size Update instruction
+ * (RFC 7541 §6.3). Returns -1 if `new_max` exceeds the protocol enforced
+ * maximum.
+ */
+static int hpack_context_resize(hpack_context_s *ctx, size_t new_max);
+
+/**
+ * Encodes a header field section (RFC 7541 §2.1) into `dest` (up to `limit`
+ * octets).
+ *
+ * On success returns the number of octets written (0 is valid) and, when
+ * `used` isn't NULL, sets it to that value. If the buffer is too small, -1
+ * is returned and `used` (when non-NULL) is set to the required size.
+ *
+ * Encoding is transactional: the context (dynamic table and announced size)
+ * is only mutated on success, so a failed encode leaves it unchanged.
+ */
+static ssize_t hpack_context_encode(hpack_context_s *ctx, void *dest,
+                                    size_t limit,
+                                    const hpack_header_s *fields,
+                                    size_t count, size_t *used);
+
+/**
+ * Decodes a header field section (RFC 7541 §2.1) into up to `limit` fields.
+ *
+ * Returns 0 on success, setting `count` to the number of fields decoded.
+ * Returns -1 on a decoding error (invalid index, size update overflow,
+ * decompression budget exceeded, etc.).
+ *
+ * The decoded `name`/`value` pointers are only valid until the next call to
+ * `hpack_context_decode` (or `hpack_context_resize` / `hpack_context_destroy`).
+ */
+static int hpack_context_decode(hpack_context_s *ctx, const void *data,
+                                size_t len, hpack_header_s *fields,
+                                size_t limit, size_t *count);
+
+/**
+ * Updates the dynamic table size (i.e., the peer's
+ * SETTINGS_HEADER_TABLE_SIZE value or a Dynamic Table Size Update
+ * instruction, RFC 7541 §6.3).
+ *
+ * On the encoding side, the change will be announced at the start of the
+ * next encoded header block. Returns -1 if the new maximum exceeds the
+ * protocol enforced maximum.
+ */
+static int hpack_context_update(hpack_context_s *ctx, size_t new_max);
+
+/**
+ * Starts the accumulation of a header block received over multiple frames
+ * (HEADERS + CONTINUATION, RFC 9113 §6.2 / §6.10).
+ *
+ * The accumulated fragments must then be added with
+ * `hpack_context_decode_add` and finalized with `hpack_context_decode_end`
+ * (which returns a contiguous block that can be passed to
+ * `hpack_context_decode`).
+ */
+static int hpack_context_decode_start(hpack_context_s *ctx);
+
+/** Appends a fragment to the accumulated header block. Returns -1 if the
+ * per-block decompression budget would be exceeded. */
+static int hpack_context_decode_add(hpack_context_s *ctx, const void *data,
+                                    size_t len);
+
+/** Finalizes the accumulated header block, returning a pointer to a
+ * contiguous copy (only valid until the next decode call). */
+static int hpack_context_decode_end(hpack_context_s *ctx, uint8_t **block,
+                                    size_t *block_len);
 
 /* *****************************************************************************
 Primitive Types API
@@ -350,75 +469,28 @@ static MAYBE_UNUSED int hpack_huffman_pack(void *dest_, const int limit,
   uint8_t *dest = (uint8_t *)dest_;
   uint8_t *data = (uint8_t *)data_;
   int comp_len = 0;
-  uint8_t *pos = data;
-  const uint8_t *end = pos + len;
-  uint8_t offset = 0;
-  if (!len)
-    return 0;
-  if (!limit)
-    goto calc_final_length;
-
-  dest[comp_len] = 0;
-  do {
-    uint32_t code = huffman_encode_table[*pos].code;
-    uint8_t bits = huffman_encode_table[*pos].bits;
-    ++pos;
-
-    if (offset) {
-      /* does the code fit in the existing byte */
-      if (bits + offset <= 8) {
-        dest[comp_len] |= code >> (24 + offset);
-        offset = offset + bits;
-        continue;
-      }
-      /* fill in current byte */
-      dest[comp_len] |= (code >> (24 + offset)) & 0xFF;
-      code <<= 8 - offset;
-      bits -= 8 - offset;
-      offset = 0;
+  uint64_t acc = 0;
+  size_t acc_bits = 0;
+  for (size_t i = 0; i < len; ++i) {
+    uint32_t code = huffman_encode_table[data[i]].code;
+    uint8_t bits = huffman_encode_table[data[i]].bits;
+    acc = (acc << bits) | (code >> (32 - bits));
+    acc_bits += bits;
+    while (acc_bits >= 8) {
+      acc_bits -= 8;
+      if (dest && comp_len < limit)
+        dest[comp_len] = (uint8_t)(acc >> acc_bits);
       ++comp_len;
-      dest[comp_len] = 0;
+      acc &= acc_bits ? ((1ULL << acc_bits) - 1) : 0;
     }
-
-    /* make sure we have enough space */
-    if (((bits + (comp_len << 3) + 7) >> 3) >= limit)
-      goto calc_final_length;
-
-    /* copy full bytes */
-    switch (bits >> 3) {
-    case 3:
-      dest[comp_len + 2] = (uint8_t)(code >> 8) & 0xFF;
-    /* fallthrough */
-    case 2:
-      dest[comp_len + 1] = (uint8_t)(code >> 16) & 0xFF;
-    /* fallthrough */
-    case 1:
-      dest[comp_len + 0] = (uint8_t)(code >> 24) & 0xFF;
-      comp_len += (bits >> 3);
-      code <<= (bits & (~7));
-      dest[comp_len] = 0;
-    }
-
-    /* copy partial bits */
-    dest[comp_len] |= (uint8_t)(code >> 24) & ((uint8_t)0xFF);
-    offset = bits & 7;
-  } while (pos < end);
-
-  if (offset & 7) {
-    /* pad last bits as 1 */
-    dest[comp_len] |= (uint8_t)(0xFFUL >> (offset & 7));
+  }
+  if (acc_bits) {
+    /* pad the last octet with the EOS symbol's leading bits (all ones) */
+    if (dest && comp_len < limit)
+      dest[comp_len] =
+          (uint8_t)((acc << (8 - acc_bits)) | (0xFFU >> acc_bits));
     ++comp_len;
   }
-  return comp_len;
-
-calc_final_length:
-
-  comp_len = 0;
-  for (size_t i = 0; i < len; i++) {
-    comp_len += huffman_encode_table[data[i]].bits;
-  }
-  comp_len += 7;
-  comp_len >>= 3;
   return comp_len;
 }
 
@@ -438,15 +510,15 @@ static const struct {
     {.data = {{.val = ":method", .len = 7}, {.val = "POST", .len = 4}}},
     {.data = {{.val = ":path", .len = 5}, {.val = "/", .len = 1}}},
     {.data = {{.val = ":path", .len = 5}, {.val = "/index.html", .len = 11}}},
-    {.data = {{.val = ":scheme", .len = 7}, {.val = "http", .len = 0}}},
-    {.data = {{.val = ":scheme", .len = 7}, {.val = "https", .len = 0}}},
-    {.data = {{.val = ":status", .len = 7}, {.val = "200", .len = 0}}},
-    {.data = {{.val = ":status", .len = 7}, {.val = "204", .len = 0}}},
-    {.data = {{.val = ":status", .len = 7}, {.val = "206", .len = 0}}},
-    {.data = {{.val = ":status", .len = 7}, {.val = "304", .len = 0}}},
-    {.data = {{.val = ":status", .len = 7}, {.val = "400", .len = 0}}},
-    {.data = {{.val = ":status", .len = 7}, {.val = "404", .len = 0}}},
-    {.data = {{.val = ":status", .len = 7}, {.val = "500", .len = 0}}},
+    {.data = {{.val = ":scheme", .len = 7}, {.val = "http", .len = 4}}},
+    {.data = {{.val = ":scheme", .len = 7}, {.val = "https", .len = 5}}},
+    {.data = {{.val = ":status", .len = 7}, {.val = "200", .len = 3}}},
+    {.data = {{.val = ":status", .len = 7}, {.val = "204", .len = 3}}},
+    {.data = {{.val = ":status", .len = 7}, {.val = "206", .len = 3}}},
+    {.data = {{.val = ":status", .len = 7}, {.val = "304", .len = 3}}},
+    {.data = {{.val = ":status", .len = 7}, {.val = "400", .len = 3}}},
+    {.data = {{.val = ":status", .len = 7}, {.val = "404", .len = 3}}},
+    {.data = {{.val = ":status", .len = 7}, {.val = "500", .len = 3}}},
     {.data = {{.val = "accept-charset", .len = 14}, {.len = 0}}},
     {.data = {{.val = "accept-encoding", .len = 15},
               {.val = "gzip, deflate", .len = 13}}},
@@ -458,7 +530,7 @@ static const struct {
     {.data = {{.val = "allow", .len = 5}, {.len = 0}}},
     {.data = {{.val = "authorization", .len = 13}, {.len = 0}}},
     {.data = {{.val = "cache-control", .len = 13}, {.len = 0}}},
-    {.data = {{.val = "content-disposition", .len = 0}, {.len = 0}}},
+    {.data = {{.val = "content-disposition", .len = 19}, {.len = 0}}},
     {.data = {{.val = "content-encoding", .len = 16}, {.len = 0}}},
     {.data = {{.val = "content-language", .len = 16}, {.len = 0}}},
     {.data = {{.val = "content-length", .len = 14}, {.len = 0}}},
@@ -513,6 +585,831 @@ err:
   *name = NULL;
   *len = 0;
   return -1;
+}
+
+/* *****************************************************************************
+Dynamic table & context API
+***************************************************************************** */
+
+/** The estimated overhead for a dynamic table entry (RFC 7541 §4.1). */
+#define HPACK_ENTRY_OVERHEAD 32
+
+/** The dynamic table size an HTTP/2 peer assumes until told otherwise. */
+#define HPACK_DEFAULT_TABLE_SIZE 4096
+
+/* An entry's size in octets, as defined in RFC 7541 §4.1. */
+#define hpack__entry_size(name_len, value_len)                                    \
+  ((name_len) + (value_len) + HPACK_ENTRY_OVERHEAD)
+
+/**
+ * Copies a name and value into a single allocated block, so that the entry
+ * can be released with a single `free()` on `name.data`.
+ */
+static MAYBE_UNUSED hpack_header_s hpack__entry_make(const char *name,
+                                                     size_t name_len,
+                                                     const char *value,
+                                                     size_t value_len) {
+  hpack_header_s e = {.name = {.data = NULL, .len = 0},
+                      .value = {.data = NULL, .len = 0}};
+  char *data = (char *)malloc(name_len + value_len + 2);
+  if (!data)
+    return e;
+  if (name_len)
+    memcpy(data, name, name_len);
+  data[name_len] = 0;
+  if (value_len)
+    memcpy(data + name_len + 1, value, value_len);
+  data[name_len + 1 + value_len] = 0;
+  e.name.data = data;
+  e.name.len = name_len;
+  e.value.data = data + name_len + 1;
+  e.value.len = value_len;
+  return e;
+}
+
+/** Releases a dynamic table entry's resources. */
+static MAYBE_UNUSED void hpack__entry_free(hpack_header_s *e) {
+  free((void *)e->name.data);
+  e->name.data = e->value.data = NULL;
+  e->name.len = e->value.len = 0;
+}
+
+/**
+ * Adds an entry to the head of the dynamic table (newest first), evicting
+ * entries from the tail as required (RFC 7541 §4.4).
+ *
+ * An entry larger than `dyn_max` empties the table (RFC 7541 §4.4).
+ * Returns -1 on allocation failure.
+ */
+static MAYBE_UNUSED int hpack__table_add(hpack_context_s *ctx,
+                                         const char *name, size_t name_len,
+                                         const char *value, size_t value_len) {
+  size_t entry_size = hpack__entry_size(name_len, value_len);
+  if (entry_size > ctx->dyn_max) {
+    while (ctx->dyn_len)
+      hpack__entry_free(&ctx->dyn[--ctx->dyn_len]);
+    ctx->dyn_size = 0;
+    return 0;
+  }
+  while (ctx->dyn_len && ctx->dyn_size + entry_size > ctx->dyn_max) {
+    hpack_header_s *tail = &ctx->dyn[ctx->dyn_len - 1];
+    ctx->dyn_size -= hpack__entry_size(tail->name.len, tail->value.len);
+    hpack__entry_free(tail);
+    --ctx->dyn_len;
+  }
+  if (ctx->dyn_len >= ctx->dyn_cap) {
+    size_t new_cap = ctx->dyn_cap ? (ctx->dyn_cap << 1) : 8;
+    hpack_header_s *new_dyn =
+        (hpack_header_s *)realloc(ctx->dyn, new_cap * sizeof(hpack_header_s));
+    if (!new_dyn)
+      return -1;
+    ctx->dyn = new_dyn;
+    ctx->dyn_cap = new_cap;
+  }
+  memmove(ctx->dyn + 1, ctx->dyn, ctx->dyn_len * sizeof(hpack_header_s));
+  ctx->dyn[0] = hpack__entry_make(name, name_len, value, value_len);
+  if (!ctx->dyn[0].name.data)
+    return -1;
+  ctx->dyn_size += entry_size;
+  ++ctx->dyn_len;
+  return 0;
+}
+
+/**
+ * Resolves an index (RFC 7541 §2.3.3): 1..61 for the static table and
+ * 62..61 + dyn_len for the dynamic table. Returns -1 for an invalid index.
+ */
+static MAYBE_UNUSED int hpack__table_find(hpack_context_s *ctx, size_t index,
+                                          const char **name, size_t *name_len,
+                                          const char **value,
+                                          size_t *value_len) {
+  if (index >= 1 && index <= 61) {
+    if (hpack_header_static_find((uint8_t)index, 0, name, name_len))
+      return -1;
+    if (value &&
+        hpack_header_static_find((uint8_t)index, 1, value, value_len))
+      return -1;
+    return 0;
+  }
+  index -= 62;
+  if (index >= ctx->dyn_len)
+    return -1;
+  if (name)
+    *name = ctx->dyn[index].name.data;
+  if (name_len)
+    *name_len = ctx->dyn[index].name.len;
+  if (value)
+    *value = ctx->dyn[index].value.data;
+  if (value_len)
+    *value_len = ctx->dyn[index].value.len;
+  return 0;
+}
+
+/**
+ * Ensures at least `len` octets of scratch space, returning the scratch
+ * buffer (which may have been reallocated, invalidating previous pointers).
+ * Returns NULL if the request exceeds the decompression budget.
+ */
+static MAYBE_UNUSED char *hpack__scratch_ensure(hpack_context_s *ctx,
+                                                size_t len) {
+  if (len > ctx->scratch_limit)
+    return NULL;
+  if (ctx->scratch_cap < len) {
+    size_t new_cap = ctx->scratch_cap ? ctx->scratch_cap : 256;
+    while (new_cap < len)
+      new_cap <<= 1;
+    char *new_scratch = (char *)realloc(ctx->scratch, new_cap);
+    if (!new_scratch)
+      return NULL;
+    ctx->scratch = new_scratch;
+    ctx->scratch_cap = new_cap;
+  }
+  return ctx->scratch;
+}
+
+/**
+ * Decodes a string literal into the scratch buffer, enforcing the per-block
+ * decompression budget (minus any region reserved for an encoded block).
+ * Returns the decoded length, or -1 on error.
+ */
+static MAYBE_UNUSED int hpack__string_scratch(hpack_context_s *ctx,
+                                              const uint8_t *buf, size_t len,
+                                              size_t *pos) {
+  size_t org = *pos;
+  if (org >= len)
+    return -1;
+  int compressed = (buf[org] & 0x80) != 0;
+  /* decoded output may not grow into the reserved block region */
+  size_t remain = ctx->scratch_reserved > ctx->scratch_len
+                      ? ctx->scratch_reserved - ctx->scratch_len
+                      : 0;
+  size_t need = 0;
+  if (!compressed) {
+    int64_t slen = hpack_int_unpack((void *)buf, len, 7, pos);
+    if (slen < 0)
+      return -1;
+    if (slen == 0)
+      return 0;
+    if ((size_t)slen > len - *pos)
+      return -1;
+    if ((size_t)slen > remain)
+      return -1;
+    need = (size_t)slen;
+    /* hpack_string_unpack parses the length prefix itself */
+    *pos = org;
+  } else {
+    if (!remain)
+      return -1;
+    /* the decoded length is only known after the Huffman decode runs; the
+     * destination limit enforces the decompression budget */
+    need = remain;
+  }
+  if (!hpack__scratch_ensure(ctx, ctx->scratch_len + need))
+    return -1;
+  int r = hpack_string_unpack(ctx->scratch + ctx->scratch_len, remain,
+                              (void *)buf, len, pos);
+  if (r < 0)
+    return -1;
+  if ((size_t)r > remain)
+    return -1;
+  ctx->scratch_len += (size_t)r;
+  return r;
+}
+
+/**
+ * Returns true if Huffman coding shortens (or matches the length of) the
+ * given string.
+ */
+static MAYBE_UNUSED int hpack__use_huffman(const char *data, size_t len) {
+  if (!data || !len)
+    return 0;
+  int hlen = hpack_huffman_pack(NULL, 0, (void *)data, len);
+  return (hlen >= 0 && (size_t)hlen <= len);
+}
+
+/* a deferred dynamic table entry (applied only when the block completes) */
+typedef struct hpack__pending_add_s {
+  const char *name;
+  size_t name_len;
+  const char *value;
+  size_t value_len;
+} hpack__pending_add_s;
+
+/**
+ * Finds the best representation for a field against the table state the
+ * decoder will have when it reaches the field: the pending (this block)
+ * additions first (newest first, they are prepended by the decoder), then
+ * the real dynamic entries (minus the ones logically evicted) and finally
+ * the static table. Returns 1 for an exact (name and value) match, 2 for a
+ * name-only match and 0 when no table entry matches. The matching index is
+ * placed in `index`.
+ */
+static MAYBE_UNUSED int hpack__encode_find(hpack_context_s *ctx,
+                                           const hpack__pending_add_s *pending,
+                                           size_t pending_len, size_t evict_count,
+                                           const hpack_header_s *f,
+                                           size_t *index) {
+  for (size_t i = 1; i <= 61; ++i) {
+    const char *name;
+    const char *value;
+    size_t name_len;
+    size_t value_len;
+    if (hpack_header_static_find((uint8_t)i, 0, &name, &name_len))
+      return 0;
+    hpack_header_static_find((uint8_t)i, 1, &value, &value_len);
+    if (name_len == f->name.len && value_len == f->value.len &&
+        (!name_len || !memcmp(name, f->name.data, name_len)) &&
+        (!value_len || !memcmp(value, f->value.data, value_len))) {
+      *index = i;
+      return 1;
+    }
+  }
+  /* this block's additions - the newest dynamic entries (RFC 7541 §4.1) */
+  for (size_t i = pending_len; i > 0; --i) {
+    const hpack__pending_add_s *p = &pending[i - 1];
+    if (p->name_len == f->name.len && p->value_len == f->value.len &&
+        (!p->name_len || !memcmp(p->name, f->name.data, p->name_len)) &&
+        (!p->value_len || !memcmp(p->value, f->value.data, p->value_len))) {
+      *index = 62 + (pending_len - i);
+      return 1;
+    }
+  }
+  /* the real dynamic entries (the logically evicted tail is invisible) */
+  size_t real_count = ctx->dyn_len - evict_count;
+  for (size_t i = 0; i < real_count; ++i) {
+    const hpack_header_s *d = &ctx->dyn[i];
+    if (d->name.len == f->name.len && d->value.len == f->value.len &&
+        (!d->name.len || !memcmp(d->name.data, f->name.data, d->name.len)) &&
+        (!d->value.len || !memcmp(d->value.data, f->value.data, d->value.len))) {
+      *index = 62 + pending_len + i;
+      return 1;
+    }
+  }
+  for (size_t i = 1; i <= 61; ++i) {
+    const char *name;
+    const char *value;
+    size_t name_len;
+    size_t value_len;
+    if (hpack_header_static_find((uint8_t)i, 0, &name, &name_len))
+      return 0;
+    hpack_header_static_find((uint8_t)i, 1, &value, &value_len);
+    if (name_len == f->name.len && value_len == f->value.len &&
+        (!name_len || !memcmp(name, f->name.data, name_len)) &&
+        (!value_len || !memcmp(value, f->value.data, value_len))) {
+      *index = i;
+      return 1;
+    }
+  }
+  /* name-only matches prefer the shortest encoding: the static table is
+   * consulted before the dynamic table (RFC 7541 C.6.2 encodes ":status"
+   * with the static reference despite the dynamic name match) */
+  for (size_t i = 1; i <= 61; ++i) {
+    const char *name;
+    size_t name_len;
+    if (hpack_header_static_find((uint8_t)i, 0, &name, &name_len))
+      return 0;
+    if (name_len == f->name.len && !memcmp(name, f->name.data, name_len)) {
+      *index = i;
+      return 2;
+    }
+  }
+  for (size_t i = pending_len; i > 0; --i) {
+    const hpack__pending_add_s *p = &pending[i - 1];
+    if (p->name_len == f->name.len &&
+        (!p->name_len || !memcmp(p->name, f->name.data, p->name_len))) {
+      *index = 62 + (pending_len - i);
+      return 2;
+    }
+  }
+  for (size_t i = 0; i < real_count; ++i) {
+    const hpack_header_s *d = &ctx->dyn[i];
+    if (d->name.len == f->name.len &&
+        (!d->name.len || !memcmp(d->name.data, f->name.data, d->name.len))) {
+      *index = 62 + pending_len + i;
+      return 2;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Encodes a header block into `dest` (up to `limit` octets).
+ *
+ * Encoding is transactional: on failure (including allocation errors) the
+ * context (the announced table size and the dynamic table) is left unchanged,
+ * so the caller may retry or abort without desynchronizing the peer.
+ *
+ * The index references mirror the decoder's table state - including the
+ * entries this block adds (RFC 7541 §4.1) - by simulating the additions and
+ * their evictions without mutating the context.
+ */
+static MAYBE_UNUSED ssize_t hpack__encode_block(hpack_context_s *ctx,
+                                                uint8_t *dest, size_t limit,
+                                                const hpack_header_s *fields,
+                                                size_t count) {
+  size_t pos = 0;
+  hpack__pending_add_s *pending = NULL;
+  size_t pending_len = 0;
+  size_t pending_cap = 0;
+  size_t pending_size = 0;
+  size_t evict_count = 0; /* real-table entries logically evicted */
+  /* dynamic table size update (RFC 7541 §6.3) */
+  if (ctx->dyn_max != ctx->announced) {
+    if (ctx->dyn_max > ctx->dyn_protocol) {
+      free(pending);
+      return -1;
+    }
+    dest[pos] = 0x20;
+    int l = hpack_int_pack(dest + pos, limit - pos, ctx->dyn_max, 5);
+    if (l < 0 || (size_t)l > limit - pos) {
+      free(pending);
+      return -1;
+    }
+    pos += l;
+  }
+  for (size_t i = 0; i < count; ++i) {
+    const hpack_header_s *f = &fields[i];
+    if (!f->name.data && f->name.len) {
+      free(pending);
+      return -1;
+    }
+    size_t index = 0;
+    int match = hpack__encode_find(ctx, pending, pending_len, evict_count, f,
+                                   &index);
+    int indexable = f->name.len && f->value.len &&
+                    hpack__entry_size(f->name.len, f->value.len) <=
+                        ctx->dyn_max;
+    int nl;
+    int vl;
+    if (match == 1) {
+      /* indexed header field (RFC 7541 §6.1) */
+      dest[pos] = 0x80;
+      nl = hpack_int_pack(dest + pos, limit - pos, index, 7);
+      if (nl < 0 || (size_t)nl > limit - pos) {
+        free(pending);
+        return -1;
+      }
+      pos += nl;
+    } else if (match == 2) {
+      /* literal with indexed name (RFC 7541 §6.2) */
+      dest[pos] = indexable ? 0x40 : 0x00;
+      nl = hpack_int_pack(dest + pos, limit - pos, index, 6);
+      if (nl < 0 || (size_t)nl > limit - pos) {
+        free(pending);
+        return -1;
+      }
+      pos += nl;
+      vl = hpack_string_pack(dest + pos, limit - pos, (void *)f->value.data,
+                             f->value.len,
+                             hpack__use_huffman(f->value.data, f->value.len));
+      if (vl < 0 || (size_t)vl > limit - pos) {
+        free(pending);
+        return -1;
+      }
+      pos += vl;
+    } else {
+      /* literal with literal name (RFC 7541 §6.2) */
+      dest[pos] = indexable ? 0x40 : 0x00;
+      ++pos;
+      nl = hpack_string_pack(dest + pos, limit - pos, (void *)f->name.data,
+                             f->name.len,
+                             hpack__use_huffman(f->name.data, f->name.len));
+      if (nl < 0 || (size_t)nl > limit - pos) {
+        free(pending);
+        return -1;
+      }
+      pos += nl;
+      vl = hpack_string_pack(dest + pos, limit - pos, (void *)f->value.data,
+                             f->value.len,
+                             hpack__use_huffman(f->value.data, f->value.len));
+      if (vl < 0 || (size_t)vl > limit - pos) {
+        free(pending);
+        return -1;
+      }
+      pos += vl;
+    }
+    /* only literal-with-incremental-indexing representations add an entry
+     * to the dynamic table (RFC 7541 §4.1) - the additions are deferred so
+     * that a failed encode leaves the table unchanged, but the index
+     * references already account for them (and their evictions) */
+    if (indexable && match != 1) {
+      size_t esize = hpack__entry_size(f->name.len, f->value.len);
+      if (esize > ctx->dyn_max) {
+        /* an oversized entry empties the table (RFC 7541 §4.4) */
+        pending_len = 0;
+        pending_size = 0;
+        evict_count = ctx->dyn_len;
+        free(pending);
+        pending = NULL;
+        pending_cap = 0;
+      } else {
+        /* simulate the decoder's evictions (oldest first: the real table's
+         * tail, then the oldest pending additions) */
+        size_t evicted = 0;
+        for (size_t e = ctx->dyn_len - evict_count; e < ctx->dyn_len; ++e)
+          evicted +=
+              hpack__entry_size(ctx->dyn[e].name.len, ctx->dyn[e].value.len);
+        while (pending_size + ctx->dyn_size - evicted + esize >
+               ctx->dyn_max) {
+          if (evict_count < ctx->dyn_len) {
+            ++evict_count;
+            evicted += hpack__entry_size(
+                ctx->dyn[ctx->dyn_len - evict_count].name.len,
+                ctx->dyn[ctx->dyn_len - evict_count].value.len);
+          } else if (pending_len) {
+            pending_size -=
+                hpack__entry_size(pending[0].name_len, pending[0].value_len);
+            memmove(pending, pending + 1,
+                    (pending_len - 1) * sizeof(*pending));
+            --pending_len;
+          } else {
+            break; /* single entry larger than the capacity is dropped */
+          }
+        }
+        if (pending_len == pending_cap) {
+          size_t nc = pending_cap ? pending_cap * 2 : 8;
+          hpack__pending_add_s *np =
+              (hpack__pending_add_s *)realloc(pending, nc * sizeof(*np));
+          if (!np) {
+            free(pending);
+            return -1;
+          }
+          pending = np;
+          pending_cap = nc;
+        }
+        pending[pending_len].name = f->name.data;
+        pending[pending_len].name_len = f->name.len;
+        pending[pending_len].value = f->value.data;
+        pending[pending_len].value_len = f->value.len;
+        ++pending_len;
+        pending_size += esize;
+      }
+    }
+  }
+  /* the block encoded successfully - apply the logical evictions and the
+   * deferred table additions, then announce the dynamic table size (the
+   * evictions mirror the decoder's interleaved evictions) */
+  for (size_t i = 0; i < evict_count; ++i) {
+    hpack_header_s *tail = &ctx->dyn[ctx->dyn_len - 1];
+    ctx->dyn_size -= hpack__entry_size(tail->name.len, tail->value.len);
+    hpack__entry_free(tail);
+    --ctx->dyn_len;
+  }
+  for (size_t i = 0; i < pending_len; ++i)
+    if (hpack__table_add(ctx, pending[i].name, pending[i].name_len,
+                         pending[i].value, pending[i].value_len)) {
+      free(pending);
+      return -1;
+    }
+  free(pending);
+  ctx->announced = ctx->dyn_max;
+  return (ssize_t)pos;
+}
+
+static MAYBE_UNUSED int hpack_context_init(hpack_context_s *ctx,
+                                           size_t protocol_max) {
+  if (!ctx)
+    return -1;
+  memset(ctx, 0, sizeof(*ctx));
+  if (protocol_max > HPACK_MAX_TABLE_SIZE)
+    protocol_max = HPACK_MAX_TABLE_SIZE;
+  ctx->dyn_protocol = protocol_max;
+  ctx->dyn_max = protocol_max < HPACK_DEFAULT_TABLE_SIZE
+                     ? protocol_max
+                     : HPACK_DEFAULT_TABLE_SIZE;
+  /* the peer assumes the default size until a size update is sent */
+  ctx->announced =
+      (ctx->dyn_max == HPACK_DEFAULT_TABLE_SIZE) ? ctx->dyn_max : 0;
+  ctx->scratch_limit = HPACK_BUFFER_SIZE * 2;
+  return 0;
+}
+
+static MAYBE_UNUSED void hpack_context_destroy(hpack_context_s *ctx) {
+  if (!ctx)
+    return;
+  while (ctx->dyn_len)
+    hpack__entry_free(&ctx->dyn[--ctx->dyn_len]);
+  free(ctx->dyn);
+  free(ctx->scratch);
+  memset(ctx, 0, sizeof(*ctx));
+}
+
+static MAYBE_UNUSED void hpack_context_limit_set(hpack_context_s *ctx,
+                                                 size_t mem_limit) {
+  if (ctx)
+    ctx->scratch_limit = mem_limit;
+}
+
+static MAYBE_UNUSED int hpack_context_max_set(hpack_context_s *ctx,
+                                              size_t protocol_max) {
+  if (!ctx || protocol_max > HPACK_MAX_TABLE_SIZE)
+    return -1;
+  ctx->dyn_protocol = protocol_max;
+  if (ctx->dyn_max > protocol_max)
+    return hpack_context_resize(ctx, protocol_max);
+  return 0;
+}
+
+static MAYBE_UNUSED int hpack_context_resize(hpack_context_s *ctx,
+                                             size_t new_max) {
+  if (!ctx || new_max > ctx->dyn_protocol)
+    return -1;
+  while (ctx->dyn_len && ctx->dyn_size > new_max) {
+    hpack_header_s *tail = &ctx->dyn[ctx->dyn_len - 1];
+    ctx->dyn_size -= hpack__entry_size(tail->name.len, tail->value.len);
+    hpack__entry_free(tail);
+    --ctx->dyn_len;
+  }
+  ctx->dyn_max = new_max;
+  return 0;
+}
+
+static MAYBE_UNUSED int hpack_context_update(hpack_context_s *ctx,
+                                             size_t new_max) {
+  if (!ctx || new_max > ctx->dyn_protocol)
+    return -1;
+  ctx->dyn_max = new_max;
+  while (ctx->dyn_len && ctx->dyn_size > ctx->dyn_max) {
+    hpack_header_s *tail = &ctx->dyn[ctx->dyn_len - 1];
+    ctx->dyn_size -= hpack__entry_size(tail->name.len, tail->value.len);
+    hpack__entry_free(tail);
+    --ctx->dyn_len;
+  }
+  /* the announced size is left stale - the encoder will emit the size update
+   * instruction at the start of the next header block (RFC 7541 §6.3) */
+  return 0;
+}
+
+static MAYBE_UNUSED int hpack_context_decode_start(hpack_context_s *ctx) {
+  if (!ctx)
+    return -1;
+  if (!hpack__scratch_ensure(ctx, ctx->scratch_limit))
+    return -1;
+  ctx->scratch_len = 0;
+  ctx->scratch_reserved = 0;
+  return 0;
+}
+
+static MAYBE_UNUSED int hpack_context_decode_add(hpack_context_s *ctx,
+                                                 const void *data,
+                                                 size_t len) {
+  if (!ctx || !data || ctx->scratch_len + len > ctx->scratch_limit)
+    return -1;
+  if (!hpack__scratch_ensure(ctx, ctx->scratch_len + len))
+    return -1;
+  memcpy(ctx->scratch + ctx->scratch_len, data, len);
+  ctx->scratch_len += len;
+  return 0;
+}
+
+static MAYBE_UNUSED int hpack_context_decode_end(hpack_context_s *ctx,
+                                                 uint8_t **block,
+                                                 size_t *block_len) {
+  if (!ctx || !block || !block_len)
+    return -1;
+  size_t blen = ctx->scratch_len;
+  if (!blen) {
+    *block = NULL;
+    *block_len = 0;
+    return 0;
+  }
+  /* relocate the block to the top of the scratch budget, so that the decoded
+   * fields (appended from the bottom by `hpack_context_decode`) can't
+   * overwrite it while it's being parsed (the reserved region is released
+   * when the decode completes or when a new block starts) */
+  memmove(ctx->scratch + (ctx->scratch_limit - blen), ctx->scratch, blen);
+  ctx->scratch_reserved = blen;
+  *block = (uint8_t *)ctx->scratch + (ctx->scratch_limit - blen);
+  *block_len = blen;
+  return 0;
+}
+
+static MAYBE_UNUSED ssize_t hpack_context_encode(hpack_context_s *ctx,
+                                                 void *dest, size_t limit,
+                                                 const hpack_header_s *fields,
+                                                 size_t count,
+                                                 size_t *used) {
+  if (used)
+    *used = 0;
+  if (!ctx || (count && !fields))
+    return -1;
+  size_t cap = 16;
+  for (size_t i = 0; i < count; ++i) {
+    if (fields[i].name.len > (1 << 24) || fields[i].value.len > (1 << 24))
+      return -1;
+    cap += 32 + fields[i].name.len + fields[i].value.len;
+  }
+  if (cap > ((size_t)1 << 31))
+    return -1;
+  uint8_t *tmp = (uint8_t *)malloc(cap);
+  if (!tmp)
+    return -1;
+  ssize_t r = hpack__encode_block(ctx, tmp, cap, fields, count);
+  if (r < 0) {
+    free(tmp);
+    return -1;
+  }
+  size_t required = (size_t)r;
+  if (!dest || required > limit) {
+    free(tmp);
+    if (used)
+      *used = required;
+    return dest ? -1 : (ssize_t)required;
+  }
+  memcpy(dest, tmp, required);
+  free(tmp);
+  if (used)
+    *used = required;
+  return (ssize_t)required;
+}
+
+static MAYBE_UNUSED int hpack_context_decode(hpack_context_s *ctx,
+                                             const void *data, size_t len,
+                                             hpack_header_s *fields,
+                                             size_t limit, size_t *count) {
+  if (count)
+    *count = 0;
+  if (!ctx || (!data && len))
+    return -1;
+  if (!fields)
+    limit = (size_t)-1; /* count-only mode */
+  const uint8_t *buf = (const uint8_t *)data;
+  size_t pos = 0;
+  size_t fcount = 0;
+  int saw_field = 0;
+  ctx->scratch_len = 0;
+  /* pre-allocate the entire per-block budget so that no reallocation can
+   * invalidate the field pointers written into the scratch buffer */
+  if (!hpack__scratch_ensure(ctx, ctx->scratch_limit))
+    return -1;
+  /* when the block resides in the scratch buffer (relocated to the top of
+   * the budget by `hpack_context_decode_end`), decoded output may not grow
+   * into the block's reserved region; otherwise the whole budget is usable */
+  size_t block_blen = ctx->scratch_reserved;
+  ctx->scratch_reserved = ctx->scratch_limit;
+  if (block_blen && block_blen < ctx->scratch_limit)
+    ctx->scratch_reserved = ctx->scratch_limit - block_blen;
+  while (pos < len) {
+    uint8_t b = buf[pos];
+    if (b & 0x80) {
+      /* indexed header field (RFC 7541 §6.1) */
+      if (fcount >= limit)
+        return -1;
+      int64_t index = hpack_int_unpack((void *)buf, len, 7, &pos);
+      if (index < 1)
+        return -1;
+      const char *name;
+      const char *value;
+      size_t nl;
+      size_t vl;
+      if (hpack__table_find(ctx, (size_t)index, &name, &nl, &value, &vl))
+        return -1;
+      if (nl + vl > (ctx->scratch_reserved > ctx->scratch_len
+                          ? ctx->scratch_reserved - ctx->scratch_len
+                          : 0))
+        return -1;
+      char *s = hpack__scratch_ensure(ctx, ctx->scratch_len + nl + vl);
+      if (!s)
+        return -1;
+      if (nl)
+        memcpy(s + ctx->scratch_len, name, nl);
+      if (vl)
+        memcpy(s + ctx->scratch_len + nl, value, vl);
+      if (fields) {
+        fields[fcount].name.data = s + ctx->scratch_len;
+        fields[fcount].name.len = nl;
+        fields[fcount].value.data = s + ctx->scratch_len + nl;
+        fields[fcount].value.len = vl;
+      }
+      ctx->scratch_len += nl + vl;
+      ++fcount;
+      saw_field = 1;
+    } else if (b & 0x40) {
+      /* literal with incremental indexing (RFC 7541 §6.2.1), 6-bit prefix */
+      if (fcount >= limit)
+        return -1;
+      int64_t name_index = hpack_int_unpack((void *)buf, len, 6, &pos);
+      if (name_index < 0)
+        return -1;
+      const char *name_src = NULL;
+      size_t nl = 0;
+      size_t name_off = 0;
+      int name_in_scratch = 0;
+      if (name_index) {
+        if (hpack__table_find(ctx, (size_t)name_index, &name_src, &nl, NULL,
+                              NULL))
+          return -1;
+      } else {
+        int r = hpack__string_scratch(ctx, buf, len, &pos);
+        if (r < 0)
+          return -1;
+        nl = (size_t)r;
+        name_off = ctx->scratch_len - nl;
+        name_in_scratch = 1;
+      }
+      int vr = hpack__string_scratch(ctx, buf, len, &pos);
+      if (vr < 0)
+        return -1;
+      size_t vl = (size_t)vr;
+      size_t value_off = ctx->scratch_len - vl;
+      if (!name_in_scratch) {
+        if (nl > (ctx->scratch_reserved > ctx->scratch_len
+                      ? ctx->scratch_reserved - ctx->scratch_len
+                      : 0))
+          return -1;
+        char *s = hpack__scratch_ensure(ctx, ctx->scratch_len + nl);
+        if (!s)
+          return -1;
+        memcpy(s + ctx->scratch_len, name_src, nl);
+        name_off = ctx->scratch_len;
+        ctx->scratch_len += nl;
+      }
+      /* the value offset is preserved across the name copy above (the
+       * scratch buffer only ever grows, preserving its content) */
+      const char *value = ctx->scratch + value_off;
+      if (fields) {
+        fields[fcount].name.data = ctx->scratch + name_off;
+        fields[fcount].name.len = nl;
+        fields[fcount].value.data = (char *)value;
+        fields[fcount].value.len = vl;
+      }
+      /* copy the name before the add, as the add might evict it */
+      if (hpack__table_add(ctx, ctx->scratch + name_off, nl, value, vl))
+        return -1;
+      ++fcount;
+      saw_field = 1;
+    } else if (b & 0x20) {
+      /* dynamic table size update (RFC 7541 §6.3) */
+      if (saw_field)
+        return -1;
+      int64_t new_max = hpack_int_unpack((void *)buf, len, 5, &pos);
+      if (new_max < 0)
+        return -1;
+      if ((uint64_t)new_max > ctx->dyn_protocol)
+        return -1;
+      ctx->dyn_max = (size_t)new_max;
+      while (ctx->dyn_len && ctx->dyn_size > ctx->dyn_max) {
+        hpack_header_s *tail = &ctx->dyn[ctx->dyn_len - 1];
+        ctx->dyn_size -= hpack__entry_size(tail->name.len, tail->value.len);
+        hpack__entry_free(tail);
+        --ctx->dyn_len;
+      }
+    } else {
+      /* literal without indexing / never indexed (RFC 7541 §6.2.2/6.2.3),
+       * 4-bit prefix */
+      if (fcount >= limit)
+        return -1;
+      int64_t name_index = hpack_int_unpack((void *)buf, len, 4, &pos);
+      if (name_index < 0)
+        return -1;
+      const char *name_src = NULL;
+      size_t nl = 0;
+      size_t name_off = 0;
+      int name_in_scratch = 0;
+      if (name_index) {
+        if (hpack__table_find(ctx, (size_t)name_index, &name_src, &nl, NULL,
+                              NULL))
+          return -1;
+      } else {
+        int r = hpack__string_scratch(ctx, buf, len, &pos);
+        if (r < 0)
+          return -1;
+        nl = (size_t)r;
+        name_off = ctx->scratch_len - nl;
+        name_in_scratch = 1;
+      }
+      int vr = hpack__string_scratch(ctx, buf, len, &pos);
+      if (vr < 0)
+        return -1;
+      size_t vl = (size_t)vr;
+      size_t value_off = ctx->scratch_len - vl;
+      if (!name_in_scratch) {
+        if (nl > (ctx->scratch_reserved > ctx->scratch_len
+                      ? ctx->scratch_reserved - ctx->scratch_len
+                      : 0))
+          return -1;
+        char *s = hpack__scratch_ensure(ctx, ctx->scratch_len + nl);
+        if (!s)
+          return -1;
+        memcpy(s + ctx->scratch_len, name_src, nl);
+        name_off = ctx->scratch_len;
+        ctx->scratch_len += nl;
+      }
+      const char *value = ctx->scratch + value_off;
+      if (fields) {
+        fields[fcount].name.data = ctx->scratch + name_off;
+        fields[fcount].name.len = nl;
+        fields[fcount].value.data = (char *)value;
+        fields[fcount].value.len = vl;
+      }
+      ++fcount;
+      saw_field = 1;
+    }
+  }
+  ctx->scratch_reserved = 0;
+  if (count)
+    *count = fcount;
+  return 0;
 }
 
 /* *****************************************************************************
@@ -821,6 +1718,599 @@ void hpack_test(void) {
               "strings)\n",
               count, repeats);
     }
+  }
+  {
+    /* RFC 7541 Appendix C test vectors */
+    hpack_header_s fields[16];
+    size_t field_count = 0;
+    size_t needed = 0;
+    uint8_t out[1024];
+    const char *name;
+    size_t name_len;
+    const char *value;
+    size_t value_len;
+
+    fprintf(stderr, "* HPACK testing RFC 7541 Appendix C vectors.\n");
+
+    /* static table spot checks (indices 1..61) */
+    if (hpack_header_static_find(6, 1, &value, &value_len) || value_len != 4 ||
+        memcmp(value, "http", 4)) {
+      fprintf(stderr, "* HPACK STATIC TABLE ERROR :scheme http len != 4.\n");
+      exit(-1);
+    }
+    if (hpack_header_static_find(7, 1, &value, &value_len) || value_len != 5 ||
+        memcmp(value, "https", 5)) {
+      fprintf(stderr, "* HPACK STATIC TABLE ERROR :scheme https len != 5.\n");
+      exit(-1);
+    }
+    if (hpack_header_static_find(8, 1, &value, &value_len) || value_len != 3 ||
+        memcmp(value, "200", 3)) {
+      fprintf(stderr, "* HPACK STATIC TABLE ERROR :status 200 len != 3.\n");
+      exit(-1);
+    }
+    if (hpack_header_static_find(25, 0, &name, &name_len) || name_len != 19 ||
+        memcmp(name, "content-disposition", 19)) {
+      fprintf(stderr,
+              "* HPACK STATIC TABLE ERROR content-disposition len != 19.\n");
+      exit(-1);
+    }
+
+    /* C.2.1 - literal with incremental indexing */
+    {
+      hpack_context_s ctx;
+      hpack_context_init(&ctx, 4096);
+      if (hpack_context_decode(
+              &ctx,
+              (const uint8_t *)"\x40\x0a\x63\x75\x73\x74\x6f\x6d\x2d\x6b\x65"
+                               "\x79\x0d\x63\x75\x73\x74\x6f\x6d\x2d\x68\x65"
+                               "\x61\x64\x65\x72",
+              26, fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.2.1 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 1 || fields[0].name.len != 10 ||
+          memcmp(fields[0].name.data, "custom-key", 10) ||
+          fields[0].value.len != 13 ||
+          memcmp(fields[0].value.data, "custom-header", 13)) {
+        fprintf(stderr, "* HPACK C.2.1 FIELD ERROR.\n");
+        exit(-1);
+      }
+      if (ctx.dyn_len != 1 || ctx.dyn_size != 55) {
+        fprintf(stderr,
+                "* HPACK C.2.1 TABLE ERROR (dyn_len %zu, dyn_size %zu).\n",
+                ctx.dyn_len, ctx.dyn_size);
+        exit(-1);
+      }
+      hpack_context_destroy(&ctx);
+    }
+    /* C.2.2 - literal without indexing (indexed name) */
+    {
+      hpack_context_s ctx;
+      hpack_context_init(&ctx, 4096);
+      if (hpack_context_decode(
+              &ctx,
+              (const uint8_t *)"\x04\x0c\x2f\x73\x61\x6d\x70\x6c\x65\x2f\x70"
+                               "\x61\x74\x68",
+              14, fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.2.2 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 1 || fields[0].name.len != 5 ||
+          memcmp(fields[0].name.data, ":path", 5) ||
+          fields[0].value.len != 12 ||
+          memcmp(fields[0].value.data, "/sample/path", 12)) {
+        fprintf(stderr, "* HPACK C.2.2 FIELD ERROR.\n");
+        exit(-1);
+      }
+      if (ctx.dyn_len != 0) {
+        fprintf(stderr, "* HPACK C.2.2 TABLE ERROR (not empty).\n");
+        exit(-1);
+      }
+      hpack_context_destroy(&ctx);
+    }
+    /* C.2.3 - literal never indexed */
+    {
+      hpack_context_s ctx;
+      hpack_context_init(&ctx, 4096);
+      if (hpack_context_decode(
+              &ctx,
+              (const uint8_t *)"\x10\x08\x70\x61\x73\x73\x77\x6f\x72\x64\x06"
+                               "\x73\x65\x63\x72\x65\x74",
+              17, fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.2.3 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 1 || fields[0].name.len != 8 ||
+          memcmp(fields[0].name.data, "password", 8) ||
+          fields[0].value.len != 6 ||
+          memcmp(fields[0].value.data, "secret", 6)) {
+        fprintf(stderr, "* HPACK C.2.3 FIELD ERROR.\n");
+        exit(-1);
+      }
+      if (ctx.dyn_len != 0) {
+        fprintf(stderr, "* HPACK C.2.3 TABLE ERROR (not empty).\n");
+        exit(-1);
+      }
+      hpack_context_destroy(&ctx);
+    }
+    /* C.2.4 - indexed header field */
+    {
+      hpack_context_s ctx;
+      hpack_context_init(&ctx, 4096);
+      if (hpack_context_decode(&ctx, (const uint8_t *)"\x82", 1, fields, 16,
+                               &field_count)) {
+        fprintf(stderr, "* HPACK C.2.4 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 1 || fields[0].name.len != 7 ||
+          memcmp(fields[0].name.data, ":method", 7) ||
+          fields[0].value.len != 3 ||
+          memcmp(fields[0].value.data, "GET", 3)) {
+        fprintf(stderr, "* HPACK C.2.4 FIELD ERROR.\n");
+        exit(-1);
+      }
+      hpack_context_destroy(&ctx);
+    }
+    /* C.3.1 - C.3.3 - request examples without Huffman coding */
+    {
+      hpack_context_s ctx;
+      hpack_context_init(&ctx, 4096);
+      /* C.3.1 */
+      if (hpack_context_decode(
+              &ctx,
+              (const uint8_t *)"\x82\x86\x84\x41\x0f\x77\x77\x77\x2e\x65\x78"
+                               "\x61\x6d\x70\x6c\x65\x2e\x63\x6f\x6d",
+              20, fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.3.1 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 4 || fields[3].name.len != 10 ||
+          memcmp(fields[3].name.data, ":authority", 10) ||
+          fields[3].value.len != 15 ||
+          memcmp(fields[3].value.data, "www.example.com", 15)) {
+        fprintf(stderr, "* HPACK C.3.1 FIELD ERROR.\n");
+        exit(-1);
+      }
+      if (ctx.dyn_len != 1 || ctx.dyn_size != 57) {
+        fprintf(stderr,
+                "* HPACK C.3.1 TABLE ERROR (dyn_len %zu, dyn_size %zu).\n",
+                ctx.dyn_len, ctx.dyn_size);
+        exit(-1);
+      }
+      /* C.3.2 */
+      if (hpack_context_decode(
+              &ctx,
+              (const uint8_t *)"\x82\x86\x84\xbe\x58\x08\x6e\x6f\x2d\x63\x61"
+                               "\x63\x68\x65",
+              14, fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.3.2 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 5 || fields[4].name.len != 13 ||
+          memcmp(fields[4].name.data, "cache-control", 13) ||
+          fields[4].value.len != 8 ||
+          memcmp(fields[4].value.data, "no-cache", 8)) {
+        fprintf(stderr, "* HPACK C.3.2 FIELD ERROR.\n");
+        exit(-1);
+      }
+      if (ctx.dyn_len != 2 || ctx.dyn_size != 110) {
+        fprintf(stderr,
+                "* HPACK C.3.2 TABLE ERROR (dyn_len %zu, dyn_size %zu).\n",
+                ctx.dyn_len, ctx.dyn_size);
+        exit(-1);
+      }
+      /* C.3.3 */
+      if (hpack_context_decode(
+              &ctx,
+              (const uint8_t *)"\x82\x87\x85\xbf\x40\x0a\x63\x75\x73\x74\x6f"
+                               "\x6d\x2d\x6b\x65\x79\x0c\x63\x75\x73\x74\x6f"
+                               "\x6d\x2d\x76\x61\x6c\x75\x65",
+              29, fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.3.3 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 5 || fields[1].name.len != 7 ||
+          memcmp(fields[1].name.data, ":scheme", 7) ||
+          fields[1].value.len != 5 ||
+          memcmp(fields[1].value.data, "https", 5) ||
+          fields[4].name.len != 10 ||
+          memcmp(fields[4].name.data, "custom-key", 10) ||
+          fields[4].value.len != 12 ||
+          memcmp(fields[4].value.data, "custom-value", 12)) {
+        fprintf(stderr, "* HPACK C.3.3 FIELD ERROR.\n");
+        exit(-1);
+      }
+      if (ctx.dyn_len != 3 || ctx.dyn_size != 164) {
+        fprintf(stderr,
+                "* HPACK C.3.3 TABLE ERROR (dyn_len %zu, dyn_size %zu).\n",
+                ctx.dyn_len, ctx.dyn_size);
+        exit(-1);
+      }
+      hpack_context_destroy(&ctx);
+    }
+    /* C.4.1 - C.4.3 - request examples with Huffman coding (encode + decode) */
+    {
+      hpack_context_s enc_ctx;
+      hpack_context_s dec_ctx;
+      hpack_context_init(&enc_ctx, 4096);
+      hpack_context_init(&dec_ctx, 4096);
+      static const hpack_header_s c41[] = {
+          {.name = {.data = ":method", .len = 7},
+           .value = {.data = "GET", .len = 3}},
+          {.name = {.data = ":scheme", .len = 7},
+           .value = {.data = "http", .len = 4}},
+          {.name = {.data = ":path", .len = 5}, .value = {.data = "/", .len = 1}},
+          {.name = {.data = ":authority", .len = 10},
+           .value = {.data = "www.example.com", .len = 15}},
+      };
+      static const uint8_t c41_encoded[] = {
+          0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2,
+          0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff};
+      static const hpack_header_s c42[] = {
+          {.name = {.data = ":method", .len = 7},
+           .value = {.data = "GET", .len = 3}},
+          {.name = {.data = ":scheme", .len = 7},
+           .value = {.data = "http", .len = 4}},
+          {.name = {.data = ":path", .len = 5}, .value = {.data = "/", .len = 1}},
+          {.name = {.data = ":authority", .len = 10},
+           .value = {.data = "www.example.com", .len = 15}},
+          {.name = {.data = "cache-control", .len = 13},
+           .value = {.data = "no-cache", .len = 8}},
+      };
+      static const uint8_t c42_encoded[] = {
+          0x82, 0x86, 0x84, 0xbe, 0x58, 0x86, 0xa8, 0xeb, 0x10, 0x64, 0x9c,
+          0xbf};
+      static const hpack_header_s c43[] = {
+          {.name = {.data = ":method", .len = 7},
+           .value = {.data = "GET", .len = 3}},
+          {.name = {.data = ":scheme", .len = 7},
+           .value = {.data = "https", .len = 5}},
+          {.name = {.data = ":path", .len = 5},
+           .value = {.data = "/index.html", .len = 11}},
+          {.name = {.data = ":authority", .len = 10},
+           .value = {.data = "www.example.com", .len = 15}},
+          {.name = {.data = "custom-key", .len = 10},
+           .value = {.data = "custom-value", .len = 12}},
+      };
+      static const uint8_t c43_encoded[] = {
+          0x82, 0x87, 0x85, 0xbf, 0x40, 0x88, 0x25, 0xa8, 0x49, 0xe9,
+          0x5b, 0xa9, 0x7d, 0x7f, 0x89, 0x25, 0xa8, 0x49, 0xe9, 0x5b,
+          0xb8, 0xe8, 0xb4, 0xbf};
+      ssize_t enc_len = hpack_context_encode(&enc_ctx, out, sizeof(out), c41, 4,
+                                             &needed);
+      if (enc_len != (ssize_t)sizeof(c41_encoded) ||
+          memcmp(out, c41_encoded, sizeof(c41_encoded))) {
+        fprintf(stderr, "* HPACK C.4.1 ENCODE ERROR (%zd != %zu).\n", enc_len,
+                sizeof(c41_encoded));
+        exit(-1);
+      }
+      if (hpack_context_decode(&dec_ctx, c41_encoded, sizeof(c41_encoded),
+                               fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.4.1 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 4 || dec_ctx.dyn_len != 1) {
+        fprintf(stderr, "* HPACK C.4.1 DECODE STATE ERROR.\n");
+        exit(-1);
+      }
+      enc_len =
+          hpack_context_encode(&enc_ctx, out, sizeof(out), c42, 5, &needed);
+      if (enc_len != (ssize_t)sizeof(c42_encoded) ||
+          memcmp(out, c42_encoded, sizeof(c42_encoded))) {
+        fprintf(stderr, "* HPACK C.4.2 ENCODE ERROR (%zd != %zu).\n", enc_len,
+                sizeof(c42_encoded));
+        exit(-1);
+      }
+      if (hpack_context_decode(&dec_ctx, c42_encoded, sizeof(c42_encoded),
+                               fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.4.2 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 5 || dec_ctx.dyn_len != 2) {
+        fprintf(stderr, "* HPACK C.4.2 DECODE STATE ERROR.\n");
+        exit(-1);
+      }
+      enc_len =
+          hpack_context_encode(&enc_ctx, out, sizeof(out), c43, 5, &needed);
+      if (enc_len != (ssize_t)sizeof(c43_encoded) ||
+          memcmp(out, c43_encoded, sizeof(c43_encoded))) {
+        fprintf(stderr, "* HPACK C.4.3 ENCODE ERROR (%zd != %zu).\n", enc_len,
+                sizeof(c43_encoded));
+        exit(-1);
+      }
+      if (hpack_context_decode(&dec_ctx, c43_encoded, sizeof(c43_encoded),
+                               fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.4.3 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 5 || dec_ctx.dyn_len != 3) {
+        fprintf(stderr, "* HPACK C.4.3 DECODE STATE ERROR.\n");
+        exit(-1);
+      }
+      hpack_context_destroy(&enc_ctx);
+      hpack_context_destroy(&dec_ctx);
+    }
+    /* C.5.1 - C.5.3 - response examples without Huffman (table size 256) */
+    {
+      hpack_context_s ctx;
+      hpack_context_init(&ctx, 256);
+      /* C.5.1 */
+      if (hpack_context_decode(
+              &ctx,
+              (const uint8_t *)"\x48\x03\x33\x30\x32\x58\x07\x70\x72\x69\x76"
+                               "\x61\x74\x65\x61\x1d\x4d\x6f\x6e\x2c\x20\x32"
+                               "\x31\x20\x4f\x63\x74\x20\x32\x30\x31\x33\x20"
+                               "\x32\x30\x3a\x31\x33\x3a\x32\x31\x20\x47\x4d"
+                               "\x54\x6e\x17\x68\x74\x74\x70\x73\x3a\x2f\x2f"
+                               "\x77\x77\x77\x2e\x65\x78\x61\x6d\x70\x6c\x65"
+                               "\x2e\x63\x6f\x6d",
+              70, fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.5.1 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 4 || ctx.dyn_len != 4 || ctx.dyn_size != 222) {
+        fprintf(stderr,
+                "* HPACK C.5.1 STATE ERROR (%zu fields, %zu entries, %zu "
+                "octets).\n",
+                field_count, ctx.dyn_len, ctx.dyn_size);
+        exit(-1);
+      }
+      if (fields[0].value.len != 3 || memcmp(fields[0].value.data, "302", 3)) {
+        fprintf(stderr, "* HPACK C.5.1 FIELD ERROR.\n");
+        exit(-1);
+      }
+      /* C.5.2 */
+      if (hpack_context_decode(
+              &ctx,
+              (const uint8_t *)"\x48\x03\x33\x30\x37\xc1\xc0\xbf", 8, fields,
+              16, &field_count)) {
+        fprintf(stderr, "* HPACK C.5.2 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 4 || ctx.dyn_len != 4 || ctx.dyn_size != 222 ||
+          fields[0].value.len != 3 || memcmp(fields[0].value.data, "307", 3)) {
+        fprintf(stderr, "* HPACK C.5.2 STATE ERROR.\n");
+        exit(-1);
+      }
+      /* C.5.3 */
+      if (hpack_context_decode(
+              &ctx,
+              (const uint8_t *)"\x88\xc1\x61\x1d\x4d\x6f\x6e\x2c\x20\x32\x31"
+                               "\x20\x4f\x63\x74\x20\x32\x30\x31\x33\x20\x32"
+                               "\x30\x3a\x31\x33\x3a\x32\x32\x20\x47\x4d\x54"
+                               "\xc0\x5a\x04\x67\x7a\x69\x70\x77\x38\x66\x6f"
+                               "\x6f\x3d\x41\x53\x44\x4a\x4b\x48\x51\x4b\x42"
+                               "\x5a\x58\x4f\x51\x57\x45\x4f\x50\x49\x55\x41"
+                               "\x58\x51\x57\x45\x4f\x49\x55\x3b\x20\x6d\x61"
+                               "\x78\x2d\x61\x67\x65\x3d\x33\x36\x30\x30\x3b"
+                               "\x20\x76\x65\x72\x73\x69\x6f\x6e\x3d\x31",
+              98, fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.5.3 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 6 || ctx.dyn_len != 3 || ctx.dyn_size != 215 ||
+          fields[5].name.len != 10 ||
+          memcmp(fields[5].name.data, "set-cookie", 10)) {
+        fprintf(stderr,
+                "* HPACK C.5.3 STATE ERROR (%zu fields, %zu entries, %zu "
+                "octets).\n",
+                field_count, ctx.dyn_len, ctx.dyn_size);
+        exit(-1);
+      }
+      hpack_context_destroy(&ctx);
+    }
+    /* C.6.1 - C.6.3 - response examples with Huffman (table size 256) */
+    {
+      hpack_context_s enc_ctx;
+      hpack_context_s dec_ctx;
+      hpack_context_init(&enc_ctx, 256);
+      hpack_context_init(&dec_ctx, 256);
+      /* the RFC examples assume the table size was already set to 256 */
+      enc_ctx.announced = 256;
+      static const hpack_header_s c61[] = {
+          {.name = {.data = ":status", .len = 7},
+           .value = {.data = "302", .len = 3}},
+          {.name = {.data = "cache-control", .len = 13},
+           .value = {.data = "private", .len = 7}},
+          {.name = {.data = "date", .len = 4},
+           .value = {.data = "Mon, 21 Oct 2013 20:13:21 GMT", .len = 29}},
+          {.name = {.data = "location", .len = 8},
+           .value = {.data = "https://www.example.com", .len = 23}},
+      };
+      static const uint8_t c61_encoded[] = {
+          0x48, 0x82, 0x64, 0x02, 0x58, 0x85, 0xae, 0xc3, 0x77, 0x1a,
+          0x4b, 0x61, 0x96, 0xd0, 0x7a, 0xbe, 0x94, 0x10, 0x54, 0xd4,
+          0x44, 0xa8, 0x20, 0x05, 0x95, 0x04, 0x0b, 0x81, 0x66, 0xe0,
+          0x82, 0xa6, 0x2d, 0x1b, 0xff, 0x6e, 0x91, 0x9d, 0x29, 0xad,
+          0x17, 0x18, 0x63, 0xc7, 0x8f, 0x0b, 0x97, 0xc8, 0xe9, 0xae,
+          0x82, 0xae, 0x43, 0xd3};
+      static const hpack_header_s c62[] = {
+          {.name = {.data = ":status", .len = 7},
+           .value = {.data = "307", .len = 3}},
+          {.name = {.data = "cache-control", .len = 13},
+           .value = {.data = "private", .len = 7}},
+          {.name = {.data = "date", .len = 4},
+           .value = {.data = "Mon, 21 Oct 2013 20:13:21 GMT", .len = 29}},
+          {.name = {.data = "location", .len = 8},
+           .value = {.data = "https://www.example.com", .len = 23}},
+      };
+      static const uint8_t c62_encoded[] = {0x48, 0x83, 0x64, 0x0e,
+                                            0xff, 0xc1, 0xc0, 0xbf};
+      static const hpack_header_s c63[] = {
+          {.name = {.data = ":status", .len = 7},
+           .value = {.data = "200", .len = 3}},
+          {.name = {.data = "cache-control", .len = 13},
+           .value = {.data = "private", .len = 7}},
+          {.name = {.data = "date", .len = 4},
+           .value = {.data = "Mon, 21 Oct 2013 20:13:22 GMT", .len = 29}},
+          {.name = {.data = "location", .len = 8},
+           .value = {.data = "https://www.example.com", .len = 23}},
+          {.name = {.data = "content-encoding", .len = 16},
+           .value = {.data = "gzip", .len = 4}},
+          {.name = {.data = "set-cookie", .len = 10},
+           .value = {.data = "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; "
+                             "version=1",
+                     .len = 56}},
+      };
+      static const uint8_t c63_encoded[] = {
+          0x88, 0xc1, 0x61, 0x96, 0xd0, 0x7a, 0xbe, 0x94, 0x10, 0x54,
+          0xd4, 0x44, 0xa8, 0x20, 0x05, 0x95, 0x04, 0x0b, 0x81, 0x66,
+          0xe0, 0x84, 0xa6, 0x2d, 0x1b, 0xff, 0xc0, 0x5a, 0x83, 0x9b,
+          0xd9, 0xab, 0x77, 0xad, 0x94, 0xe7, 0x82, 0x1d, 0xd7, 0xf2,
+          0xe6, 0xc7, 0xb3, 0x35, 0xdf, 0xdf, 0xcd, 0x5b, 0x39, 0x60,
+          0xd5, 0xaf, 0x27, 0x08, 0x7f, 0x36, 0x72, 0xc1, 0xab, 0x27,
+          0x0f, 0xb5, 0x29, 0x1f, 0x95, 0x87, 0x31, 0x60, 0x65, 0xc0,
+          0x03, 0xed, 0x4e, 0xe5, 0xb1, 0x06, 0x3d, 0x50, 0x07};
+      ssize_t enc_len =
+          hpack_context_encode(&enc_ctx, out, sizeof(out), c61, 4, &needed);
+      if (enc_len != (ssize_t)sizeof(c61_encoded) ||
+          memcmp(out, c61_encoded, sizeof(c61_encoded))) {
+        fprintf(stderr, "* HPACK C.6.1 ENCODE ERROR (%zd != %zu).\n", enc_len,
+                sizeof(c61_encoded));
+        exit(-1);
+      }
+      if (hpack_context_decode(&dec_ctx, c61_encoded, sizeof(c61_encoded),
+                               fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.6.1 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 4 || dec_ctx.dyn_len != 4 || dec_ctx.dyn_size != 222) {
+        fprintf(stderr, "* HPACK C.6.1 STATE ERROR.\n");
+        exit(-1);
+      }
+      enc_len =
+          hpack_context_encode(&enc_ctx, out, sizeof(out), c62, 4, &needed);
+      if (enc_len != (ssize_t)sizeof(c62_encoded) ||
+          memcmp(out, c62_encoded, sizeof(c62_encoded))) {
+        fprintf(stderr, "* HPACK C.6.2 ENCODE ERROR (%zd != %zu).\n", enc_len,
+                sizeof(c62_encoded));
+        exit(-1);
+      }
+      if (hpack_context_decode(&dec_ctx, c62_encoded, sizeof(c62_encoded),
+                               fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.6.2 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 4 || dec_ctx.dyn_len != 4 || dec_ctx.dyn_size != 222) {
+        fprintf(stderr, "* HPACK C.6.2 STATE ERROR.\n");
+        exit(-1);
+      }
+      enc_len =
+          hpack_context_encode(&enc_ctx, out, sizeof(out), c63, 6, &needed);
+      if (enc_len != (ssize_t)sizeof(c63_encoded) ||
+          memcmp(out, c63_encoded, sizeof(c63_encoded))) {
+        fprintf(stderr, "* HPACK C.6.3 ENCODE ERROR (%zd != %zu).\n", enc_len,
+                sizeof(c63_encoded));
+        exit(-1);
+      }
+      if (hpack_context_decode(&dec_ctx, c63_encoded, sizeof(c63_encoded),
+                               fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.6.3 DECODE ERROR.\n");
+        exit(-1);
+      }
+      if (field_count != 6 || dec_ctx.dyn_len != 3 || dec_ctx.dyn_size != 215) {
+        fprintf(stderr, "* HPACK C.6.3 STATE ERROR.\n");
+        exit(-1);
+      }
+      hpack_context_destroy(&enc_ctx);
+      hpack_context_destroy(&dec_ctx);
+    }
+    /* dynamic table size update instructions */
+    {
+      hpack_context_s ctx;
+      hpack_context_init(&ctx, 4096);
+      /* "20" - resize to 0 */
+      if (hpack_context_decode(&ctx, (const uint8_t *)"\x20", 1, fields, 16,
+                               &field_count) ||
+          ctx.dyn_max != 0) {
+        fprintf(stderr, "* HPACK SIZE UPDATE 0 ERROR.\n");
+        exit(-1);
+      }
+      /* "3f e1 1f" - resize to 4096 */
+      if (hpack_context_decode(&ctx, (const uint8_t *)"\x3f\xe1\x1f", 3,
+                               fields, 16, &field_count) ||
+          ctx.dyn_max != 4096) {
+        fprintf(stderr, "* HPACK SIZE UPDATE 4096 ERROR.\n");
+        exit(-1);
+      }
+      /* a size update after a field must be rejected */
+      if (!hpack_context_decode(&ctx, (const uint8_t *)"\x82\x20", 2, fields,
+                                16, &field_count)) {
+        fprintf(stderr, "* HPACK SIZE UPDATE AFTER FIELD NOT REJECTED.\n");
+        exit(-1);
+      }
+      /* a size update above the protocol maximum must be rejected */
+      hpack_context_destroy(&ctx);
+      hpack_context_init(&ctx, 256);
+      if (!hpack_context_decode(&ctx, (const uint8_t *)"\x3f\xe1\x1f", 3,
+                                fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK SIZE UPDATE ABOVE MAX NOT REJECTED.\n");
+        exit(-1);
+      }
+      hpack_context_destroy(&ctx);
+    }
+    /* invalid indices and oversized entries */
+    {
+      hpack_context_s ctx;
+      hpack_context_init(&ctx, 4096);
+      /* index 0 is invalid for an indexed field */
+      if (!hpack_context_decode(&ctx, (const uint8_t *)"\x80", 1, fields, 16,
+                                &field_count)) {
+        fprintf(stderr, "* HPACK INDEX 0 NOT REJECTED.\n");
+        exit(-1);
+      }
+      /* index 62 with an empty dynamic table is invalid */
+      if (!hpack_context_decode(&ctx, (const uint8_t *)"\xbe", 1, fields, 16,
+                                &field_count)) {
+        fprintf(stderr, "* HPACK EMPTY TABLE INDEX NOT REJECTED.\n");
+        exit(-1);
+      }
+      /* an entry larger than the table empties it (RFC 7541 §4.4) */
+      hpack_context_init(&ctx, 256);
+      /* shrink the dynamic table to 0 octets first */
+      if (hpack_context_decode(&ctx, (const uint8_t *)"\x20", 1, fields, 16,
+                               &field_count)) {
+        fprintf(stderr, "* HPACK OVERSIZED SIZE UPDATE ERROR.\n");
+        exit(-1);
+      }
+      if (hpack_context_decode(&ctx, (const uint8_t *)"\x40\x0a\x63\x75\x73"
+                                                      "\x74\x6f\x6d\x2d\x6b"
+                                                      "\x65\x79\x0d\x63\x75"
+                                                      "\x73\x74\x6f\x6d\x2d"
+                                                      "\x68\x65\x61\x64\x65"
+                                                      "\x72",
+                               26, fields, 16, &field_count)) {
+        fprintf(stderr, "* HPACK C.2.1 DECODE ERROR (oversized).\n");
+        exit(-1);
+      }
+      if (ctx.dyn_len != 0 || ctx.dyn_size != 0) {
+        fprintf(stderr, "* HPACK OVERSIZED ENTRY TABLE ERROR.\n");
+        exit(-1);
+      }
+      hpack_context_destroy(&ctx);
+    }
+    /* decode budget enforcement */
+    {
+      hpack_context_s ctx;
+      hpack_context_init(&ctx, 4096);
+      hpack_context_limit_set(&ctx, 64);
+      hpack_header_s big = {.name = {.data = "x", .len = 1},
+                            .value = {.data = NULL, .len = 100}};
+      char big_value[100];
+      memset(big_value, 'a', sizeof(big_value));
+      big.value.data = big_value;
+      ssize_t big_len = hpack_context_encode(&ctx, NULL, 0, &big, 1, &needed);
+      uint8_t *big_block = (uint8_t *)malloc(big_len);
+      hpack_context_encode(&ctx, big_block, big_len, &big, 1, &needed);
+      if (!hpack_context_decode(&ctx, big_block, big_len, fields, 16,
+                                &field_count)) {
+        fprintf(stderr, "* HPACK BUDGET NOT ENFORCED.\n");
+        exit(-1);
+      }
+      free(big_block);
+      hpack_context_destroy(&ctx);
+    }
+    fprintf(stderr, "* HPACK RFC 7541 Appendix C vectors complete.\n");
   }
 }
 #else

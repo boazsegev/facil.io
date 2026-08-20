@@ -19,6 +19,7 @@ set(facil.io_SOURCES
   lib/facil/cli/fio_cli.c
   lib/facil/http/http.c
   lib/facil/http/http1.c
+  lib/facil/http/http2.c
   lib/facil/http/http_internal.c
   lib/facil/http/websockets.c
   lib/facil/redis/redis_engine.c

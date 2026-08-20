@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / ${{ matrix.cc }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cc: gcc
+          - os: ubuntu-latest
+            cc: clang
+          - os: macos-latest
+            cc: clang
+    env:
+      CC: ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Environment sanity
+        run: |
+          make vars
+          DEBUG=1 make vars
+      - name: Build the library
+        run: make lib
+      - name: Run the HTTP/2 test suites
+        run: |
+          for t in http2 http2-conn http2-frames http2-hpack; do
+            if [ -f "tests/$t.c" ]; then
+              echo "== make test/lib/$t =="
+              make test/lib/$t
+            fi
+          done
+
+  sanitizers:
+    name: sanitizers (ASan + UBSan)
+    runs-on: ubuntu-latest
+    env:
+      CC: gcc
+      ASAN_OPTIONS: detect_leaks=0
+      UBSAN_OPTIONS: halt_on_error=1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sanitized library build
+        run: make lib OPTIMIZATION="-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer"
+      - name: Sanitized HTTP/2 test suites
+        run: |
+          for t in http2 http2-conn http2-frames http2-hpack; do
+            if [ -f "tests/$t.c" ]; then
+              echo "== make test/lib/$t (sanitized) =="
+              make test/lib/$t OPTIMIZATION="-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer"
+            fi
+          done
+
+  werror:
+    name: -Werror compile gate
+    runs-on: ubuntu-latest
+    env:
+      CC: gcc
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile the HTTP/2 tests with -Werror
+        run: |
+          FLAGS="-std=gnu11 -DTEST=1 -DFIO_WEAK_TLS -DDEBUG=1 -Wall -Wextra -Wpedantic -Werror -Wno-missing-field-initializers -Wno-embedded-directive"
+          INC="-I./ -Ilib -Ilib/facil -Ilib/facil/tls -Ilib/facil/fiobj -Ilib/facil/cli -Ilib/facil/http -Ilib/facil/http/parsers -Ilib/facil/redis -Isrc -Itests"
+          for t in http2 http2-conn http2-frames http2-hpack; do
+            if [ -f "tests/$t.c" ]; then
+              echo "== -Werror tests/$t.c =="
+              cc $FLAGS $INC -c "tests/$t.c" -o /dev/null
+            fi
+          done

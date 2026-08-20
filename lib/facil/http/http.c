@@ -890,6 +890,24 @@ static void http_on_server_protocol_http1(intptr_t uuid, void *set,
   (void)ignr_;
 }
 
+static void http_on_server_protocol_http2(intptr_t uuid, void *set,
+                                          void *ignr_) {
+  fio_timeout_set(uuid, ((http_settings_s *)set)->timeout);
+  if (fio_uuid2fd(uuid) >= ((http_settings_s *)set)->max_clients) {
+    if (!fio_http_at_capa)
+      FIO_LOG_WARNING("HTTP server at capacity");
+    fio_http_at_capa = 1;
+    http_send_error2(uuid, 503, set);
+    fio_close(uuid);
+    return;
+  }
+  fio_http_at_capa = 0;
+  fio_protocol_s *pr = http2_new(uuid, set, NULL, 0, NULL, 0);
+  if (!pr)
+    fio_close(uuid);
+  (void)ignr_;
+}
+
 static void http_on_open(intptr_t uuid, void *set) {
   http_on_server_protocol_http1(uuid, set, NULL);
 }
@@ -926,6 +944,8 @@ intptr_t http_listen(const char *port, const char *binding,
   if (settings->tls) {
     fio_tls_alpn_add(settings->tls, "http/1.1", http_on_server_protocol_http1,
                      NULL, NULL);
+    fio_tls_alpn_add(settings->tls, "h2", http_on_server_protocol_http2, NULL,
+                     NULL);
   }
 
   return fio_listen(.port = port, .address = binding, .tls = arg_settings.tls,
